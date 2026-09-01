@@ -1,0 +1,29 @@
+{{- if eq .Values.config.storage "filesystem" }}
+# The base tier, when it is a directory rather than a bucket.
+#
+# Not a stub and not a lesser option: a single node with a volume, or a bucket
+# mounted by something else — a GCS FUSE CSI volume, an S3 CSI driver — is a
+# perfectly good way to run this. What it is not is compatible with several
+# replicas on a ReadWriteOnce class, and `ingot.validate` refuses that
+# combination rather than letting one pod schedule and the rest hang.
+#
+# `resource-policy: keep` because this holds the Parquet. `helm uninstall`
+# leaves it, and deleting it is then a decision somebody made out loud.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ingot.fullname" . }}-data
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.config.filesystem.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.config.filesystem.persistence.size }}
+  {{- with .Values.config.filesystem.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

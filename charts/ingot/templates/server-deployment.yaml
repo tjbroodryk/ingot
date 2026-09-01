@@ -1,0 +1,192 @@
+# @ingot/server — the API, the engine, and the sweepers.
+#
+# Scale this freely. The roll-up, the embedding backlog, the receipt queue and
+# expiry are timers inside the process rather than work handed to a broker, and
+# each takes a Postgres advisory lock before it sweeps — see
+# `src/sweepers/scheduler.ts`. That lock is the reason a second replica is a
+# second server and not a second compaction writing the same table into the
+# same generation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingot.fullname" . }}-server
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "ingot.server.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Nothing goes away before its replacement is serving. A query is a
+      # single request that can take seconds, and `maxUnavailable: 1` on a
+      # two-replica deployment halves the pool for the length of a rollout.
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ingot.server.labels" . | nindent 8 }}
+      annotations:
+        # What makes a configuration change actually reach the pods. `envFrom`
+        # reads a ConfigMap once, at container start: edit it and nothing
+        # happens until something unrelated causes a restart, at which point
+        # half the replicas are running the old settings and half the new.
+        # A checksum in the pod template turns that into a rollout.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.server.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "ingot.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # `enableShutdownHooks` in `main.ts` means SIGTERM stops the sweepers and
+      # drains in-flight work.
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      securityContext:
+        # `bun` is a real user in the image, uid 1000 — the Dockerfile's `USER`
+        # line is what makes that true rather than incidental. Kubernetes has
+        # to be told the same number: `runAsNonRoot` alone refuses an image
+        # whose user it cannot prove is not root.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        # Makes the volumes below group-owned and group-writable, which is the
+        # only reason uid 1000 can write to one it did not create.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.server.affinity }}
+        {{- toYaml .Values.server.affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          # Preferred, not required: on a single-node cluster a `required` rule
+          # leaves the second replica Pending forever and the release never
+          # goes ready, which is a worse first experience than two pods sharing
+          # a node.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "ingot.server.selectorLabels" . | nindent 20 }}
+        {{- end }}
+      containers:
+        - name: server
+          image: {{ include "ingot.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3002
+            - name: metrics
+              # Its own listener, not a route on the API. The Ingress sends
+              # nothing here, so /metrics is reachable from inside the cluster
+              # and nowhere else.
+              containerPort: 9465
+          envFrom:
+            - configMapRef:
+                name: {{ include "ingot.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ingot.secretName" . }}
+
+          # ── probes ─────────────────────────────────────────────────────
+          # `/api/health` is version-neutral on purpose: a probe should not
+          # need editing when the API surface is versioned. It is open, so no
+          # key has to be mounted to answer one.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 2
+            # Two minutes to boot before anything is called sick. Nest's
+            # container, the storage driver's checks and the first DuckDB open
+            # all happen in here, and a cold node pulling a Debian-based image
+            # spends longer than the readiness probe's patience.
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            # Deliberately slower and more forgiving than readiness. A pod
+            # saturated by an expensive query should be taken out of the
+            # Service and left to finish, not killed and made to start again.
+            failureThreshold: 5
+
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+
+          volumeMounts:
+            # One volume over /var/lib/ingot covers both things the image
+            # expects to be able to write:
+            #
+            #  · INGOT_TEMP_DIR=/var/lib/ingot/tmp — where DuckDB spills a
+            #    query that exceeds its memory limit. Without it the spill
+            #    lands in the working directory and fails outright against the
+            #    read-only root filesystem above. DuckDB creates the directory
+            #    itself, which is why an empty volume is enough.
+            #  · INGOT_STAGING_DIR — where a GCS roll-up copies Parquet before
+            #    uploading it, since DuckDB cannot write to a bucket with a
+            #    service account. That one does *not* create its parent, so
+            #    `configmap.yaml` repoints it at this volume's root; see the
+            #    comment there.
+            - name: scratch
+              mountPath: /var/lib/ingot
+            # Small, and only because the root filesystem is read-only.
+            # Nothing of Ingot's is written here — this is for whatever the
+            # runtime and its libraries assume about /tmp.
+            - name: tmp
+              mountPath: /tmp
+            {{- if eq .Values.config.storage "filesystem" }}
+            # The base tier itself. Not scratch — this is the data.
+            - name: data
+              mountPath: {{ .Values.config.filesystem.dataDir }}
+            {{- end }}
+
+      volumes:
+        - name: scratch
+          emptyDir:
+            # A ceiling, so a runaway spill fills a volume the kubelet will
+            # evict this pod over rather than the node's disk, which it would
+            # take every other pod down with.
+            sizeLimit: {{ .Values.server.scratch.sizeLimit }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- if eq .Values.config.storage "filesystem" }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ingot.fullname" . }}-data
+        {{- end }}

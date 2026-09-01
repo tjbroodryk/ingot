@@ -1,11 +1,19 @@
-# Build the two images and publish them to GitHub Container Registry.
+# Build the release and publish it to GitHub Container Registry.
 #
-#   ghcr.io/<owner>/<repo>/server   ← apps/ingot/Dockerfile      (the NestJS API)
-#   ghcr.io/<owner>/<repo>/app      ← apps/ingot-app/Dockerfile  (the static site)
+#   ghcr.io/<owner>/<repo>/server       ← apps/ingot/Dockerfile      (the NestJS API)
+#   ghcr.io/<owner>/<repo>/app          ← apps/ingot-app/Dockerfile  (the static site)
+#   ghcr.io/<owner>/<repo>/charts/ingot ← charts/ingot               (the Helm chart)
 #
-# A pull request builds both and pushes neither, so a Dockerfile that no longer
-# builds fails on the branch that broke it rather than on the merge. Only `main`
-# and a `v*` tag push.
+# A pull request builds both images and renders the chart, and pushes none of
+# the three — so anything that stopped working fails on the branch that broke it
+# rather than on the merge. `main` pushes the images. Only a `v*` tag publishes
+# the chart.
+#
+# The chart is a job here rather than a workflow of its own, and the `needs:`
+# line is the whole reason. A chart's default image tag is its own `appVersion`,
+# so a chart published before — or instead of — the images it names is a release
+# that resolves to nothing. Two workflows on the same tag race; one job that
+# waits for both images cannot.
 name: images
 
 on:
@@ -113,3 +121,92 @@ jobs:
           # if that is more confusing than the attestations are worth.
           provenance: true
           sbom: true
+
+  # ── the chart ──────────────────────────────────────────────────────────────
+  # Rendered on everything, published only from a `v*` tag.
+  #
+  # `needs: build` waits for both images, and a matrix job that failed is not a
+  # `needs` that succeeded — so a half-published pair cannot be followed by a
+  # chart claiming the version is out.
+  chart:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          # Pinned rather than taking the runner's. OCI push is the feature this
+          # job exists for, and "whatever is installed" is not a thing to find
+          # out about during a release.
+          version: v3.19.0
+
+      # Renders on every event, including a pull request, for the reason the
+      # image build does: a template that no longer compiles should fail on the
+      # branch that broke it.
+      #
+      # The two `--set` flags are not sample data, they are the point. The chart
+      # refuses to render without a secret and a bucket, the same way the
+      # service refuses to boot without `DATABASE_URL` and `INGOT_STORAGE` — so
+      # a bare `helm lint` fails by design, and CI has to say what it would have
+      # deployed.
+      - name: Lint
+        run: |
+          helm lint charts/ingot --strict \
+            --set secrets.existingSecret=ci --set config.s3.bucket=ci
+
+      # Every branch of `ingot.validate` and of the storage switch, because the
+      # default path never renders the PVC, the GCS staging override or the
+      # Ingress — and a template only reached by a value nobody set in CI is a
+      # template nobody tested.
+      - name: Render every path
+        run: |
+          set -euo pipefail
+          render() { echo "  $1"; shift; helm template ingot charts/ingot "$@" >/dev/null; }
+          render "s3" --set config.s3.bucket=ci --set secrets.existingSecret=ci
+          render "gcs" --set config.storage=gcs --set config.gcs.bucket=ci --set secrets.existingSecret=ci
+          render "filesystem" --set config.storage=filesystem \
+            --set config.filesystem.persistence.enabled=true \
+            --set server.autoscaling.enabled=false --set server.replicaCount=1 \
+            --set secrets.existingSecret=ci
+          render "ingress + serviceMonitor + created secret" \
+            --set config.s3.bucket=ci --set ingress.enabled=true --set ingress.host=ci.example.com \
+            --set serviceMonitor.enabled=true \
+            --set secrets.create=true --set secrets.databaseUrl=postgres://ci
+
+      - name: Log in to ghcr.io
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | helm registry login "$REGISTRY" --username "$GITHUB_ACTOR" --password-stdin
+
+      # `--app-version` is the line that matters. It is what `image.tag` falls
+      # back to, so stamping the tag into it is what makes `helm install` with no
+      # overrides pull the images this same run just built. Left at the
+      # `Chart.yaml` default it would be `main`, which resolves today, resolves
+      # to something else next week, and never says so.
+      #
+      # Both flags are passed to `helm package` rather than written into
+      # `Chart.yaml` first, so the release needs no commit and the tree the tag
+      # points at is the tree that was released.
+      #
+      # The chart version is the tag without its `v`. A tag that is not SemVer2
+      # fails here and says so — which is the right place for it to fail.
+      - name: Package and push
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm package charts/ingot --version "$VERSION" --app-version "$VERSION" --destination dist
+          helm push "dist/ingot-${VERSION}.tgz" "oci://${REGISTRY}/${{ github.repository }}/charts"
+          {
+            echo "### Chart published"
+            echo
+            echo '```bash'
+            echo "helm install ingot oci://${REGISTRY}/${{ github.repository }}/charts/ingot --version ${VERSION}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

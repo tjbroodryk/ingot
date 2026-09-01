@@ -1,0 +1,357 @@
+# Ingot's defaults, and what they refuse to guess.
+#
+# Three things have no default that is right anywhere, and the chart fails to
+# render rather than install something that will crashloop: the database URL,
+# the bucket, and — if you turn it on — the Ingress host. That mirrors the
+# service's own behaviour, where `DATABASE_URL` and `INGOT_STORAGE` refuse to
+# boot half-configured instead of quietly writing the base tier to a
+# container's writable layer.
+#
+#   helm install ingot ./charts/ingot -n ingot --create-namespace \
+#     --set secrets.existingSecret=ingot-secrets \
+#     --set config.s3.bucket=my-ingot-bucket
+
+nameOverride: ''
+fullnameOverride: ''
+
+# ── the server ─────────────────────────────────────────────────────────────
+# @ingot/server: the API, the engine, and the sweepers.
+server:
+  image:
+    repository: ghcr.io/tjbroodryk/ingot/server
+    # Empty means `Chart.appVersion`. Pin a release here rather than editing
+    # the chart.
+    tag: ''
+    pullPolicy: IfNotPresent
+
+  # The floor, and ignored entirely once `autoscaling.enabled` is on — the
+  # template omits `replicas` in that case so the HPA owns the number and a
+  # `helm upgrade` does not keep resetting it to this.
+  replicaCount: 2
+
+  service:
+    type: ClusterIP
+    port: 3002
+    # Its own listener inside the process, not a route on the API. The Ingress
+    # never sends anything here.
+    metricsPort: 9465
+
+  # The memory limit is a multiple of `config.query.memoryLimit` rather than
+  # equal to it. That budget is per query session and one pod serves several at
+  # once, plus the runtime — so a limit set to the DuckDB ceiling gets the pod
+  # OOMKilled at exactly the moment the engine was about to do the right thing
+  # and spill to disk instead.
+  #
+  # No CPU limit. A query is bursty by nature and CFS throttling turns a
+  # two-second answer into a ten-second one while the node sits idle; the
+  # request is what earns the pod its share.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 3Gi
+
+  # Scaling the API is safe in a way worth being explicit about: every
+  # background job is a timer inside the process that takes a Postgres advisory
+  # lock before it sweeps, so ten replicas are ten servers and one sweeper.
+  # This sizes the request path and has nothing to say about the roll-up.
+  #
+  # Needs metrics-server. Without it the HPA reads `<unknown>/70%` and holds at
+  # `minReplicas`, which is at least the safe direction to fail in.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    # CPU rather than memory on purpose: DuckDB holds its query budget for the
+    # length of a session, so memory utilisation reflects what the engine was
+    # allowed to reserve rather than how much work is arriving.
+    targetCPUUtilizationPercentage: 70
+
+  podDisruptionBudget:
+    enabled: true
+    # `minAvailable` rather than `maxUnavailable`, because the HPA moves the
+    # replica count and only one of the two keeps meaning the same thing when
+    # it does.
+    minAvailable: 1
+
+  # Where DuckDB spills a query that outgrows its memory limit, and where a GCS
+  # roll-up stages Parquet before uploading it. A ceiling, so a runaway spill
+  # fills a volume the kubelet evicts this pod over rather than the node's
+  # disk, which it would take every other pod down with.
+  scratch:
+    sizeLimit: 10Gi
+
+  # `enableShutdownHooks` in `main.ts` means SIGTERM stops the sweepers and
+  # drains. Sized for the slowest thing a pod can be holding — a roll-up
+  # mid-compaction, not an HTTP request.
+  terminationGracePeriodSeconds: 60
+
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  # Soft rather than required: on a single-node cluster a required rule leaves
+  # the second replica Pending forever. Replace the whole block to change it.
+  affinity: {}
+
+# ── the site ───────────────────────────────────────────────────────────────
+# @ingot/app: nginx over a directory of files.
+#
+# Read this before wondering why the dashboard cannot reach anything. The site
+# is a static export, so `NEXT_PUBLIC_INGOT_URL` is inlined by `next build` and
+# is a property of the image — no value in this file can change it. The image
+# CI publishes is built against the repository variable `INGOT_PUBLIC_API_URL`,
+# and against `http://localhost:3002` when that is unset, which is good for
+# `docker run` and useless in a cluster.
+#
+#   docker build -f apps/ingot-app/Dockerfile \
+#     --build-arg NEXT_PUBLIC_INGOT_URL=https://ingot.example.com \
+#     -t ghcr.io/tjbroodryk/ingot/app:main .
+#
+# With the single-host Ingress below, that argument is the site's own address,
+# because the API is `/api` on the same host.
+app:
+  enabled: true
+
+  image:
+    repository: ghcr.io/tjbroodryk/ingot/app
+    tag: ''
+    pullPolicy: IfNotPresent
+
+  # Two, for the rollout and the PDB rather than for the load. It is a
+  # directory of files and does not need an autoscaler to keep saying so.
+  replicaCount: 2
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ── configuration ──────────────────────────────────────────────────────────
+# The non-secret half of `apps/ingot/.env.example`. Rendered into a ConfigMap
+# whose checksum is stamped on the server's pod template, so changing anything
+# here actually rolls the pods — `envFrom` on its own does not.
+#
+# Only what differs from the image is here. The Dockerfile already bakes PORT,
+# METRICS_PORT, INGOT_DUCKDB_EXTENSION_DIR, INGOT_STAGING_DIR and
+# INGOT_TEMP_DIR; repeating them would be two places to change and one of them
+# silently wrong.
+config:
+  # Which origins the browser may call the API from. Empty means "reflect
+  # whatever asked", which is what `main.ts` falls back to and not what you
+  # want in front of the internet. With the single-host Ingress the site and
+  # the API share an origin and this is a second lock on a door already shut;
+  # split them across two hosts and it is the only thing between the dashboard
+  # and a CORS failure. Comma-separated.
+  corsOrigin: ''
+
+  # ── the base tier ────────────────────────────────────────────────────────
+  # `filesystem`, `s3` or `gcs`. Named rather than inferred, and the chart
+  # refuses to render if the driver you name is missing what it needs.
+  storage: s3
+
+  s3:
+    # Required when storage is `s3`. No default — a bucket name that is wrong
+    # is worse than one that is absent.
+    bucket: ''
+    region: us-east-1
+    # Unset for AWS itself. Set it for MinIO, R2, Ceph — anything speaking the
+    # protocol — and path-style addressing then defaults to on, which is what
+    # those need and AWS does not.
+    endpoint: ''
+    # null leaves the service's own default (on whenever an endpoint is set).
+    pathStyle: null
+
+  gcs:
+    bucket: ''
+    # Nothing else, and no key: Vertex and GCS take Application Default
+    # Credentials, so under Workload Identity the credential is never ours to
+    # hold. Give `serviceAccount` an annotation instead.
+
+  filesystem:
+    # Its own path rather than a directory under /var/lib/ingot, so the base
+    # tier's volume and the scratch emptyDir are not one mount nested inside
+    # the other. Two mounts that share a prefix work, and are a worse thing to
+    # have to reason about at three in the morning than two that do not.
+    dataDir: /data
+    # `filesystem` writes the base tier to a volume, so it needs one that
+    # outlives the pod. The chart refuses to render without this, because the
+    # alternative is Parquet on an emptyDir that an eviction takes with it.
+    persistence:
+      enabled: false
+      size: 50Gi
+      storageClass: ''
+      # ReadWriteOnce pins the server to one replica. ReadWriteMany is what
+      # makes `filesystem` and more than one pod compatible — a GCS FUSE CSI
+      # volume or an S3 CSI driver is a perfectly good way to run this.
+      accessMode: ReadWriteOnce
+
+  # ── the models ───────────────────────────────────────────────────────────
+  # Two selectors because they are two purchases: an embedding is a per-row
+  # cost paid once, a summary is an LLM call paid every time a caller asks for
+  # `receipt: "full"`.
+  #
+  # Both are the deterministic offline stand-ins, and each says so at boot. A
+  # provider named here without its credential refuses to boot rather than
+  # falling back — the alternative is a service that answers, takes writes, and
+  # hands back receipts that are lexical nonsense.
+  embedder: local
+  summariser: local
+
+  openai:
+    baseUrl: ''
+    embeddingModel: ''
+    # Declared, never discovered. The width is baked into every stored vector
+    # and into the FLOAT[N] column a query session builds, so changing it is a
+    # re-embed rather than a configuration change.
+    embeddingDimensions: null
+    summaryModel: ''
+
+  gcp:
+    project: ''
+    location: us-central1
+    embeddingModel: ''
+    embeddingDimensions: null
+    summaryModel: ''
+
+  # ── the query engine ─────────────────────────────────────────────────────
+  # The ceiling on what one caller's question can cost. See the note on
+  # `server.resources` before raising `memoryLimit`.
+  query:
+    memoryLimit: 1GB
+    threads: 2
+    maxTableRows: 2000000
+
+  # ── observability ────────────────────────────────────────────────────────
+  # Tracing is on unless explicitly disabled, and the service's own default
+  # endpoint is a localhost that does not exist inside a pod — a warning per
+  # export and nothing worse, but one every few seconds. So decide: give it a
+  # collector, or set `enabled: false`. Leaving it is the option that is
+  # neither.
+  tracing:
+    enabled: false
+    endpoint: http://opentelemetry-collector.observability.svc.cluster.local:4318
+    sampleRatio: 0.1
+
+  # Anything else, verbatim. The escape hatch for a setting this chart has no
+  # opinion about, and for one added after it was written.
+  extraEnv: {}
+  #   INGOT_AI_TIMEOUT_MS: '30000'
+
+# ── secrets ────────────────────────────────────────────────────────────────
+# The recommended path is `create: false` and a Secret you made yourself, so
+# nothing sensitive is ever in a values file that ends up in git:
+#
+#   kubectl -n ingot create secret generic ingot-secrets \
+#     --from-literal=DATABASE_URL='postgres://…' \
+#     --from-literal=INGOT_S3_ACCESS_KEY_ID='…' \
+#     --from-literal=INGOT_S3_SECRET_ACCESS_KEY='…'
+#
+# The key names are the contract, not the mechanism — sealed-secrets, SOPS or
+# an ExternalSecret producing the same names all work.
+secrets:
+  create: false
+  existingSecret: ingot-secrets
+
+  # Only read when `create` is true, and then `databaseUrl` is required: it is
+  # the one setting with no default anywhere, because Ingot refuses to start
+  # without a database rather than inventing an address for one.
+  #
+  # Set these from `--set-file` or an unversioned `-f secrets.yaml`.
+  databaseUrl: ''
+  s3AccessKeyId: ''
+  s3SecretAccessKey: ''
+  openaiApiKey: ''
+
+# ── the migration ──────────────────────────────────────────────────────────
+# A `pre-install,pre-upgrade` hook, so the schema is current before a single
+# new pod starts. The schema travels inside the server image
+# (`apps/ingot/drizzle`), so the Job and the service it migrates for are one
+# artefact rather than two things to keep in step.
+#
+# Helm deletes the previous Job before creating this one, which is the step a
+# raw manifest needs by hand — a Job's pod template is immutable, so an apply
+# that changes the image is rejected rather than re-run. That is safe here
+# because every migration is idempotent and all of them are applied every time;
+# there is no ledger of which have run.
+migration:
+  enabled: true
+  backoffLimit: 3
+
+# ── serviceAccount ─────────────────────────────────────────────────────────
+# Worth creating even with no RBAC attached, because it is where the
+# annotations go that hand credentials to the pod without a Secret: an IRSA
+# role on EKS, a Workload Identity binding on GKE. Both make the `s3` keys and
+# the whole `gcs` credential question disappear.
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::…:role/ingot
+  #   iam.gke.io/gcp-service-account: ingot@my-project.iam.gserviceaccount.com
+
+# ── ingress ────────────────────────────────────────────────────────────────
+# Off, because the host and the controller are yours and the annotations below
+# are ingress-nginx's — they mean nothing to Traefik, GKE or an ALB.
+#
+# One host, two paths. The server sets a global `api` prefix, so every route it
+# has is under `/api` and the site can have everything else. That is worth more
+# than tidiness: the dashboard then calls its own origin and CORS never enters
+# into it. It also has to match how the site image was built — see the note on
+# `app` above.
+#
+# `/metrics` is not routable from here at all; it is a separate listener on
+# 9465 and the Ingress only ever targets the http port.
+ingress:
+  enabled: false
+  className: nginx
+  # Required when enabled. No default, because an Ingress carrying someone
+  # else's example.com is a resource that quietly does nothing.
+  host: ''
+  annotations:
+    # A query is a POST with a body and an answer that can be large. The stock
+    # 1m body limit and 60s read timeout are both sized for something else.
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '120'
+  tls:
+    enabled: true
+    # Left empty, the chart names one after the release.
+    secretName: ''
+    # cert-manager, if you have it. An unresolvable issuer leaves the Ingress
+    # without a certificate and without an obvious reason why, so this is
+    # opt-in rather than a default that looks like a recommendation.
+    clusterIssuer: ''
+
+# ── metrics ────────────────────────────────────────────────────────────────
+# Off, because `ServiceMonitor` only exists if the Prometheus Operator
+# installed its CRD, and a chart that assumes it fails on a cluster that has
+# no monitoring rather than skipping one file.
+#
+# Prometheus also has to be told to look in this namespace — its
+# `serviceMonitorNamespaceSelector` covers it, or `additionalLabels` below
+# matches what its `serviceMonitorSelector` expects. A ServiceMonitor nothing
+# selects is the failure that looks exactly like success: the resource exists,
+# no target appears, and nothing anywhere raises an error.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+  #   release: kube-prometheus-stack
+
+imagePullSecrets: []

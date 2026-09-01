@@ -1,0 +1,24 @@
+# Two ports, one Service, and they are not the same surface.
+#
+# `http` is what the Ingress routes to. `metrics` is a separate listener inside
+# the process — not a route on the API — and nothing outside the cluster is
+# ever sent there; the ServiceMonitor is its only intended reader.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingot.fullname" . }}-server
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.server.service.type }}
+  selector:
+    {{- include "ingot.server.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.server.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP

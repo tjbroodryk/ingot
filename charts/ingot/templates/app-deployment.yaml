@@ -1,0 +1,123 @@
+{{- if .Values.app.enabled }}
+# @ingot/app — nginx over a directory of files.
+#
+# There is nothing to configure here, and that is the point rather than an
+# omission. `next.config.ts` sets `output: 'export'`, so no page reads a
+# request and there is no Node process to keep alive. Both of the decisions
+# that would normally be environment variables were made by `docker build` —
+# see the note on `app` in values.yaml, which is the one that catches people.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingot.fullname" . }}-app
+  labels:
+    {{- include "ingot.app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.app.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "ingot.app.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ingot.app.labels" . | nindent 8 }}
+      {{- with .Values.app.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        # 101 is `nginx` in the alpine image, and the Dockerfile's `USER nginx`
+        # is what makes the container agree. Named as a number because
+        # `runAsNonRoot` checks a uid, not a name.
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.app.affinity }}
+        {{- toYaml .Values.app.affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "ingot.app.selectorLabels" . | nindent 20 }}
+        {{- end }}
+      containers:
+        - name: nginx
+          image: {{ include "ingot.app.image" . }}
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - name: http
+              # 8080 rather than 80, so nothing needs a privileged port and the
+              # pod can run as a non-root user.
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          volumeMounts:
+            # nginx's own state is the only writable thing it has, and with a
+            # read-only root there is nowhere for it by default. It creates the
+            # temp paths it needs — `client_temp` and the rest — under here at
+            # startup, so an empty directory is enough.
+            #
+            # Empty, and group-writable. `fsGroup: 101` above is what makes the
+            # second half true, and it is load-bearing rather than tidy: a
+            # volume this container cannot write to fails at
+            #
+            #   mkdir() "/var/cache/nginx/client_temp" failed (13: …)
+            #
+            # which is [emerg] at startup, not a degraded server.
+            - name: cache
+              mountPath: /var/cache/nginx
+            # The Dockerfile moves the pid file here for exactly this reason.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+{{- end }}

@@ -1,0 +1,27 @@
+apiVersion: v2
+name: ingot
+description: An agent memory server, and the site in front of it.
+type: application
+
+# The chart's own version, bumped when anything in `templates/` or the shape of
+# `values.yaml` changes. It has nothing to do with what Ingot is at — that is
+# `appVersion`, below.
+version: 0.1.0
+
+# The default image tag, used wherever `image.tag` is left empty.
+#
+# `main` rather than a number, because that is what
+# `.github/workflows/images.yml` publishes on every push to the branch. A `v*`
+# tag builds `1.2.3`, `1.2` and `latest` alongside it, so pinning a release is
+# setting this to the version and nothing else.
+appVersion: 'main'
+
+keywords:
+  - agent
+  - memory
+  - duckdb
+  - parquet
+sources:
+  - https://github.com/tjbroodryk/ingot
+maintainers:
+  - name: tjbroodryk

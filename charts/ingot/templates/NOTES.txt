@@ -1,0 +1,60 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} — release {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+The schema is already current: the migration ran as a pre-install hook, out of
+the same image the server runs, so there was never a moment where one was ahead
+of the other.
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "ingot.fullname" . }}-server
+
+{{- if .Values.ingress.enabled }}
+
+Reachable at https://{{ .Values.ingress.host }} — the site at /, the API under
+/api. One host, so the dashboard calls its own origin and CORS never enters
+into it.
+
+  curl https://{{ .Values.ingress.host }}/api/health
+{{- else }}
+
+No Ingress. To look at it without one:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ingot.fullname" . }}-server 3002:{{ .Values.server.service.port }}
+  curl http://localhost:3002/api/health
+{{- if .Values.app.enabled }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ingot.fullname" . }}-app 8080:{{ .Values.app.service.port }}
+{{- end }}
+{{- end }}
+
+There is nothing to sign up to and no account yet. Make one, and keep what it
+gives you — the key is shown once:
+
+  curl -X POST http{{ if .Values.ingress.enabled }}s://{{ .Values.ingress.host }}{{ else }}://localhost:3002{{ end }}/api/v1/accounts \
+    -H 'content-type: application/json' -d '{"slug":"acme","name":"Acme"}'
+
+{{- if .Values.app.enabled }}
+{{- if .Values.ingress.enabled }}
+
+── one thing to check ──────────────────────────────────────────────────────
+The site is a static export, so the address of the API was inlined by
+`next build` and is a property of the image — no value in this chart can
+change it. If the dashboard loads but reaches nothing, the image was built
+against something other than https://{{ .Values.ingress.host }}:
+
+  docker build -f apps/ingot-app/Dockerfile \
+    --build-arg NEXT_PUBLIC_INGOT_URL=https://{{ .Values.ingress.host }} \
+    -t {{ .Values.app.image.repository }}:{{ .Values.app.image.tag | default .Chart.AppVersion }} .
+{{- end }}
+{{- end }}
+
+{{- if eq .Values.config.storage "filesystem" }}
+
+── the base tier is a volume ───────────────────────────────────────────────
+config.storage is `filesystem`, so the Parquet lives on {{ include "ingot.fullname" . }}-data
+and the PVC is annotated `helm.sh/resource-policy: keep` — `helm uninstall`
+leaves it behind, and deleting it is a decision somebody has to make out loud.
+{{- end }}
+
+{{- if not .Values.config.tracing.enabled }}
+
+Tracing is off. `config.tracing.endpoint` and `enabled: true` point it at a
+collector; the metrics listener on :{{ .Values.server.service.metricsPort }} is unaffected either way.
+{{- end }}

@@ -1,0 +1,105 @@
+{{- if .Values.migration.enabled }}
+# Bring the database up to schema, using the image that is about to serve it.
+#
+# A hook rather than a resource, and that buys three things a plain manifest
+# has to arrange by hand:
+#
+#  · it runs before any new pod starts, so nothing ever reads a row in a shape
+#    the code stopped expecting;
+#  · `before-hook-creation` deletes the previous Job first, which is the step a
+#    raw `kubectl apply` needs because a Job's pod template is immutable and an
+#    apply that changes the image is rejected rather than re-run;
+#  · a failure fails the release, so `helm install` reports the migration that
+#    stopped instead of leaving a rollout to discover it.
+#
+# `docker/migrate.sh` is the laptop version of this and works exactly once:
+# when Postgres is something you started yourself. A deployment's database is
+# somebody else's — managed, over the network, no shell to exec into — so the
+# migration has to be something the image itself can run, and
+# `src/database/migrate.ts` is that.
+#
+# Re-running it is safe, which is what makes `backoffLimit` above zero
+# something other than a gamble. Every migration is written to be idempotent
+# (`CREATE TABLE IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` before `ADD
+# CONSTRAINT`), so all of them are applied every time rather than a ledger
+# being kept of which have run. Each file gets its own transaction, so a
+# failure leaves the ones before it applied and names the one that stopped.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ingot.fullname" . }}-migrate
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    # Above the Secret's -10, so the credential exists before this needs it.
+    helm.sh/hook-weight: '-5'
+    # `hook-succeeded` is deliberately absent: a Job that failed is the one
+    # whose logs you want, and deleting it is what makes `kubectl logs` return
+    # nothing at the moment it mattered. The next install clears it.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "ingot.server.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      # Deliberately not the chart's ServiceAccount, and not an oversight.
+      #
+      # Helm runs every pre-install hook before it applies any of the release's
+      # ordinary manifests, so on a first install that ServiceAccount does not
+      # exist yet — the Job controller would sit retrying pod creation against
+      # a name that is not there until Helm gave up waiting. The Secret below
+      # is a hook for this reason; the ServiceAccount cannot be one, because a
+      # hook is deleted and recreated on every upgrade and that invalidates the
+      # bound tokens of pods still using it.
+      #
+      # Nothing is lost. That ServiceAccount exists for its IRSA or Workload
+      # Identity annotations — credentials for a bucket and a model API — and a
+      # migration touches neither. It needs one connection string and no
+      # identity at all.
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # The same image the Deployment runs, by construction rather than by
+          # convention. The schema travels inside it (`apps/ingot/drizzle`), so
+          # the Job and the service it migrates for cannot drift apart.
+          image: {{ include "ingot.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          # WORKDIR in the image is /app/apps/ingot, so this path resolves as
+          # written. It never constructs a Nest container, which is why the
+          # ConfigMap is absent below: storage, models and query limits are not
+          # things a migration has an opinion about.
+          command: ['bun', 'dist/database/migrate.js']
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ingot.secretName" . }}
+                  key: DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+{{- end }}

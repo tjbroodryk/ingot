@@ -1,0 +1,49 @@
+{{- if .Values.server.autoscaling.enabled }}
+# Scaling the API is safe in a way that is worth being explicit about.
+#
+# Every background job is a timer inside the process, and each takes a Postgres
+# advisory lock before it does anything. Ten replicas are ten servers and one
+# sweeper — so this is sizing the request path and nothing else, and a scale-up
+# during a busy hour cannot produce two pods folding the same overlay into the
+# same generation.
+#
+# Requires metrics-server. Without it the HPA reports `<unknown>/70%` and holds
+# at minReplicas, which is at least the safe direction to fail in.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "ingot.fullname" . }}-server
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "ingot.fullname" . }}-server
+  minReplicas: {{ .Values.server.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.server.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Against the CPU request in `server.resources`. CPU rather than
+          # memory is the signal on purpose: DuckDB holds its query budget for
+          # the length of a session, so memory utilisation reflects what the
+          # engine was allowed to reserve rather than how much work is arriving.
+          averageUtilization: {{ .Values.server.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      # The default is a five-minute window that smooths away exactly the spike
+      # worth reacting to.
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      # Slow, because the cost of removing a pod is a query that was mid-flight
+      # and the cost of keeping one is a few minutes of an idle process.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+{{- end }}
