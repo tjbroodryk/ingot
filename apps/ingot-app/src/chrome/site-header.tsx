@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { DASHBOARD_HREF, DOCS_HREF, HOME_HREF, SELF_HOST_HREF } from '../site/mode';
+import { DASHBOARD_HREF, DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF } from '../site/mode';
 import { BrandMark } from './brand-mark';
 
 /** Which nav item is the page you are on. */
@@ -7,7 +7,7 @@ export enum SiteSection {
   Landing = 'landing',
   Docs = 'docs',
   Dashboard = 'dashboard',
-  SelfHost = 'self-host',
+  Deployment = 'deployment',
 }
 
 /**
@@ -52,12 +52,12 @@ export function SiteHeader({
             Dashboard
           </a>
         ) : null}
-        {SELF_HOST_HREF ? (
+        {DEPLOYMENT_HREF ? (
           <a
-            href={SELF_HOST_HREF}
-            aria-current={current === SiteSection.SelfHost ? 'page' : undefined}
+            href={DEPLOYMENT_HREF}
+            aria-current={current === SiteSection.Deployment ? 'page' : undefined}
           >
-            Self-host
+            Deployment
           </a>
         ) : null}
         {anchors.map((anchor) => (

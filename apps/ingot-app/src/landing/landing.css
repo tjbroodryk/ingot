@@ -344,33 +344,77 @@
   color: var(--ink-45);
 }
 
+/* ══ ways to run it ═════════════════════════════════════════════════════
+   The rows themselves are in `globals.css`, because `/deployment` renders the
+   same ones from the same data. What is left here is the two pieces that
+   belong to this page's framing of them: the head's jump row, and the
+   invitation that closes the section.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The head's own table of contents, centred under its lede. */
+.target-jumps {
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.target-jumps .chip:hover {
+  border-color: var(--color-accent);
+}
+
+.landhead-more {
+  display: inline-block;
+  margin-top: 24px;
+}
+
+.elsewhere code {
+  font-size: 0.92em;
+  color: var(--color-accent);
+}
+
+/* — the invitation at the end, which is not a fourth target — */
+
+.elsewhere {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 40px;
+  border-top: var(--rule);
+  background: var(--ink-08);
+}
+
+.elsewhere-copy {
+  flex: 1 1 40ch;
+}
+
+.elsewhere h4 {
+  margin-bottom: 10px;
+  font-size: 19px;
+}
+
+.elsewhere p {
+  max-width: 64ch;
+  font-size: 14.5px;
+  color: var(--ink-70);
+}
+
 /* ══ the closing band ═══════════════════════════════════════════════════
    `.cta` in globals is left-aligned, because on the reference it closes a
    left-aligned document. Here it closes a centred page.
    ═══════════════════════════════════════════════════════════════════════ */
 
-.selfhost {
+.cta-centred {
   text-align: center;
 }
 
-.selfhost h2,
-.selfhost p {
+.cta-centred h2,
+.cta-centred p {
   margin-right: auto;
   margin-left: auto;
 }
 
-.selfhost .cta-actions {
+.cta-centred .cta-actions {
   justify-content: center;
-}
-
-/*
- * The commands sit left-aligned inside the centred band, because a shell
- * transcript that is centred is a shell transcript nobody can copy by eye.
- */
-.selfhost-code {
-  max-width: 64ch;
-  margin: 0 auto 34px;
-  text-align: left;
 }
 
 /* On the accent field the outline button borrows the field's ink, not the page's. */

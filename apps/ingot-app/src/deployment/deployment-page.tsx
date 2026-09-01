@@ -6,34 +6,42 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { DOCS_HREF, REPO_URL } from '../site/mode';
-import { BRING_UP, type Dependency, NOT_NEEDED, OPTIONAL, REQUIRED, SUMMARY } from './dependencies';
+import { type Dependency, NOT_NEEDED, OPTIONAL, REQUIRED, SUMMARY } from './dependencies';
+import { RunTargetRow } from './run-target';
+import { RUN_TARGETS } from './targets';
 
-export const selfHostMetadata: Metadata = {
-  title: 'What you have to run',
+export const deploymentMetadata: Metadata = {
+  title: 'Deployment',
   description:
-    'The infrastructure a self-hosted Ingot needs: a Postgres, somewhere to put Parquet, and an argument for why there is nothing else on the list.',
+    'How to run Ingot — on your machine, as a container, on Kubernetes — and the infrastructure all three need: a Postgres, somewhere to put Parquet, and an argument for why there is nothing else on the list.',
 };
 
 /**
- * The dependency page.
+ * The deployment page.
  *
- * The reference answers what Ingot serves; this answers what it costs to have
- * one at all, which is the question a self-hosted-only project owes an answer
- * to before anybody clones it. So it is structured as a list of things to
- * provision — two of them — followed by the list of things somebody would
- * reasonably expect to provision and does not have to. The second list is the
- * one that is usually missing from a page like this, and it is the one that
- * decides whether the first is believable.
+ * The reference answers what Ingot serves; this answers how to have one at all,
+ * which is the question a self-hosted-only project owes an answer to before
+ * anybody clones it. Two halves, in the order somebody needs them: the ways to
+ * bring one up, then the two things every one of those ways is pointing at,
+ * then the list of things somebody would reasonably expect to provision and
+ * does not have to. That third list is the one usually missing from a page
+ * like this, and it is the one that decides whether the first two are
+ * believable.
  *
- * Built from `dependencies.ts` rather than written as markup, so the sidebar
- * and the sections cannot come apart. A server component with no fetching: it
- * renders once, at build time, into static HTML.
+ * The rows in the first half are the landing page's, from the same
+ * `targets.ts` and through the same `RunTargetRow` — this is where they are
+ * load-bearing rather than persuasive, so what changes is what sits under
+ * them, not the rows.
+ *
+ * Built from data rather than written as markup, so the sidebar and the
+ * sections cannot come apart. A server component with no fetching: it renders
+ * once, at build time, into static HTML.
  */
-export function SelfHostPage(): ReactNode {
+export function DeploymentPage(): ReactNode {
   return (
     <>
       <SiteHeader
-        current={SiteSection.SelfHost}
+        current={SiteSection.Deployment}
         anchors={[
           { href: '#bring-it-up', label: 'Bring it up' },
           { href: '#nothing-else', label: 'Not needed' },
@@ -51,19 +59,20 @@ export function SelfHostPage(): ReactNode {
       />
 
       <div className="docframe">
-        <SelfHostNav />
+        <DeploymentNav />
 
         <main className="docmain">
           <section className="pagehead" id="top">
-            <span className="label label-sm kicker">[ Self-hosting · dependencies ]</span>
+            <span className="label label-sm kicker">[ Deployment ]</span>
             <h1 className="display">
-              Two things <span className="mark">to run</span>
+              Three places, <span className="mark">two dependencies</span>
             </h1>
             <p className="lede">
               <Prose
                 text={
-                  'Ingot is one process that needs a Postgres and somewhere to put Parquet. ' +
-                  'Everything below those two is a choice you are allowed to decline, and the ' +
+                  'Ingot is one process that needs a Postgres and somewhere to put Parquet, ' +
+                  'and every way of running it below is those two in a different dialect. ' +
+                  'Everything under them is a choice you are allowed to decline, and the ' +
                   'things that are not on the list at all — a broker, a scheduler, a vector ' +
                   'database — are missing on purpose rather than by omission.'
                 }
@@ -84,16 +93,32 @@ export function SelfHostPage(): ReactNode {
             ))}
           </section>
 
+          {/*
+            The three ways, before the two things they all point at.
+
+            This order is the argument the page is making: a reader who came
+            here to deploy wants the commands, and the dependency sections
+            below are what each of those commands was already assuming. The
+            other order — provisioning first, running last — is the one that
+            reads like a bill.
+          */}
           <section className="section" id="bring-it-up">
             <span className="label section-kicker">[ Bring it up ]</span>
-            <div className="panel">
-              <div className="panel-bar">
-                <span className="panel-glyph">≡ ×</span>
-                <span className="panel-rule" />
-                <span>Two containers</span>
-                <span className="panel-rule" />
-              </div>
-              <CodeBlock code={BRING_UP} />
+            <h2 className="deps-heading">Pick a place</h2>
+            <p className="deps-para">
+              <Prose
+                text={
+                  'Each of these answers the same four questions in the same order — what ' +
+                  'you need, what to run, how you know it worked, and the one thing that ' +
+                  'catches people. What they need is the two sections after them.'
+                }
+              />
+            </p>
+
+            <div className="targets">
+              {RUN_TARGETS.map((target, index) => (
+                <RunTargetRow index={index} key={target.id} target={target} />
+              ))}
             </div>
           </section>
 
@@ -124,16 +149,23 @@ export function SelfHostPage(): ReactNode {
             </table>
           </section>
 
+          {/*
+            The local one, named as the local one. It closes a page about three
+            targets by recommending a fourth thing — checking the page — and
+            the machine in front of you is the only one of the three you can do
+            that on in a minute.
+          */}
           <section className="cta">
-            <span className="label label-sm kicker">[ Two containers and a process ]</span>
+            <span className="label label-sm kicker">[ The quickest of the three ]</span>
             <h2>Bring one up before you believe any of this</h2>
             <p>
               The compose file is the same one the test suite runs against, so what comes up on your
-              machine is what the assertions are made about.
+              machine is what the assertions are made about — whichever of the three you end up
+              deploying.
             </p>
             <div className="cta-actions">
-              <a className="cta-primary" href="#bring-it-up">
-                Read the bring-up
+              <a className="cta-primary" href="#run-local">
+                Run it locally
               </a>
               <code className="cta-curl">bun run db:up &amp;&amp; bun run dev</code>
             </div>
@@ -199,13 +231,15 @@ function DependencySection({ dependency }: { dependency: Dependency }): ReactNod
 }
 
 /** Derived from the same lists the page renders, for the reason `DocsNav` is. */
-function SelfHostNav(): ReactNode {
+function DeploymentNav(): ReactNode {
   return (
     <aside className="docnav">
-      <NavGroup label="Start here">
-        <a className="navlink" href="#bring-it-up">
-          Bring it up
-        </a>
+      <NavGroup label="Ways to run it">
+        {RUN_TARGETS.map((target) => (
+          <a className="navlink" href={`#${target.id}`} key={target.id}>
+            {target.nav}
+          </a>
+        ))}
       </NavGroup>
 
       <NavGroup label="Required">

@@ -18,8 +18,8 @@ export enum SiteMode {
   /**
    * The page in front of the project. Ingot is self-hosted only, so there is
    * no account to sign into and no console to sign into it with: `/` is the
-   * landing page, `/docs` is the reference, `/self-host` is what running it
-   * costs you in infrastructure, and that is the whole site.
+   * landing page, `/docs` is the reference, `/deployment` is how to run one
+   * and what it costs you in infrastructure, and that is the whole site.
    */
   Landing = 'landing',
   /**
@@ -55,13 +55,14 @@ export interface SiteRoutes {
   /** The console, or `null` where the build does not have one. */
   readonly dashboard: string | null;
   /**
-   * What Ingot needs you to run, or `null` in a dashboard build.
+   * How to run one — the three places, and the two things each of them needs.
+   * `null` in a dashboard build.
    *
    * Not because it would be wrong there — the dependencies are the same — but
    * because that build is the site that ships *beside* a running service, and
    * a reader looking at it has already done the thing the page describes.
    */
-  readonly selfHost: string | null;
+  readonly deployment: string | null;
 }
 
 /**
@@ -84,7 +85,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
     home: `${basePath}/`,
     docs: landing ? `${basePath}/docs/` : `${basePath}/`,
     dashboard: landing ? null : `${basePath}/dashboard/`,
-    selfHost: landing ? `${basePath}/self-host/` : null,
+    deployment: landing ? `${basePath}/deployment/` : null,
   };
 }
 
@@ -93,7 +94,7 @@ const ROUTES = routesFor(MODE);
 export const HOME_HREF = ROUTES.home;
 export const DOCS_HREF = ROUTES.docs;
 export const DASHBOARD_HREF = ROUTES.dashboard;
-export const SELF_HOST_HREF = ROUTES.selfHost;
+export const DEPLOYMENT_HREF = ROUTES.deployment;
 
 /**
  * Where the source is, which on a self-hosted-only project is the sign-up

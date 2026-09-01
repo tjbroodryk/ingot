@@ -135,10 +135,10 @@ of two modes, and they have different routes rather than the same routes with
 something hidden — a landing build has no `/dashboard` at all, because
 `next build` never writes it:
 
-| `NEXT_PUBLIC_INGOT_MODE` | `/`              | `/docs`   | `/dashboard` |
-| ------------------------ | ---------------- | --------- | ------------ |
-| `dashboard` *(default)*  | The reference    | —         | The console  |
-| `landing`                | The landing page | Reference | —            |
+| `NEXT_PUBLIC_INGOT_MODE` | `/`              | `/docs`   | `/deployment`  | `/dashboard` |
+| ------------------------ | ---------------- | --------- | -------------- | ------------ |
+| `dashboard` *(default)*  | The reference    | —         | —              | The console  |
+| `landing`                | The landing page | Reference | How to run one | —            |
 
 The image is the dashboard build, for somebody running the service.
 

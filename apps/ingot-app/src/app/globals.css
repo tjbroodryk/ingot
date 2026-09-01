@@ -566,11 +566,148 @@ pre {
   margin-top: var(--space-3);
 }
 
-/* ══ self-hosting ═══════════════════════════════════════════════════════
-   The dependency page borrows the reference's whole frame — the sidebar, the
-   ruled sections, the tables — and adds only the two things a page of argument
-   needs that a page of routes does not: running prose under a section heading,
-   and a table whose first column is a variable name rather than a field.
+/* ══ ways to run it ═════════════════════════════════════════════════════
+   One row per deployment target, and every row the same row: the argument on
+   the left, the two samples on the right, under the labels
+   `src/deployment/targets.ts` names. Nothing here knows which target it is
+   drawing, which is what makes a fourth one an entry in an array rather than a
+   layout.
+
+   In globals rather than in `landing.css` because two pages render these from
+   the one list — the landing page's "pick a place", and `/deployment`, where
+   the same rows sit above the dependency sections that explain them.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.targets {
+  border-top: var(--rule);
+}
+
+.target {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.target + .target {
+  border-top: var(--rule);
+}
+
+.target-copy {
+  padding: 52px 40px;
+}
+
+.target-copy h3 {
+  margin: 0 0 16px;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.target-copy code {
+  font-size: 0.92em;
+  color: var(--color-accent);
+}
+
+/* The row's number and what kind of place it is, in one line above the title. */
+.target-num {
+  margin-bottom: 14px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.target-summary {
+  max-width: 48ch;
+  margin: 0 0 28px;
+  font-size: 15.5px;
+  color: var(--ink-70);
+}
+
+/*
+ * The slot labels — four per target, always the same four, always in the same
+ * order. They repeat down the section on purpose: the repetition is the thing
+ * that lets somebody compare two ways of running this without reading either
+ * in full, and it is the only reason a reader can trust that a slot missing
+ * from one row means the row is missing it.
+ */
+.target-slot {
+  margin-bottom: 10px;
+  color: var(--ink-45);
+}
+
+/* A ruled list rather than bullets, the same way the MCP tool list is one. */
+.target-needs {
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+  border-top: var(--rule);
+}
+
+.target-needs li {
+  padding: 11px 0;
+  border-bottom: var(--rule);
+  font-size: 13.5px;
+  color: var(--ink-70);
+}
+
+.target-catch {
+  max-width: 48ch;
+  margin: 0 0 28px;
+  padding-left: 14px;
+  border-left: 2px solid var(--color-accent);
+  font-size: 14.5px;
+  color: var(--ink-70);
+}
+
+.target-more {
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/*
+ * `align-content: start` so a short pair of samples sits under the label
+ * instead of floating in the middle of a row a long one set the height of.
+ * `minmax(0, 1fr)` is what lets a long command scroll inside its sample rather
+ * than widen the column — the same reason `.split-figure` has it.
+ */
+.target-figure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  padding: 52px 40px;
+  border-left: var(--rule);
+}
+
+.target-figure .code + .target-slot {
+  margin-top: 26px;
+}
+
+/*
+ * On the landing page a row sits directly inside the ruled frame and owns its
+ * own margins. Inside a `.section` — which is `/deployment` — the page already
+ * holds the outer padding, so a row indented again would start 40px right of
+ * the heading that introduces it. What is left is the padding that separates
+ * the two columns from the rule between them.
+ */
+.section .target-copy {
+  padding-left: 0;
+}
+
+.section .target-figure {
+  padding-right: 0;
+}
+
+/* ══ the deployment page ════════════════════════════════════════════════
+   It borrows the reference's whole frame — the sidebar, the ruled sections,
+   the tables — and adds only the two things a page of argument needs that a
+   page of routes does not: running prose under a section heading, and a table
+   whose first column is a variable name rather than a field.
    ═══════════════════════════════════════════════════════════════════════ */
 
 .deps-heading {
@@ -803,8 +940,37 @@ pre {
 }
 
 @media (max-width: 1000px) {
-  .docframe {
+  .docframe,
+  .target {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /*
+   * Stacked, a target's copy runs straight into its own commands, so the
+   * padding between them is one gap rather than two — but the rule still has
+   * to be clear of both.
+   */
+  .target-copy {
+    padding: 44px var(--space-8) 36px;
+  }
+
+  .target-figure {
+    padding: 36px var(--space-8) 44px;
+    border-left: 0;
+    border-top: var(--rule);
+  }
+
+  /*
+   * Stacked, the two columns are one column, so the reason the wide layout
+   * strips a side off each of them is gone. Restated at the same specificity
+   * as the rules above rather than left to source order, which would not win.
+   */
+  .section .target-copy {
+    padding-left: var(--space-8);
+  }
+
+  .section .target-figure {
+    padding-right: var(--space-8);
   }
 
   .docnav {
@@ -853,5 +1019,18 @@ pre {
 
   .display {
     font-size: 34px;
+  }
+
+  /*
+   * `INGOT_S3_SECRET_ACCESS_KEY` is 26 unbreakable characters and two more
+   * columns follow it, so below about 520px this table has a minimum width the
+   * viewport cannot give it. Breaking an identifier across two lines is worse
+   * than scrolling — somebody is going to copy it — so the table becomes its
+   * own scroll container rather than widening the document and taking every
+   * other section sideways with it.
+   */
+  .deps-settings {
+    display: block;
+    overflow-x: auto;
   }
 }

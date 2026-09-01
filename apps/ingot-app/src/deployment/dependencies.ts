@@ -1,5 +1,6 @@
 /**
- * What a self-hosted Ingot talks to.
+ * What a running Ingot talks to, whichever of `./targets.ts` you brought it up
+ * with — the second half of the deployment page.
  *
  * Data rather than markup, for the reason `src/docs/reference.ts` is: the
  * sidebar is derived from these lists, so a dependency added here appears in
@@ -266,14 +267,10 @@ export const NOT_NEEDED: readonly Absence[] = [
   },
 ];
 
-/** The whole bring-up, which is the point of the page. */
-export const BRING_UP = `# DATABASE_URL has no default, so the copy is not optional
-bun install
-cp apps/ingot/.env.example apps/ingot/.env
-
-bun run db:up     # Postgres and MinIO, waits until both answer
-bun run dev       # API on :3002, this site on :5174
-
-# sign up against your own instance
-curl -X POST http://localhost:3002/api/v1/accounts \\
-  -d '{"slug":"acme","name":"Acme Inc"}'`;
+/*
+ * The bring-up was a constant here, and it was the local one only. It is
+ * `./targets.ts` now — one entry per place you can run this, rendered above
+ * these sections rather than instead of them, because "what to type" and "what
+ * it is talking to" are two questions and this file only ever answered the
+ * second.
+ */

@@ -170,19 +170,10 @@ export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: strin
   },
 ];
 
-/**
- * The whole of getting started, which is the repository's own quickstart.
- *
- * The `cp` is in it because it is genuinely not optional: `DATABASE_URL` is the
- * one setting with no default, and Ingot refuses to start without a database
- * rather than inventing an address for one.
+/*
+ * Getting started used to be a constant here, printed in the closing band.
+ * It is `src/landing/targets.ts` now — the local target's `run` and `check` —
+ * because it stopped being the only way to bring one up the moment there was a
+ * chart, and a quickstart written in two places is one that disagrees with
+ * itself on the second edit.
  */
-export const SELF_HOST = `# the copy is not optional — DATABASE_URL has no default
-bun install
-cp apps/ingot/.env.example apps/ingot/.env
-bun run db:up     # Postgres and MinIO
-bun run dev       # API on :3002, this site on :5174
-
-# sign up against your own instance
-curl -X POST http://localhost:3002/api/v1/accounts \\
-  -d '{"slug":"acme","name":"Acme Inc"}'`;

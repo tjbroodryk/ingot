@@ -19,10 +19,10 @@ not going to be one — see below.
 One codebase, two sites, and they have **different routes** rather than the
 same routes with something hidden:
 
-| Mode                   | `/`              | `/docs`   | `/dashboard` |
-| ---------------------- | ---------------- | --------- | ------------ |
-| `dashboard` *(default)* | The reference    | —         | The console  |
-| `landing`              | The landing page | Reference | —            |
+| Mode                   | `/`              | `/docs`   | `/deployment`  | `/dashboard` |
+| ---------------------- | ---------------- | --------- | -------------- | ------------ |
+| `dashboard` *(default)* | The reference    | —         | —              | The console  |
+| `landing`              | The landing page | Reference | How to run one | —            |
 
 `NEXT_PUBLIC_INGOT_MODE` picks one, and a static export has no server to pick
 later, so the two sites are two builds — the same way the API's address already
@@ -50,11 +50,18 @@ Which mode goes where:
 
 ## What is on it
 
-| Route        | What it is                                                       |
-| ------------ | ---------------------------------------------------------------- |
-| `/`          | The landing page, in a landing build. The reference otherwise.    |
-| `/docs`      | The HTTP reference. Landing builds only — it is `/` in the other. |
-| `/dashboard` | Paste a key, pick a memory, run one SELECT, read the grid.        |
+| Route         | What it is                                                            |
+| ------------- | --------------------------------------------------------------------- |
+| `/`           | The landing page, in a landing build. The reference otherwise.        |
+| `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
+| `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
+| `/dashboard`  | Paste a key, pick a memory, run one SELECT, read the grid.            |
+
+`/deployment` and the landing page's own "ways to run it" are the same rows,
+from `src/deployment/targets.ts` through `src/deployment/run-target.tsx`. One
+list, two framings: the landing page is deciding where to run it, and
+`/deployment` is doing it, with the dependency sections underneath. Adding a
+place to run Ingot is an entry in that array and nothing else.
 
 ## Static, and why that is a rule rather than a setting
 
@@ -107,8 +114,8 @@ reads as a hole punched in the page.
 `src/landing/landing.css` is the landing page's own layout and nothing else —
 its hero, its grids, its splits. Everything that page shares with the rest of
 the site (the label voice, the buttons, `.mark`, the framed panel, the code
-tokens, the closing band) comes from `globals.css` and is used rather than
-restated.
+tokens, the closing band, and the deployment rows it draws with `/deployment`)
+comes from `globals.css` and is used rather than restated.
 
 **Never write a hex outside `:root`.** Every colour resolves to a token,
 Griddle's `--dg-*` variables included — those are re-declared from these tokens

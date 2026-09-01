@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
+import { ELSEWHERE, RUN_TARGETS } from '../deployment/targets';
+import { RunTargetRow } from '../deployment/run-target';
 import { CodeBlock } from '../docs/code-block';
+import { Prose } from '../docs/prose';
 import { SampleTone } from '../docs/reference';
-import { DOCS_HREF, REPO_URL } from '../site/mode';
+import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL } from '../site/mode';
 import './landing.css';
 import {
   FEATURES,
@@ -11,7 +14,6 @@ import {
   MCP_TOOLS,
   RECALL,
   REMEMBER,
-  SELF_HOST,
   SPEAKS,
   STEPS,
   TWO_WAYS,
@@ -37,9 +39,12 @@ export function LandingPage(): ReactNode {
       <SiteHeader
         current={SiteSection.Landing}
         anchors={[
+          // No `#run` here: the header carries Deployment on every page of a
+          // landing build, and on this one it is already the jump this would
+          // be. Two nav items pointing at one section is one of them wearing
+          // out.
           { href: '#how', label: 'How it works' },
           { href: '#mcp', label: 'MCP' },
-          { href: '#self-host', label: 'Self-host' },
         ]}
         actions={
           <a className="btn-solid" href={REPO_URL}>
@@ -52,7 +57,7 @@ export function LandingPage(): ReactNode {
         <section className="hero">
           <div className="hero-badge label">
             <span className="badge">Self-hosted</span>
-            <a href="#self-host">There is no hosted Ingot — you run it</a>
+            <a href="#run">There is no hosted Ingot — you run it</a>
           </div>
 
           <h1 className="hero-title">
@@ -67,7 +72,7 @@ export function LandingPage(): ReactNode {
           </p>
 
           <div className="hero-actions label">
-            <a className="btn-solid btn-lg" href="#self-host">
+            <a className="btn-solid btn-lg" href="#run-local">
               Run it locally
             </a>
             <a className="btn-outline btn-lg" href={DOCS_HREF}>
@@ -201,21 +206,98 @@ export function LandingPage(): ReactNode {
         </section>
 
         {/*
+          Where you can run it, one row per place.
+
+          This is the section that grows, so nothing about it is written twice:
+          the rows come from `targets.ts` and the numbering comes from their
+          position, which is what keeps a fourth target from being an edit in
+          four files. The four labelled slots repeat down the section on
+          purpose — that repetition is what lets somebody compare two ways of
+          running this without reading either in full.
+        */}
+        <section className="landblock" id="run">
+          <div className="landhead">
+            <span className="label label-sm kicker">[ Ways to run it ]</span>
+            {/*
+              The highlight gets its own line rather than being left to wrap
+              into one: `.mark` is a painted box, and a box broken across two
+              lines is two boxes with a ragged edge between them.
+            */}
+            <h2 className="landtitle">
+              Pick a place.
+              <br />
+              The steps are
+              <br />
+              <span className="mark">the same shape</span>
+            </h2>
+            <p>
+              Every target below answers the same four questions in the same order — what you need,
+              what to run, how you know it worked, and the one thing that catches people. There is
+              no fifth question, and none of them is left out.
+            </p>
+
+            {/*
+              The jumps are derived rather than written down, so a target added
+              to the list is a target this row can reach. They double as the
+              section's own table of contents: the rows are long, and the one
+              somebody wants is usually decided before they start reading.
+            */}
+            <div className="chips target-jumps">
+              {RUN_TARGETS.map((target) => (
+                <a className="chip" href={`#${target.id}`} key={target.id}>
+                  {target.nav}
+                </a>
+              ))}
+            </div>
+
+            {/*
+              Where the same three rows are, with the two dependencies they
+              all share written out underneath them. Guarded because the route
+              is `null` in a dashboard build — which is a build this page is
+              never in, and a thing the type cannot know.
+            */}
+            {DEPLOYMENT_HREF ? (
+              <a className="target-more landhead-more" href={DEPLOYMENT_HREF}>
+                The same three, with the dependencies underneath →
+              </a>
+            ) : null}
+          </div>
+
+          <div className="targets">
+            {RUN_TARGETS.map((target, index) => (
+              <RunTargetRow index={index} key={target.id} target={target} />
+            ))}
+
+            <div className="elsewhere" id="run-elsewhere">
+              <div className="elsewhere-copy">
+                <div className="target-num">{ELSEWHERE.kicker}</div>
+                <h4>{ELSEWHERE.title}</h4>
+                <p>
+                  <Prose text={ELSEWHERE.body} />
+                </p>
+              </div>
+              <a className="btn-outline label" href={ELSEWHERE.cta.href}>
+                {ELSEWHERE.cta.label}
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/*
           Where the design put "Sign up. The secret is shown once." There is
           nothing to sign up to, so this is the same band saying the true
           version: the sign-up route is real, and it is on the instance you
-          brought up yourself.
+          brought up yourself. The commands that used to sit here are the local
+          target's now, so that the bring-up is written down once.
         */}
-        <section className="cta selfhost" id="self-host">
+        <section className="cta cta-centred">
           <span className="label label-sm kicker">[ Self-hosted, for now ]</span>
           <h2>Bring it up. Sign up against your own address.</h2>
           <p>
-            There is no hosted Ingot yet. It is a NestJS service, a Postgres and a bucket, and the
-            repository brings all three up with one command — after which sign-up is the same open
-            POST, and the secret still comes back exactly once.
+            There is no hosted Ingot yet. It is a NestJS service, a Postgres and a bucket — and
+            however you choose to run those three, sign-up is the same open POST, and the secret
+            still comes back exactly once.
           </p>
-
-          <CodeBlock className="selfhost-code" code={SELF_HOST} tone={SampleTone.Ink} />
 
           <div className="cta-actions">
             <a className="cta-primary" href={REPO_URL}>
