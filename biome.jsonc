@@ -1,0 +1,93 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    // `.next` and `out` are `apps/ingot-app`'s build output — the same kind of
+    // thing as `dist`, and linting a bundler's own emitted chunks produces tens
+    // of thousands of diagnostics about code nobody wrote.
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/.next",
+      "!**/out",
+      "!**/node_modules",
+      "!**/.turbo",
+      "!**/coverage",
+      "!bun.lock"
+    ]
+  },
+  // Prettier still owns formatting and import order; Biome is the linter only.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        // Parity with the ESLint config this replaced: unused code fails the build.
+        // Biome already exempts `_`-prefixed names, so the old `^_` pattern carries over.
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error"
+      },
+      // Rules below are new signal that ESLint never checked, and the code
+      // deliberately violates some of them. Kept as warnings so they stay
+      // visible without failing lint; promote to "error" as they get cleared.
+      "suspicious": {
+        // Biome is type-unaware, so an exhaustive TS switch reads as a missing return.
+        "useIterableCallbackReturn": "warn",
+        "noArrayIndexKey": "warn",
+        "noShadowRestrictedNames": "warn"
+      },
+      "style": {
+        // Every file is kebab-case, React components included. The component
+        // inside is still PascalCase — this is about the filename only, so
+        // `sign-in.tsx` exports `SignIn`. One convention beats two, and a
+        // case-insensitive filesystem makes `Button.tsx` vs `button.tsx` an
+        // import that works locally and breaks in CI.
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case"],
+            "requireAscii": true
+          }
+        }
+      },
+      "a11y": {
+        // Click-outside backdrops (Dialog, CommandPalette) trip the first two.
+        "noStaticElementInteractions": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn",
+        "noAutofocus": "warn",
+        "noSvgWithoutTitle": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // NestJS DI leans on parameter decorators, which Biome parses only on
+      // request. Everything that builds against Nest needs this — the service
+      // and the package it shares.
+      "includes": ["apps/ingot/**", "packages/versioning/**"],
+      "javascript": { "parser": { "unsafeParameterDecoratorsEnabled": true } },
+      "linter": {
+        "rules": {
+          // Both compile with emitDecoratorMetadata; rewriting an injected
+          // dependency to `import type` erases the runtime reference Nest's DI
+          // reads from that metadata, so this advice is unsafe here.
+          "style": { "useImportType": "off" }
+        }
+      }
+    },
+    {
+      // The rules of hooks, scoped to the only app that has any.
+      "includes": ["apps/ingot-app/**"],
+      "linter": { "domains": { "react": "recommended" } }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@ingot/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/ingot-v1.js",
+  "types": "./dist/ingot-v1.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/ingot-v1.d.ts",
+      "default": "./dist/ingot-v1.js"
+    },
+    "./ingot-v1": {
+      "types": "./dist/ingot-v1.d.ts",
+      "default": "./dist/ingot-v1.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint .",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

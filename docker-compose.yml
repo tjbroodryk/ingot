@@ -1,0 +1,228 @@
+# What Ingot talks to locally: Postgres, a Restate server, and MinIO.
+#
+# All three are addressed by the defaults in apps/ingot/.env.example, so
+# `bun run dev` and `bun run test` find them with no extra configuration.
+#
+#   docker compose up -d --wait   # blocks until everything is accepting traffic
+#   docker compose down           # stop, keep the data
+#   docker compose down -v        # stop and throw it away
+#
+# Jaeger and Prometheus are behind a profile — see the bottom of this file.
+services:
+  # ── The app database ────────────────────────────────────────────────────
+  # Two databases: `ingot` for development, `ingot_test` for the suite. The
+  # tests truncate between assertions, which is not something to point at a
+  # database you also keep local state in.
+  postgres:
+    image: postgres:17-alpine
+    container_name: ingot-postgres
+    environment:
+      POSTGRES_USER: ingot
+      POSTGRES_PASSWORD: ingot
+      POSTGRES_DB: ingot
+    ports:
+      - '5432:5432'
+    volumes:
+      # The migrations are the whole schema — tables, the retention indexes,
+      # and the receipt/embed queue triggers — so a fresh container comes up
+      # ready to serve rather than needing a migrate step first. They are
+      # mounted somewhere the entrypoint does not scan, because initdb.sh
+      # applies them to both databases rather than only the default. One
+      # directory per app, named for its database.
+      - ./apps/ingot/drizzle:/migrations/ingot:ro
+      - ./docker/initdb.sh:/docker-entrypoint-initdb.d/00-initdb.sh:ro
+      # Not in the initdb directory: these are for databases that already
+      # exist, which is the case initdb cannot help with. `bun run db:migrate`.
+      - ./docker/migrate.sh:/usr/local/bin/migrate.sh:ro
+      - ./docker/apply-migrations.sh:/usr/local/bin/apply-migrations.sh:ro
+      - ingot-pgdata:/var/lib/postgresql/data
+    # Durability off. This database is disposable: losing it to a hard kill
+    # costs a `down -v`, and a test suite that writes a queue row per assertion
+    # is otherwise paying for fsyncs nobody will ever read back.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    healthcheck:
+      # Pinned to TCP on purpose. The init scripts run against a temporary
+      # server that listens on the unix socket only, so a socket `pg_isready`
+      # goes green while the schema is still being created.
+      test: ['CMD-SHELL', 'pg_isready -U ingot -d ingot -h 127.0.0.1']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # ── The base tier ───────────────────────────────────────────────────────
+  # Object storage for Ingot's Parquet. In the default profile rather than
+  # behind one, because the roll-up tests write real files and read them back —
+  # an S3 stub would prove the code compiles and nothing else.
+  #
+  # Ingot falls back to the local filesystem when no bucket is configured, so
+  # this is optional for `bun run dev`; it is the suite that wants it.
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: ingot-minio
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ingot
+      MINIO_ROOT_PASSWORD: ingotingot
+    ports:
+      - '9000:9000'   # S3 API
+      - '9001:9001'   # console
+    volumes:
+      - ingot-minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  # Creates the bucket and exits. A one-shot rather than a step in the app,
+  # because a service that creates its own bucket needs credentials that can,
+  # which is more than it should be trusted with in production.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: ingot-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ingot ingotingot &&
+      mc mb --ignore-existing local/ingot &&
+      echo 'bucket ready'
+      "
+
+  # ── Durable execution ───────────────────────────────────────────────────
+  # Restate drives everything Ingot does after it has answered a write: `/add`
+  # queues embedding and receipt work and tells Restate about it, and nothing
+  # else ever comes back for that queue. The sweepers tick through it too.
+  #
+  #   Restate ──▶ host.docker.internal:9081 ──▶ @ingot/server
+  #
+  # Not behind a profile: without it a write is accepted and never becomes
+  # findable. The API is unaffected by it being down at boot — it registers,
+  # warns if it cannot, and carries on.
+  restate:
+    image: docker.restate.dev/restatedev/restate:1.7.6
+    container_name: ingot-restate
+    ports:
+      # Ingress. Where a service is invoked from outside the cluster.
+      - '8080:8080'
+      # Admin API and the UI — http://localhost:9070. The API registers itself
+      # here on boot; invocations, journals and state are all browsable.
+      - '9070:9070'
+      # Node-to-node (5122) is deliberately not published. A single-node
+      # development cluster has nobody to gossip with.
+    extra_hosts:
+      # How the container reaches `bun run dev` on the host, which is what
+      # RESTATE_ADVERTISED_URL points at. Linux needs this spelled out.
+      - 'host.docker.internal:host-gateway'
+    environment:
+      # Sized for a laptop rather than for a cluster. The defaults — 24
+      # partitions, 2 GiB reserved for RocksDB — are the right ones for a
+      # machine doing nothing else, and noticeable on one running a compiler.
+      # Partitions are fixed when the cluster provisions itself, so changing
+      # this later means `docker compose down -v`.
+      RESTATE_DEFAULT_NUM_PARTITIONS: '4'
+      RESTATE_ROCKSDB_TOTAL_MEMORY_SIZE: 512 MiB
+      # Fixed, because the default is the container's hostname and Docker mints
+      # a new one every time the container is recreated. Restate then finds a
+      # data directory belonging to a node it has never heard of and refuses to
+      # start rather than silently ignoring the journal:
+      #
+      #   [RT0002] node-name is required: The working directory '/restate-data'
+      #   contains data from node '1e96a51cbf34' …
+      #
+      # Which is correct of it and useless to us — the volume below is meant to
+      # be resumed. A stable name is what lets that happen.
+      RESTATE_NODE_NAME: ingot-dev
+      # Traces into the same Jaeger the API exports to, so an invocation and
+      # the commands it dispatched come out as one trace. Needs `bun run
+      # obs:up`, which is what puts the `jaeger` hostname on this network.
+      # RESTATE_TRACING_ENDPOINT: http://jaeger:4317
+      #
+      # Restate reports anonymised version and uptime telemetry to Scarf.
+      # Uncomment to opt out.
+      # DO_NOT_TRACK: '1'
+    volumes:
+      # Unlike the telemetry services, this one keeps its data: the journal is
+      # the durability. Losing it loses invocations that had been accepted and
+      # not yet finished, which is the one thing running Restate was for.
+      # `docker compose down -v` when you want a clean slate.
+      - ingot-restate-data:/restate-data
+    healthcheck:
+      # The ingress, not the admin API: an admin port that answers while the
+      # ingress is still coming up would let `--wait` return before anything
+      # could actually be delivered.
+      test: ['CMD-SHELL', 'curl -sf http://localhost:8080/restate/health || exit 1']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # ── Observability ───────────────────────────────────────────────────────
+  # Behind a profile, so `bun run db:up` stays what it has always been: the
+  # dependencies the test suite has. The suite asserts on the metric registry
+  # in-process and needs neither of these, and making CI pull two more images
+  # to run tests that ignore them is a cost with nothing on the other side.
+  #
+  #   bun run obs:up    # Jaeger + Prometheus, alongside whatever is running
+  #   bun run obs:down
+  #
+  # Both are disposable and hold no volume on purpose: local telemetry is
+  # worth exactly as much as the session that produced it, and a Prometheus
+  # accumulating months of a laptop's metrics is a directory nobody meant to
+  # keep. `docker compose down` and they are gone.
+  #
+  # Ingot talks to Jaeger over OTLP and nothing else — no agent, no Thrift.
+  # Which means pointing OTEL_EXPORTER_OTLP_ENDPOINT at a Tempo, a Honeycomb
+  # or a collector instead is a change to one environment variable.
+  jaeger:
+    image: jaegertracing/jaeger:2.11.0
+    container_name: ingot-jaeger
+    profiles: ['observability']
+    ports:
+      # The UI. Traces show up under the `@ingot/server` service.
+      - '16686:16686'
+      # OTLP/HTTP ingest, which is what `OTEL_EXPORTER_OTLP_ENDPOINT` points at.
+      - '4318:4318'
+      # OTLP/gRPC, unused here but the port anything else would expect.
+      - '4317:4317'
+    environment:
+      # In-memory storage, capped. The default is unbounded, and an afternoon
+      # of a chatty dev server is enough to notice.
+      COLLECTOR_OTLP_ENABLED: 'true'
+      MEMORY_MAX_TRACES: '20000'
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: ingot-prometheus
+    profiles: ['observability']
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      # Exemplars are what link a histogram bucket to the trace that produced
+      # it, and Prometheus discards them unless this is on. Without it the
+      # samples still scrape fine and the link into Jaeger silently is not
+      # there — which is the whole payoff of running the two together.
+      - --enable-feature=exemplar-storage
+      - --storage.tsdb.retention.time=6h
+    extra_hosts:
+      # Reaches the API running on the host under `bun run dev`. Linux needs
+      # this spelled out; Docker Desktop provides it either way.
+      - 'host.docker.internal:host-gateway'
+
+volumes:
+  ingot-minio:
+  ingot-pgdata:
+  ingot-restate-data:

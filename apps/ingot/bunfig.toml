@@ -1,0 +1,10 @@
+# Bun loads `.env` before anything else, which is right for `bun run dev` and
+# wrong for `bun run test`: a developer with a real model configured would have
+# the suite embed and summarise through it — a test run that needs a network,
+# needs credentials, costs money, and answers differently on every machine.
+#
+# `test/support/environment.ts` pins what must not vary. It is a preload rather
+# than a line in `makeWorld` because the two tests that compile the real
+# `AppModule` never go through `makeWorld`.
+[test]
+preload = ["./test/support/environment.ts"]

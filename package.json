@@ -1,0 +1,35 @@
+{
+  "name": "ingot",
+  "private": true,
+  "packageManager": "bun@1.2.19",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "docker compose exec -T postgres sh /usr/local/bin/migrate.sh",
+    "db:reset": "docker compose down -v && docker compose up -d --wait",
+    "obs:up": "docker compose --profile observability up -d --wait",
+    "obs:down": "docker compose --profile observability down",
+    "docker:build": "docker build -f apps/ingot/Dockerfile -t ingot-server:dev . && docker build -f apps/ingot-app/Dockerfile -t ingot-app:dev .",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,html}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,html}\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
+    "prettier": "^3",
+    "turbo": "^2",
+    "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

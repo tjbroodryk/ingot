@@ -1,0 +1,18 @@
+# The build context is the repository root, so this is what never needs to
+# reach the daemon. `turbo prune` narrows it further inside the build; this is
+# about what is worth sending in the first place.
+**/node_modules
+**/dist
+**/.next
+**/out
+**/.turbo
+**/*.tsbuildinfo
+**/.ingot-data
+**/coverage
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+.DS_Store

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ingot">
+  <title>Ingot</title>
+  <!--
+    A cast bar, three faces, no outline.
+
+    The palette is `globals.css` and nothing else: ink for the ground, and the
+    three accents for the three faces, darkest on the side that is turned away
+    from the light. Square corners because `--radius` is 0 everywhere on the
+    site and a rounded icon would be the one thing that is not.
+
+    Drawn on a 64 unit grid so every vertex is a whole number, which is what
+    keeps the two long edges from picking up a half-pixel of grey when this is
+    rasterised down to 16. The depth offset is (+8, −8) throughout — one
+    direction for the whole solid, so the three faces are a prism rather than
+    three shapes that happen to touch.
+  -->
+  <rect width="64" height="64" fill="#201e1d"/>
+  <path d="M14 24 L42 24 L50 16 L22 16 Z" fill="#8fb3d9"/>
+  <path d="M8 48 L48 48 L42 24 L14 24 Z" fill="#305d8f"/>
+  <path d="M42 24 L50 16 L56 36 L48 48 Z" fill="#1f3d5e"/>
+</svg>

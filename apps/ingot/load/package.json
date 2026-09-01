@@ -1,0 +1,4 @@
+{
+  "//": "k6 scripts are ES modules; this app is CommonJS. Without this, Biome reads the parent package.json and fails to parse every import. Not a workspace — the root globs are apps/* and packages/*.",
+  "type": "module"
+}

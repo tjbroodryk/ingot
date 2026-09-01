@@ -1,0 +1,15 @@
+# Scrapes Ingot's metrics port, which is not the port it serves the product
+# on. See apps/ingot/src/observability/metrics/metrics-server.ts for why those
+# are separate.
+global:
+  scrape_interval: 5s
+  # Local work wants to see a change land, not wait out a production interval.
+  # A real deployment scrapes every 15-30s.
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ingot
+    # host.docker.internal reaches the service running on the host under
+    # `bun run dev`. A containerised one would be reached by service name.
+    static_configs:
+      - targets: ['host.docker.internal:9465']

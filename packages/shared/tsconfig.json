@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    // Kept out of `dist/`, which turbo caches as this task's output. With both
+    // in one directory the two incremental caches overwrite each other: turbo
+    // restores a `.tsbuildinfo` that tells tsc there is nothing to do, tsc
+    // emits nothing, and the stale `dist` survives a build that reported
+    // success — which every consumer then typechecks against.
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"]
+}

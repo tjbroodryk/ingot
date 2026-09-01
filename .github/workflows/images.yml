@@ -1,0 +1,115 @@
+# Build the two images and publish them to GitHub Container Registry.
+#
+#   ghcr.io/<owner>/<repo>/server   ← apps/ingot/Dockerfile      (the NestJS API)
+#   ghcr.io/<owner>/<repo>/app      ← apps/ingot-app/Dockerfile  (the static site)
+#
+# A pull request builds both and pushes neither, so a Dockerfile that no longer
+# builds fails on the branch that broke it rather than on the merge. Only `main`
+# and a `v*` tag push.
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first. Tags are excluded — a
+# release build that loses a race to another release is a version that was never
+# published, and nothing downstream would say so.
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      # `packages: write` is the whole of the registry credential: GITHUB_TOKEN
+      # is already scoped to this repository's packages, so there is no PAT to
+      # mint, store or rotate. `contents: read` is the checkout.
+      contents: read
+      packages: write
+
+    strategy:
+      # One image failing must not cancel the other's push — a half-published
+      # pair is worse to reason about than one that plainly failed.
+      fail-fast: false
+      matrix:
+        include:
+          - name: server
+            dockerfile: apps/ingot/Dockerfile
+            title: ingot-server
+            description: Ingot — the agent memory server
+          - name: app
+            dockerfile: apps/ingot-app/Dockerfile
+            title: ingot-app
+            description: Ingot — the dashboard and API reference
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Skipped on a pull request, where the token is read-only and nothing is
+      # pushed anyway. A fork's PR has no packages scope at all, so logging in
+      # would fail the job before it built anything.
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `latest=auto` in the default flavour is what confines `:latest` to a
+      # non-prerelease semver tag. It is deliberately not applied to `main`:
+      # `:latest` should mean the newest release, not the newest commit.
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.description }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repository root, because both Dockerfiles consume workspace
+          # packages and `turbo prune` runs inside the build.
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The site is a static export, so the address of the API is inlined at
+          # build time rather than read at run time — which makes it a property
+          # of the image. Set the repository variable `INGOT_PUBLIC_API_URL` to
+          # the API's public address; without it the image is built against
+          # localhost and is only good for a local `docker run`.
+          build-args: |
+            NEXT_PUBLIC_INGOT_URL=${{ vars.INGOT_PUBLIC_API_URL || 'http://localhost:3002' }}
+          # Scoped per image, so the two do not evict each other from the 10 GB
+          # the Actions cache allows a repository. `mode=max` keeps the
+          # intermediate stages — the dependency layers are the expensive ones
+          # and they are the ones a source-only change should reuse.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # Both produce an extra manifest that GHCR's package page renders as
+          # an `unknown/unknown` row beside the real image. Set them to `false`
+          # if that is more confusing than the attestations are worth.
+          provenance: true
+          sbom: true
