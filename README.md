@@ -29,6 +29,8 @@ apps/ingot            @ingot/server   NestJS. The API, the engine, the sweepers.
 apps/ingot-app        @ingot/app      Next.js, statically exported. Landing, docs, dashboard.
 packages/shared       @ingot/shared   The v1 wire contract. Types only, no runtime.
 packages/versioning   @ingot/versioning  Wire versioning for Nest — changesets and an interceptor.
+
+charts/ingot                          The Helm chart. Not a workspace, and not built.
 ```
 
 Turborepo over Bun workspaces. `packages/*` are consumed through their `dist`,
@@ -104,6 +106,9 @@ bun run docker:build
 
 `.github/workflows/images.yml` builds both on every pull request and pushes
 them to `ghcr.io/<owner>/<repo>/{server,app}` from `main` and from a `v*` tag.
+The Helm chart is a job in the same workflow, published only from a tag and
+only once both images are pushed — a chart names its images by its own
+`appVersion`, so one that goes out first names a version that does not exist.
 
 **The server** is Debian rather than Alpine, and that is not a preference:
 `@duckdb/node-api` is a glibc N-API addon that installs happily on musl and
@@ -166,3 +171,37 @@ same artefact as the service it migrates for.
 
 The site is a directory of files and can sit behind any CDN. It can never be
 the reason the API is down.
+
+## On Kubernetes
+
+`charts/ingot` is the whole of it — the server, the site, and a migration that
+runs before either. Published beside the images, from a `v*` tag:
+
+```bash
+kubectl -n ingot create secret generic ingot-secrets \
+  --from-literal=DATABASE_URL='postgres://…' \
+  --from-literal=INGOT_S3_ACCESS_KEY_ID='…' \
+  --from-literal=INGOT_S3_SECRET_ACCESS_KEY='…'
+
+helm install ingot oci://ghcr.io/<owner>/<repo>/charts/ingot --version <x.y.z> \
+  -n ingot --set config.s3.bucket=my-ingot-bucket
+```
+
+The Secret first, because the chart refuses to render without one. That is the
+same rule the service applies to itself moved forward to `helm install` — a
+missing database or a half-filled `INGOT_STORAGE` is a template error naming
+the value, rather than the third CrashLoopBackOff. It will not guess at a
+bucket, at a volume for a `filesystem` base tier, or at an Ingress host either.
+
+The migration is a `pre-install,pre-upgrade` hook running
+`bun dist/database/migrate.js` out of the server image, so the schema is
+current before a single new pod starts and a failure fails the release. Helm
+deletes the previous Job first, which is the step a raw manifest needs by hand;
+re-running is safe because every migration is idempotent and all of them are
+applied every time.
+
+The chart's `appVersion` is what its image tags fall back to, so a released
+chart carries the images it was built against and there is one version to bump.
+
+[The chart's README](charts/ingot/README.md) is the longer answer, and
+`values.yaml` is commented throughout.

@@ -1,0 +1,34 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Off by default, because this is a CRD: `ServiceMonitor` only exists if the
+# Prometheus Operator installed it, and a chart that assumes so fails to
+# install on a cluster with no monitoring rather than skipping one file.
+#
+# Prometheus also has to be told to look in this namespace — either its
+# `serviceMonitorNamespaceSelector` covers it, or `additionalLabels` matches
+# what its `serviceMonitorSelector` expects. A ServiceMonitor nothing selects
+# is the failure that looks exactly like success: the resource exists, no
+# target appears, and nothing anywhere raises an error.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ingot.fullname" . }}-server
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ingot.server.selectorLabels" . | nindent 6 }}
+  endpoints:
+    # The port is named, not numbered, because the Service's name for it is the
+    # stable thing — the container can move 9465 without this file caring.
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      # That listener answers `/metrics` and 404s everything else, and it is on
+      # a port the Ingress never routes to — so this scrape is the only thing
+      # that ever reads it.
+{{- end }}

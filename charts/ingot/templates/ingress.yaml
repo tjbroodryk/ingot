@@ -1,0 +1,64 @@
+{{- if .Values.ingress.enabled }}
+# One host, two paths.
+#
+# The server sets a global `api` prefix, so every route it has — `/api/health`,
+# `/api/versions`, `/api/v1/…` — is under one prefix and the site can have
+# everything else. That is worth more than tidiness: the dashboard is then
+# calling its own origin, so CORS never enters into it and `config.corsOrigin`
+# is a second lock on a door that is already shut.
+#
+# It also has to match how the site was built. `NEXT_PUBLIC_INGOT_URL` is
+# inlined by `next build` and is what the browser prepends to `/api/v1/…`, so
+# on this layout it is `https://{{ .Values.ingress.host }}` — the site's own
+# address. Pointing the dashboard elsewhere is a rebuild, not a value.
+#
+# `/metrics` is not routable from here at all — it is a separate listener on
+# 9465 and this only ever targets the http port.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ingot.fullname" . }}
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress
+  annotations:
+    {{- with .Values.ingress.tls.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "ingot.fullname" .)) }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # First because it is the more specific of the two. ingress-nginx
+          # sorts by path length and would get this right either way; not every
+          # controller does.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ingot.fullname" . }}-server
+                port:
+                  name: http
+          {{- if .Values.app.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ingot.fullname" . }}-app
+                port:
+                  name: http
+          {{- end }}
+{{- end }}

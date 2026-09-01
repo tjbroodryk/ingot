@@ -1,0 +1,100 @@
+{{- include "ingot.validate" . -}}
+# The non-secret half of `apps/ingot/.env.example`.
+#
+# Only what differs from the image is here. The Dockerfile already bakes PORT,
+# METRICS_PORT, INGOT_DUCKDB_EXTENSION_DIR, INGOT_STAGING_DIR and
+# INGOT_TEMP_DIR; repeating them would be two places to change and one of them
+# silently wrong.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ingot.fullname" . }}-config
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+data:
+  NODE_ENV: production
+  {{- with .Values.config.corsOrigin }}
+  CORS_ORIGIN: {{ . | quote }}
+  {{- end }}
+
+  # ── the base tier ───────────────────────────────────────────────────────
+  INGOT_STORAGE: {{ .Values.config.storage | quote }}
+  {{- if eq .Values.config.storage "s3" }}
+  INGOT_S3_BUCKET: {{ .Values.config.s3.bucket | quote }}
+  INGOT_S3_REGION: {{ .Values.config.s3.region | quote }}
+  {{- with .Values.config.s3.endpoint }}
+  INGOT_S3_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.config.s3.pathStyle) }}
+  INGOT_S3_PATH_STYLE: {{ .Values.config.s3.pathStyle | quote }}
+  {{- end }}
+  {{- else if eq .Values.config.storage "gcs" }}
+  INGOT_GCS_BUCKET: {{ .Values.config.gcs.bucket | quote }}
+  # Overriding what the image bakes, and not a preference.
+  #
+  # DuckDB cannot write to GCS with a service account, so a roll-up copies
+  # Parquet to this directory and uploads it. The uploader calls `mkdtemp`,
+  # which needs its parent to already exist — and the emptyDir mounted at
+  # /var/lib/ingot hides the `staging` directory the image made underneath it.
+  # The volume's own root is the one path that is certain to be there.
+  INGOT_STAGING_DIR: /var/lib/ingot
+  {{- else if eq .Values.config.storage "filesystem" }}
+  INGOT_DATA_DIR: {{ .Values.config.filesystem.dataDir | quote }}
+  {{- end }}
+
+  # ── the models ──────────────────────────────────────────────────────────
+  INGOT_EMBEDDER: {{ .Values.config.embedder | quote }}
+  INGOT_SUMMARISER: {{ .Values.config.summariser | quote }}
+  {{- if or (eq .Values.config.embedder "openai") (eq .Values.config.summariser "openai") }}
+  {{- with .Values.config.openai.baseUrl }}
+  OPENAI_BASE_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.openai.embeddingModel }}
+  INGOT_OPENAI_EMBEDDING_MODEL: {{ . | quote }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.config.openai.embeddingDimensions) }}
+  INGOT_OPENAI_EMBEDDING_DIMENSIONS: {{ .Values.config.openai.embeddingDimensions | quote }}
+  {{- end }}
+  {{- with .Values.config.openai.summaryModel }}
+  INGOT_OPENAI_SUMMARY_MODEL: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if or (eq .Values.config.embedder "gcp") (eq .Values.config.summariser "gcp") }}
+  # Required even under Workload Identity: a token does not say whose quota to
+  # spend, so the project is named here rather than inferred from the credential.
+  INGOT_GCP_PROJECT: {{ required "config.gcp.project is required when embedder or summariser is gcp" .Values.config.gcp.project | quote }}
+  INGOT_GCP_LOCATION: {{ .Values.config.gcp.location | quote }}
+  {{- with .Values.config.gcp.embeddingModel }}
+  INGOT_GCP_EMBEDDING_MODEL: {{ . | quote }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.config.gcp.embeddingDimensions) }}
+  INGOT_GCP_EMBEDDING_DIMENSIONS: {{ .Values.config.gcp.embeddingDimensions | quote }}
+  {{- end }}
+  {{- with .Values.config.gcp.summaryModel }}
+  INGOT_GCP_SUMMARY_MODEL: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+
+  # ── the query engine ────────────────────────────────────────────────────
+  INGOT_QUERY_MEMORY_LIMIT: {{ .Values.config.query.memoryLimit | quote }}
+  INGOT_QUERY_THREADS: {{ .Values.config.query.threads | quote }}
+  INGOT_MAX_TABLE_ROWS: {{ .Values.config.query.maxTableRows | quote }}
+
+  # ── observability ───────────────────────────────────────────────────────
+  # Off is said explicitly rather than left to the default, which is on and
+  # pointed at a localhost that does not exist inside a pod.
+  TRACING_ENABLED: {{ .Values.config.tracing.enabled | quote }}
+  {{- if .Values.config.tracing.enabled }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.tracing.endpoint | quote }}
+  TRACE_SAMPLE_RATIO: {{ .Values.config.tracing.sampleRatio | quote }}
+  {{- end }}
+  # `instanceId` comes off HOSTNAME, which the kubelet sets to the pod name, so
+  # one pod's numbers can already be told from another's with nothing set here.
+
+  {{- with .Values.config.extraEnv }}
+
+  # ── config.extraEnv ─────────────────────────────────────────────────────
+  {{- range $key, $value := . }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- end }}

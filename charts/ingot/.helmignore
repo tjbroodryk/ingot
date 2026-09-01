@@ -1,0 +1,14 @@
+.DS_Store
+.git/
+.gitignore
+*.tmproj
+.idea/
+.vscode/
+*.orig
+*.bak
+*.swp
+# A values file holding real credentials, if you keep one beside the chart.
+# It is ignored here so `helm package` cannot put it in a tarball; it still
+# needs ignoring in git.
+secrets.yaml
+values.local.yaml

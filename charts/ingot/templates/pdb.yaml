@@ -1,0 +1,35 @@
+# What a node drain is allowed to take away at once.
+#
+# These bind voluntary disruption only — a drain, a cluster upgrade, a
+# descheduler. A node that fails takes what it was running regardless, which is
+# what the anti-affinity rules are for.
+{{- if .Values.server.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ingot.fullname" . }}-server
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+spec:
+  # `minAvailable` rather than `maxUnavailable`, because the HPA moves the
+  # replica count and only one of the two keeps meaning the same thing when it
+  # does: one pod must be serving whether there are two or ten.
+  minAvailable: {{ .Values.server.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ingot.server.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if and .Values.app.enabled .Values.app.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ingot.fullname" . }}-app
+  labels:
+    {{- include "ingot.app.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.app.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ingot.app.selectorLabels" . | nindent 6 }}
+{{- end }}
