@@ -31,11 +31,13 @@ process.env.INGOT_EMBEDDER = 'local';
 process.env.INGOT_SUMMARISER = 'local';
 
 /*
- * Durable sends are not switched off here, and there is no environment
+ * The background is not switched off here, and there is no environment
  * variable that would. `RESTATE_ENABLED=false` used to live in this file and
  * nowhere else, which made a test-only convenience look like a supported
  * deployment — two sweepers cited it in their comments as the topology they
- * existed to cover. A test that must not POST at whatever ingress happens to
- * be running on this machine overrides `RestateIngress`, which `makeWorld`
- * does for every world it builds.
+ * existed to cover. The lesson outlived the durable executor that occasioned
+ * it: a test that must not run background work binds it out in the harness
+ * instead, so the production path has no branch in it. `makeWorld` overrides
+ * `BackgroundWork` for every world it builds, and `compileAppModule` empties
+ * the scheduler's ticker list for the three tests that boot the real graph.
  */

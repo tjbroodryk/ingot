@@ -3,7 +3,6 @@ import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { startTelemetry } from './observability/index.js';
-import { serveRestate } from './restate/index.js';
 
 async function bootstrap(): Promise<void> {
   await startTelemetry(); // before the container
@@ -20,7 +19,8 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3002);
   await app.listen(port, '0.0.0.0');
 
-  await serveRestate(app); // after listen, own listener
+  // The sweepers start themselves: `Scheduler` is an `OnApplicationBootstrap`,
+  // so there is nothing to serve and nothing to register here.
   Logger.log(`Ingot ready on http://localhost:${port}/api/v1`, 'Bootstrap');
 }
 

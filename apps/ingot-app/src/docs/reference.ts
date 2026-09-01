@@ -413,7 +413,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
     sampleTone: SampleTone.Ink,
     sample: `# claude_desktop_config.json
 { "mcpServers": { "ingot": {
-    "url": "https://api.ingot.dev/api/v1/
+    "url": "http://localhost:3002/api/v1/
            acme/ing_01H8Z…/mcp",
     "headers": { "Authorization":
       "Bearer ing_sk_…" } } } }`,

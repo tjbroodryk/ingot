@@ -1,10 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { MAX_BODY_CHARS, SUMMARISER, type Summariser, clamp } from '../../../ai/summariser.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { ClaimReceipt, type ClaimedReceipt } from './commands/claim-receipt.command.js';
 import { FailReceipt } from './commands/fail-receipt.command.js';
 import { WriteReceipt } from './commands/write-receipt.command.js';
+
+/**
+ * Receipts one drain will write.
+ *
+ * Small, because each one is an LLM call and a backlog is better worked across
+ * passes than in one long run.
+ */
+const PASSES = 4;
 
 /**
  * Writes one receipt: claim, ask a model, store the answer.
@@ -40,10 +48,39 @@ import { WriteReceipt } from './commands/write-receipt.command.js';
  */
 @Injectable()
 export class ReceiptWorker {
+  private readonly logger = new Logger(ReceiptWorker.name);
+
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(SUMMARISER) private readonly summariser: Summariser,
   ) {}
+
+  /**
+   * Works the queue until it is empty or the pass is spent.
+   *
+   * The one implementation of "write the receipts that are owed", called by the
+   * sweeper on its timer and by `/add` the moment a write commits — so a caller
+   * who was handed a SELECT and told it would fill in gets it filled in about as
+   * fast as the model answers, rather than within the minute.
+   *
+   * The bound is small because each receipt is an LLM call: it is a limit on
+   * spend and on how long one pass takes. `ingot_receipts_pending` says whether
+   * it is keeping up.
+   */
+  async drain(): Promise<number> {
+    let written = 0;
+
+    for (let pass = 0; pass < PASSES; pass++) {
+      // Nothing claimed means the queue is empty, everything left is leased by
+      // another worker, or everything left has run out of attempts. All three
+      // are the same answer: there is nothing to gain from asking again.
+      if (!(await this.next())) break;
+      written++;
+    }
+
+    if (written > 0) this.logger.log(`Wrote ${written} receipt${written === 1 ? '' : 's'}`);
+    return written;
+  }
 
   /** Whether there was work. False means the queue is empty or all leased. */
   async next(): Promise<boolean> {

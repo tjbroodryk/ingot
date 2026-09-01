@@ -14,8 +14,7 @@ import {
   UNIT_OF_WORK,
   type UnitOfWork,
 } from '../../../../shared/application/index.js';
-import { RestateIngress } from '../../../../restate/index.js';
-import { RECEIPT_SERVICE, EMBEDDING_SERVICE, RUN_NOW } from '../background.js';
+import { BackgroundWork } from '../background.js';
 import { Metrics, Outcome } from '../../../../observability/index.js';
 import {
   INGOT_TABLE_REPOSITORY,
@@ -61,7 +60,7 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     private readonly receipts: ReceiptBuilder,
-    private readonly ingress: RestateIngress,
+    private readonly background: BackgroundWork,
   ) {}
 
   async execute(command: AddRecords): Promise<AddResult> {
@@ -195,8 +194,8 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     // Told, rather than left to be found. See `background.ts`: a sweep every
     // minute was latency a caller experienced for no reason, since the work is
     // known about the instant it is queued. The tick stays as the floor.
-    if (queued > 0) this.trigger(EMBEDDING_SERVICE, batch);
-    if (receipt === ReceiptKind.Full) this.trigger(RECEIPT_SERVICE, batch);
+    if (queued > 0) this.after(() => this.background.wakeEmbeddings());
+    if (receipt === ReceiptKind.Full) this.after(() => this.background.wakeReceipts());
 
     return {
       table: table.name.value,
@@ -222,24 +221,20 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
   }
 
   /**
-   * Wakes a background service, after the rows are actually there.
+   * Wakes background work, after the rows are actually there.
    *
-   * `afterCommit` is the whole of it. Sending from inside the transaction
-   * would announce work that a rollback could still take away, and Restate
-   * would go looking for a queue row that never existed — the port's own
-   * documentation says anything leaving the process belongs here.
+   * `afterCommit` is the whole of it. Waking from inside the transaction would
+   * announce work that a rollback could still take away, and the worker would
+   * go looking for a queue row that never existed — the port's own
+   * documentation says anything with an effect outside this transaction belongs
+   * here.
    *
-   * The batch is the idempotency key, so a send retried by anything above us
-   * is one invocation rather than two. A send that fails outright is not an
-   * error the caller should see: the rows are committed, the queue holds the
-   * work, and the cron chain picks it up within the minute. `afterCommit` logs
-   * it and carries on, which is the right severity for "the fast path missed,
-   * the floor still holds".
+   * `BackgroundWork.wake*` returns immediately and never throws: the rows are
+   * committed and the caller's answer is already on its way, so a drain that
+   * fails is latency rather than loss. The sweeper is the floor under it.
    */
-  private trigger(service: string, batch: string): void {
-    this.uow.afterCommit(() =>
-      this.ingress.send({ service, handler: RUN_NOW, body: {}, idempotencyKey: batch }),
-    );
+  private after(wake: () => void): void {
+    this.uow.afterCommit(async () => wake());
   }
 }
 

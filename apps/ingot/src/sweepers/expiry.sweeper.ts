@@ -1,5 +1,4 @@
 import { Inject, Logger } from '@nestjs/common';
-import type { Context } from '@restatedev/restate-sdk';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
 import { CLOCK, type Clock } from '../shared/domain/index.js';
 import {
@@ -7,7 +6,7 @@ import {
   IngotId,
   type IngotRepository,
 } from '../contexts/ingots/domain/index.js';
-import { RestateCron, RestateHandler, minutes, scheduleNextTick } from '../restate/index.js';
+import { Cron, minutes } from './cron.js';
 import { Dispatcher } from '../shared/application/index.js';
 
 const EVERY = minutes(10);
@@ -34,8 +33,12 @@ const PER_TICK = 25;
  * uses, with the same tenancy check and the same after-commit bucket cleanup —
  * rather than a second deletion path. One write path per fact, so reaping is
  * "the thing the caller could have done themselves, done on time".
+ *
+ * Safe to run twice, which is what a scheduler without a journal requires: a
+ * memory reaped by an interrupted tick is not found by the next one, and the
+ * re-read below is what makes that a checked fact rather than a hope.
  */
-@RestateCron({
+@Cron({
   name: 'reap-expired-ingots',
   everyMs: EVERY,
   description: 'Deletes memories whose retention has run out',
@@ -49,18 +52,12 @@ export class ExpirySweeper {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  @RestateHandler()
-  async tick(ctx: Context): Promise<void> {
-    const due = await ctx.run('memories past their retention', () =>
-      this.ingots.listExpired(this.clock.now(), PER_TICK + 1),
-    );
+  async tick(): Promise<void> {
+    const due = await this.ingots.listExpired(this.clock.now(), PER_TICK + 1);
 
-    if (due.length === 0) {
-      // Silent when nothing moved. A ten-minute job over a service where
-      // nothing expires should not produce a line every ten minutes.
-      await scheduleNextTick(ctx, this);
-      return;
-    }
+    // Silent when nothing moved. A ten-minute job over a service where nothing
+    // expires should not produce a line every ten minutes.
+    if (due.length === 0) return;
 
     if (due.length > PER_TICK) {
       this.logger.log(
@@ -70,32 +67,28 @@ export class ExpirySweeper {
     }
 
     for (const target of due.slice(0, PER_TICK)) {
-      await ctx.run(`reap ${target.id}`, async () => {
-        /*
-         * Read again, and check again, immediately before deleting.
-         *
-         * The listing already filtered on `expires_at <= now` in SQL, so this
-         * is belt and braces — and it is worth having precisely because the
-         * thing on the other side is irreversible. It costs one indexed read
-         * per memory at a cap of twenty-five, and it means the decision to
-         * destroy something is made against the row as it is now rather than
-         * as it was when a query ran.
-         */
-        const ingot = await this.ingots.findById(IngotId.of(target.id));
-        if (!ingot) return; // Already gone; somebody deleted it themselves.
+      /*
+       * Read again, and check again, immediately before deleting.
+       *
+       * The listing already filtered on `expires_at <= now` in SQL, so this
+       * is belt and braces — and it is worth having precisely because the
+       * thing on the other side is irreversible. It costs one indexed read
+       * per memory at a cap of twenty-five, and it means the decision to
+       * destroy something is made against the row as it is now rather than
+       * as it was when a query ran.
+       */
+      const ingot = await this.ingots.findById(IngotId.of(target.id));
+      if (!ingot) continue; // Already gone; somebody deleted it themselves.
 
-        if (!ingot.hasExpired(this.clock.now())) {
-          this.logger.warn(`"${target.name}" was listed as expired but is not — leaving it alone`);
-          return;
-        }
+      if (!ingot.hasExpired(this.clock.now())) {
+        this.logger.warn(`"${target.name}" was listed as expired but is not — leaving it alone`);
+        continue;
+      }
 
-        await this.dispatcher.send(new DeleteIngot(target.id, target.accountId));
-        // Loud, and one line per memory. Deleting somebody's data is not a
-        // thing to do quietly, and this is the only record that it happened.
-        this.logger.log(`Reaped "${target.name}" (${target.id}): retention ran out`);
-      });
+      await this.dispatcher.send(new DeleteIngot(target.id, target.accountId));
+      // Loud, and one line per memory. Deleting somebody's data is not a
+      // thing to do quietly, and this is the only record that it happened.
+      this.logger.log(`Reaped "${target.name}" (${target.id}): retention ran out`);
     }
-
-    await scheduleNextTick(ctx, this);
   }
 }

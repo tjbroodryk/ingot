@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { Context } from '@restatedev/restate-sdk';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { CreateIngot } from '../../src/contexts/ingots/application/commands/create-ingot.command.js';
 import { ListIngots } from '../../src/contexts/ingots/application/queries/list-ingots.query.js';
@@ -29,19 +28,6 @@ afterAll(async () => {
   await world?.close();
   await closeDatabase();
 });
-
-/** The Restate context a cron handler is given, reduced to what it uses. */
-function contextOf(now: number) {
-  const booked: { name?: string; idempotencyKey?: string }[] = [];
-  const ctx = {
-    run: <T>(nameOrAction: string | (() => Promise<T>), action?: () => Promise<T>) =>
-      typeof nameOrAction === 'function' ? nameOrAction() : (action as () => Promise<T>)(),
-    date: { now: async () => now },
-    genericSend: (call: { name?: string; idempotencyKey?: string }) => booked.push(call),
-    console,
-  } as unknown as Context;
-  return { ctx, booked };
-}
 
 /** The sweeper as the container would build it, but with time under control. */
 function sweeperAt(instant: Date): ExpirySweeper {
@@ -103,8 +89,7 @@ describe('the reaper', () => {
       result: { body: 'this will not survive' },
     });
 
-    const { ctx } = contextOf(Date.now());
-    await sweeperAt(later(2 * 60_000)).tick(ctx);
+    await sweeperAt(later(2 * 60_000)).tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).not.toContain(doomed.id);
@@ -117,8 +102,7 @@ describe('the reaper', () => {
   it('leaves a memory that has not expired', async () => {
     const keeping = await world.dispatcher.send(new CreateIngot(world.accountId, 'patient', '4w'));
 
-    const { ctx } = contextOf(Date.now());
-    await sweeperAt(later(60_000)).tick(ctx);
+    await sweeperAt(later(60_000)).tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).toContain(keeping.id);
@@ -130,32 +114,19 @@ describe('the reaper', () => {
     // A decade on, and it is still there. `expires_at IS NULL` is not a date
     // in the past, and a reaper that treated it as one would delete every
     // memory in the service on its first tick.
-    const { ctx } = contextOf(Date.now());
-    await sweeperAt(later(3650 * 86_400_000)).tick(ctx);
+    await sweeperAt(later(3650 * 86_400_000)).tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).toContain(forever.id);
   });
 
-  it('books the next tick even when nothing expired', async () => {
-    // The chain is only extended by a pass that finished, and a quiet pass
-    // still finished — otherwise expiry stops working the first time nothing
-    // happens to be due.
-    const { ctx, booked } = contextOf(Date.now());
-    await sweeperAt(new Date(0)).tick(ctx);
-
-    expect(booked).toHaveLength(1);
-    expect(booked[0]?.name).toBe('next reap-expired-ingots');
-  });
-
-  it('books the next tick after reaping too', async () => {
-    await world.dispatcher.send(new CreateIngot(world.accountId, 'also short', '1m'));
-
-    const { ctx, booked } = contextOf(Date.now());
-    await sweeperAt(later(2 * 60_000)).tick(ctx);
-
-    expect(booked).toHaveLength(1);
-  });
+  /*
+   * The two tests that used to sit here asserted that a tick booked the next
+   * one — of itself, as its last act, whether or not it reaped anything. There
+   * is no chain to extend any more: `Scheduler` books the next turn and does it
+   * in both its success and its failure paths, which is where that property now
+   * lives and where `scheduler.test.ts` holds it.
+   */
 
   /**
    * The re-read before the delete.
@@ -182,8 +153,7 @@ describe('the reaper', () => {
     const sweeper = new ExpirySweeper(world.app.get(Dispatcher), lying, {
       now: () => new Date(),
     });
-    const { ctx } = contextOf(Date.now());
-    await sweeper.tick(ctx);
+    await sweeper.tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).toContain(survivor.id);

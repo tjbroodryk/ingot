@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { EndpointRow } from '../src/docs/endpoint-row';
 import { DocsNav } from '../src/docs/docs-nav';
 import { BASICS } from '../src/docs/page-sections';
+import { ReferencePage } from '../src/docs/reference-page';
 import {
   Auth,
   ENDPOINTS,
@@ -95,6 +96,21 @@ describe('the reference', () => {
 });
 
 describe('the page', () => {
+  /**
+   * Ingot is self-hosted, so there is no address the reader shares with
+   * anybody else: every sample is written against the port the service listens
+   * on locally, and the cell that introduces the base URL says so. A
+   * hosted-looking origin anywhere in here is a reader told to curl something
+   * that will not answer — which is worse than no sample, because it is
+   * believed.
+   *
+   * Rendered rather than read off the data, so it covers the sample strings
+   * and the one address written straight into the page's closing band.
+   */
+  it('names no address nobody can reach', () => {
+    expect(renderToStaticMarkup(<ReferencePage />)).not.toContain('ingot.dev');
+  });
+
   it('renders every endpoint without throwing', () => {
     for (const endpoint of ENDPOINTS) {
       const markup = renderToStaticMarkup(<EndpointRow endpoint={endpoint} />);

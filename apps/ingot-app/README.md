@@ -1,25 +1,60 @@
 # @ingot/app
 
-The public site for [`apps/ingot`](../ingot): the API reference, and a small
-dashboard for running a query against a memory you hold a key to.
+The public site for [`apps/ingot`](../ingot): a landing page, the API
+reference, and a small dashboard for running a query against a memory you hold
+a key to.
 
 ```bash
-bun run dev     # http://localhost:5174
+bun run dev     # http://localhost:5174 — dashboard mode
 bun run build   # a directory of files in ./out
+
+NEXT_PUBLIC_INGOT_MODE=landing bun run dev     # the other one
 ```
 
 Next.js App Router, statically exported. There is no server here and there is
 not going to be one — see below.
 
+## Two modes
+
+One codebase, two sites, and they have **different routes** rather than the
+same routes with something hidden:
+
+| Mode                   | `/`              | `/docs`   | `/dashboard` |
+| ---------------------- | ---------------- | --------- | ------------ |
+| `dashboard` *(default)* | The reference    | —         | The console  |
+| `landing`              | The landing page | Reference | —            |
+
+`NEXT_PUBLIC_INGOT_MODE` picks one, and a static export has no server to pick
+later, so the two sites are two builds — the same way the API's address already
+is. `src/site/mode.ts` is the whole of it.
+
+**`landing` does not hide the console, it does not build it.**
+`next.config.ts` selects `pageExtensions` off the mode, so `page.dashboard.tsx`
+is not a route in a landing build and `out/dashboard` is never written. There
+is nothing to find by typing the path, which is what makes the mode a property
+of the artefact rather than a convention about which links get rendered.
+
+The cost is that `typedRoutes` describes one build, so a link whose target
+moves between modes cannot be a `<Link>` — those hrefs come from
+`routesFor()` and are plain anchors. The reasoning is written down in
+`src/site/mode.ts`, next to the code that depends on it.
+
+Which mode goes where:
+
+- **`landing`** is the public page in front of the project, published to GitHub
+  Pages by [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml).
+  Ingot is self-hosted only, so it has no sign-up: everywhere the design sold a
+  hosted service, the page points at the repository and says so, at the top, in
+  the hero and in the band that replaces the sign-up CTA.
+- **`dashboard`** is what ships in the image, beside a running service.
+
 ## What is on it
 
 | Route        | What it is                                                       |
 | ------------ | ---------------------------------------------------------------- |
-| `/`          | The HTTP reference. Every route, its auth, its body, its answer.  |
+| `/`          | The landing page, in a landing build. The reference otherwise.    |
+| `/docs`      | The HTTP reference. Landing builds only — it is `/` in the other. |
 | `/dashboard` | Paste a key, pick a memory, run one SELECT, read the grid.        |
-
-A landing page is the obvious third thing and is not built. The design for it
-is in the canvas export this site was drawn from; the docs were wanted first.
 
 ## Static, and why that is a rule rather than a setting
 
@@ -69,6 +104,12 @@ One deviation, deliberate: code panels sit on a warm off-white (`--color-stock`)
 rather than `#fff`, because a panel bleached to pure white on a warm ground
 reads as a hole punched in the page.
 
+`src/landing/landing.css` is the landing page's own layout and nothing else —
+its hero, its grids, its splits. Everything that page shares with the rest of
+the site (the label voice, the buttons, `.mark`, the framed panel, the code
+tokens, the closing band) comes from `globals.css` and is used rather than
+restated.
+
 **Never write a hex outside `:root`.** Every colour resolves to a token,
 Griddle's `--dg-*` variables included — those are re-declared from these tokens
 on `.resultgrid`, which is what stops the grid arriving as a component from a
@@ -96,9 +137,23 @@ all of that is decided by the sandbox in `apps/ingot`, and a second opinion in
 the browser would be a rule that disagrees with the real one the first time
 either changes.
 
-## Pointing it at a service
+## What a build decides
 
-`NEXT_PUBLIC_INGOT_URL`, defaulting to `http://localhost:3002`. It is inlined at
-build time, which is the only way a page with no server can know it — so a
-deployment aimed at a different service is a different build, and the sign-in
-card prints the URL it is talking to.
+Three variables, all inlined by `next build`, because a page with no server has
+no other way to know them — so a deployment that differs in any of them is a
+different build. All three are declared in `turbo.json`, so the cache cannot
+hand back a directory made with different ones.
+
+| Variable                  | Default              | What it decides                          |
+| ------------------------- | -------------------- | ---------------------------------------- |
+| `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the console talks to.   |
+| `NEXT_PUBLIC_INGOT_MODE`  | `dashboard`          | Which site this is, and which routes exist. |
+| `NEXT_PUBLIC_BASE_PATH`   | *(empty)*            | The subdirectory it is served from.      |
+
+`NEXT_PUBLIC_INGOT_URL` is the one the sign-in card prints, so a dashboard
+pointed at the wrong service says so rather than failing on the first query.
+
+`NEXT_PUBLIC_BASE_PATH` exists for GitHub Pages, which serves a project site
+from `/<repo>/`. Next prepends it to its own asset URLs and Pages' workflow
+reads it off the repository name; a custom domain serves from the root, and
+wants it empty.

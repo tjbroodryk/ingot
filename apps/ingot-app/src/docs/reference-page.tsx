@@ -2,28 +2,34 @@ import type { Metadata } from 'next';
 import { Fragment } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { CodeBlock } from '../docs/code-block';
-import { DocsNav } from '../docs/docs-nav';
-import { EndpointRow } from '../docs/endpoint-row';
-import { BASICS, QUICKSTART, STATUS_CODES } from '../docs/page-sections';
-import { Prose } from '../docs/prose';
-import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from '../docs/reference';
+import { DASHBOARD_HREF, IS_LANDING, REPO_URL } from '../site/mode';
+import { CodeBlock } from './code-block';
+import { DocsNav } from './docs-nav';
+import { EndpointRow } from './endpoint-row';
+import { BASICS, QUICKSTART, STATUS_CODES } from './page-sections';
+import { Prose } from './prose';
+import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
-export const metadata: Metadata = {
+export const referenceMetadata: Metadata = {
   title: 'The Ingot HTTP API',
   description:
     'Every route Ingot serves, with its authentication, its request body and the shape it answers with.',
 };
 
 /**
- * The reference, and for now the whole site.
+ * The reference.
+ *
+ * A component rather than a page, because which URL it is served at depends on
+ * the build: it is the front page of a dashboard build and `/docs` of a
+ * landing one, and both of those are two lines that render this. See
+ * `src/site/mode.ts`.
  *
  * A server component with no data fetching in it: the content is a module, so
  * this renders once at build time into static HTML. The one interactive thing
  * on the page — the sidebar — is an anchor list, which needs no JavaScript at
  * all.
  */
-export default function DocsPage() {
+export function ReferencePage() {
   return (
     <>
       <SiteHeader
@@ -32,6 +38,30 @@ export default function DocsPage() {
           { href: '#reference', label: 'Reference' },
           { href: '#mcp-account', label: 'MCP' },
         ]}
+        actions={
+          <>
+            {/*
+              The sign-up route, which is the page's own first section — and a
+              landing build points at the repository instead, because a
+              self-hosted service has no account to hand out until somebody has
+              brought one up.
+            */}
+            {IS_LANDING ? (
+              <a className="btn-solid" href={REPO_URL}>
+                Get the source
+              </a>
+            ) : (
+              <a className="btn-solid" href="#account-create">
+                Get a key
+              </a>
+            )}
+            {DASHBOARD_HREF ? (
+              <a className="btn-outline" href={DASHBOARD_HREF}>
+                Dashboard
+              </a>
+            ) : null}
+          </>
+        }
       />
 
       <div className="docframe">
@@ -133,7 +163,7 @@ export default function DocsPage() {
               <a className="cta-primary" href="#quickstart">
                 Read the quickstart
               </a>
-              <code className="cta-curl">curl -X POST https://api.ingot.dev/api/v1/accounts</code>
+              <code className="cta-curl">curl -X POST http://localhost:3002/api/v1/accounts</code>
             </div>
           </section>
         </main>

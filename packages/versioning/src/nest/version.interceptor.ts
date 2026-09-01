@@ -40,8 +40,9 @@ export class VersionInterceptor implements NestInterceptor {
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    // Sockets and Restate handlers have no version header and no caller to
-    // negotiate with; they speak the current shape by definition.
+    // Anything that is not an HTTP request — a socket, a background job — has
+    // no version header and no caller to negotiate with; it speaks the current
+    // shape by definition.
     if (context.getType() !== 'http') return next.handle();
 
     const request = context.switchToHttp().getRequest<{

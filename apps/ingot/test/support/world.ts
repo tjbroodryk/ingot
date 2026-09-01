@@ -34,7 +34,10 @@ import {
 import { AiModule } from '../../src/ai/ai.module.js';
 import { SUMMARISER, type Summariser } from '../../src/ai/summariser.port.js';
 import { EngineModule } from '../../src/engine/engine.module.js';
-import { RestateIngress, type IngressSend } from '../../src/restate/index.js';
+import {
+  BackgroundKind,
+  BackgroundWork,
+} from '../../src/contexts/records/application/background.js';
 import { Dispatcher } from '../../src/shared/application/index.js';
 import { SharedModule } from '../../src/shared/shared.module.js';
 import { TestDatabaseModule } from './database-module.js';
@@ -57,15 +60,15 @@ export interface World {
   readonly dataDir: string;
 
   /**
-   * Every durable send this world made, in order.
+   * Every background queue this world's writes woke, in order.
    *
-   * The stand-in ingress collects rather than discards, because what `/add`
-   * tells the background is a property worth asserting on: a write that queues
-   * embedding work and says nothing has silently lost the fast path, and the
-   * only evidence is a row that stays unembedded for up to a minute in
-   * production and for ever in a test.
+   * The stand-in collects rather than runs, because what `/add` tells the
+   * background is a property worth asserting on: a write that queues embedding
+   * work and wakes nothing has silently lost the fast path, and the only
+   * evidence is a row that stays unembedded for up to a minute in production
+   * and for ever in a test.
    */
-  readonly sends: readonly IngressSend[];
+  readonly wakes: readonly BackgroundKind[];
 
   ingot(name?: string): Promise<string>;
   add(ingotId: string, body: AddBody): Promise<AddResult>;
@@ -111,21 +114,20 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   // come through here.
 
   /**
-   * The ingress, written down instead of dialled.
+   * The background, written down instead of run.
    *
-   * `/add` tells Restate it has work the moment it commits. Left real, every
-   * write in the suite would POST at whatever ingress happens to be running on
-   * this machine and invoke handlers against a developer's own data — so it is
-   * bound out here, in the harness, rather than by an environment variable that
-   * a deployment could also set. Overriding the provider is what keeps "the
-   * suite does not send" a fact about the test, and it means the production
-   * path has no branch in it to be wrong about.
+   * `/add` wakes the workers the moment it commits. Left real, every write in
+   * the suite would start a drain that runs after the assertion it belongs to
+   * — a test would be racing its own background rather than describing it — so
+   * it is bound out here, in the harness, rather than by an environment
+   * variable that a deployment could also set. Overriding the provider is what
+   * keeps "the suite does not drain by itself" a fact about the test, and it
+   * means the production path has no branch in it to be wrong about.
    *
-   * Nothing drains the queues as a result, which is the point: `embedAll` and
-   * `summariseAll` below are the tests' own way in, so a test says when the
-   * background ran rather than racing it.
+   * `embedAll` and `summariseAll` below are the tests' own way in, so a test
+   * says when the background ran.
    */
-  const sends: IngressSend[] = [];
+  const wakes: BackgroundKind[] = [];
 
   const building = Test.createTestingModule({
     imports: [
@@ -142,11 +144,11 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
     ],
   });
 
-  building.overrideProvider(RestateIngress).useValue({
-    async send(input: IngressSend) {
-      sends.push(input);
-    },
-  } as unknown as RestateIngress);
+  building.overrideProvider(BackgroundWork).useValue({
+    wakeEmbeddings: () => wakes.push(BackgroundKind.Embeddings),
+    wakeReceipts: () => wakes.push(BackgroundKind.Receipts),
+    settled: async () => undefined,
+  } as unknown as BackgroundWork);
 
   if (overrides.summariser) {
     building.overrideProvider(SUMMARISER).useValue(overrides.summariser);
@@ -168,7 +170,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
     accountId: created.account.id,
     accountSlug: created.account.slug,
     dataDir,
-    sends,
+    wakes,
 
     async ingot(name = 'a memory') {
       const summary = await dispatcher.send(new CreateIngot(created.account.id, name));

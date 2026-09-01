@@ -19,8 +19,8 @@ export const BASICS: readonly Basic[] = [
     id: 'base',
     kicker: 'Base URL',
     title: 'URI versioning',
-    body: 'Everything is under `/api/v1`. `/api/health` and `/api/versions` are version-neutral, so neither moves when the contract does.',
-    sample: `https://api.ingot.dev
+    body: 'The origin is wherever you run Ingot — it is self-hosted, so the samples here use the port it listens on locally. Everything is under `/api/v1`; `/api/health` and `/api/versions` are version-neutral, so neither moves when the contract does.',
+    sample: `http://localhost:3002
   /api/v1/:account/:ingot`,
   },
   {
@@ -42,17 +42,17 @@ Ingot-Version: 2026-08-27`,
 ];
 
 export const QUICKSTART = `# 1 — sign up; the secret comes back exactly once
-curl -X POST https://api.ingot.dev/api/v1/accounts \\
+curl -X POST http://localhost:3002/api/v1/accounts \\
   -H "Content-Type: application/json" \\
   -d '{"slug":"acme","name":"Acme Inc"}'
 
 # 2 — cast a memory; keep the id, it is the next path segment
-curl -X POST https://api.ingot.dev/api/v1/acme/create \\
+curl -X POST http://localhost:3002/api/v1/acme/create \\
   -H "Authorization: Bearer ing_sk_…" \\
   -d '{"name":"crm-notes","retainFor":"14d"}'
 
 # 3 — read it back, the same second
-curl -X POST https://api.ingot.dev/api/v1/acme/ing_01H8Z…/query \\
+curl -X POST http://localhost:3002/api/v1/acme/ing_01H8Z…/query \\
   -H "Authorization: Bearer ing_sk_…" \\
   -d '{"sql":"SELECT company, arr FROM contacts"}'`;
 

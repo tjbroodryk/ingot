@@ -7,6 +7,9 @@ import { ReleaseEmbeddings } from './commands/release-embeddings.command.js';
 import { type EmbeddedText, SaveEmbeddings } from './commands/save-embeddings.command.js';
 import type { PendingEmbedding } from './ports/overlay-store.port.js';
 
+/** Batches one drain will work. Bounded so a large backlog is worked, not swallowed. */
+const PASSES = 8;
+
 /**
  * Embeds one batch: claim, call the model, store the vectors.
  *
@@ -38,6 +41,34 @@ export class EmbedWorker {
     private readonly dispatcher: Dispatcher,
     @Inject(EMBEDDER) private readonly embedder: Embedder,
   ) {}
+
+  /**
+   * Works the queue until it is empty or the pass is spent.
+   *
+   * The one implementation of "embed what is waiting", called by the sweeper on
+   * its timer and by `/add` the moment a write commits. It lives here rather
+   * than in the sweeper so those two cannot come to disagree about what a pass
+   * is — and because "how much work to do in one go" is a property of the work,
+   * not of what woke it up.
+   *
+   * Two passes arriving at once is safe and is expected: the claim leases its
+   * rows with `FOR UPDATE SKIP LOCKED`, so they take different work rather than
+   * the same work twice.
+   */
+  async drain(): Promise<number> {
+    let embedded = 0;
+
+    for (let pass = 0; pass < PASSES; pass++) {
+      const done = await this.next();
+      embedded += done;
+      // A short batch means the queue is empty; stop rather than spending the
+      // rest of the pass asking again.
+      if (done < EMBED_BATCH) break;
+    }
+
+    if (embedded > 0) this.logger.log(`Embedded ${embedded} rows`);
+    return embedded;
+  }
 
   /** How many rows were embedded. Zero means the queue is empty or all leased. */
   async next(limit: number = EMBED_BATCH): Promise<number> {

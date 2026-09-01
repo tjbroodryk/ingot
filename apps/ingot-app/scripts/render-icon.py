@@ -22,17 +22,19 @@ neither is worth adding to a repo that draws four polygons once a year.
 import struct
 import sys
 import zlib
+from math import floor
 from pathlib import Path
 
 W = 64  # the SVG's viewBox, and the coordinate space below
 SS = 8  # supersampling factor, which is where the antialiasing comes from
 
-INK = (0x20, 0x1E, 0x1D)
-FACES = [
-    # (polygon, fill) — painted in the SVG's order, back to front
-    ([(14, 24), (42, 24), (50, 16), (22, 16)], (0x8F, 0xB3, 0xD9)),  # top
-    ([(8, 48), (48, 48), (42, 24), (14, 24)], (0x30, 0x5D, 0x8F)),  # front
-    ([(42, 24), (50, 16), (56, 36), (48, 48)], (0x1F, 0x3D, 0x5E)),  # side
+GROUND = (0x30, 0x5D, 0x8F)  # --color-accent
+MARK = (0xF8, 0xF4, 0xF4)  # --color-ink-inverse
+SHAPES = [
+    # (polygon, fill, alpha) — painted in the SVG's order, over the ground
+    ([(19, 14), (45, 14), (52, 30), (12, 30)], MARK, 1.00),  # the bar, end on
+    ([(12, 38), (52, 38), (52, 42), (12, 42)], MARK, 1.00),  # first rule
+    ([(12, 46), (40, 46), (40, 50), (12, 50)], MARK, 0.62),  # second rule
 ]
 
 
@@ -49,6 +51,30 @@ def inside(poly, x, y):
     return hit
 
 
+def hint(poly, size):
+    """Every vertex to the nearest device pixel, in the SVG's own units.
+
+    The two rules are 4 units tall, which at 16 is one pixel exactly — and they
+    sit at y=38, which is nine and a half. Left alone that pixel is spread over
+    two rows at half strength each, and the bottom third of the icon comes out
+    as a grey smear rather than two rules with a gap. Snapping first costs a
+    sixteenth of a pixel of accuracy at the size where nobody can see it and
+    buys a clean edge at the size where everybody can. At 32 every coordinate
+    is already whole and this does nothing.
+
+    Half up, not `round()`. Those same rules run 9.5 to 10.5 device pixels at
+    16, and banker's rounding sends both ends to 10 — a rule of no height,
+    which is to say no rule at all. Rounding a tie the same direction every
+    time is what keeps a band a band.
+    """
+    scale = size / W
+
+    def snap(v):
+        return floor(v * scale + 0.5) / scale
+
+    return [(snap(x), snap(y)) for x, y in poly]
+
+
 def render(size):
     """One RGBA row per scanline, sampled SS x SS per pixel and averaged.
 
@@ -58,6 +84,7 @@ def render(size):
     `src/app/favicon.ico` at build time.
     """
     scale = W / (size * SS)
+    shapes = [(hint(poly, size), fill, alpha) for poly, fill, alpha in SHAPES]
     rows = []
     for py in range(size):
         row = bytearray()
@@ -67,10 +94,13 @@ def render(size):
                 for sx in range(SS):
                     x = (px * SS + sx + 0.5) * scale
                     y = (py * SS + sy + 0.5) * scale
-                    colour = INK
-                    for poly, fill in FACES:
+                    colour = GROUND
+                    for poly, fill, alpha in shapes:
                         if inside(poly, x, y):
-                            colour = fill
+                            colour = tuple(
+                                round(f * alpha + c * (1 - alpha))
+                                for f, c in zip(fill, colour)
+                            )
                     r += colour[0]
                     g += colour[1]
                     b += colour[2]

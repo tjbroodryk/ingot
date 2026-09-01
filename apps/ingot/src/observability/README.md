@@ -205,20 +205,28 @@ scraper that did not ask; it just ignores what it cannot read. _Storing_
 exemplars needs `--enable-feature=exemplar-storage`, which `docker/prometheus.yml`
 already passes.
 
-## Known gap: traces stop at Restate
+## Known gap: background work is its own trace
 
-`/add` commits, queues the embedding and receipt work, and tells Restate about
-it. Restate invokes the handler back — later, and possibly on another pod. That
-invocation arrives on the endpoint listener rather than through
-`telemetry.middleware.ts`, so the W3C `traceparent` of the request that queued
-the work is not extracted, and the two are separate traces rather than one.
+This gap used to be a cross-process one — the work was invoked back by Restate,
+arriving on a listener that `telemetry.middleware.ts` never saw, so the
+`traceparent` of the request that queued it was gone by definition. That is no
+longer the shape of it: `/add` wakes `EmbedWorker` and `ReceiptWorker` in this
+process, from `uow.afterCommit`.
 
-They are still findable: the queue row carries the ingot and the batch, and both
-spans carry the same ids. Closing the gap properly means propagating
-`traceparent` through the Restate journal and restoring it as a span link on the
-invocation — and pointing `RESTATE_TRACING_ENDPOINT` at the same collector, so
-the server's own view of the invocation joins them up rather than sitting beside
-them. Called out here rather than done quietly.
+What remains is smaller and has two halves.
+
+A **woken drain** is deliberately detached — `BackgroundWork.wake` returns
+immediately and nobody awaits it, because the caller's response has already
+gone. So its spans hang off a request span that may well have ended, which is
+not a parent relationship worth drawing. A span link from the drain to the write
+that woke it is the right shape and is not built.
+
+A **swept drain** has no parent at all, and that is correct rather than missing:
+a tick is started by a timer, and inventing a parent for it would be worse than
+having none.
+
+Both are findable either way: the queue row carries the ingot and the batch, and
+the spans carry the same ids. Called out here rather than done quietly.
 
 ## Testing
 

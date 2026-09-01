@@ -1,0 +1,440 @@
+/*
+ * The landing page, and only the landing page.
+ *
+ * Everything the rest of the site already has — the label voice, the buttons,
+ * `.mark`, the framed panel, the code tokens, the closing band — comes from
+ * `src/app/globals.css` and is used here rather than restated. What is below
+ * is the layout this one page needs: a hero, three grids and two splits.
+ *
+ * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
+ * is over there. Every value here resolves to a token.
+ */
+
+/*
+ * The whole page sits inside one ruled box, the way the artboard drew it. The
+ * header and the footer sit outside it, which is what makes the box read as
+ * the document rather than as a card.
+ */
+.landframe {
+  margin: 0 var(--gutter) var(--gutter);
+  border: var(--rule);
+}
+
+/*
+ * A section that draws its own rule and lets its children own the padding —
+ * a head and a grid, where the grid's cells need to reach the section's edges
+ * for their own rules to line up with it.
+ */
+.landblock {
+  border-bottom: var(--rule);
+}
+
+/* One that does not: a section whose content is a single centred block. */
+.landsection {
+  padding: 56px var(--space-8) 72px;
+  border-bottom: var(--rule);
+}
+
+/* ══ hero ═══════════════════════════════════════════════════════════════ */
+
+.hero {
+  padding: 88px var(--space-8) 72px;
+  text-align: center;
+  border-bottom: var(--rule);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 44px;
+}
+
+.hero-badge a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.badge {
+  padding: 4px 10px;
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+/*
+ * The three display sizes on this page are clamped rather than stepped at a
+ * breakpoint, which is a deviation from globals and deliberate. The artboard
+ * sets the hero at 104px; there is no single fallback that is not either
+ * absurd at 1400px or clipped at 380px, and unlike the reference — which
+ * somebody arrives at from a link, on a desktop, having decided already — the
+ * landing page is the one a phone loads first.
+ */
+.hero-title {
+  max-width: 20ch;
+  margin: 0 auto 36px;
+  font-size: clamp(40px, 8.5vw, 104px);
+  line-height: 0.92;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.hero-lede {
+  max-width: 46ch;
+  margin: 0 auto 44px;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink-70);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+}
+
+/* The hero's buttons, which are the site's buttons at the size a hero wants. */
+.btn-lg {
+  padding: 20px 44px;
+}
+
+.btn-outline.btn-lg {
+  padding: 19px 44px;
+}
+
+.speaks-label {
+  margin-top: 72px;
+  margin-bottom: 22px;
+  color: var(--ink-50);
+}
+
+/* Not logos. What it already speaks, set in the display face. */
+.speaks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 44px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--ink-50);
+}
+
+/* ══ the two-pane terminal ══════════════════════════════════════════════ */
+
+.panel-wide {
+  max-width: 940px;
+  margin: 0 auto;
+}
+
+.panel-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+/*
+ * `.panel .code` clears the border, because inside a panel the panel is the
+ * border. The rule between two panes is the exception, and it belongs to the
+ * second one so that a single-pane panel never grows a stray edge.
+ */
+.panel-split .code + .code {
+  border-left: var(--rule);
+}
+
+/* ══ a centred section head ═════════════════════════════════════════════ */
+
+.landhead {
+  padding: 72px var(--space-8) 56px;
+  text-align: center;
+}
+
+.landhead-tight {
+  padding-bottom: 20px;
+}
+
+.landtitle {
+  max-width: 24ch;
+  margin: 0 auto 24px;
+  font-size: clamp(32px, 5vw, 62px);
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.landhead p {
+  max-width: 52ch;
+  margin: 0 auto;
+  font-size: 17px;
+  color: var(--ink-70);
+}
+
+/* ══ how it works ═══════════════════════════════════════════════════════ */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: var(--rule);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px var(--space-8);
+  text-align: center;
+}
+
+.step + .step {
+  border-left: var(--rule);
+}
+
+.step-num {
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+}
+
+.step h4 {
+  font-size: 21px;
+}
+
+.step p {
+  max-width: 34ch;
+  font-size: 15px;
+  color: var(--ink-70);
+}
+
+.step code {
+  margin-top: var(--space-1);
+  padding: 7px 12px;
+  border: 1px solid var(--ink-25);
+  font-size: 12px;
+}
+
+/* ══ what you get ═══════════════════════════════════════════════════════ */
+
+.features-note {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-8) 18px;
+  color: var(--ink-50);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: var(--rule);
+}
+
+.feature {
+  padding: 44px var(--space-8);
+  text-align: center;
+}
+
+.feature h4 {
+  margin-bottom: 10px;
+  font-size: 19px;
+}
+
+.feature p {
+  max-width: 36ch;
+  margin: 0 auto;
+  font-size: 14.5px;
+  color: var(--ink-70);
+}
+
+.feature-kicker {
+  margin-bottom: 14px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+}
+
+/*
+ * The grid's own rules, drawn from the cells rather than from `gap`, so they
+ * meet the section's border instead of stopping short of it. Written as
+ * position rather than as a count: the last row has no rule under it because
+ * the section already draws one, whatever the list's length turns out to be.
+ */
+.feature:not(:nth-child(3n + 1)) {
+  border-left: var(--rule);
+}
+
+.feature:nth-child(n + 4) {
+  border-top: var(--rule);
+}
+
+/* ══ the two split sections ═════════════════════════════════════════════ */
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: var(--rule);
+}
+
+/* Whichever half is second draws the rule, so the two sections can mirror. */
+.split > * + * {
+  border-left: var(--rule);
+}
+
+.split-copy {
+  padding: 64px 40px;
+}
+
+.split-copy h3 {
+  margin: 0 0 18px;
+  font-size: clamp(26px, 3.2vw, 40px);
+  line-height: 0.98;
+  text-transform: uppercase;
+}
+
+.split-copy p {
+  max-width: 44ch;
+  margin: 0 0 22px;
+  font-size: 16px;
+  color: var(--ink-70);
+}
+
+.split-copy code {
+  font-size: 0.92em;
+  color: var(--color-accent);
+}
+
+/*
+ * A grid rather than a flex row, for one child: a grid item stretches to its
+ * column without being told to, so the sample fills the half without a rule
+ * naming `.code` — which, arriving after the one that draws the terminal's
+ * divider, would be a lower-specificity selector for the same element.
+ * `minmax(0, 1fr)` is what lets a long line scroll inside the sample instead
+ * of widening the column.
+ */
+.split-figure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: 40px;
+}
+
+.chip-accent {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* — the MCP tool list, which is a table without being one — */
+
+.tools {
+  display: grid;
+  border-top: var(--rule);
+}
+
+.tool {
+  display: flex;
+  gap: var(--space-4);
+  padding: 13px 0;
+  border-bottom: var(--rule);
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
+
+.tool-scope {
+  min-width: 104px;
+  color: var(--ink-45);
+}
+
+/* ══ the closing band ═══════════════════════════════════════════════════
+   `.cta` in globals is left-aligned, because on the reference it closes a
+   left-aligned document. Here it closes a centred page.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.selfhost {
+  text-align: center;
+}
+
+.selfhost h2,
+.selfhost p {
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.selfhost .cta-actions {
+  justify-content: center;
+}
+
+/*
+ * The commands sit left-aligned inside the centred band, because a shell
+ * transcript that is centred is a shell transcript nobody can copy by eye.
+ */
+.selfhost-code {
+  max-width: 64ch;
+  margin: 0 auto 34px;
+  text-align: left;
+}
+
+/* On the accent field the outline button borrows the field's ink, not the page's. */
+.cta-secondary {
+  border-color: color-mix(in srgb, var(--color-ink-inverse) 50%, transparent);
+}
+
+.cta-secondary:hover {
+  background: color-mix(in srgb, var(--color-ink-inverse) 12%, transparent);
+  color: var(--color-ink-inverse);
+}
+
+/* ══ narrower ═══════════════════════════════════════════════════════════
+   Two steps. The panes and the splits go first because a code sample is what
+   runs out of width before prose does; the three-up grids follow.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1000px) {
+  .panel-split,
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel-split .code + .code,
+  .split > * + * {
+    border-left: 0;
+    border-top: var(--rule);
+  }
+
+  .split-copy {
+    padding: 44px var(--space-8);
+  }
+
+  .split-figure {
+    padding: var(--space-8);
+  }
+}
+
+@media (max-width: 820px) {
+  .steps,
+  .features {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .step + .step,
+  .feature:not(:nth-child(3n + 1)) {
+    border-left: 0;
+  }
+
+  .step + .step,
+  .feature + .feature {
+    border-top: var(--rule);
+  }
+
+  .hero {
+    padding: 56px var(--space-6) 48px;
+  }
+
+  .landhead {
+    padding: 48px var(--space-6) 36px;
+  }
+
+  .speaks {
+    gap: var(--space-6);
+    font-size: 18px;
+  }
+}

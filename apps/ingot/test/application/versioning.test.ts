@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 import { PATH_METADATA } from '@nestjs/common/constants';
-import { Test, type TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
 import {
   SHAPE_RESOLVER,
   VERSIONING_OPTIONS,
@@ -11,7 +11,7 @@ import {
   readWire,
   type WireSpec,
 } from '@ingot/versioning/nest';
-import { AppModule } from '../../src/app.module.js';
+import { compileAppModule } from '../support/app.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 import { INGOT_VERSIONS, VERSION_HEADER } from '../../src/versioning/changeset.js';
 import { WireShape } from '../../src/versioning/shapes.js';
@@ -227,7 +227,7 @@ describe('the wiring', () => {
   beforeAll(async () => {
     const { pool } = await openDatabase();
     process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
-    app = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = await compileAppModule().compile();
     await app.init();
   });
 

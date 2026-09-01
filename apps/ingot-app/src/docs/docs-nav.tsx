@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { NavGroup } from '../chrome/nav-group';
+import { DASHBOARD_HREF } from '../site/mode';
 import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
 /**
@@ -36,21 +38,22 @@ export function DocsNav(): ReactNode {
         </NavGroup>
       ))}
 
-      <NavGroup label="Console">
-        <a className="navlink" href="/dashboard/">
-          Run a query
-        </a>
+      {/*
+        The console is a route a landing build does not have, so the group that
+        links it is not rendered there — and the route count, which is the only
+        other thing in it, moves up to keep the sidebar from ending on a rule
+        with nothing under it.
+      */}
+      {DASHBOARD_HREF ? (
+        <NavGroup label="Console">
+          <a className="navlink" href={DASHBOARD_HREF}>
+            Run a query
+          </a>
+          <span className="muted">{ENDPOINTS.length} routes in all</span>
+        </NavGroup>
+      ) : (
         <span className="muted">{ENDPOINTS.length} routes in all</span>
-      </NavGroup>
+      )}
     </aside>
-  );
-}
-
-function NavGroup({ label, children }: { label: string; children: ReactNode }): ReactNode {
-  return (
-    <div className="navgroup">
-      <div className="label label-sm navgroup-label">[ {label} ]</div>
-      {children}
-    </div>
   );
 }

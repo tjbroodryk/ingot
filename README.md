@@ -6,9 +6,9 @@ get them back as SQL.
 ```bash
 bun install
 cp apps/ingot/.env.example apps/ingot/.env   # every value in it is already the default
-bun run db:up          # Postgres, Restate and MinIO, on the ports those defaults expect
+bun run db:up          # Postgres and MinIO, on the ports those defaults expect
 bun run dev            # API on :3002, site on :5174
-bun run test           # 447 tests, needs db:up
+bun run test           # 411 tests, needs db:up
 ```
 
 The copy is not optional. `DATABASE_URL` is the one setting with no default —
@@ -26,7 +26,7 @@ something queryable.
 
 ```
 apps/ingot            @ingot/server   NestJS. The API, the engine, the sweepers.
-apps/ingot-app        @ingot/app      Next.js, statically exported. Docs + dashboard.
+apps/ingot-app        @ingot/app      Next.js, statically exported. Landing, docs, dashboard.
 packages/shared       @ingot/shared   The v1 wire contract. Types only, no runtime.
 packages/versioning   @ingot/versioning  Wire versioning for Nest — changesets and an interceptor.
 ```
@@ -69,7 +69,6 @@ start:
 | | |
 | --- | --- |
 | Postgres | `:5432` — `ingot` to develop against, `ingot_test` for the suite |
-| Restate | `:8080` ingress, `:9070` admin UI |
 | MinIO | `:9000` API, `:9001` console — the bucket the roll-up tests write to |
 
 `bun run obs:up` adds Jaeger (`:16686`) and Prometheus (`:9090`) when you want
@@ -126,14 +125,40 @@ docker build -f apps/ingot-app/Dockerfile \
 
 In CI that comes from the repository variable `INGOT_PUBLIC_API_URL`.
 
+The same argument decides *which site* the image is. `@ingot/app` builds in one
+of two modes, and they have different routes rather than the same routes with
+something hidden — a landing build has no `/dashboard` at all, because
+`next build` never writes it:
+
+| `NEXT_PUBLIC_INGOT_MODE` | `/`              | `/docs`   | `/dashboard` |
+| ------------------------ | ---------------- | --------- | ------------ |
+| `dashboard` *(default)*  | The reference    | —         | The console  |
+| `landing`                | The landing page | Reference | —            |
+
+The image is the dashboard build, for somebody running the service.
+
+## The landing page
+
+`.github/workflows/pages.yml` builds the landing mode and publishes it to
+GitHub Pages on every push to `main` that touches the site. It is the public
+page in front of the project and it says what is true of it — Ingot is
+self-hosted, there is nothing to sign up to, and the way to get it is to run
+it. Pages serves a project site from `/<repo>/`, so the workflow passes
+`NEXT_PUBLIC_BASE_PATH` read off the repository name; a custom domain wants it
+empty.
+
 ## Deploying
 
-The server needs a Postgres, a Restate server, and somewhere to put Parquet.
-None of the three is optional: durable execution is what makes an accepted
-write findable, and `INGOT_STORAGE` refuses to boot half-configured for the
-same reason. Set `RESTATE_REGISTER_ON_BOOT=false` and let the pipeline own
-registration — registering is how a new version becomes reachable, which is a
-release decision rather than a process-start one.
+The server needs a Postgres and somewhere to put Parquet. Neither is optional,
+and `INGOT_STORAGE` refuses to boot half-configured rather than quietly writing
+the base tier to a container's writable layer.
+
+There is no broker and nothing to register. The roll-up, the embedding backlog,
+the receipt queue and expiry are timers inside the process, each taking a
+Postgres advisory lock so that one replica sweeps at a time however many are
+running — `apps/ingot/src/sweepers/scheduler.ts`. Scale the deployment freely;
+the lock is what keeps two pods from rolling the same table up into the same
+generation.
 
 `/api/health` is version-neutral and is what a probe should point at. The
 schema travels in the image (`apps/ingot/drizzle`), so a migration job is the

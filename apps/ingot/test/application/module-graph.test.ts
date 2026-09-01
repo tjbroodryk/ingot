@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { Test, type TestingModule } from '@nestjs/testing';
-import { AppModule } from '../../src/app.module.js';
+import type { TestingModule } from '@nestjs/testing';
+import { compileAppModule } from '../support/app.js';
 import { ACCOUNT_REPOSITORY } from '../../src/contexts/accounts/domain/index.js';
 import { AccountAuthenticator } from '../../src/contexts/accounts/application/account-authenticator.js';
 import {
@@ -44,7 +44,7 @@ describe('the real module graph', () => {
   beforeAll(async () => {
     const { pool } = await openDatabase();
     process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
-    app = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = await compileAppModule().compile();
     await app.init();
   });
 

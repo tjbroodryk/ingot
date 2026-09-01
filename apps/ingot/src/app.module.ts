@@ -15,7 +15,6 @@ import { EngineModule } from './engine/engine.module.js';
 import { HealthModule } from './health/health.module.js';
 import { McpModule } from './mcp/mcp.module.js';
 import { ObservabilityModule } from './observability/index.js';
-import { RestateModule } from './restate/index.js';
 import { SharedModule } from './shared/shared.module.js';
 import { DomainExceptionFilter } from './shared/interface/domain-exception.filter.js';
 import { SweepersModule } from './sweepers/sweepers.module.js';
@@ -36,8 +35,8 @@ import { INGOT_VERSIONS, VERSION_HEADER } from './versioning/changeset.js';
  *   `/accounts/acme/keys` and route key management into the memory API.
  *   `AccountSlug` refuses to mint an account named `accounts` as the second
  *   half of that defence, and `route-collision.test.ts` asserts both.
- * - `SweepersModule` and `RestateModule` last, since they only make sense once
- *   the commands they dispatch exist.
+ * - `SweepersModule` last, since it only makes sense once the commands it
+ *   dispatches exist.
  *
  * `VersioningModule` sits with the kernel because its interceptor is global:
  * every HTTP route is version-negotiated, including the ones with nothing to
@@ -66,7 +65,6 @@ import { INGOT_VERSIONS, VERSION_HEADER } from './versioning/changeset.js';
     McpModule,
 
     SweepersModule,
-    RestateModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: DomainExceptionFilter },

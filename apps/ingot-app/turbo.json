@@ -5,7 +5,12 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "out/**"],
-      "env": ["NEXT_PUBLIC_INGOT_URL"]
+      // Everything a static export inlines, and therefore everything that
+      // makes two builds two different directories of files. A variable
+      // missing from this list is a cache that hands back the other build:
+      // `NEXT_PUBLIC_INGOT_MODE` decides which routes exist at all, so a
+      // landing build restored from a dashboard one would ship the console.
+      "env": ["NEXT_PUBLIC_INGOT_URL", "NEXT_PUBLIC_INGOT_MODE", "NEXT_PUBLIC_BASE_PATH"]
     }
   }
 }

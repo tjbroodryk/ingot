@@ -23,6 +23,15 @@
 # plain `docker build` produce something that works against `bun run dev`.
 ARG NEXT_PUBLIC_INGOT_URL=http://localhost:3002
 
+# The other one, for the same reason. This image is the site that ships beside
+# a running service, so it is built in dashboard mode — the reference at `/`
+# and the console at `/dashboard`. A `landing` build is the public page in
+# front of the project, has no console route at all, and is published to
+# GitHub Pages by `.github/workflows/pages.yml` rather than from here; the arg
+# is exposed anyway, because which site an image is should be readable off the
+# build rather than assumed. See `src/site/mode.ts`.
+ARG NEXT_PUBLIC_INGOT_MODE=dashboard
+
 # ── 1. what actually has to be copied ──────────────────────────────────────
 # `turbo prune` writes out a workspace holding only @ingot/app and the package
 # it depends on, so a change to the server does not invalidate this image's
@@ -42,7 +51,30 @@ COPY --from=prune /repo/out/json/ .
 RUN bun install --frozen-lockfile --ignore-scripts
 
 # ── 3. build ───────────────────────────────────────────────────────────────
-FROM oven/bun:1.2.19 AS build
+# Node, with Bun copied in, and that way round on purpose.
+#
+# `next build` is a Node program: `node_modules/.bin/next` asks for `node` on
+# its shebang line, and Next 16 builds with Turbopack, which wants
+# `worker_threads.Worker` options Bun has not implemented and a CommonJS loader
+# that can read its own compiled runtime.
+#
+# `oven/bun` ships a `node` — at `/usr/local/bun-node-fallback-bin/node` — and
+# it is Bun under another name, which is the right call for a base image that
+# is meant to run without Node and the wrong one here. Bun took the build,
+# could not do it, and segfaulted:
+#
+#   worker_threads.Worker option "stdout" is not yet implemented in Bun
+#   Failed to load external module … app-page-turbo.runtime.prod.js
+#   panic: Segmentation fault  →  SIGILL  →  exit 132
+#
+# It never failed on a developer's machine or in `pages.yml`, because both have
+# a real Node ahead of the shim on `PATH`. This stage is the only place in the
+# repository that did not, so it is the only place that has to say so.
+#
+# Bun still installs and still runs the scripts; what changes is which runtime
+# the `next` binary's shebang resolves to.
+FROM node:22-slim AS build
+COPY --from=oven/bun:1.2.19 /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /repo
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=prune /repo/out/full/ .
@@ -54,7 +86,9 @@ COPY tsconfig.base.json ./
 # against it during `next build` — so it is built first.
 RUN cd packages/shared && bun run build
 ARG NEXT_PUBLIC_INGOT_URL
+ARG NEXT_PUBLIC_INGOT_MODE
 ENV NEXT_PUBLIC_INGOT_URL=${NEXT_PUBLIC_INGOT_URL}
+ENV NEXT_PUBLIC_INGOT_MODE=${NEXT_PUBLIC_INGOT_MODE}
 RUN cd apps/ingot-app && bun run build
 
 # ── 4. what runs ───────────────────────────────────────────────────────────

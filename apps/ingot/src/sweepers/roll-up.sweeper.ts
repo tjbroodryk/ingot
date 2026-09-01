@@ -1,11 +1,10 @@
 import { Inject, Logger } from '@nestjs/common';
-import type { Context } from '@restatedev/restate-sdk';
 import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../contexts/records/application/ports/overlay-store.port.js';
 import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
-import { RestateCron, RestateHandler, minutes, scheduleNextTick } from '../restate/index.js';
+import { Cron, minutes } from './cron.js';
 import { Dispatcher } from '../shared/application/index.js';
 
 const EVERY = minutes(5);
@@ -33,16 +32,23 @@ const MIN_OVERLAY_ROWS = 1_000;
 /**
  * Folds the overlay into the base tier.
  *
- * The reason this is a `@RestateCron` and not `@nestjs/schedule` is the reason
- * `CLAUDE.md` gives: a tick's last act is to book the next one with a
- * journalled, idempotency-keyed self-send, so three replicas collapse into one
- * chain and a pod dying mid-sweep does not end the schedule.
+ * This is the sweeper that needs `Scheduler`'s advisory lock, and the reason it
+ * exists. `CompactTable` has no mutual exclusion of its own: two replicas
+ * rolling the same table up would both compute `generation + 1`, write to the
+ * same keys and both flip the manifest. One replica at a time is what makes
+ * that impossible, and it is the only guarantee here that a second pod could
+ * break.
+ *
+ * A tick that dies part-way is simply run again from the top on the next turn.
+ * That costs a repeated listing and nothing else: a table whose manifest
+ * already flipped has no watermark left to fold and `CompactTable` returns
+ * `null` for it.
  *
  * It dispatches `CompactTable` rather than compacting inline, which is the
  * same rule the API's sweepers follow — one write path per fact, so a manual
  * compaction and a swept one cannot disagree.
  */
-@RestateCron({
+@Cron({
   name: 'roll-up-ingots',
   everyMs: EVERY,
   description: 'Rolls overlay rows up into new Parquet generations',
@@ -55,11 +61,8 @@ export class RollUpSweeper {
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
   ) {}
 
-  @RestateHandler()
-  async tick(ctx: Context): Promise<void> {
-    const candidates = await ctx.run('tables worth compacting', () =>
-      this.overlay.tablesWorthCompacting(MIN_OVERLAY_ROWS, PER_TICK + 1),
-    );
+  async tick(): Promise<void> {
+    const candidates = await this.overlay.tablesWorthCompacting(MIN_OVERLAY_ROWS, PER_TICK + 1);
 
     if (candidates.length > PER_TICK) {
       this.logger.log(
@@ -69,16 +72,23 @@ export class RollUpSweeper {
     }
 
     for (const candidate of candidates.slice(0, PER_TICK)) {
-      // Each in its own `ctx.run`, so a table that fails is retried on its own
-      // rather than replaying the compaction of every table before it.
-      await ctx.run(`compact ${candidate.tableId}`, async () => {
+      /*
+       * One table failing does not cost the rest of the tick.
+       *
+       * Restate used to give each its own journalled step, so a retry resumed
+       * at the one that failed. Without a journal the equivalent is to keep
+       * going and let the next tick find whatever did not compact — which is
+       * the better shape anyway: a single unhealthy table used to stall every
+       * table behind it in the same pass.
+       */
+      try {
         await this.dispatcher.send(new CompactTable(candidate.tableId));
-      });
+      } catch (error) {
+        this.logger.error(
+          `Rolling up ${candidate.tableId} failed: ` +
+            `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+        );
+      }
     }
-
-    // Last, always. A tick that throws never reaches this and is retried by
-    // Restate instead, so the chain is only ever extended by a pass that
-    // finished — and a slow sweep cannot overlap itself.
-    await scheduleNextTick(ctx, this);
   }
 }

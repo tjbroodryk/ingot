@@ -182,11 +182,15 @@ pre {
   justify-self: center;
 }
 
+/* Height only: `BrandMark` carries a viewBox and so an intrinsic 10:9, and a
+   width here would be a second place for that ratio to be wrong. 14px is the
+   cap height of the word beside it, which is what makes the two read as one
+   object rather than a mark and a label. */
 .brand-mark {
   display: block;
-  width: 12px;
-  height: 12px;
-  background: var(--color-accent);
+  height: 14px;
+  width: auto;
+  color: var(--color-accent);
 }
 
 .brand-word {
@@ -562,6 +566,71 @@ pre {
   margin-top: var(--space-3);
 }
 
+/* ══ self-hosting ═══════════════════════════════════════════════════════
+   The dependency page borrows the reference's whole frame — the sidebar, the
+   ruled sections, the tables — and adds only the two things a page of argument
+   needs that a page of routes does not: running prose under a section heading,
+   and a table whose first column is a variable name rather than a field.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.deps-heading {
+  max-width: 24ch;
+  margin-bottom: 20px;
+  font-size: 30px;
+  text-transform: uppercase;
+}
+
+/* Wider than `.lede` and narrower than the column: this is the page's body
+   copy, and four paragraphs of it running the full width of a 1440 would be a
+   measure nobody finishes a paragraph of. */
+.deps-para {
+  max-width: 76ch;
+  margin-bottom: 15px;
+  color: var(--ink-70);
+}
+
+.deps-para code {
+  font-size: 0.92em;
+  color: var(--color-accent);
+}
+
+.deps-sample {
+  max-width: 76ch;
+  margin-top: 26px;
+}
+
+.deps-settings {
+  margin-top: 30px;
+}
+
+.deps-name-col {
+  width: 250px;
+}
+
+.deps-default-col {
+  width: 170px;
+}
+
+.deps-absence-col {
+  width: 250px;
+}
+
+.deps-name,
+.deps-default {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
+
+.deps-default {
+  color: var(--ink-60);
+}
+
+/* A variable with nothing behind it is the one this page is really about, so
+   it is coloured rather than left to read as another default. */
+.deps-required {
+  color: var(--color-accent);
+}
+
 /* ══ code ═══════════════════════════════════════════════════════════════ */
 
 .code {
@@ -712,9 +781,9 @@ pre {
 
 .sitefoot-mark {
   display: block;
-  width: 10px;
-  height: 10px;
-  background: var(--color-accent);
+  height: 12px;
+  width: auto;
+  color: var(--color-accent);
 }
 
 .sitefoot a {

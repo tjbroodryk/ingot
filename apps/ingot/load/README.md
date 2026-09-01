@@ -34,12 +34,23 @@ costs and where it stops being linear.
 bets that reads stay acceptable while rows sit in the overlay, and the sweeper's
 `MIN_OVERLAY_ROWS` is a number attached to that bet. This writes in steps and
 queries at each one, so what comes out is the curve that says where the
-threshold should actually be. **Run it with the Restate server stopped** —
-`docker compose stop restate` — or the sweeper compacts underneath the
-measurement and flattens the very curve it is trying to show. There is no
-longer a `RESTATE_ENABLED=false`: durable execution is not something a
-deployment can be without, so the way to have no sweepers is to have no server
-driving them.
+threshold should actually be. **Run it with the roll-up sweeper held off**, or
+the compaction happens underneath the measurement and flattens the very curve it
+is trying to show.
+
+The sweepers are timers inside the service now, each taking a Postgres advisory
+lock before it runs, so the way to hold one off is to take its lock first and
+keep the session open:
+
+```bash
+psql "$DATABASE_URL" -c 'SELECT pg_advisory_lock(342916608, -616380041)' -c 'SELECT pg_sleep(3600)'
+```
+
+Every roll-up tick then finds the lock held and skips its turn; ending the
+session hands it back. The pair is `(classid, objid)` from
+`src/sweepers/exclusive.ts` — the second number is the FNV-1a hash of
+`roll-up-ingots`, which is why it is written out here rather than computed in
+SQL.
 
 **`mixed.js`** — store, then read back through the query the receipt handed you,
 with an occasional semantic recall. The other scripts isolate each path; this

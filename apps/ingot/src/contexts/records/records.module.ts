@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { RestateModule } from '../../restate/index.js';
 import { IngotsModule } from '../ingots/ingots.module.js';
+import { BackgroundWork } from './application/background.js';
 import { AddRecordsHandler } from './application/commands/add-records.command.js';
 import { ClaimReceiptHandler } from './application/commands/claim-receipt.command.js';
 import { ClaimEmbeddingsHandler } from './application/commands/claim-embeddings.command.js';
@@ -27,12 +27,13 @@ import { RecordsController } from './interface/records.controller.js';
  * pooled connection for the length of an HTTP round trip.
  */
 @Module({
-  // `RestateModule` because `/add` tells the background it has work rather
-  // than leaving it to be found on the next tick — see `background.ts`.
-  imports: [IngotsModule, RestateModule],
+  imports: [IngotsModule],
   controllers: [RecordsController],
   providers: [
     AddRecordsHandler,
+    // `/add` wakes this on commit rather than leaving the work to be found on
+    // the next tick — see `background.ts`.
+    BackgroundWork,
     DeleteRecordsHandler,
     CompactTableHandler,
 
@@ -52,6 +53,6 @@ import { RecordsController } from './interface/records.controller.js';
     // has one path and a webhook adapter has one binding to replace.
     { provide: RECEIPT_NOTIFIER, useExisting: LoggingReceiptNotifier },
   ],
-  exports: [RECEIPT_NOTIFIER, ReceiptWorker, EmbedWorker],
+  exports: [RECEIPT_NOTIFIER, ReceiptWorker, EmbedWorker, BackgroundWork],
 })
 export class RecordsModule {}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { BrandMark } from './brand-mark';
 
 /**
  * The rule at the bottom of the page.
@@ -10,7 +11,7 @@ export function SiteFooter({ children }: { children?: ReactNode }): ReactNode {
   return (
     <footer className="sitefoot label">
       <span className="sitefoot-brand">
-        <span className="sitefoot-mark" />
+        <BrandMark className="sitefoot-mark" />
         Ingot · API v1
       </span>
       {children}

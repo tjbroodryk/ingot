@@ -1,22 +1,23 @@
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { Test, type TestingModule } from '@nestjs/testing';
-import { AppModule } from '../../src/app.module.js';
-import { RestateServices } from '../../src/restate/index.js';
-import { readCronSpec } from '../../src/restate/cron.decorator.js';
+import type { TestingModule } from '@nestjs/testing';
+import { readCronSpec } from '../../src/sweepers/cron.js';
+import { hash32 } from '../../src/sweepers/exclusive.js';
 import { SweptKind } from '../../src/sweepers/kinds.js';
+import { Scheduler } from '../../src/sweepers/scheduler.js';
 import { SWEEPERS } from '../../src/sweepers/sweepers.module.js';
+import { compileAppModule } from '../support/app.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 
 /**
- * The background work, and whether Restate can actually reach it.
+ * The background work, and whether anything will actually run it.
  *
  * `SWEEPERS` being a `Record` over `SweptKind` is what makes a missing ticker a
- * compile error. This is the other half: that each entry is a real Restate
- * service with a schedule, discovered from the real `AppModule`, rather than a
+ * compile error. This is the other half: that each entry is a real provider
+ * with a schedule, resolvable out of the real `AppModule`, rather than a
  * decorated class in a module nobody imported.
  *
- * The failure it prevents is the quiet one. A sweeper that is never registered
+ * The failure it prevents is the quiet one. A sweeper that is never scheduled
  * looks exactly like one that has nothing to do — the service answers, rows go
  * in, queries come back — right up until the overlay is large enough that every
  * query is slow, and then it stays that way.
@@ -27,7 +28,7 @@ describe('the sweepers', () => {
   beforeAll(async () => {
     const { pool } = await openDatabase();
     process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
-    app = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = await compileAppModule().compile();
     await app.init();
   });
 
@@ -40,68 +41,49 @@ describe('the sweepers', () => {
     expect(Object.keys(SWEEPERS).sort()).toEqual(Object.values(SweptKind).sort());
   });
 
-  it.each(Object.entries(SWEEPERS))('%s is a Restate cron with a schedule', (_kind, sweeper) => {
+  it.each(Object.entries(SWEEPERS))('%s has a schedule', (_kind, sweeper) => {
     const spec = readCronSpec(sweeper);
 
     expect(spec).toBeDefined();
     expect(spec?.name).toMatch(/^[a-z][a-z0-9-]*$/);
-    // A schedule of zero would busy-loop the chain; anything under a second is
-    // a typo rather than an interval.
+    // A schedule of zero would busy-loop; anything under a second is a typo
+    // rather than an interval.
     expect(spec?.everyMs).toBeGreaterThan(1_000);
     expect(spec?.description?.length ?? 0).toBeGreaterThan(10);
   });
 
-  it('registers each of them with the real endpoint', () => {
-    const services = app.get(RestateServices, { strict: false });
-    // The endpoint's own view, not our bookkeeping: what Restate will be told
-    // exists is the manifest built from these bindings.
-    const discovered = services
-      .discover()
-      .map((service: { binding: { name: string } }) => service.binding.name);
+  /**
+   * Every sweep takes a lock named for itself, so two of them sharing a key
+   * would mean one silently never running while the other holds it. The names
+   * are hand-written, and this is what stops two of them colliding — either as
+   * names or, less visibly, as hashes of names.
+   */
+  it('gives each of them a lock of its own', () => {
+    const names = Object.values(SWEEPERS).map((sweeper) => readCronSpec(sweeper)?.name ?? '');
+    const keys = names.map(hash32);
 
+    expect(new Set(names).size).toBe(names.length);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  /**
+   * Resolvable from the real graph, and holding a `tick`.
+   *
+   * `SWEEPERS` is also the list `Scheduler` is given, so a class in it that the
+   * container cannot build is a sweep that throws on its first turn — at which
+   * point the only evidence is a log line on a running service.
+   */
+  it('can build every one of them out of the real container', () => {
     for (const sweeper of Object.values(SWEEPERS)) {
-      const spec = readCronSpec(sweeper);
-      expect({ sweeper: sweeper.name, discovered: discovered.includes(spec?.name ?? '') }).toEqual({
+      const instance = app.get(sweeper, { strict: false });
+      expect({ sweeper: sweeper.name, tick: typeof instance.tick }).toEqual({
         sweeper: sweeper.name,
-        discovered: true,
+        tick: 'function',
       });
     }
   });
 
-  it('books the next tick as the last thing it does', async () => {
-    // A tick that throws must never reach `scheduleNextTick`, so that the chain
-    // is only extended by a pass that finished and a slow sweep cannot overlap
-    // itself. Asserted on the source, because the alternative is a test that
-    // has to make a sweeper fail halfway through a real Restate context.
-    for (const sweeper of Object.values(SWEEPERS)) {
-      const file = sweeper.name
-        .replace(/Sweeper$/, '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-        .toLowerCase();
-      const source = await Bun.file(`src/sweepers/${file}.sweeper.ts`).text();
-
-      const schedule = source.lastIndexOf('await scheduleNextTick');
-      expect({ sweeper: sweeper.name, found: schedule > -1 }).toEqual({
-        sweeper: sweeper.name,
-        found: true,
-      });
-
-      /*
-       * Nothing awaited after it *inside the handler it sits in*.
-       *
-       * Scoped to the method rather than to the rest of the file, because a
-       * ticker may now have more than one handler: `/add` tells the embedding
-       * and receipt services there is work instead of waiting for a tick, and
-       * that is a second entry point which legitimately awaits. Slicing to
-       * end-of-file used to be the same thing and quietly stopped being it.
-       *
-       * The method's closing brace is a `}` at two-space indent, which is what
-       * Biome formats these to and is enough to bound the window.
-       */
-      const rest = source.slice(schedule);
-      const closes = rest.indexOf('\n  }');
-      const inHandler = closes === -1 ? rest : rest.slice(0, closes);
-      expect(inHandler).not.toMatch(/await (?!scheduleNextTick)/);
-    }
+  it('is scheduled by the real graph', () => {
+    expect(app.get(Scheduler, { strict: false })).toBeDefined();
   });
 });

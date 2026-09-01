@@ -9,6 +9,7 @@ import { SiteHeader, SiteSection } from '../../chrome/site-header';
 import { QueryConsole } from '../../dashboard/query-console';
 import { SignIn } from '../../dashboard/sign-in';
 import { useSession } from '../../dashboard/session';
+import { DOCS_HREF } from '../../site/mode';
 
 /**
  * The dashboard, which is the gate and one console behind it.
@@ -31,7 +32,14 @@ export default function DashboardPage() {
 
   return (
     <>
-      <SiteHeader current={SiteSection.Dashboard} />
+      <SiteHeader
+        current={SiteSection.Dashboard}
+        actions={
+          <a className="btn-outline" href={DOCS_HREF}>
+            Read the docs
+          </a>
+        }
+      />
 
       <div className="dashframe">
         {/*

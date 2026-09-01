@@ -1,0 +1,97 @@
+# Publish the landing page to GitHub Pages.
+#
+# What goes up is `@ingot/app` built in landing mode: the page in front of the
+# project and the API reference, and no console. That is not a setting the
+# deploy hides — `NEXT_PUBLIC_INGOT_MODE` decides which routes `next build`
+# writes at all, so `out/dashboard` does not exist in the artefact this job
+# uploads. See `apps/ingot-app/src/site/mode.ts`.
+#
+# The image built by `images.yml` is the other build of the same app, in
+# dashboard mode, for somebody running the service. The two are different
+# artefacts on purpose and neither is derived from the other.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    # The site is the only thing this publishes, so a change to the server has
+    # no version of the page to put up. `packages/shared` is in the list
+    # because the app typechecks against its `dist` during the build.
+    paths:
+      - 'apps/ingot-app/**'
+      - 'packages/shared/**'
+      - '.github/workflows/pages.yml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'turbo.json'
+      - 'tsconfig.base.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  # OIDC, which is how `deploy-pages` proves to Pages that it is this workflow.
+  # There is no token to mint or store.
+  id-token: write
+
+# One deploy at a time, and a queued one is not cancelled: unlike a container
+# image, the site has exactly one live version, and cancelling the newer of two
+# would leave the older one serving with nothing to say so.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately without `static_site_generator: next`. That option exists
+      # to write a `basePath` into the Next config for you, and this repo's
+      # config already reads one from the environment — two answers to the same
+      # question, of which the injected one wins and is not in the tree.
+      - uses: actions/configure-pages@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+
+      - run: bun install --frozen-lockfile
+
+      # `turbo run build --filter` pulls in `packages/shared` through `^build`,
+      # so the contract package is built first without being named here.
+      #
+      # Both variables are inlined by `next build` — a static export has no
+      # server to read them later — and both are declared in
+      # `apps/ingot-app/turbo.json` so the cache cannot hand back a build made
+      # with different ones.
+      - name: Build the landing site
+        env:
+          NEXT_PUBLIC_INGOT_MODE: landing
+          # A GitHub Pages project site is served from `/<repo>/`, and a page
+          # built for `/` would ask for its stylesheets at the wrong path.
+          # Read off the repository rather than written down, so a fork or a
+          # rename does not silently publish a site with no CSS.
+          #
+          # A custom domain serves from the root instead: set this to the empty
+          # string when a CNAME is configured.
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+        run: bunx turbo run build --filter=@ingot/app
+
+      # No `.nojekyll` in the upload, and that is not an oversight: Jekyll runs
+      # on the branch-based deploy, not on this one. An artefact goes up as the
+      # files it contains, `_next/` included.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/ingot-app/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

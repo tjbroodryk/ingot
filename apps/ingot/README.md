@@ -666,8 +666,8 @@ src/
   storage/        ObjectStore port; filesystem, S3 and GCS adapters
   ai/             Embedder and Summariser ports; local, OpenAI and Vertex
   mcp/            another interface over the same commands
-  restate/        durable execution, as in @forge/api
-  sweepers/       roll-up, embedding backlog, receipt queue
+  sweepers/       roll-up, embedding backlog, receipt queue, expiry — and the
+                  timer and advisory lock that run them
   shared/  observability/  database/  health/
 ```
 
@@ -684,8 +684,8 @@ manifest and the rows it describes.
 ## What holds this up
 
 `bun run typecheck`, `bun run lint` and `bun run test` all pass before anything
-is done. Tests need `bun run db:up` from the root, which now brings up MinIO
-alongside Postgres and Restate.
+is done. Tests need `bun run db:up` from the root, which brings up Postgres and
+MinIO.
 
 They also need `fts` present on the machine — `bun run extensions`, once. Every
 session loads it, so a machine that has never fetched one cannot run a query at
@@ -732,7 +732,15 @@ the whole retention window. Per-tenant detail goes on the span, where
 - **`@duckdb/node-api` is pinned exactly.** It is a native N-API addon; the
   `-r.N` suffix makes range matching a guessing game. `scripts/spike-duckdb.ts`
   runs the assumptions under both Bun and Node and should be re-run on upgrade.
-- **Observability and Restate are copied from `@forge/api`, not shared.** The
-  rules are identical and the code is duplicated. A third service is the moment
-  to extract `packages/observability` — with a real reason rather than a guess
-  about one.
+- **Observability is copied from `@forge/api`, not shared.** The rules are
+  identical and the code is duplicated. A third service is the moment to extract
+  `packages/observability` — with a real reason rather than a guess about one.
+- **No durable execution, deliberately.** `src/restate/` was copied from
+  `@forge/api` too, and it was removed rather than kept: the only thing using it
+  here was four cron chains, and no work item ever lived in it — the queues are
+  Postgres tables claimed with `FOR UPDATE SKIP LOCKED` under a lease. What it
+  contributed was a timer that survived a restart, a retry, and one chain across
+  replicas, which is `src/sweepers/scheduler.ts` and an advisory lock. The
+  moment that stops being enough is inbound webhooks, where a journalled retry
+  of somebody else's delivery is worth a broker; `git log` has the integration
+  to bring back.

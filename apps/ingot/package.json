@@ -39,7 +39,6 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
-    "@restatedev/restate-sdk": "^1.16.8",
     "class-transformer": "^0.5",
     "class-validator": "^0.14",
     "drizzle-orm": "^0.45.2",
