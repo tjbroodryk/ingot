@@ -1,5 +1,7 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as amqp from 'amqplib';
+import { AMQP_CONNECT, type AmqpConnect } from './amqp.port.js';
 import { DELIVERY_SETTINGS, type DeliverySettings, deliverySettings } from './delivery-settings.js';
 import { DELIVERY_TRANSPORT } from './delivery-transport.port.js';
 import { LoggingTransport } from './logging-transport.js';
@@ -32,6 +34,10 @@ import { WebhookTransport } from './webhook-transport.js';
         return settings;
       },
     },
+    // The real thing, bound once. A port rather than a module import so that
+    // `RmqTransport`'s bookkeeping — one declaration per queue per connection,
+    // dropped when the connection is — can be asserted without a broker.
+    { provide: AMQP_CONNECT, useValue: amqp.connect as AmqpConnect },
     WebhookTransport,
     RmqTransport,
     LoggingTransport,

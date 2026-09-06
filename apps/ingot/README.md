@@ -344,6 +344,15 @@ One POST per receipt, or one persistent message on the queue. `Ingot-Batch`,
 `Ingot-Event` and `Ingot-Attempt` are on the webhook's headers, and `messageId`
 on the AMQP envelope, so a receiver can deduplicate without parsing the body.
 
+The queue is declared with `assertQueue`, because publishing to the default
+exchange with a routing key naming a queue that does not exist is _silently
+discarded_ by AMQP — which is the one failure this whole design refuses to have.
+It is declared once per connection rather than once per message, and what has
+been declared is forgotten the moment the connection is: on a failed publish, on
+shutdown, and on amqplib's own reconnect. A cache that outlived its connection
+would reach the same silent discard by another route, since a broker replaced
+underneath us is one that has none of the queues we declared.
+
 ```jsonc
 {
   "event": "receipt.ready",
