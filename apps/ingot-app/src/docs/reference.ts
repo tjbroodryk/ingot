@@ -368,7 +368,7 @@ Ingot-Batch: batch_1508c8…
       },
       {
         name: 'columns[].embed',
-        doc: 'Embeds that column’s text. Per column and set once, unlike `receipt` — and `VARCHAR` only, since anything else is refused rather than quietly ignored.',
+        doc: 'Embeds that column’s text. A property of the table rather than of the call — set once when the column is declared, and applied to every later write whether or not it repeats the flag. `VARCHAR` only; anything else is refused rather than quietly ignored. Turning it on for an existing column only affects rows written from then on: the ones already stored are not embedded and nothing backfills them yet.',
       },
       { name: 'result', doc: 'The tool result itself. Anything JSON, `null` included.' },
     ],

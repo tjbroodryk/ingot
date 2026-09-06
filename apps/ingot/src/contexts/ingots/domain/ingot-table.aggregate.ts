@@ -245,8 +245,32 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
             'A column’s type cannot change once rows exist under it.',
         );
       }
-      // Turning embedding on for a column that has it off is a widening the
-      // table can accept; the existing rows are backfilled by the sweeper.
+      /*
+       * Turning embedding on for a column that has it off is a widening the
+       * table accepts — but only forwards, and that is a real limitation
+       * rather than a detail.
+       *
+       * **The rows already stored are not embedded, and nothing will embed
+       * them.** `OverlayStore.append` queues the rows of the write it is given
+       * and there is no other way into `overlay_embed_queue`, so flipping this
+       * covers every row written from here on and none of the ones already
+       * here. Rows already rolled up into Parquet are not even in the overlay
+       * to be found.
+       *
+       * It is worth being blunt because the failure is silent all the way
+       * down: no error, and `ingot_embeddings_pending` counts the queue rather
+       * than un-embedded rows, so the gauge reads zero while a semantic search
+       * over this table quietly returns only what arrived after the flip.
+       *
+       * Refusing the widening was the alternative, and would be consistent
+       * with how a type change is treated a few lines up. It is not refused
+       * because a table that can never gain a searchable column is worse than
+       * one that gains it from now on — and because the fix is a backfill,
+       * which is planned: a sweeper that finds rows under an embeddable column
+       * with no vector, across both tiers, and queues them. Until that exists,
+       * a table that needs its history searchable is one to drop and store
+       * again.
+       */
       if (column.embedded && !existing.embedded) {
         this.props.columns = this.props.columns.map((candidate) =>
           candidate.name.value === column.name.value ? column.asOptional() : candidate,

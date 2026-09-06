@@ -174,9 +174,10 @@ export function LandingPage(): ReactNode {
               expensive parts.
             </h3>
             <p>
-              <code>embed</code> is per column and set once, when the column is declared.{' '}
-              <code>receipt</code> is per call, because it is a model call every time — a loop
-              storing ten thousand tool results should pay for neither by accident.
+              <code>embed</code> belongs to the table — set once when the column is declared, and
+              applied to every write after it. <code>receipt</code> is per call, because it is a
+              model call every time: a loop storing ten thousand tool results should pay for neither
+              by accident.
             </p>
             <p>
               A receipt comes back <code>pending</code> with the SELECT that will answer it: a model

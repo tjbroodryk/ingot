@@ -769,6 +769,36 @@ should be queryable the instant it is accepted, without waiting on a model that
 may be a network away. A receipt's three columns go through the same queue,
 because `ingot_receipts` is an ordinary table.
 
+**`embed` is a property of the table, not of the call.** It sits in the mapping
+beside `type` because the first `/add` naming a table is what declares that
+table — there is no `CREATE TABLE` here — and it is stored on the column from
+then on. Later writes to that column are embedded whether or not they repeat
+the flag. That is the difference between it and `receipt`, which is per call
+because it costs a model call every time.
+
+### Turning it on later only works forwards
+
+A column that had `embed` off can be widened to have it on, and this is the one
+place where doing so is worth understanding before you rely on it.
+
+**The rows already stored are not embedded, and nothing will embed them.** The
+queue is filled by the write that produced the rows, so flipping the flag
+covers everything from that point on and nothing before it — and rows already
+rolled up into Parquet are not in the overlay to be found at all.
+
+The failure is silent the whole way down. There is no error, and
+`ingot_embeddings_pending` counts the queue rather than un-embedded rows, so it
+reads zero while a semantic search over that table returns only what arrived
+after the flip. If you need a table's history searchable today, drop it and
+store it again.
+
+**A backfill is planned** — a sweeper that finds rows under an embeddable
+column with no vector, across both tiers, and queues them — at which point
+widening becomes an ordinary configuration change. Refusing the widening
+outright was the other option and was not taken: a table that can never gain a
+searchable column is worse than one that gains it from now on, provided the
+"from now on" is written down. This is it being written down.
+
 There is **no HNSW index**. DuckDB's `vss` needs a persisted database file,
 which this design deliberately does not have. Brute-force cosine over a
 materialised table is the trade, and it stops being a good one somewhere in the
