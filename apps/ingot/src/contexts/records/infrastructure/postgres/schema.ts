@@ -154,4 +154,51 @@ export const overlayReceiptQueue = pgTable(
   ],
 );
 
+/**
+ * Receipts announced and not yet delivered. The outbox.
+ *
+ * One row per receipt whose memory has a delivery strategy, written **in the
+ * same transaction as the receipt itself**. That is the entire reason it is a
+ * table and not a `fetch` in the command: a push sent from inside a transaction
+ * is a claim about state that may still be rolled back, and nothing outside the
+ * database rolls back with it — while a push sent *after* the commit, in
+ * process, is lost for good if the process dies in between. Writing the
+ * intention transactionally and sending it afterwards is the only arrangement
+ * where neither can happen.
+ *
+ * `target` is resolved at enqueue rather than read from `ingot.delivery` when
+ * the delivery goes out. A memory whose endpoint changes while a delivery is in
+ * flight should not have that delivery silently retargeted: the row records
+ * where it was going when it was announced.
+ *
+ * `payload` is likewise rendered at enqueue. Rebuilding it at delivery time
+ * would mean re-reading rows a tombstone or a roll-up may have moved since, and
+ * a delivery should say what was true when the receipt landed.
+ *
+ * The lease and the attempt counter are `overlay_receipt_queue`'s, for the same
+ * reasons: the work spans a network call, so it cannot be one transaction, and
+ * a worker killed by the very delivery it is making never reaches a failure
+ * handler — so the claim is what charges the attempt.
+ */
+export const receiptDeliveryQueue = pgTable(
+  'receipt_delivery_queue',
+  {
+    /** The receipt's batch: one delivery per receipt, and its identity. */
+    batch: text('batch').primaryKey(),
+    ingotId: text('ingot_id').notNull(),
+    /** A `DeliveryStrategy`: where this was going when it was announced. */
+    target: jsonb('target').notNull(),
+    /** A `DeliveredReceipt`: the body, rendered when the receipt was written. */
+    payload: jsonb('payload').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    queuedAt: timestamp('queued_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('receipt_delivery_queue_age').on(table.attempts, table.claimedAt, table.queuedAt),
+    index('receipt_delivery_queue_ingot').on(table.ingotId),
+  ],
+);
+
 export type OverlayRowRecord = typeof overlayRow.$inferSelect;

@@ -51,7 +51,7 @@ export class AccountScopeGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const principal = principalOf(request);
     if (!principal) {
-      // ApiKeyGuard runs first and would have thrown. Reaching here means the
+      // AuthenticationGuard runs first and would have thrown. Reaching here means the
       // guards were reordered, so this is a wiring bug rather than a caller's.
       throw new ForbiddenException(
         'Authentication did not run before authorization — check the APP_GUARD order',

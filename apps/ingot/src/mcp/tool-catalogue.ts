@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { FtsStemmer, FtsStopwords, ReceiptKind } from '@ingot/shared/ingot-v1';
+import { DeliveryKind, FtsStemmer, FtsStopwords, ReceiptKind } from '@ingot/shared/ingot-v1';
 import type { Command, Query } from '../shared/application/index.js';
+import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
 import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
@@ -19,6 +20,7 @@ export enum McpTool {
   Recall = 'recall',
   Forget = 'forget',
   ConfigureTable = 'configure_table',
+  ConfigureDelivery = 'configure_delivery',
   DropTable = 'drop_table',
   CreateMemory = 'create_memory',
   ListMemories = 'list_memories',
@@ -227,6 +229,38 @@ export const TOOLS: readonly ToolDefinition[] = [
         .optional(),
     },
     resolvesTo: ConfigureTable,
+    readOnly: false,
+  },
+  {
+    name: McpTool.ConfigureDelivery,
+    scope: McpScope.Ingot,
+    title: 'Configure where this memory’s receipts are delivered',
+    description:
+      'Receipts are collected by polling by default: remember hands back a SELECT and you run ' +
+      'it when you want the summary. Set a delivery target and this memory will also push each ' +
+      'receipt as it lands — one POST per receipt to a webhook, or one message onto a queue. ' +
+      'Use it when whatever wants the summary will have moved on by the time it is written. ' +
+      'Turn it off again with { "t": "none" }. The whole configuration comes back, and describe ' +
+      'reports it too.',
+    inputSchema: {
+      delivery: z
+        .object({
+          t: z.enum(DeliveryKind).describe('none to push nothing, webhook, or rmq'),
+          endpoint: z
+            .string()
+            .optional()
+            .describe(
+              'For webhook: an absolute https URL. Private and loopback addresses are refused.',
+            ),
+          queue: z
+            .string()
+            .optional()
+            .describe('For rmq: the queue name. The broker is the deployment’s, not yours.'),
+        })
+        .describe('Where receipts go. Omit to leave the current target alone.')
+        .optional(),
+    },
+    resolvesTo: ConfigureIngot,
     readOnly: false,
   },
   {

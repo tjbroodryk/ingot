@@ -52,32 +52,43 @@ query, built from the manifest, hardened, used once, thrown away.
 Everything is under `/api/v1`. Authentication is an API key —
 `Authorization: Bearer ing_sk_…` — because the caller is a program.
 
-| Route                                   |                                                                             |
-| --------------------------------------- | --------------------------------------------------------------------------- |
-| `POST /accounts`                        | Sign up. The only route needing no key, because it is where keys come from. |
-| `POST /accounts/:account/keys`          | Mint another. `DELETE …/keys/:keyId` revokes one.                           |
-| `POST /:account/create`                 | Cast an ingot. `retainFor` sets a retention.                                |
-| `GET /:account/ingots`                  | List them.                                                                  |
-| `POST /:account/:ingot/add`             | Store a tool result.                                                        |
-| `POST /:account/:ingot/query`           | DuckDB SQL, plain language, or both.                                        |
-| `GET /:account/:ingot/info`             | The information schema, settings included.                                  |
-| `POST /:account/:ingot/config/:table`   | Set how a table is searched. A patch; returns the whole config.             |
-| `POST /:account/:ingot/delete`          | Forget rows matching a predicate.                                           |
-| `DELETE /:account/:ingot/tables/:table` | Drop a table.                                                               |
-| `DELETE /:account/:ingot`               | Destroy the memory.                                                         |
-| `ALL /:account/:ingot/mcp`              | MCP, scoped to this memory.                                                 |
+**There is no sign-up route.** Which accounts exist is decided by `INGOT_AUTH`
+at boot, and there is no default: a service that guessed how to authenticate
+would be guessing who may read the memories in it. Sealed mode — the
+self-hosting answer, and currently the only one — opens the single account
+named in `INGOT_ACCOUNT` when it starts, and honours the root key in
+`INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
 
-Keys are stored as a SHA-256 digest and nothing else. A minted key is returned
-once, in the response that created it; there is no way to read it back.
+| Route                                   |                                                                      |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `GET /accounts/:account`                | The account and the keys on it. Metadata only.                       |
+| `POST /accounts/:account/keys`          | Mint another. `DELETE …/keys/:keyId` revokes one.                    |
+| `POST /:account/create`                 | Cast an ingot. `retainFor` sets a retention.                         |
+| `GET /:account/ingots`                  | List them.                                                           |
+| `POST /:account/:ingot/add`             | Store a tool result.                                                 |
+| `POST /:account/:ingot/query`           | DuckDB SQL, plain language, or both.                                 |
+| `GET /:account/:ingot/info`             | The information schema, settings included.                           |
+| `POST /:account/:ingot/config`          | Set where receipts are delivered. A patch; returns the whole config. |
+| `POST /:account/:ingot/config/:table`   | Set how a table is searched. A patch; returns the whole config.      |
+| `POST /:account/:ingot/delete`          | Forget rows matching a predicate.                                    |
+| `DELETE /:account/:ingot/tables/:table` | Drop a table.                                                        |
+| `DELETE /:account/:ingot`               | Destroy the memory.                                                  |
+| `ALL /:account/:ingot/mcp`              | MCP, scoped to this memory.                                          |
+
+Minted keys are stored as a SHA-256 digest and nothing else, and are returned
+once, in the response that created them; there is no way to read one back. The
+root key is not stored at all — it is compared against a digest held in the
+process, so there is no row to revoke, to leave behind on a rotation, or to go
+stale. It is the credential that cannot be locked out, which is what makes
+revoking any of the others safe.
 
 ### Walking through it
 
 ```bash
-curl -sX POST localhost:3002/api/v1/accounts -H 'content-type: application/json' \
-  -d '{"slug":"acme"}'
-# → { "account": {...}, "key": { "secret": "ing_sk_…" } }   ← copy it now
+# The account and the key are the ones the server was started with.
+export KEY=$(grep '^INGOT_API_KEY=' .env | cut -d= -f2)
 
-curl -sX POST localhost:3002/api/v1/acme/create -H "authorization: Bearer $KEY" \
+curl -sX POST localhost:3002/api/v1/dev/create -H "authorization: Bearer $KEY" \
   -H 'content-type: application/json' -d '{"name":"pull request memory"}'
 # → { "id": "ing_7f2c…" }
 ```
@@ -107,9 +118,11 @@ Two things a change may not do, both asserted by `versioning.test.ts`:
   release that made the service _do_ something different would be a second
   product wearing the same name.
 
-`GET /api/versions` lists what exists. Two releases: the baseline, and
+`GET /api/versions` lists what exists. Three releases: the baseline;
 `2026-08-27`, where every `TableInfo` gained a `config` — rendered away again
-for a caller pinned to the baseline, in `/info` and in an `/add` receipt alike.
+for a caller pinned to the baseline, in `/info` and in an `/add` receipt alike;
+and `2026-09-06`, where the memory itself gained one, holding where its receipts
+are delivered.
 
 ## The mapping
 
@@ -280,10 +293,128 @@ A model that refuses is retried a few times and then given up on, loudly:
 because they mean opposite things. A backlog clears; an abandoned receipt is a
 caller holding a query that will stay empty for good.
 
-There is **no webhook yet**. `ReceiptNotifier` is the seam one drops into and it
-is called on every receipt written; what is missing is a place for a caller to
-say _where_, and inventing a column for that now would be schema nothing
-writes.
+## Delivering a receipt
+
+Everything above is collected by polling: `/add` hands back a SELECT and you run
+it when you want the answer. That is the right default — it needs no
+registration, no retry policy and no endpoint of yours to be up — but it is a
+poor fit for an agent that has moved on and would rather be told.
+
+So a memory can nominate somewhere to push each receipt as it lands. One
+strategy per memory rather than per `/add`, because the thing that wants telling
+is the system holding the memory, not the individual call — a receipt written
+for a request that finished an hour ago still reaches it.
+
+```jsonc
+// POST /api/v1/:account/:ingot/config
+{ "delivery": { "t": "webhook", "endpoint": "https://acme.dev/hooks/ingot" } }
+
+// or
+{ "delivery": { "t": "rmq", "queue": "agent.receipts" } }
+
+// off again — an omission means "leave it alone", so this is explicit
+{ "delivery": { "t": "none" } }
+```
+
+The whole config comes back, and `/info` reports it, because a patch that
+changed one field leaves you no way to see the rest. `configure_delivery` is the
+same thing over MCP.
+
+**A `webhook` endpoint is the one place a caller chooses where this service
+opens a connection**, so it is a boundary rather than a format check. Absolute
+`http`/`https` only; no credentials in the URL, which would end up in a log line
+the first time a delivery failed; and loopback, link-local, private and CGNAT
+literals are refused, along with the cloud metadata hostnames. A DNS name that
+merely _resolves_ into one of those ranges is not refused — catching that means
+resolving at configuration time and pinning at delivery time, and the cost of
+getting it wrong is a self-hosted deployment that cannot deliver to a service in
+its own cluster. Put an egress policy in front of this if you need the stronger
+guarantee.
+
+For `rmq` you name only the queue. The broker is the deployment's
+(`INGOT_RABBITMQ_URL`) — a tenant naming a broker would be a tenant choosing
+where this service opens an authenticated connection. A queue this deployment
+cannot reach is refused on the call that configures it, naming the variable,
+rather than accepted and then failing every delivery afterwards in a log the
+caller cannot see.
+
+### What arrives
+
+One POST per receipt, or one persistent message on the queue. `Ingot-Batch`,
+`Ingot-Event` and `Ingot-Attempt` are on the webhook's headers, and `messageId`
+on the AMQP envelope, so a receiver can deduplicate without parsing the body.
+
+```jsonc
+{
+  "event": "receipt.ready",
+  "ingot": "ing_01H8Z…",
+  "batch": "batch_1508c8…",
+  "externalId": "call_42", // your own handle, or null
+  "sourceTable": "pr_files",
+  "summary": "…",
+  "searchTerm": "…",
+  "totalResults": 412,
+  "query": "SELECT \"external_id\", \"summary\", … FROM \"ingot_receipts\" WHERE …",
+  "model": "gpt-4.1-mini",
+  "readyAt": "2026-09-06T11:02:04Z", // when it landed, stable across retries
+  "attempt": 1, // anything higher is a redelivery
+}
+```
+
+`query` is in there rather than only the ids, and it is the same string the
+receipt handed back: a delivery that said "receipt ready for `batch_1508c8`" and
+left you to reconstruct the SQL would be a second contract, and the two would
+drift.
+
+### At-least-once, and why it is an outbox
+
+Delivery is **at least once**. Deduplicate on `batch` — `readyAt` does not move
+between attempts, so the pair is stable.
+
+The mechanism is worth stating, because both obvious alternatives are silently
+wrong. A push sent from inside the transaction that wrote the receipt announces
+state a rollback can still take away, and nothing outside Postgres rolls back
+with it. A push sent after the commit, in process, is lost for good if the
+process dies in the gap. Neither failure produces an error anybody sees.
+
+So the intention to deliver is a row in `receipt_delivery_queue`, written **in
+the same transaction as the receipt itself** — the two land together or not at
+all — and `DeliveryWorker` sends it afterwards, outside any transaction. That is
+the same three-step shape the receipt worker uses, and for the same reason: a
+webhook is a network call, and holding a pooled connection across one spends ten
+connections on background work while the foreground is trying to answer.
+
+```
+ClaimDelivery     tx ~1ms   leases the row, counts the attempt
+  transport.deliver        no transaction, no connection
+CompleteDelivery  tx ~1ms   out of the outbox
+```
+
+A written receipt wakes the worker on commit, so a receiver hears about it about
+as fast as the model wrote it; `sweep-deliveries` on its minute tick is the
+floor under a wake that never happened, and it is where every retry after the
+first lives. That floor matters more here than anywhere else in the service —
+the other queues fall behind because _we_ are slow, this one because somebody
+else's endpoint is down, which lasts minutes and is the ordinary case.
+
+The target and the body are both resolved **at enqueue** and stored on the row.
+Moving your endpoint does not silently retarget deliveries already promised
+somewhere, and a body rebuilt at send time would be re-reading rows a tombstone
+or a roll-up may have moved since.
+
+Ten attempts, then it is left alone, loudly. `ingot_deliveries_abandoned` is the
+gauge and it is kept apart from `ingot_deliveries_pending` for the reason the
+receipt gauges are. Note what an abandoned _delivery_ is not: the receipt is
+written and the query you were handed still returns it. What was lost is the
+telling.
+
+| variable                    | default            |                                                          |
+| --------------------------- | ------------------ | -------------------------------------------------------- |
+| `INGOT_RABBITMQ_URL`        | unset              | The broker. Unset refuses `rmq` at config time.          |
+| `INGOT_RABBITMQ_EXCHANGE`   | `''`               | The default exchange routes by queue name.               |
+| `INGOT_DELIVERY_TIMEOUT_MS` | `10000`            | A receiver that has not answered by now is not going to. |
+| `INGOT_DELIVERY_ATTEMPTS`   | `10`               | Roughly ten minutes of somebody else's outage, absorbed. |
+| `INGOT_DELIVERY_USER_AGENT` | `ingot-receipts/1` | Sent on every webhook.                                   |
 
 ## Querying
 
@@ -513,14 +644,18 @@ ranking SQL — and they are not semantic search. Both say so at boot.
 
 ## Background work, and the transaction it must not hold
 
-Both background jobs — embedding and receipts — call somebody else's model, and
-both are split into **three commands with the call in the middle**:
+All three background jobs — embedding, receipts and delivery — call somebody
+else, and all three are split into **three commands with the call in the
+middle**:
 
 ```
-ClaimEmbeddings / ClaimReceipt   tx ~1ms   lease the work
-        embed / summarise                 no transaction, no connection held
-SaveEmbeddings / WriteReceipt    tx ~2ms   store it, leave the queue
+ClaimEmbeddings / ClaimReceipt / ClaimDelivery   tx ~1ms  lease the work
+   embed / summarise / deliver                            no transaction, no connection held
+SaveEmbeddings / WriteReceipt / CompleteDelivery tx ~2ms  store it, leave the queue
 ```
+
+The first two call a model; the third calls a webhook or a broker. The argument
+is identical either way, and the only difference is who is on the other end.
 
 The reason is `Dispatcher.send`, which opens a Postgres transaction around
 every command. That is exactly right when a command is the unit of change and
@@ -530,8 +665,9 @@ length of an LLM round trip, so a handful of concurrent receipts would starve
 the requests this service exists to answer — while presenting as a database
 problem.
 
-So the sequencing lives in a service instead. `ReceiptWorker` and `EmbedWorker`
-dispatch the three commands and make the call between them, which means:
+So the sequencing lives in a service instead. `ReceiptWorker`, `EmbedWorker` and
+`DeliveryWorker` dispatch the three commands and make the call between them,
+which means:
 
 - **A worker is never dispatched.** `PgUnitOfWork.run` joins an open scope
   rather than nesting, so calling one from inside a command would put all three

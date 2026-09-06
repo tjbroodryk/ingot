@@ -1,17 +1,19 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
-import type { IngotInfo, IngotSummary, TableConfig } from '@ingot/shared/ingot-v1';
+import type { IngotConfig, IngotInfo, IngotSummary, TableConfig } from '@ingot/shared/ingot-v1';
 import { Wire } from '@ingot/versioning/nest';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { WireShape } from '../../../versioning/shapes.js';
 import { Account as AccountScope } from '../../accounts/interface/account.decorator.js';
 import { CurrentAccount } from '../../accounts/interface/current-account.decorator.js';
 import type { Account } from '../../accounts/domain/index.js';
+import { ConfigureIngot } from '../application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../application/commands/configure-table.command.js';
 import { CreateIngot } from '../application/commands/create-ingot.command.js';
 import { DeleteIngot } from '../application/commands/delete-ingot.command.js';
 import { DropTable } from '../application/commands/drop-table.command.js';
 import { GetIngotInfo } from '../application/queries/get-ingot-info.query.js';
 import { ListIngots } from '../application/queries/list-ingots.query.js';
+import { ConfigureIngotDto } from './dto/configure-ingot.dto.js';
 import { ConfigureTableDto } from './dto/configure-table.dto.js';
 import { CreateIngotDto } from './dto/create-ingot.dto.js';
 
@@ -54,6 +56,31 @@ export class IngotsController {
   @Wire({ returns: WireShape.IngotInfo })
   info(@CurrentAccount() account: Account, @Param('ingot') ingot: string): Promise<IngotInfo> {
     return this.dispatcher.ask(new GetIngotInfo(ingot, account.id.value, account.slug.value));
+  }
+
+  /**
+   * Where this memory's receipts are delivered.
+   *
+   * Declared before `:ingot/config/:table`, because Express matches in
+   * registration order and the two differ only by a trailing segment — the
+   * more specific one is unreachable if the shorter pattern could also match.
+   * It cannot here (one segment against two), but the ordering is the habit
+   * that keeps it true when somebody adds `:ingot/config/:table/:column`.
+   *
+   * A patch, like the table config beside it: sending one setting leaves the
+   * rest alone, and the whole config comes back. Turning delivery off is
+   * `{ "delivery": { "t": "none" } }` and not an omission.
+   */
+  @Post(':ingot/config')
+  @AccountScope()
+  @Wire({ accepts: WireShape.ConfigureIngotBody, returns: WireShape.IngotConfig })
+  @HttpCode(HttpStatus.OK)
+  configureIngot(
+    @CurrentAccount() account: Account,
+    @Param('ingot') ingot: string,
+    @Body() body: ConfigureIngotDto,
+  ): Promise<IngotConfig> {
+    return this.dispatcher.send(new ConfigureIngot(ingot, account.id.value, body));
   }
 
   /**

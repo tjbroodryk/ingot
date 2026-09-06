@@ -1,6 +1,7 @@
 import { Module, type Type } from '@nestjs/common';
 import { IngotsModule } from '../contexts/ingots/ingots.module.js';
 import { RecordsModule } from '../contexts/records/records.module.js';
+import { DeliveriesSweeper } from './deliveries.sweeper.js';
 import { ReceiptsSweeper } from './receipts.sweeper.js';
 import { EmbeddingsSweeper } from './embeddings.sweeper.js';
 import { ExclusiveWork } from './exclusive.js';
@@ -26,6 +27,7 @@ export const SWEEPERS: Record<SweptKind, Type<Ticker>> = {
   [SweptKind.RollUp]: RollUpSweeper,
   [SweptKind.Embeddings]: EmbeddingsSweeper,
   [SweptKind.Receipts]: ReceiptsSweeper,
+  [SweptKind.Deliveries]: DeliveriesSweeper,
   [SweptKind.Expiry]: ExpirySweeper,
 };
 

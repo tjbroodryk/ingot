@@ -1,4 +1,5 @@
 export { ColumnSpec } from './column-spec.vo.js';
+export { Delivery } from './delivery.vo.js';
 export { type EmbeddingSpace, Ingot } from './ingot.aggregate.js';
 export { IngotId, IngotTableId } from './ingot-id.vo.js';
 export { IngotTable, type BaseFile } from './ingot-table.aggregate.js';

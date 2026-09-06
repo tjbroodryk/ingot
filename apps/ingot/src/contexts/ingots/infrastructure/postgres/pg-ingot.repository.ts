@@ -4,6 +4,7 @@ import { writeAggregate } from '../../../../shared/infrastructure/postgres/aggre
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import {
   ColumnSpec,
+  Delivery,
   Ingot,
   IngotId,
   IngotTable,
@@ -36,6 +37,9 @@ function toIngot(row: IngotRow): Ingot {
         row.embeddingModel !== null && row.embeddingDims !== null
           ? { model: row.embeddingModel, dimensions: row.embeddingDims }
           : null,
+      // Null for every memory written before delivery existed, and for every
+      // one nobody has configured since. Both read as `none`.
+      delivery: Delivery.rehydrate(row.delivery),
     },
     row.version,
   );
@@ -98,6 +102,10 @@ export class PgIngotRepository implements IngotRepository {
       expiresAt: aggregate.expiresAt,
       embeddingModel: aggregate.embedding?.model ?? null,
       embeddingDims: aggregate.embedding?.dimensions ?? null,
+      // Written as null when nothing is configured rather than as `{"t":"none"}`,
+      // so an unconfigured memory keeps reading the code's default instead of a
+      // document claiming a value the code could since have moved on from.
+      delivery: aggregate.delivery.configured ? aggregate.delivery.toWire() : null,
     };
     await writeAggregate(aggregate, ({ next, expected }) =>
       this.uow.queryable

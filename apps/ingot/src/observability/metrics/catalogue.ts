@@ -172,6 +172,37 @@ export const Metrics = {
     buckets: Buckets.Upstream,
   }),
 
+  // ── delivery ─────────────────────────────────────────────────────────────
+  DeliveriesPending: defineGauge({
+    name: 'ingot_deliveries_pending',
+    help: 'Receipts announced to a memory’s delivery target and not yet sent.',
+    labels: [],
+  }),
+  /**
+   * Deliveries that ran out of attempts.
+   *
+   * Worth a series of its own rather than a share of the error rate, and worth
+   * distinguishing from an abandoned *receipt*: the data is fine here. The
+   * summary is written and the SELECT the caller was handed still returns it —
+   * what was lost is the telling. It should sit at zero; anything else is a
+   * receiver that was promised something and never got it.
+   */
+  DeliveriesAbandoned: defineGauge({
+    name: 'ingot_deliveries_abandoned',
+    help: 'Receipts whose delivery failed often enough that it is no longer retried.',
+    labels: [],
+  }),
+  /**
+   * `kind` is the transport — `webhook`, `rmq` — and never an endpoint or a
+   * queue name: those are the caller's, unbounded, and sometimes carry a token.
+   */
+  DeliveryDuration: defineHistogram({
+    name: 'ingot_delivery_duration_seconds',
+    help: 'Time to deliver one receipt to a memory’s target.',
+    labels: ['kind', 'outcome'],
+    buckets: Buckets.Upstream,
+  }),
+
   // ── infrastructure ──────────────────────────────────────────────────────
   TransactionDuration: defineHistogram({
     name: 'ingot_transaction_duration_seconds',

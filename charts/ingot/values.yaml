@@ -160,6 +160,28 @@ config:
   # and a CORS failure. Comma-separated.
   corsOrigin: ''
 
+  # ── authentication ───────────────────────────────────────────────────────
+  # Who may call this service. Named rather than inferred, like the base tier,
+  # and for a sharper reason: a wrong bucket loses data, and a wrong answer
+  # here hands somebody else's agent the memories.
+  #
+  #   sealed   one account and one root key, both from configuration. Nothing
+  #            to sign up for and no third party in the authentication path.
+  #
+  # The root key is a secret and lives with the others — `INGOT_API_KEY` in
+  # the Secret this chart reads. See `secrets:` below.
+  auth:
+    mode: sealed
+
+    # The one account, created at boot if it is not there. Required, and with
+    # no default: it is the first segment of every route this deployment
+    # serves, so a chart that guessed would be guessing your URLs.
+    #
+    #   account: acme  →  https://<host>/api/v1/acme/<ingot>/add
+    account: ''
+    # Shown in the dashboard. Defaults to the slug.
+    accountName: ''
+
   # ── the base tier ────────────────────────────────────────────────────────
   # `filesystem`, `s3` or `gcs`. Named rather than inferred, and the chart
   # refuses to render if the driver you name is missing what it needs.
@@ -229,6 +251,31 @@ config:
     embeddingDimensions: null
     summaryModel: ''
 
+  # ── delivering receipts ──────────────────────────────────────────────────
+  # A receipt is collected by polling by default: /add hands back a SELECT and
+  # the caller runs it. A memory can also nominate somewhere to push each one
+  # as it lands, and these decide what this deployment is willing to do about
+  # that.
+  #
+  # Nothing here is required. Webhooks work with the chart as it ships, and a
+  # memory pointed at a queue is refused — naming the variable — until a broker
+  # is configured. The broker URL itself is a *secret*, not a value: it carries
+  # credentials, and `secrets.rabbitmqUrl` is where it goes.
+  delivery:
+    # The default exchange routes a message to the queue named by the routing
+    # key, which is exactly what a per-memory queue name is. Set this only for
+    # your own topology, and bind the queues yourself.
+    exchange: ''
+    # A receiver that has not answered in this long is not going to.
+    timeoutMs: 10000
+    # Attempts before a delivery is left alone, one per minute-long sweep.
+    # Higher than a receipt's four: a receipt that fails repeats the same
+    # refusal, while a delivery that fails is usually somebody else's service
+    # being down, which is a thing that ends.
+    attempts: 10
+    # Sent as User-Agent on every webhook. Empty keeps the service's own.
+    userAgent: ''
+
   # ── the query engine ─────────────────────────────────────────────────────
   # The ceiling on what one caller's question can cost. See the note on
   # `server.resources` before raising `memoryLimit`.
@@ -259,24 +306,40 @@ config:
 #
 #   kubectl -n ingot create secret generic ingot-secrets \
 #     --from-literal=DATABASE_URL='postgres://…' \
+#     --from-literal=INGOT_API_KEY="ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')" \
 #     --from-literal=INGOT_S3_ACCESS_KEY_ID='…' \
-#     --from-literal=INGOT_S3_SECRET_ACCESS_KEY='…'
+#     --from-literal=INGOT_S3_SECRET_ACCESS_KEY='…' \
+#     --from-literal=INGOT_RABBITMQ_URL='amqps://…'
 #
 # The key names are the contract, not the mechanism — sealed-secrets, SOPS or
 # an ExternalSecret producing the same names all work.
+#
+# `INGOT_API_KEY` is the root credential for `config.auth.account`, and it is
+# the one that cannot be revoked from inside the service: rotating it means
+# changing it here and restarting the pods, at which point the old one stops
+# working. Generate it — the service refuses anything under 31 characters, and
+# a root key somebody thought up is a root key somebody else can think up.
 secrets:
   create: false
   existingSecret: ingot-secrets
 
-  # Only read when `create` is true, and then `databaseUrl` is required: it is
-  # the one setting with no default anywhere, because Ingot refuses to start
-  # without a database rather than inventing an address for one.
+  # Only read when `create` is true, and then `databaseUrl` and `apiKey` are
+  # both required: the first because Ingot refuses to start without a database
+  # rather than inventing an address for one, and the second because it refuses
+  # to start without knowing who may call it.
   #
   # Set these from `--set-file` or an unversioned `-f secrets.yaml`.
   databaseUrl: ''
+  apiKey: ''
   s3AccessKeyId: ''
   s3SecretAccessKey: ''
   openaiApiKey: ''
+  # The AMQP broker receipts are delivered onto, if any. A secret rather than a
+  # value because it carries credentials — and it is the operator's to set, not
+  # a caller's: a memory names only a queue on it. Leave it empty and
+  # { "t": "rmq" } is refused at the moment somebody configures a memory for
+  # it, which is the only moment they can do anything about it.
+  rabbitmqUrl: ''
 
 # ── the migration ──────────────────────────────────────────────────────────
 # A `pre-install,pre-upgrade` hook, so the schema is current before a single

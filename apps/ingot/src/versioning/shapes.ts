@@ -25,6 +25,11 @@ export enum WireShape {
   TableConfig = 'TableConfig',
   ConfigureTableBody = 'ConfigureTableBody',
 
+  IngotConfig = 'IngotConfig',
+  ConfigureIngotBody = 'ConfigureIngotBody',
+  /** Not returned by any route: the body this service *sends* to a webhook. */
+  DeliveredReceipt = 'DeliveredReceipt',
+
   AddBody = 'AddBody',
   AddResult = 'AddResult',
 

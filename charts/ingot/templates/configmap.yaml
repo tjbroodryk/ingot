@@ -17,6 +17,15 @@ data:
   CORS_ORIGIN: {{ . | quote }}
   {{- end }}
 
+  # ── authentication ──────────────────────────────────────────────────────
+  # The mode and the account are not secret; the root key is, and lives in the
+  # Secret as INGOT_API_KEY.
+  INGOT_AUTH: {{ .Values.config.auth.mode | quote }}
+  INGOT_ACCOUNT: {{ .Values.config.auth.account | quote }}
+  {{- with .Values.config.auth.accountName }}
+  INGOT_ACCOUNT_NAME: {{ . | quote }}
+  {{- end }}
+
   # ── the base tier ───────────────────────────────────────────────────────
   INGOT_STORAGE: {{ .Values.config.storage | quote }}
   {{- if eq .Values.config.storage "s3" }}
@@ -73,6 +82,19 @@ data:
   {{- with .Values.config.gcp.summaryModel }}
   INGOT_GCP_SUMMARY_MODEL: {{ . | quote }}
   {{- end }}
+  {{- end }}
+
+  # ── delivering receipts ─────────────────────────────────────────────────
+  # The broker URL is not here: it carries credentials, so it lives in the
+  # Secret beside DATABASE_URL. These are the knobs that are safe in a git-
+  # tracked ConfigMap.
+  INGOT_DELIVERY_TIMEOUT_MS: {{ .Values.config.delivery.timeoutMs | quote }}
+  INGOT_DELIVERY_ATTEMPTS: {{ .Values.config.delivery.attempts | quote }}
+  {{- with .Values.config.delivery.exchange }}
+  INGOT_RABBITMQ_EXCHANGE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.delivery.userAgent }}
+  INGOT_DELIVERY_USER_AGENT: {{ . | quote }}
   {{- end }}
 
   # ── the query engine ────────────────────────────────────────────────────

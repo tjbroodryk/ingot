@@ -4,13 +4,7 @@ import { EndpointRow } from '../src/docs/endpoint-row';
 import { DocsNav } from '../src/docs/docs-nav';
 import { BASICS } from '../src/docs/page-sections';
 import { ReferencePage } from '../src/docs/reference-page';
-import {
-  Auth,
-  ENDPOINTS,
-  type EndpointGroup,
-  GROUPS,
-  GROUP_ORDER,
-} from '../src/docs/reference';
+import { Auth, ENDPOINTS, type EndpointGroup, GROUPS, GROUP_ORDER } from '../src/docs/reference';
 
 /**
  * The reference, kept honest.
@@ -91,7 +85,10 @@ describe('the reference', () => {
       (endpoint) => endpoint.path,
     );
 
-    expect(open.sort()).toEqual(['/api/health', '/api/v1/accounts', '/api/versions']);
+    // Two, and neither of them writes. `/api/v1/accounts` used to be here as
+    // sign-up; which accounts exist is now a deployment's decision at boot
+    // rather than an unauthenticated POST anybody could make.
+    expect(open.sort()).toEqual(['/api/health', '/api/versions']);
   });
 });
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AddBody, ConfigureTableBody, IngotInfo } from '@ingot/shared/ingot-v1';
 import { Dispatcher } from '../shared/application/index.js';
 import type { Account } from '../contexts/accounts/domain/index.js';
+import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
 import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
@@ -193,6 +194,13 @@ export class IngotMcpServer {
             // the one place both surfaces go through — this one takes no pipe.
             (args.fts === undefined ? {} : { fts: args.fts }) as ConfigureTableBody,
           ),
+        );
+
+      case McpTool.ConfigureDelivery:
+        return this.dispatcher.send(
+          // Left as it arrived: `Delivery` parses the strategy, which is the
+          // one place both surfaces go through — this one takes no pipe.
+          new ConfigureIngot(ingotId, accountId, { delivery: args.delivery }),
         );
 
       case McpTool.DropTable:

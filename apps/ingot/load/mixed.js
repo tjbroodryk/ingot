@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { Trend } from 'k6/metrics';
-import { V1, addBody, createIngot, headers, ok, signUp } from './lib.js';
+import { V1, addBody, createIngot, headers, ok, account as configuredAccount } from './lib.js';
 
 /**
  * What an agent actually does: store something, then read it back.
@@ -32,7 +32,7 @@ export const options = {
 };
 
 export function setup() {
-  const account = signUp('mixed');
+  const account = configuredAccount();
   const ingot = createIngot(account, 'k6 mixed load');
   // Seeded so the first reads are not against an empty table.
   for (let n = 0; n < 5; n++) {

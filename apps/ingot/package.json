@@ -24,9 +24,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3",
     "@duckdb/node-api": "1.5.5-r.4",
+    "@google-cloud/storage": "^8.0.1",
     "@ingot/shared": "workspace:*",
     "@ingot/versioning": "workspace:*",
-    "@google-cloud/storage": "^8.0.1",
     "@modelcontextprotocol/sdk": "^1",
     "@nestjs/common": "^11",
     "@nestjs/config": "^4",
@@ -39,6 +39,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-trace-node": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
+    "amqplib": "^2.0.1",
     "class-transformer": "^0.5",
     "class-validator": "^0.14",
     "drizzle-orm": "^0.45.2",

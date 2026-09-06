@@ -77,6 +77,27 @@ const RELEASES: readonly Release[] = [
       },
     ],
   },
+  {
+    version: '2026-09-06',
+    summary:
+      'Memories carry settings: `POST /:ingot/config` sets where a receipt is ' +
+      'delivered — a webhook or a queue — and `IngotInfo` reports what it is ' +
+      'set to. Receipts are still collected by their query; delivery is opt-in.',
+    changes: [
+      {
+        shape: WireShape.IngotInfo,
+        note: 'The memory gained `config`, its delivery settings.',
+        // Removed rather than nulled, for the reason `withoutConfig` gives: a
+        // caller on the older version was written against a shape with no such
+        // field, and a null is still a field. The tables' own `config` is not
+        // touched here — that is the 2026-08-27 change, and both apply.
+        backward: (value) => {
+          const { config: _dropped, ...rest } = value;
+          return rest;
+        },
+      },
+    ],
+  },
 ];
 
 /**

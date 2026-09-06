@@ -15,6 +15,8 @@ export enum SweptKind {
   Embeddings = 'embeddings',
   /** Writes that asked for a summary and have not been given one. */
   Receipts = 'receipts',
+  /** Receipts announced to a memory's delivery target and not yet sent. */
+  Deliveries = 'deliveries',
   /** Memories past the retention their creator asked for. */
   Expiry = 'expiry',
 }

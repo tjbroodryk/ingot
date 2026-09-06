@@ -1,11 +1,11 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { AuthenticationFailed } from '../../../shared/domain/index.js';
-import type { AccountPrincipal } from '../application/account-authenticator.js';
+import type { Principal } from '../../../auth/authenticator.port.js';
 
 const PRINCIPAL = Symbol.for('ingot.principal');
 
 interface Carrier {
-  [PRINCIPAL]?: AccountPrincipal;
+  [PRINCIPAL]?: Principal;
 }
 
 /**
@@ -16,15 +16,15 @@ interface Carrier {
  * by assigning a plausible-looking property, and so a guard and a param
  * decorator cannot disagree about where it lives.
  */
-export function attachPrincipal(request: object, principal: AccountPrincipal): void {
+export function attachPrincipal(request: object, principal: Principal): void {
   (request as Carrier)[PRINCIPAL] = principal;
 }
 
-export function principalOf(request: object): AccountPrincipal | undefined {
+export function principalOf(request: object): Principal | undefined {
   return (request as Carrier)[PRINCIPAL];
 }
 
-export function requirePrincipal(context: ExecutionContext): AccountPrincipal {
+export function requirePrincipal(context: ExecutionContext): Principal {
   const principal = principalOf(context.switchToHttp().getRequest());
   if (!principal) {
     throw new AuthenticationFailed('This request was not authenticated');

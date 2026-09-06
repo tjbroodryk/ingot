@@ -1,42 +1,36 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
-import type { AccountDetail, CreatedAccount, MintedKey } from '@ingot/shared/ingot-v1';
+import type { AccountDetail, MintedKey } from '@ingot/shared/ingot-v1';
 import { Wire } from '@ingot/versioning/nest';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { WireShape } from '../../../versioning/shapes.js';
-import { CreateAccount } from '../application/commands/create-account.command.js';
 import { MintKey } from '../application/commands/mint-key.command.js';
 import { RevokeKey } from '../application/commands/revoke-key.command.js';
 import type { Account } from '../domain/index.js';
 import { toAccountWire, toKeyWire } from '../infrastructure/account.mapper.js';
 import { Account as AccountScope } from './account.decorator.js';
-import { CreateAccountDto } from './dto/create-account.dto.js';
 import { MintKeyDto } from './dto/mint-key.dto.js';
 import { CurrentAccount } from './current-account.decorator.js';
 
 /**
- * Sign-up and credentials.
+ * The account, and the keys that speak for it.
+ *
+ * There is deliberately no route that creates an account. Every mode in
+ * `AuthMode` decides up front which accounts exist — sealed mode has exactly
+ * the one in `INGOT_ACCOUNT` — and the route that used to do it was the only
+ * unauthenticated write in the service, handing anybody a permanent credential
+ * for a tenant with no owner and no recovery. `CreateAccount` survives as a
+ * command because the sealed seed and the test suite both open accounts; what
+ * is gone is the ability to do it over HTTP with no credential.
  *
  * Registered before `IngotController` in `AppModule`, and that order is load
  * bearing: `/:account/:ingot` would otherwise match `/accounts/acme/keys` and
  * route key management into the memory API. `AccountSlug` refuses to mint an
  * account named `accounts` as the second half of that defence, and
- * `route-collision.test.ts` asserts both still hold.
+ * `route-accounts.test.ts` asserts both still hold.
  */
 @Controller({ path: 'accounts', version: '1' })
 export class AccountsController {
   constructor(private readonly dispatcher: Dispatcher) {}
-
-  /**
-   * The only route on the service that needs no key, because it is where keys
-   * come from. The response carries a usable secret exactly once.
-   */
-  @Post()
-  @AccountScope.Open()
-  @Wire({ accepts: WireShape.CreateAccountBody, returns: WireShape.CreatedAccount })
-  @HttpCode(HttpStatus.CREATED)
-  create(@Body() body: CreateAccountDto): Promise<CreatedAccount> {
-    return this.dispatcher.send(new CreateAccount(body.slug, body.name));
-  }
 
   @Get(':account')
   @AccountScope()

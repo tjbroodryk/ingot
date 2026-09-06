@@ -14,4 +14,5 @@ export {
   overlayRow,
   overlayTombstone,
   overlayVector,
+  receiptDeliveryQueue,
 } from '../contexts/records/infrastructure/postgres/schema.js';

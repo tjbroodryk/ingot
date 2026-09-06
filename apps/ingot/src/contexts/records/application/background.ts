@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DeliveryWorker } from './delivery-worker.js';
 import { EmbedWorker } from './embed-worker.js';
 import { ReceiptWorker } from './receipt-worker.js';
 
@@ -14,6 +15,14 @@ import { ReceiptWorker } from './receipt-worker.js';
 export enum BackgroundKind {
   Embeddings = 'embeddings',
   Receipts = 'receipts',
+  /**
+   * Receipts announced to a memory's delivery target and not yet sent.
+   *
+   * Woken by the receipt's own write rather than by `/add`, because that is
+   * when there is something to deliver — a receipt is queued at `/add` and
+   * becomes findable a model call later.
+   */
+  Deliveries = 'deliveries',
 }
 
 /**
@@ -56,6 +65,7 @@ export class BackgroundWork {
   constructor(
     private readonly embeddings: EmbedWorker,
     private readonly receipts: ReceiptWorker,
+    private readonly deliveries: DeliveryWorker,
   ) {}
 
   /** Embeds what was just queued, without making the caller wait for it. */
@@ -66,6 +76,17 @@ export class BackgroundWork {
   /** Writes the receipts that were just promised. */
   wakeReceipts(): void {
     this.wake(BackgroundKind.Receipts, () => this.receipts.drain());
+  }
+
+  /**
+   * Sends the receipts that were just announced.
+   *
+   * Called from `WriteReceipt`'s `afterCommit` rather than from `/add`: a
+   * receipt is queued at `/add` and does not exist until a model has answered,
+   * so waking delivery any earlier would be a drain over an empty queue.
+   */
+  wakeDeliveries(): void {
+    this.wake(BackgroundKind.Deliveries, () => this.deliveries.drain());
   }
 
   /**

@@ -442,6 +442,8 @@ export interface IngotInfo {
   readonly expiresAt: string | null;
   /** Null until the first embedding is written. See `EmbeddingInfo`. */
   readonly embedding: EmbeddingInfo | null;
+  /** Its settings, defaults included — never absent, never partial. */
+  readonly config: IngotConfig;
   readonly tables: readonly TableInfo[];
 }
 
@@ -461,6 +463,111 @@ export interface CreateIngotBody {
    * reversible.** It is opt-in for that reason.
    */
   readonly retainFor?: string;
+}
+
+// ── delivery ──────────────────────────────────────────────────────────────
+
+/**
+ * How a memory is told that a receipt has been written.
+ *
+ * A receipt is collected by polling by default: `/add` hands back a SELECT and
+ * the caller runs it when it wants the answer. That needs no registration, no
+ * retry policy and no endpoint to be up — but it is a poor fit for an agent
+ * that has moved on and would rather be told.
+ *
+ * Configured per memory rather than per `/add`, because the thing that wants
+ * telling is the *system* holding the memory, not the individual call. A
+ * strategy set once applies to every receipt the memory ever writes, including
+ * ones written by a caller who knows nothing about the endpoint.
+ */
+export enum DeliveryKind {
+  /** The default: nothing is pushed, and the receipt's query is the contract. */
+  None = 'none',
+  /** One POST per receipt, to an endpoint the memory's owner nominates. */
+  Webhook = 'webhook',
+  /** One message per receipt, onto a queue on the deployment's broker. */
+  Rmq = 'rmq',
+}
+
+/**
+ * Where a memory's receipts are delivered.
+ *
+ * A discriminated union rather than a bag of optional fields, so a webhook
+ * without an endpoint and a queue without a name are shapes that cannot be
+ * expressed rather than ones that have to be checked. `t` is the discriminant.
+ *
+ * Note what is *not* here: for `rmq`, only the queue. The broker is the
+ * deployment's (`INGOT_RABBITMQ_URL`), not the caller's — a tenant naming a
+ * broker would be a tenant choosing where this service opens connections.
+ */
+export type DeliveryStrategy =
+  | { readonly t: DeliveryKind.None }
+  | { readonly t: DeliveryKind.Webhook; readonly endpoint: string }
+  | { readonly t: DeliveryKind.Rmq; readonly queue: string };
+
+/**
+ * Everything configurable about a memory as a whole.
+ *
+ * An envelope around a single member, for the reason `TableConfig` is one: the
+ * next memory-wide setting should be a field here rather than a second
+ * endpoint and a second migration.
+ */
+export interface IngotConfig {
+  readonly delivery: DeliveryStrategy;
+}
+
+/**
+ * What `POST /:account/:ingot/config` accepts.
+ *
+ * A patch, like the table config it sits beside: an omitted field keeps what
+ * the memory already has. Turning delivery off is `{ delivery: { t: "none" } }`
+ * and not an omission, so a caller who sends a partial body cannot silently
+ * disconnect a webhook somebody else configured.
+ */
+export interface ConfigureIngotBody {
+  readonly delivery?: DeliveryStrategy;
+}
+
+/** What a delivery announces. One member today; a receiver should switch on it. */
+export enum DeliveryEvent {
+  ReceiptReady = 'receipt.ready',
+}
+
+/**
+ * The body of a delivery: a receipt that has just become findable.
+ *
+ * The four fields of the compact stand-in — `externalId`, `summary`,
+ * `searchTerm`, `totalResults` — are the same four `AddReceipt` carries, under
+ * the same names, because a receiver splicing this over a bulky tool output
+ * should not have to learn a second vocabulary for the same thing.
+ *
+ * `query` is here rather than only the ids, because that is what the caller was
+ * given at `/add` and what any delivery has to agree with. A webhook that said
+ * "receipt ready for batch_1508c8" and left the recipient to reconstruct the
+ * SQL would be a second contract, and the two would drift.
+ *
+ * `readyAt` is when the receipt was written, not when this attempt was made, so
+ * it is stable across redeliveries — pair it with `batch` to make a receiver
+ * idempotent. `attempt` counts from 1 and says whether this is a redelivery.
+ */
+export interface DeliveredReceipt {
+  readonly event: DeliveryEvent.ReceiptReady;
+  /** The memory, not the account. */
+  readonly ingot: string;
+  readonly batch: string;
+  /** The caller's own handle for the result, or null if they gave none. */
+  readonly externalId: string | null;
+  readonly sourceTable: string;
+  readonly summary: string;
+  readonly searchTerm: string;
+  readonly totalResults: number;
+  /** The SELECT that returns it — the same string the receipt handed back. */
+  readonly query: string;
+  readonly model: string;
+  /** When the receipt became findable. Stable across redeliveries. */
+  readonly readyAt: string;
+  /** 1 on the first attempt. Anything higher is a redelivery. */
+  readonly attempt: number;
 }
 
 // ── forgetting ────────────────────────────────────────────────────────────

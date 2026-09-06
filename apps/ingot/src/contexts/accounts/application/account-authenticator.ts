@@ -1,21 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuthenticationFailed, CLOCK, type Clock } from '../../../shared/domain/index.js';
-import {
-  ACCOUNT_REPOSITORY,
-  type Account,
-  ApiKey,
-  type AccountRepository,
-} from '../domain/index.js';
-import type { AccountKeyId } from '../domain/index.js';
-
-/** Who is calling, once a key has checked out. */
-export interface AccountPrincipal {
-  readonly account: Account;
-  readonly keyId: AccountKeyId;
-}
+import type { KeyPrincipal } from '../../../auth/authenticator.port.js';
+import { ACCOUNT_REPOSITORY, ApiKey, type AccountRepository } from '../domain/index.js';
 
 /**
  * Turns a presented key into a principal.
+ *
+ * One half of authentication rather than the whole of it: this is the digest
+ * lookup, and which credentials a deployment accepts at all is decided by the
+ * adapter in `src/auth/` that calls it. `SealedAuthenticator` reaches here for
+ * anything that is not its configured root key.
  *
  * Not a query, because it writes: every successful authentication stamps
  * `last_used_at`, which is the only way an operator can tell a live key from
@@ -35,7 +29,7 @@ export class AccountAuthenticator {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async authenticate(presented: string): Promise<AccountPrincipal> {
+  async authenticate(presented: string): Promise<KeyPrincipal> {
     if (!ApiKey.looksLikeOurs(presented)) throw refused();
 
     const account = await this.accounts.findByKeyDigest(ApiKey.digestOf(presented));
@@ -48,7 +42,7 @@ export class AccountAuthenticator {
     account.markUsed(key.id, now);
     await this.accounts.touch(key.id, now);
 
-    return { account, keyId: key.id };
+    return { via: 'key', account, keyId: key.id };
   }
 }
 

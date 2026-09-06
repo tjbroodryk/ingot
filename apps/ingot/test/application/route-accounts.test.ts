@@ -86,24 +86,25 @@ describe('every route', () => {
    * Unauthenticated routes, listed here so that adding one is a visible edit
    * to a test rather than a decorator nobody reviews.
    *
-   * - Account creation, because it is where keys come from and a caller has
-   *   none yet.
    * - Health, because a load balancer does not hold credentials.
    * - The version list, because deciding whether to integrate with a service
    *   is something you do before you have a key. It exposes the changelog and
    *   nothing else.
+   *
+   * Neither of them writes anything, and that is now the rule rather than a
+   * coincidence: `AccountsController.create` used to be on this list, and it
+   * was an unauthenticated write that handed back a permanent credential.
+   * Which accounts exist is decided by `INGOT_AUTH` at boot. If a mode is ever
+   * added that needs a sign-up route, it belongs to that mode's module and
+   * this list has to grow deliberately.
    */
-  it('has exactly three open routes, and they are the expected three', async () => {
+  it('has exactly two open routes, and neither of them writes', async () => {
     const open = (await routes())
       .filter((route) => route.binding?.open === true)
       .map((route) => `${route.controller}.${route.handler}`)
       .sort();
 
-    expect(open).toEqual([
-      'AccountsController.create',
-      'HealthController.check',
-      'VersionsController.list',
-    ]);
+    expect(open).toEqual(['HealthController.check', 'VersionsController.list']);
   });
 
   it('names a path parameter that its route actually has', async () => {
@@ -137,8 +138,11 @@ describe('route registration order', () => {
 
     const positions = order.map((name) => ({
       name,
-      // The import list, not the import statements at the top.
-      at: source.indexOf(`\n    ${name},`),
+      // The import list, not the import statements at the top: a bare entry on
+      // its own line. Matched by shape rather than by a fixed indent, because
+      // the list moved a level deeper when `AppModule` became a dynamic module
+      // and a test that broke on that would have been reporting nothing.
+      at: source.search(new RegExp(`^\\s+${name},$`, 'm')),
     }));
 
     for (const entry of positions) expect(entry.at).toBeGreaterThan(-1);

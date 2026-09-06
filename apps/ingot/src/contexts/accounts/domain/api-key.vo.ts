@@ -34,6 +34,23 @@ export class ApiKey extends ValueObject {
     return new ApiKey(`${KEY_PREFIX}${randomBytes(24).toString('base64url')}`);
   }
 
+  /**
+   * A key this service did not mint — the one configured for sealed mode.
+   *
+   * Separate from `mint` rather than an optional argument to it, because they
+   * are different acts: `mint` produces a secret nobody has seen, and this
+   * accepts one an operator generated and is holding in a Secret. Neither the
+   * digest nor the prefix can be derived outside this file — `VISIBLE` is
+   * private — so a caller that has a secret and wants those has to come here.
+   *
+   * No validation beyond the shape the constructor implies. Whether a key is
+   * long enough to be a root credential is a deployment question, and
+   * `auth-settings.ts` answers it where the message can name the variable.
+   */
+  static from(secret: string): ApiKey {
+    return new ApiKey(secret);
+  }
+
   static digestOf(secret: string): string {
     return createHash('sha256').update(secret, 'utf8').digest('hex');
   }

@@ -8,6 +8,11 @@ import { check, fail } from 'k6';
  * they all have to happen exactly once rather than once per virtual user, so
  * they live in `setup()` and the result is handed to the VUs. A script that
  * signed up per iteration would be measuring account creation.
+ *
+ * The account and the key are the ones the target was started with. There is
+ * no sign-up call to make any more: which accounts exist is decided by
+ * `INGOT_AUTH` at boot, so a load script is pointed at a deployment rather
+ * than creating itself a corner of one.
  */
 export const BASE = __ENV.INGOT_URL || 'http://127.0.0.1:3002';
 export const V1 = `${BASE}/api/v1`;
@@ -16,18 +21,24 @@ export function headers(key) {
   return { headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` } };
 }
 
-/** An account and its first key. Slugged by clock so reruns do not collide. */
-export function signUp(label) {
-  const slug = `load-${label}-${Date.now().toString(36)}`;
-  const response = http.post(`${V1}/accounts`, JSON.stringify({ slug, name: `k6 ${label}` }), {
-    headers: { 'content-type': 'application/json' },
-  });
+/**
+ * The account under load, from the same two variables the server reads.
+ *
+ * Every virtual user shares it, which is the honest shape for this: a sealed
+ * deployment has one account, so measuring against several would be measuring
+ * something the service does not do.
+ */
+export function account() {
+  const slug = __ENV.INGOT_ACCOUNT;
+  const key = __ENV.INGOT_API_KEY;
 
-  if (response.status !== 201) {
-    fail(`could not create an account (${response.status}): ${response.body}`);
+  if (!slug || !key) {
+    fail(
+      'INGOT_ACCOUNT and INGOT_API_KEY are not set. They are what the target was started ' +
+        'with — export them before running k6.',
+    );
   }
-  const body = response.json();
-  return { slug: body.account.slug, key: body.key.secret };
+  return { slug, key };
 }
 
 export function createIngot(account, name) {

@@ -2,11 +2,28 @@ import 'reflect-metadata';
 import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { authSettings, fileBackedReader } from './auth/auth-settings.js';
 import { startTelemetry } from './observability/index.js';
 
 async function bootstrap(): Promise<void> {
   await startTelemetry(); // before the container
-  const app = await NestFactory.create(AppModule);
+
+  /**
+   * How this deployment authenticates, decided before anything is built.
+   *
+   * Here rather than in a `useFactory` because the mode is a fact the module
+   * graph is assembled *from* — `imports` are evaluated before the container
+   * exists, so nothing inside it can be asked. It also means a mode named
+   * without its values throws with nothing listening, rather than leaving a
+   * service that accepts connections and refuses every one of them.
+   *
+   * `process.env` rather than `ConfigService` for the same reason, and it is
+   * enough: Bun loads `.env` before this file runs, and a deployment sets real
+   * environment variables. `ConfigModule` still reads everything else.
+   */
+  const auth = authSettings(fileBackedReader((key) => process.env[key]));
+
+  const app = await NestFactory.create(AppModule.forRoot(auth));
 
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

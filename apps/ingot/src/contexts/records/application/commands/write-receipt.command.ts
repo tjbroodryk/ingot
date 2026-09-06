@@ -1,7 +1,13 @@
 import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
 import type { Receipt } from '../../../../ai/summariser.port.js';
-import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
+import {
+  Command,
+  type ICommandHandler,
+  UNIT_OF_WORK,
+  type UnitOfWork,
+} from '../../../../shared/application/index.js';
+import { DELIVERY_TRIGGER, type DeliveryTrigger } from '../ports/delivery-trigger.port.js';
 import {
   CLOCK,
   type Clock,
@@ -64,6 +70,8 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
     @Inject(RECEIPT_NOTIFIER) private readonly notifier: ReceiptNotifier,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(DELIVERY_TRIGGER) private readonly background: DeliveryTrigger,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -101,18 +109,30 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
 
     await this.overlay.completeReceipt(job.batch);
 
-    // Announced inside the transaction that wrote it, so the port says
-    // implementations must not throw: a notifier that failed would unwind a
-    // summary a model has already been paid for. The only one today logs.
+    // Announced inside the transaction that wrote it, and that is the point:
+    // the notifier writes an outbox row rather than calling anybody, so the
+    // receipt and the promise to announce it land together or not at all. The
+    // port says implementations must not throw — a notifier that failed would
+    // unwind a summary a model has already been paid for.
     await this.notifier.ready({
       ingotId: job.ingotId,
       batch: job.batch,
+      externalId: job.externalId,
       sourceTable: job.sourceTable,
       summary: receipt.summary,
       searchTerm: receipt.searchTerm,
+      rows: job.rows,
       query: queryForReceipt(job.batch),
       model: command.model,
+      readyAt: now,
     });
+
+    // And sent afterwards. `afterCommit` for the reason the port gives:
+    // anything with an effect outside this transaction belongs there, and a
+    // wake that ran inside it would send the worker looking for an outbox row
+    // a rollback could still take away. The sweeper is the floor under a wake
+    // that never happened.
+    this.uow.afterCommit(async () => this.background.wakeDeliveries());
   }
 
   /**

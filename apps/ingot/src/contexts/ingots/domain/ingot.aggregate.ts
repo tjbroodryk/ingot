@@ -1,4 +1,6 @@
+import type { IngotConfig } from '@ingot/shared/ingot-v1';
 import { AggregateRoot, ConflictingState, Guard } from '../../../shared/domain/index.js';
+import { Delivery } from './delivery.vo.js';
 import { IngotId } from './ingot-id.vo.js';
 import { Retention } from './retention.vo.js';
 
@@ -23,6 +25,8 @@ interface IngotProps {
   expiresAt: Date | null;
   /** Set by the first embedding written. Null until then. */
   embedding: EmbeddingSpace | null;
+  /** Where this memory's receipts are pushed. `none` until configured. */
+  delivery: Delivery;
 }
 
 /**
@@ -57,6 +61,11 @@ export class Ingot extends AggregateRoot<IngotId> {
       // acquires one, and a memory that does acquires whichever model was
       // configured when its first vector was written.
       embedding: null,
+      // Nor is this. Receipts are collected by the SELECT `/add` hands back
+      // until somebody nominates somewhere to push them to, which is a second
+      // call rather than a field on `create` — a delivery target is a property
+      // of the system holding the memory, not of the moment it was cast.
+      delivery: Delivery.none(),
     });
   }
 
@@ -93,6 +102,38 @@ export class Ingot extends AggregateRoot<IngotId> {
   /** Whether this ingot is the given account's. The tenancy check, once. */
   belongsTo(accountId: string): boolean {
     return this.props.accountId === accountId;
+  }
+
+  /** Where this memory's receipts are pushed. `none` until configured. */
+  get delivery(): Delivery {
+    return this.props.delivery;
+  }
+
+  /** Everything configurable about this memory, defaults included. */
+  get config(): IngotConfig {
+    return { delivery: this.props.delivery.toWire() };
+  }
+
+  /**
+   * Applies a caller's patch, and says whether anything moved.
+   *
+   * A patch, so an absent field keeps what is already set: a config call sent
+   * to change one thing must not quietly undo another, which is what makes an
+   * endpoint like this safe to call twice. Turning delivery off is therefore
+   * `{ t: "none" }` and not an omission.
+   *
+   * The boolean is what stops a no-op taking the aggregate's version. Saving
+   * for a patch that changed nothing makes whatever is writing to this memory
+   * right now lose an optimistic-concurrency race for no reason at all.
+   */
+  configure(patch: { readonly delivery?: unknown }): boolean {
+    if (patch.delivery === undefined) return false;
+
+    const delivery = Delivery.of(patch.delivery);
+    if (delivery.equals(this.props.delivery)) return false;
+
+    this.props.delivery = delivery;
+    return true;
   }
 
   /** The vector space this memory's embeddings live in. Null until the first. */

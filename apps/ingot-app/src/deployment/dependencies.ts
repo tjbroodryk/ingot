@@ -83,7 +83,7 @@ export const REQUIRED: readonly Dependency[] = [
     title: 'The database, and the coordinator',
     body: [
       'Postgres holds the catalogue and the overlay — never the Parquet. A memory is written to the database when it arrives and folded into a Parquet generation later, so what is in Postgres is the rows that have not been folded yet, plus the manifest saying where the folded ones went.',
-      'It is also how the replicas agree. The embedding and receipt queues are ordinary tables, claimed with `FOR UPDATE SKIP LOCKED` under a lease, and each sweep that drains one takes a Postgres advisory lock so that exactly one replica is sweeping while the rest serve traffic. Nothing else in the deployment holds a timer, a journal or a lock.',
+      'It is also how the replicas agree. The embedding queue, the receipt queue and the delivery outbox are ordinary tables, claimed with `FOR UPDATE SKIP LOCKED` under a lease, and each sweep that drains one takes a Postgres advisory lock so that exactly one replica is sweeping while the rest serve traffic. Nothing else in the deployment holds a timer, a journal or a lock.',
       'The migrations in `apps/ingot/drizzle` are the whole schema — the tables, the retention indexes and the queue triggers. A fresh container applies them on first boot, to both `ingot` and `ingot_test`; a database that already exists takes them with `bun run db:migrate`.',
       'One thing in `docker-compose.yml` is a development choice rather than a deployment one. That Postgres runs with `fsync=off`, `synchronous_commit=off` and `full_page_writes=off`, because it is disposable and the suite writes a queue row per assertion. Do not carry those flags to a database you intend to keep.',
     ],
@@ -213,6 +213,44 @@ export const OPTIONAL: readonly Dependency[] = [
     ],
   },
   {
+    id: 'delivery',
+    nav: 'Receipt delivery',
+    kicker: 'Optional · webhooks and RabbitMQ',
+    title: 'Being told, instead of asking',
+    body: [
+      'A receipt is collected by polling: `/add` hands back a SELECT and the caller runs it when it wants the answer. That needs no registration, no retry policy and no endpoint of yours to be up, which is why it is the default — but it is a poor fit for an agent that has moved on and would rather be told.',
+      'So a memory can nominate a target with `POST /:account/:ingot/config`, and each receipt is pushed as it lands: a `webhook`, which needs nothing set here, or an `rmq` queue, which needs a broker. The split is deliberate. A memory’s owner chooses where among their own things a receipt goes — an endpoint, a queue name — and the operator chooses what this service will connect to at all. A tenant naming a broker URL would be a tenant choosing where this service opens an authenticated connection.',
+      'A queue named on a deployment with no broker is refused at the call that configures it, naming the variable, rather than accepted and then failing every delivery afterwards in a worker log the caller cannot see. Webhook endpoints are checked the same way and at the same moment: absolute `http`/`https`, no credentials in the URL, and loopback, link-local and private literals refused — this service would be reaching them from inside its own network, on somebody else’s behalf.',
+      'Delivery is at least once, and the mechanism is an outbox rather than a call: the intention to deliver is a row written in the same transaction as the receipt it announces, and a worker sends it afterwards. That is what makes a receipt impossible to announce and then lose, or lose and never announce. `ingot_deliveries_pending` says whether a receiver is keeping up; `ingot_deliveries_abandoned` should sit at zero.',
+    ],
+    sample: `# nothing at all is needed for webhooks
+# a broker adds the second transport
+INGOT_RABBITMQ_URL=
+  amqps://user:pass@broker:5671`,
+    settings: [
+      {
+        name: 'INGOT_RABBITMQ_URL',
+        fallback: 'unset',
+        note: 'The broker, with its credentials. Unset, `{ "t": "rmq" }` is refused when a memory is configured for it — webhooks are unaffected.',
+      },
+      {
+        name: 'INGOT_RABBITMQ_EXCHANGE',
+        fallback: 'the default exchange',
+        note: 'Which routes by queue name, and is what a per-memory queue name already is. Set it only for your own topology.',
+      },
+      {
+        name: 'INGOT_DELIVERY_TIMEOUT_MS',
+        fallback: '10000',
+        note: 'A receiver that has not answered by now is not going to. The socket is cancelled, not merely abandoned.',
+      },
+      {
+        name: 'INGOT_DELIVERY_ATTEMPTS',
+        fallback: '10',
+        note: 'One per minute-long sweep, so roughly ten minutes of somebody else’s outage absorbed without anybody being told.',
+      },
+    ],
+  },
+  {
     id: 'telemetry',
     nav: 'Telemetry',
     kicker: 'Optional · traces and metrics',
@@ -251,7 +289,7 @@ export interface Absence {
 export const NOT_NEEDED: readonly Absence[] = [
   {
     title: 'A message broker',
-    body: 'The embedding and receipt queues are two Postgres tables. A row is claimed with `FOR UPDATE SKIP LOCKED` under a lease, so a worker that dies holds its claim until the lease expires rather than stranding the row.',
+    body: 'The embedding queue, the receipt queue and the delivery outbox are three Postgres tables. A row is claimed with `FOR UPDATE SKIP LOCKED` under a lease, so a worker that dies holds its claim until the lease expires rather than stranding the row. RabbitMQ appears above as an optional *output* — somewhere receipts can be delivered onto — and nothing in the service ever reads from it.',
   },
   {
     title: 'A scheduler, or a durable-execution engine',

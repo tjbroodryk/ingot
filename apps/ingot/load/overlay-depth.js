@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { Trend } from 'k6/metrics';
-import { V1, addBody, createIngot, headers, ok, signUp } from './lib.js';
+import { V1, addBody, createIngot, headers, ok, account as configuredAccount } from './lib.js';
 
 /**
  * The measurement the whole two-tier design rests on.
@@ -32,7 +32,7 @@ export const options = {
 };
 
 export function setup() {
-  const account = signUp('depth');
+  const account = configuredAccount();
   return { account, ingot: createIngot(account, 'k6 overlay depth') };
 }
 

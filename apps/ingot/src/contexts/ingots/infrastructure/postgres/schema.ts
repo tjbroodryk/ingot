@@ -1,6 +1,15 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { index, integer, jsonb, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
-import type { ColumnType, FtsConfig } from '@ingot/shared/ingot-v1';
+import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingot-v1';
+
+/**
+ * How a memory's delivery strategy is stored: the wire shape, unchanged.
+ *
+ * The same document a caller sent and the same one `/info` reports, so there is
+ * no third representation to keep in step. `Delivery` parses it on the way in
+ * and on the way back out, which is what makes storing it verbatim safe.
+ */
+export type StoredDelivery = DeliveryStrategy;
 
 /** One memory. Thin on purpose — the shape of the data lives on the tables. */
 export const ingot = pgTable(
@@ -19,6 +28,14 @@ export const ingot = pgTable(
      */
     embeddingModel: text('embedding_model'),
     embeddingDims: integer('embedding_dims'),
+    /**
+     * Where this memory's receipts are pushed, as a `DeliveryStrategy`
+     * document. Null for every memory written before delivery existed and for
+     * every one nobody has configured since; `Delivery.rehydrate` reads both as
+     * `none`. A document rather than a column per kind, so the next transport
+     * is a variant in the code rather than two more nullable columns.
+     */
+    delivery: jsonb('delivery').$type<StoredDelivery>(),
     version: integer('version').notNull(),
   },
   (table) => [

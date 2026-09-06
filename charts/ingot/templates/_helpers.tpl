@@ -116,6 +116,26 @@ prints and read the message, which says what to set and why.
 {{- fail "\n\nsecrets.create is true but secrets.databaseUrl is empty.\n\nIngot refuses to start without a database rather than inventing an address for\none, so there is nothing useful to install here.\n" }}
 {{- end }}
 
+{{- $auth := .Values.config.auth.mode }}
+{{- if not (has $auth (list "sealed")) }}
+{{- fail (printf "\n\nconfig.auth.mode is %q — the only mode this chart knows is `sealed`.\n" $auth) }}
+{{- end }}
+
+{{- if not .Values.config.auth.account }}
+{{- fail "\n\nconfig.auth.account is empty.\n\nA sealed deployment serves exactly one account, and its slug is the first\nsegment of every route — /api/v1/<account>/<ingot>/add. There is no sensible\ndefault for someone else's URLs, so name it:\n\n  helm … --set config.auth.account=acme\n" }}
+{{- end }}
+
+{{- if and .Values.secrets.create (not .Values.secrets.apiKey) }}
+{{- fail "\n\nsecrets.create is true but secrets.apiKey is empty.\n\nThat is the root credential for config.auth.account, and the service refuses to\nstart without one. Generate it rather than choosing it:\n\n  --set secrets.apiKey=\"ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')\"\n" }}
+{{- end }}
+
+{{- /*
+  The root key is not checked when the Secret is yours. It may be there under
+  INGOT_API_KEY without this chart being able to see it — the same reason the
+  S3 access keys below are left alone. The service checks it at boot, and
+  refuses to start rather than serve without one.
+*/}}
+
 {{- $storage := .Values.config.storage }}
 {{- if not (has $storage (list "filesystem" "s3" "gcs")) }}
 {{- fail (printf "\n\nconfig.storage is %q — it must be one of filesystem, s3 or gcs.\n" $storage) }}

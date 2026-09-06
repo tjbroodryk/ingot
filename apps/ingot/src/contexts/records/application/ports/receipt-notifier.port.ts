@@ -8,43 +8,54 @@
  */
 export interface ReceiptReady {
   /**
-   * The memory, not the account. A delivery target will be registered against
-   * one of these, and an adapter that needs the tenant can resolve it — where
+   * The memory, not the account. The delivery target is registered against one
+   * of these, and an adapter that needs the tenant can resolve it — where
    * carrying an account id through the queue would be a column written for a
    * feature that does not exist.
    */
   readonly ingotId: string;
   readonly batch: string;
+  /** The caller's own handle for the result, or null if they gave none. */
+  readonly externalId: string | null;
   readonly sourceTable: string;
   readonly summary: string;
   readonly searchTerm: string;
+  /** How many rows the `/add` this describes stored. */
+  readonly rows: number;
   /** The SELECT that returns it — the same string the receipt handed back. */
   readonly query: string;
   readonly model: string;
+  /** When it became findable. Stable across redeliveries. */
+  readonly readyAt: Date;
 }
 
 /**
- * Told when a receipt lands. The seam a webhook will drop into.
+ * Told when a receipt lands, from inside the transaction that wrote it.
  *
- * Today a receipt is collected by polling: `/add` hands back a SELECT and the
- * caller runs it when it wants the answer. That is the right first shape —
- * it needs no registration, no retry policy and no endpoint to be up — but it
- * is a poor fit for an agent that has moved on and would rather be told.
+ * ## Why this is a seam and not a `fetch`
  *
- * So the call site exists now and the delivery does not. `SummariseNext`
- * announces every receipt it writes through this port, which means adding
- * webhooks later is writing an adapter and binding it, rather than finding
- * every place a receipt could become ready and hoping there was only one.
+ * Delivery cannot happen here, and the reason is the whole design. This is
+ * called inside the receipt's own transaction, so anything that left the
+ * process from here would be announcing state a rollback could still take
+ * away — and nothing outside the database rolls back with it. Moving the call
+ * after the commit fixes that and introduces the opposite failure: the process
+ * dies between the COMMIT and the call, the receipt exists, nobody was told,
+ * and nothing will ever tell them. Both are silent.
  *
- * What is deliberately *not* here yet is where to deliver. A target has to
- * come from somewhere a caller can set — a per-memory endpoint, or a field on
- * the `/add` — and neither exists, so inventing a column for it now would be
- * schema nothing writes. That decision belongs to the change that ships
- * delivery, not to this one.
+ * So what happens here is a *write*: the intention to deliver is recorded in
+ * the outbox, in this transaction, and something else sends it afterwards. The
+ * receipt and the promise to announce it land together or not at all, and the
+ * announcement itself is free to be slow, be refused, and be tried again.
  *
- * Implementations must not throw. This is announced after the receipt is
- * written and inside the same transaction, so a notifier that fails would
- * unwind a summary that a model has already been paid for.
+ * ## What implementations owe
+ *
+ * **They must not throw**, and now they can honestly promise not to: what is
+ * being asked of them is a row in a table the transaction is already holding
+ * open, not somebody else's HTTP endpoint. A notifier that failed here would
+ * unwind a summary a model has already been paid for.
+ *
+ * `OutboxReceiptNotifier` is the only implementation, and `DeliveryWorker` is
+ * what drains what it writes.
  */
 export interface ReceiptNotifier {
   ready(receipt: ReceiptReady): Promise<void>;

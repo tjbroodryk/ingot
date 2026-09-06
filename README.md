@@ -5,16 +5,25 @@ get them back as SQL.
 
 ```bash
 bun install
-cp apps/ingot/.env.example apps/ingot/.env   # every value in it is already the default
+cp apps/ingot/.env.example apps/ingot/.env   # everything in it is a working default
 bun run db:up          # Postgres and MinIO, on the ports those defaults expect
 bun run dev            # API on :3002, site on :5174
-bun run test           # 411 tests, needs db:up
+bun run test           # 438 tests, needs db:up
 ```
 
-The copy is not optional. `DATABASE_URL` is the one setting with no default —
-Ingot refuses to start without a database rather than inventing an address for
-one — and everything else in that file is written out so the shape of the
-configuration is readable in one place.
+The copy is not optional, and three things in that file have no default at all:
+`DATABASE_URL`, the base tier, and `INGOT_AUTH` — the database, where Parquet
+goes, and who may call the service. Ingot refuses to start without any of them
+rather than inventing an answer. Everything else is written out so the shape of
+the configuration is readable in one place.
+
+The one to look at before deploying anywhere is `INGOT_API_KEY`. A checkout
+gets a real generated key so `bun run dev` works, but it is a key in a public
+repository — generate your own for anything else:
+
+```bash
+echo "ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
+```
 
 Agents produce tool results all day and throw them away. What survives is
 whatever the model happened to keep in context — a summary of a summary,
@@ -68,10 +77,10 @@ query, built from the manifest, hardened, used once, thrown away.
 `apps/ingot/.env.example` already address it, so nothing needs configuring to
 start:
 
-| | |
-| --- | --- |
-| Postgres | `:5432` — `ingot` to develop against, `ingot_test` for the suite |
-| MinIO | `:9000` API, `:9001` console — the bucket the roll-up tests write to |
+|          |                                                                      |
+| -------- | -------------------------------------------------------------------- |
+| Postgres | `:5432` — `ingot` to develop against, `ingot_test` for the suite     |
+| MinIO    | `:9000` API, `:9001` console — the bucket the roll-up tests write to |
 
 `bun run obs:up` adds Jaeger (`:16686`) and Prometheus (`:9090`) when you want
 to watch a trace or a histogram; the suite needs neither.
@@ -130,14 +139,14 @@ docker build -f apps/ingot-app/Dockerfile \
 
 In CI that comes from the repository variable `INGOT_PUBLIC_API_URL`.
 
-The same argument decides *which site* the image is. `@ingot/app` builds in one
+The same argument decides _which site_ the image is. `@ingot/app` builds in one
 of two modes, and they have different routes rather than the same routes with
 something hidden — a landing build has no `/dashboard` at all, because
 `next build` never writes it:
 
 | `NEXT_PUBLIC_INGOT_MODE` | `/`              | `/docs`   | `/deployment`  | `/dashboard` |
 | ------------------------ | ---------------- | --------- | -------------- | ------------ |
-| `dashboard` *(default)*  | The reference    | —         | —              | The console  |
+| `dashboard` _(default)_  | The reference    | —         | —              | The console  |
 | `landing`                | The landing page | Reference | How to run one | —            |
 
 The image is the dashboard build, for somebody running the service.
@@ -158,12 +167,18 @@ The server needs a Postgres and somewhere to put Parquet. Neither is optional,
 and `INGOT_STORAGE` refuses to boot half-configured rather than quietly writing
 the base tier to a container's writable layer.
 
-There is no broker and nothing to register. The roll-up, the embedding backlog,
-the receipt queue and expiry are timers inside the process, each taking a
+Nothing has to be registered. The roll-up, the embedding backlog, the receipt
+queue, receipt delivery and expiry are timers inside the process, each taking a
 Postgres advisory lock so that one replica sweeps at a time however many are
 running — `apps/ingot/src/sweepers/scheduler.ts`. Scale the deployment freely;
 the lock is what keeps two pods from rolling the same table up into the same
 generation.
+
+A broker is optional and is only ever an _output_: set `INGOT_RABBITMQ_URL` and
+a memory can be pointed at a queue for its receipts to be delivered onto,
+alongside the webhook transport that needs no infrastructure at all. Nothing in
+the service reads from it, and the queue that decides what to send is a Postgres
+table like the rest.
 
 `/api/health` is version-neutral and is what a probe should point at. The
 schema travels in the image (`apps/ingot/drizzle`), so a migration job is the

@@ -6,6 +6,7 @@ import {
   BackgroundWork,
 } from '../../src/contexts/records/application/background.js';
 import type { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
+import type { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
 import type { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
@@ -152,7 +153,11 @@ describe('waking the background', () => {
         return 0;
       },
     };
-    return new BackgroundWork(embed as unknown as EmbedWorker, idle as unknown as ReceiptWorker);
+    return new BackgroundWork(
+      embed as unknown as EmbedWorker,
+      idle as unknown as ReceiptWorker,
+      idle as unknown as DeliveryWorker,
+    );
   }
 
   it('does not start a second drain while one is running', async () => {

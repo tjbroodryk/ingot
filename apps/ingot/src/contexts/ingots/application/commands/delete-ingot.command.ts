@@ -3,6 +3,10 @@ import { CommandHandler } from '@nestjs/cqrs';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../../shared/application/index.js';
 import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
 import {
+  DELIVERY_OUTBOX,
+  type DeliveryOutbox,
+} from '../../../records/application/ports/delivery-outbox.port.js';
+import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../../../records/application/ports/overlay-store.port.js';
@@ -38,6 +42,7 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     private readonly access: IngotAccess,
     @Inject(INGOT_REPOSITORY) private readonly ingots: IngotRepository,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
+    @Inject(DELIVERY_OUTBOX) private readonly outbox: DeliveryOutbox,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
@@ -46,6 +51,9 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     const ingot = await this.access.ingot(command.ingotId, command.accountId);
 
     await this.overlay.purgeIngot(ingot.id.value);
+    // Announcements go with the memory. Delivering one afterwards would hand a
+    // receiver a query that can only ever come back empty.
+    await this.outbox.purgeIngot(ingot.id.value);
     await this.ingots.remove(ingot.id);
 
     const prefix = Keys.ingot(ingot.accountId, ingot.id.value);

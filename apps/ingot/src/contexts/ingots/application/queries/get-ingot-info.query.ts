@@ -56,6 +56,10 @@ export class GetIngotInfoHandler implements IQueryHandler<GetIngotInfo> {
       createdAt: ingot.createdAt.toISOString(),
       expiresAt: ingot.expiresAt?.toISOString() ?? null,
       embedding: ingot.embedding,
+      // Defaults included, never partial — so "where do this memory's receipts
+      // go" has an answer here rather than requiring somebody to remember
+      // whether they ever configured it.
+      config: ingot.config,
       tables: described.sort((left, right) => left.name.localeCompare(right.name)),
     };
   }

@@ -38,7 +38,7 @@ export const STEPS: readonly Step[] = [
   {
     n: '02',
     title: 'Store tool results',
-    body: 'Map JSON paths onto typed columns, fan an array into rows, set identity for upserts, opt into a receipt diff.',
+    body: 'Map JSON paths onto typed columns, fan an array into rows, set identity for upserts, opt into a receipt an agent can be handed or pushed.',
     route: 'POST /:account/:ingot/add',
   },
   {
@@ -86,6 +86,11 @@ export const FEATURES: readonly Feature[] = [
     kicker: 'Keys',
     title: 'One bearer token',
     body: 'Mint and revoke labelled keys. A secret is returned exactly once — MCP included, which has no separate auth path.',
+  },
+  {
+    kicker: 'Delivery',
+    title: 'Poll it, or be told',
+    body: 'A receipt hands back the SELECT that finds it. Point a memory at a webhook or a queue and each one is pushed as it lands, from an outbox that survives a restart.',
   },
 ];
 
@@ -166,7 +171,8 @@ export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: strin
   { scope: 'account-wide', tools: 'create_memory · list_memories · delete_memory' },
   {
     scope: 'per memory',
-    tools: 'describe · remember · query · recall · forget · configure_table · drop_table',
+    tools:
+      'describe · remember · query · recall · forget · configure_table · configure_delivery · drop_table',
   },
 ];
 

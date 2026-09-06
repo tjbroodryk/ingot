@@ -4,6 +4,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { compileAppModule } from '../support/app.js';
 import { ACCOUNT_REPOSITORY } from '../../src/contexts/accounts/domain/index.js';
 import { AccountAuthenticator } from '../../src/contexts/accounts/application/account-authenticator.js';
+import { AUTHENTICATOR } from '../../src/auth/authenticator.port.js';
 import {
   INGOT_REPOSITORY,
   INGOT_TABLE_REPOSITORY,
@@ -12,7 +13,13 @@ import { IngotAccess } from '../../src/contexts/ingots/application/ingot-access.
 import { OVERLAY_STORE } from '../../src/contexts/records/application/ports/overlay-store.port.js';
 import { EMBEDDER } from '../../src/ai/embedder.port.js';
 import { SUMMARISER } from '../../src/ai/summariser.port.js';
+import { DELIVERY_OUTBOX } from '../../src/contexts/records/application/ports/delivery-outbox.port.js';
 import { RECEIPT_NOTIFIER } from '../../src/contexts/records/application/ports/receipt-notifier.port.js';
+import { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
+import {
+  DELIVERY_SETTINGS,
+} from '../../src/delivery/delivery-settings.js';
+import { DELIVERY_TRANSPORT } from '../../src/delivery/delivery-transport.port.js';
 import { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
 import { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
 import { ANALYTICAL_ENGINE } from '../../src/engine/analytical-engine.port.js';
@@ -42,8 +49,7 @@ describe('the real module graph', () => {
   let app: TestingModule;
 
   beforeAll(async () => {
-    const { pool } = await openDatabase();
-    process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
+    await openDatabase();
     app = await compileAppModule().compile();
     await app.init();
   });
@@ -58,7 +64,11 @@ describe('the real module graph', () => {
     ['the unit of work', UNIT_OF_WORK],
     ['the clock', CLOCK],
     ['the account repository', ACCOUNT_REPOSITORY],
-    ['the authenticator both guards use', AccountAuthenticator],
+    // The port the guard resolves, and the digest lookup every mode composes.
+    // Both, because binding one without the other is a service that either
+    // cannot authenticate or cannot honour a minted key.
+    ['the authenticator the guards use', AUTHENTICATOR],
+    ['the key lookup behind it', AccountAuthenticator],
     ['the ingot repository', INGOT_REPOSITORY],
     ['the table repository', INGOT_TABLE_REPOSITORY],
     ['the tenancy check', IngotAccess],
@@ -69,10 +79,19 @@ describe('the real module graph', () => {
     ['the embedder', EMBEDDER],
     ['the summariser', SUMMARISER],
     ['the receipt notifier', RECEIPT_NOTIFIER],
-    // The two workers the sweepers call directly rather than dispatching, so
-    // that a model is never asked while a transaction is open.
+    // All three halves of delivery, because binding one without the others is
+    // a service that either announces receipts nothing sends, or sends them
+    // with no settings to say where. The outbox is bound in `OverlayModule`
+    // and the transport in `DeliveryModule` — two modules away from the worker
+    // that needs both, which is exactly the arrangement this file exists for.
+    ['the delivery outbox', DELIVERY_OUTBOX],
+    ['the delivery transport', DELIVERY_TRANSPORT],
+    ['the delivery settings', DELIVERY_SETTINGS],
+    // The three workers the sweepers call directly rather than dispatching, so
+    // that nobody else's model or endpoint is called while a transaction is open.
     ['the embed worker', EmbedWorker],
     ['the receipt worker', ReceiptWorker],
+    ['the delivery worker', DeliveryWorker],
     ['the MCP bridge', IngotMcpServer],
   ])('resolves %s', (_name, token) => {
     expect(app.get(token as never, { strict: false })).toBeDefined();

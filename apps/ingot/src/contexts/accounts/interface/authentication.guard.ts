@@ -1,8 +1,8 @@
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AuthenticationFailed } from '../../../shared/domain/index.js';
-import { AccountAuthenticator } from '../application/account-authenticator.js';
+import { AUTHENTICATOR, type Authenticator } from '../../../auth/authenticator.port.js';
 import { ACCOUNT_BINDING, type AccountBinding } from './account.decorator.js';
 import { attachPrincipal } from './principal-resolution.js';
 
@@ -15,15 +15,21 @@ import { attachPrincipal } from './principal-resolution.js';
  * valid" and "your key is not valid *for this account*" are different answers
  * and want different status codes.
  *
+ * It resolves the `AUTHENTICATOR` port rather than one implementation, and
+ * that is the extent of what it knows: whether this deployment accepts a
+ * configured root key, a minted one, or something else entirely is decided by
+ * `INGOT_AUTH` at boot and is not a fact any route has to carry. Adding a mode
+ * changes `src/auth/`, and nothing here.
+ *
  * A route with no binding at all is left alone here and refused by the next
  * guard. Deciding that in one place means there is one message to read when it
  * happens, and one test to hold it up.
  */
 @Injectable()
-export class ApiKeyGuard implements CanActivate {
+export class AuthenticationGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly authenticator: AccountAuthenticator,
+    @Inject(AUTHENTICATOR) private readonly authenticator: Authenticator,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

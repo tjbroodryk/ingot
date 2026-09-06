@@ -6,7 +6,9 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type {
   AddBody,
   AddResult,
+  ConfigureIngotBody,
   ConfigureTableBody,
+  IngotConfig,
   IngotInfo,
   QueryBody,
   QueryResult,
@@ -14,6 +16,7 @@ import type {
 } from '@ingot/shared/ingot-v1';
 import { AccountsModule } from '../../src/contexts/accounts/accounts.module.js';
 import { CreateAccount } from '../../src/contexts/accounts/application/commands/create-account.command.js';
+import { ConfigureIngot } from '../../src/contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../../src/contexts/ingots/application/commands/configure-table.command.js';
 import { CreateIngot } from '../../src/contexts/ingots/application/commands/create-ingot.command.js';
 import { GetIngotInfo } from '../../src/contexts/ingots/application/queries/get-ingot-info.query.js';
@@ -23,6 +26,7 @@ import { QueryIngot } from '../../src/contexts/query/application/queries/query-i
 import { AddRecords } from '../../src/contexts/records/application/commands/add-records.command.js';
 import { CompactTable } from '../../src/contexts/records/application/commands/compact-table.command.js';
 import { DeleteRecords } from '../../src/contexts/records/application/commands/delete-records.command.js';
+import { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
 import { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
 import { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
 import { OverlayModule } from '../../src/contexts/records/overlay.module.js';
@@ -32,6 +36,11 @@ import {
   type IngotTableRepository,
 } from '../../src/contexts/ingots/domain/index.js';
 import { AiModule } from '../../src/ai/ai.module.js';
+import { DeliveryModule } from '../../src/delivery/delivery.module.js';
+import {
+  DELIVERY_TRANSPORT,
+  type DeliveryTransport,
+} from '../../src/delivery/delivery-transport.port.js';
 import { SUMMARISER, type Summariser } from '../../src/ai/summariser.port.js';
 import { EngineModule } from '../../src/engine/engine.module.js';
 import {
@@ -77,10 +86,14 @@ export interface World {
   sql(ingotId: string, statement: string): Promise<QueryResult['rows']>;
   info(ingotId: string): Promise<IngotInfo>;
   configure(ingotId: string, table: string, body: ConfigureTableBody): Promise<TableConfig>;
+  /** Sets where this memory's receipts are delivered. */
+  configureIngot(ingotId: string, body: ConfigureIngotBody): Promise<IngotConfig>;
   forget(ingotId: string, table: string, where: string): Promise<number>;
   embedAll(): Promise<number>;
   /** Drains the receipt queue, which the sweeper would otherwise do on a tick. */
   summariseAll(): Promise<number>;
+  /** Drains the delivery outbox, which the sweeper would otherwise do. */
+  deliverAll(): Promise<number>;
   compact(ingotId: string, table: string): Promise<void>;
   close(): Promise<void>;
 }
@@ -97,6 +110,14 @@ let accounts = 0;
  */
 export interface WorldOverrides {
   readonly summariser?: Summariser;
+  /**
+   * Where deliveries go instead of out.
+   *
+   * Swapped for the same reason as the summariser: the real transports call
+   * somebody else, and what a test wants to assert is *what* was sent and how
+   * a refusal is handled — neither of which needs a socket.
+   */
+  readonly transport?: DeliveryTransport;
 }
 
 export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> {
@@ -136,6 +157,8 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       SharedModule.forTesting(),
       EngineModule,
       AiModule,
+      // Before `OverlayModule`, which binds the collector that reads its settings.
+      DeliveryModule,
       OverlayModule,
       AccountsModule,
       IngotsModule,
@@ -147,11 +170,15 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   building.overrideProvider(BackgroundWork).useValue({
     wakeEmbeddings: () => wakes.push(BackgroundKind.Embeddings),
     wakeReceipts: () => wakes.push(BackgroundKind.Receipts),
+    wakeDeliveries: () => wakes.push(BackgroundKind.Deliveries),
     settled: async () => undefined,
   } as unknown as BackgroundWork);
 
   if (overrides.summariser) {
     building.overrideProvider(SUMMARISER).useValue(overrides.summariser);
+  }
+  if (overrides.transport) {
+    building.overrideProvider(DELIVERY_TRANSPORT).useValue(overrides.transport);
   }
 
   const app = await building.compile();
@@ -200,6 +227,10 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       return dispatcher.send(new ConfigureTable(ingotId, created.account.id, table, body));
     },
 
+    async configureIngot(ingotId, body) {
+      return dispatcher.send(new ConfigureIngot(ingotId, created.account.id, body));
+    },
+
     async forget(ingotId, table, where) {
       const result = await dispatcher.send(
         new DeleteRecords(ingotId, created.account.id, { table, where }),
@@ -227,6 +258,20 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       // would hang the suite instead of failing it.
       for (let pass = 0; pass < 100; pass++) {
         const found = await app.get(ReceiptWorker, { strict: false }).next();
+        if (!found) return total;
+        total += 1;
+      }
+      return total;
+    },
+
+    async deliverAll() {
+      let total = 0;
+      // Bounded for the same reason: a delivery to a receiver that keeps
+      // refusing stays in the outbox until it runs out of attempts, and its
+      // lease is cleared on failure — so an unbounded loop would send the same
+      // row for ever rather than failing the test.
+      for (let pass = 0; pass < 100; pass++) {
+        const found = await app.get(DeliveryWorker, { strict: false }).next();
         if (!found) return total;
         total += 1;
       }

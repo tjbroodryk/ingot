@@ -128,33 +128,20 @@ export const ENDPOINTS: readonly Endpoint[] = [
     note: 'Public, because deciding whether to integrate with a service is something you do before you have a key.',
     sample: `200 OK
 { "header": "Ingot-Version",
-  "latest": "2026-08-27",
-  "versions": ["2026-08-26", "2026-08-27"],
+  "latest": "2026-09-06",
+  "versions": ["2026-08-26", "2026-08-27",
+               "2026-09-06"],
   "changelog": [
-    { "version": "2026-08-27",
+    { "version": "2026-09-06",
       "summary": "…",
       "changes": ["…"] } ] }`,
   },
 
   // ── accounts ────────────────────────────────────────────────────────────
-  {
-    id: 'account-create',
-    group: EndpointGroup.Accounts,
-    nav: 'Create account',
-    method: HttpMethod.Post,
-    path: '/api/v1/accounts',
-    auth: Auth.Open,
-    summary:
-      'Sign-up. The only route on the service that needs no key, because it is where keys come from — the response carries a usable secret exactly once.',
-    sample: `{ "slug": "acme", "name": "Acme Inc" }
-
-201 Created
-{ "account": { "slug": "acme", "name": "Acme Inc" },
-  "key": { "id": "key_01H…",
-           "prefix": "ing_sk_7f2c…",
-           "secret": "ing_sk_…" } }
-# store it now — only a digest is kept`,
-  },
+  // There is no route that creates one. A deployment's accounts are decided by
+  // `INGOT_AUTH` at boot — sealed mode opens the one in `INGOT_ACCOUNT` and
+  // that is the whole set — so the credential you start with is the one the
+  // operator configured, not one this API hands out.
   {
     id: 'account-detail',
     group: EndpointGroup.Accounts,
@@ -249,6 +236,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
 { "name": "crm-notes",
   "embedding": { "model": "text-embedding-3-small",
                  "dimensions": 1536 },
+  "config": { "delivery": { "t": "none" } },
   "tables": [{
     "name": "contacts",
     "rows": 412, "pending": 27, "generation": 9,
@@ -258,6 +246,55 @@ export const ENDPOINTS: readonly Endpoint[] = [
         "embedded": false, "required": true },
       { "name": "arr", "type": "DOUBLE",
         "embedded": false, "required": true } ] }] }`,
+  },
+  {
+    id: 'ingot-config',
+    group: EndpointGroup.Memories,
+    nav: 'Deliver receipts',
+    method: HttpMethod.Post,
+    path: '/api/v1/:account/:ingot/config',
+    auth: Auth.Key,
+    summary:
+      'Where this memory’s receipts are pushed as they land. By default nothing is pushed and `receiptQuery` is the contract — set a target when whatever wanted the summary will have moved on by the time a model writes it.',
+    note: 'One strategy per memory, not per `/add`: the thing that wants telling is the system holding the memory. A patch, so an omitted `delivery` leaves the current target alone — turning it off is `{ "t": "none" }`. Endpoints must be absolute `http`/`https`; loopback, link-local and private addresses are refused, because this service would be reaching them from inside its own network.',
+    fields: [
+      {
+        name: 'delivery.t',
+        doc: '`none`, `webhook` or `rmq`. The discriminant — the other fields follow from it.',
+      },
+      {
+        name: 'delivery.endpoint',
+        doc: 'For `webhook`: the absolute URL each receipt is POSTed to.',
+      },
+      {
+        name: 'delivery.queue',
+        doc: 'For `rmq`: the queue name. The broker is the deployment’s (`INGOT_RABBITMQ_URL`), never the caller’s.',
+      },
+    ],
+    sample: `{ "delivery": {
+    "t": "webhook",
+    "endpoint": "https://acme.dev/hooks/ingot" } }
+
+200 OK
+{ "delivery": {
+    "t": "webhook",
+    "endpoint": "https://acme.dev/hooks/ingot" } }
+
+# each receipt then arrives as
+POST https://acme.dev/hooks/ingot
+Ingot-Batch: batch_1508c8…
+{ "event": "receipt.ready",
+  "ingot": "ing_01H8Z…",
+  "batch": "batch_1508c8…",
+  "externalId": "call_42",
+  "sourceTable": "contacts",
+  "summary": "412 EMEA accounts, …",
+  "searchTerm": "EMEA renewal risk",
+  "totalResults": 412,
+  "query": "SELECT external_id, summary, …",
+  "model": "gpt-4.1-mini",
+  "readyAt": "2026-09-06T11:02:04Z",
+  "attempt": 1 }`,
   },
   {
     id: 'table-config',
@@ -313,10 +350,22 @@ export const ENDPOINTS: readonly Endpoint[] = [
     summary:
       'Store a tool result. It lands in the Postgres overlay, so it is queryable the moment this returns — nothing waits on a Parquet file being rewritten.',
     fields: [
-      { name: 'columns', doc: 'Maps JSON paths onto typed columns. A path or a constant, never both.' },
-      { name: 'rows', doc: 'Selects an array to fan out into one row each. Omitted, the blob is one row.' },
-      { name: 'key', doc: 'What identifies a row, so a receipt can hand back SQL that still finds it next week.' },
-      { name: 'receipt', doc: '`none`, `schema` or `full`. The rungs escalate, and so does what each costs.' },
+      {
+        name: 'columns',
+        doc: 'Maps JSON paths onto typed columns. A path or a constant, never both.',
+      },
+      {
+        name: 'rows',
+        doc: 'Selects an array to fan out into one row each. Omitted, the blob is one row.',
+      },
+      {
+        name: 'key',
+        doc: 'What identifies a row, so a receipt can hand back SQL that still finds it next week.',
+      },
+      {
+        name: 'receipt',
+        doc: '`none`, `schema` or `full`. The rungs escalate, and so does what each costs.',
+      },
       { name: 'result', doc: 'The tool result itself. Anything JSON, `null` included.' },
     ],
     sample: `{ "table": "contacts",
@@ -408,6 +457,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
       'recall',
       'forget',
       'configure_table',
+      'configure_delivery',
       'drop_table',
     ],
     sampleTone: SampleTone.Ink,
