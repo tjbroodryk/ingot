@@ -13,6 +13,7 @@ import {
   MCP_CONFIG,
   MCP_TOOLS,
   RECALL,
+  RECEIPTS,
   REMEMBER,
   SPEAKS,
   STEPS,
@@ -154,6 +155,40 @@ export function LandingPage(): ReactNode {
                 <p>{feature.body}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/*
+          Figure first, so the alternation with `#read` and `#mcp` holds: this
+          page reads left-figure, right-figure, left-figure down the splits.
+        */}
+        <section className="split" id="receipts">
+          <div className="split-figure">
+            <CodeBlock code={RECEIPTS} />
+          </div>
+          <div className="split-copy">
+            <span className="label label-sm kicker">[ Receipts &amp; embeddings ]</span>
+            <h3>
+              Opt in to the
+              <br />
+              expensive parts.
+            </h3>
+            <p>
+              <code>embed</code> is per column and set once, when the column is declared.{' '}
+              <code>receipt</code> is per call, because it is a model call every time — a loop
+              storing ten thousand tool results should pay for neither by accident.
+            </p>
+            <p>
+              A receipt comes back <code>pending</code> with the SELECT that will answer it: a model
+              is a network away, and the rows are queryable the instant <code>/add</code> returns.
+              Point the memory at a webhook or a queue and you are told instead of asking.
+            </p>
+            <div className="chips">
+              <span className="chip chip-accent">embed per column</span>
+              <span className="chip">receipt per call</span>
+              <span className="chip">webhook</span>
+              <span className="chip">rabbitmq</span>
+            </div>
           </div>
         </section>
 

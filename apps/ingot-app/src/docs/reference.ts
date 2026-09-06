@@ -364,7 +364,11 @@ Ingot-Batch: batch_1508c8…
       },
       {
         name: 'receipt',
-        doc: '`none`, `schema` or `full`. The rungs escalate, and so does what each costs.',
+        doc: '`none`, `schema` or `full`. The rungs escalate, and so does what each costs — `full` is a model call, so `summary` and `searchTerm` come back null under a `pending` status, with the SELECT that will answer them.',
+      },
+      {
+        name: 'columns[].embed',
+        doc: 'Embeds that column’s text. Per column and set once, unlike `receipt` — and `VARCHAR` only, since anything else is refused rather than quietly ignored.',
       },
       { name: 'result', doc: 'The tool result itself. Anything JSON, `null` included.' },
     ],
@@ -377,7 +381,7 @@ Ingot-Batch: batch_1508c8…
     "notes":   { "from": "$.notes",    "type": "VARCHAR",
                  "embed": true } },
   "key": ["id"],
-  "receipt": "schema",
+  "receipt": "full",
   "result": toolResult }
 
 201 Created
@@ -385,7 +389,22 @@ Ingot-Batch: batch_1508c8…
   "columnsAdded": ["notes"],
   "queuedForEmbedding": 412,
   "payload": { "kilobytes": 84.2,
-               "estimatedTokens": 21507 } }`,
+               "estimatedTokens": 21507 },
+  "receipt": {
+    "status": "pending",
+    "model": "gpt-4.1-mini",
+    "summary": null, "searchTerm": null,
+    "batch": "batch_1508c8…",
+    "receiptQuery": "SELECT … FROM ingot_receipts
+       WHERE source_batch = 'batch_1508c8…'",
+    "key": ["id"],
+    "items": [ { "key": { "id": "c_91" },
+                 "query": "SELECT * FROM contacts
+                           WHERE id = 'c_91'" } ] } }
+
+# seconds later, receiptQuery answers
+{ "summary": "412 EMEA accounts, 17 at risk",
+  "search_term": "EMEA renewal risk" }`,
   },
   {
     id: 'query',

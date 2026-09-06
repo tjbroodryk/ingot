@@ -150,6 +150,45 @@ POST /api/v1/acme/ing_01H8Z…/query
               "arr": 96500 } ],
   "truncated": false }`;
 
+/**
+ * The two things a write can opt into, and what each hands back.
+ *
+ * Both are opt-in and they are opt-in at different grains, which is the point
+ * worth making: `embed` is per column and set once when the column is declared,
+ * `receipt` is per call because it costs a model call every time. A page that
+ * showed them as one switch would be describing a product that bills
+ * differently from this one.
+ *
+ * `summary` and `searchTerm` are null in the response and that is not a gap
+ * being glossed over — it is the promise the receipt makes. Showing the query
+ * answering underneath is the only honest way to draw it.
+ */
+export const RECEIPTS = `# opt in: per column, and per call
+POST /api/v1/acme/ing_01H8Z…/add
+{
+  "table": "notes",
+  "rows": "$.notes[*]",
+  "columns": {
+    "body": { "from": "$.body",
+              "type": "VARCHAR",
+              "embed": true } },
+  "receipt": "full",
+  "result": toolResult
+}
+
+201 Created · queuedForEmbedding 412
+{ "receipt": {
+    "status": "pending",
+    "model": "gpt-4.1-mini",
+    "summary": null, "searchTerm": null,
+    "receiptQuery": "SELECT … WHERE
+       source_batch = 'batch_1508c8…'" } }
+
+# seconds later, that query answers
+{ "summary": "412 call notes, 17 flagging
+              renewal risk in EMEA",
+  "search_term": "EMEA renewal risk" }`;
+
 /** One endpoint, two ways of asking. Lifted from the reference's own sample. */
 export const TWO_WAYS = `# structured
 { "sql": "SELECT company, arr FROM contacts
