@@ -84,6 +84,13 @@ data:
   {{- end }}
   {{- end }}
 
+  # ── background concurrency ──────────────────────────────────────────────
+  # Per replica. What a provider sees is this times the pod count, which the
+  # HPA is free to move — see the note in values.yaml.
+  INGOT_EMBEDDINGS_CONCURRENCY: {{ .Values.config.background.embeddings | quote }}
+  INGOT_RECEIPTS_CONCURRENCY: {{ .Values.config.background.receipts | quote }}
+  INGOT_DELIVERIES_CONCURRENCY: {{ .Values.config.background.deliveries | quote }}
+
   # ── delivering receipts ─────────────────────────────────────────────────
   # The broker URL is not here: it carries credentials, so it lives in the
   # Secret beside DATABASE_URL. These are the knobs that are safe in a git-

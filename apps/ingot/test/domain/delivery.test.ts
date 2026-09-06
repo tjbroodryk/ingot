@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { DeliveryKind } from '@ingot/shared/ingot-v1';
 import { Delivery } from '../../src/contexts/ingots/domain/delivery.vo.js';
+import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 import {
   DEFAULT_DELIVERY_ATTEMPTS,
   DEFAULT_DELIVERY_TIMEOUT_MS,
@@ -191,6 +192,32 @@ describe('what a deployment decides about delivery', () => {
   /** A deployment template left blank is not a deployment that configured one. */
   it('reads an empty variable as an unset one', () => {
     expect(deliverySettings(env({ INGOT_RABBITMQ_URL: '   ' })).brokerUrl).toBeNull();
+  });
+
+  /**
+   * The bound nobody was checking, and the reason it matters only in a cluster.
+   *
+   * A delivery is claimed under a five-minute lease and the call is made with
+   * the transaction closed. A timeout past that lease is a delivery still in
+   * flight when a second replica becomes free to claim it — at-least-once
+   * quietly becoming reliably-twice, for every receiver, and only once there
+   * are enough replicas to make the second claim likely.
+   */
+  it('refuses a timeout that could outlive the claim it is held under', () => {
+    const fine = String(MAX_UPSTREAM_TIMEOUT_MS);
+    expect(deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: fine })).timeoutMs).toBe(
+      MAX_UPSTREAM_TIMEOUT_MS,
+    );
+
+    const over = String(MAX_UPSTREAM_TIMEOUT_MS + 1);
+    expect(() => deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: over }))).toThrow(
+      DeliveryMisconfigured,
+    );
+    // The message has to name the variable and the reason, since the person
+    // who set it is the only one who can unset it.
+    expect(() => deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: over }))).toThrow(
+      /INGOT_DELIVERY_TIMEOUT_MS.*lease/s,
+    );
   });
 
   it.each([

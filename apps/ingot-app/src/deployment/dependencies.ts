@@ -208,7 +208,54 @@ export const OPTIONAL: readonly Dependency[] = [
       {
         name: 'INGOT_AI_TIMEOUT_MS',
         fallback: '30000',
-        note: 'One retry on a rate limit happens inside this; a longer wait is left to the next sweep.',
+        note: 'One retry on a rate limit happens inside this; a longer wait is left to the next sweep. Capped at 150000, half the lease a claim is held under.',
+      },
+      {
+        name: 'INGOT_EMBEDDINGS_CONCURRENCY',
+        fallback: '2',
+        note: 'Concurrent embed drains **per replica** — so what the provider sees is this times the pod count. See below.',
+      },
+      {
+        name: 'INGOT_RECEIPTS_CONCURRENCY',
+        fallback: '2',
+        note: 'The same, for summariser calls. Each one is a receipt somebody asked for.',
+      },
+    ],
+  },
+  {
+    id: 'concurrency',
+    nav: 'Background concurrency',
+    kicker: 'Optional · what a provider sees',
+    title: 'Per replica, times the replicas',
+    body: [
+      'Every queue here is drained by a bounded number of workers at once, and that bound is the only thing between a burst of writes and an unbounded burst of calls at whatever `INGOT_EMBEDDER` and `INGOT_SUMMARISER` name. The work itself is safe at any concurrency — a claim leases its rows, so two drains take different ones — so what these numbers protect is a quota and a bill rather than correctness.',
+      '**They are per replica, and that is the number to think in.** A write wakes the workers in its own process and takes no advisory lock; only a sweep does. So what a provider actually sees is the bound times however many pods are running — and the chart’s autoscaler moves that on CPU, which means a write burst adds pods and multiplies the fan-out precisely when load is highest. At the defaults and `maxReplicas: 10`, an embedder sees twenty concurrent batches.',
+      'Set them against a quota divided by `autoscaling.maxReplicas`, not against one pod. Raise them freely when the embedder is local or the quota is generous — a local embedding server turns the WAN round trip that dominates this into a LAN one, and is usually the bigger win. Each is refused at boot below 1 or above 64; the cap is a typo guard rather than a limit worth having, since the real bound is a quota this service cannot see.',
+      'Deliveries are higher out of the box, and for a different reason: a delivery goes to a receiver the caller nominated, so six concurrent ones are six different endpoints rather than six calls at one provider — and one slow receiver must not hold up everybody else’s.',
+      '`ingot_embeddings_pending`, `ingot_receipts_pending` and `ingot_deliveries_pending` say whether a queue is falling behind. Read them with `max()` and never `sum()`: they are read out of Postgres at scrape time, so every replica reports the same shared depth and summing multiplies a backlog by the pod count.',
+    ],
+    sample: `# a quota divided by maxReplicas,
+# not a number per pod
+config:
+  background:
+    embeddings: 2
+    receipts: 2
+    deliveries: 6`,
+    settings: [
+      {
+        name: 'INGOT_EMBEDDINGS_CONCURRENCY',
+        fallback: '2',
+        note: 'Concurrent embed drains per replica. Each drain works up to 8 batches of 128 texts.',
+      },
+      {
+        name: 'INGOT_RECEIPTS_CONCURRENCY',
+        fallback: '2',
+        note: 'Concurrent summariser calls per replica. One LLM call per receipt, so this is spend.',
+      },
+      {
+        name: 'INGOT_DELIVERIES_CONCURRENCY',
+        fallback: '6',
+        note: 'Concurrent deliveries per replica. Higher, because each goes to a different receiver.',
       },
     ],
   },

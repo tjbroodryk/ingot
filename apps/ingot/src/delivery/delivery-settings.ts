@@ -1,4 +1,5 @@
 import { DeliveryKind } from '@ingot/shared/ingot-v1';
+import { tooLongForLease } from '../shared/claim-lease.js';
 
 /**
  * What a deployment decides about delivery, as opposed to what a caller does.
@@ -77,7 +78,7 @@ export function deliverySettings(read: Setting): DeliverySettings {
   return {
     brokerUrl: broker(value(read('INGOT_RABBITMQ_URL'))),
     exchange: value(read('INGOT_RABBITMQ_EXCHANGE')) ?? '',
-    timeoutMs: positive(read, 'INGOT_DELIVERY_TIMEOUT_MS', DEFAULT_DELIVERY_TIMEOUT_MS),
+    timeoutMs: deadline(read),
     maxAttempts: positive(read, 'INGOT_DELIVERY_ATTEMPTS', DEFAULT_DELIVERY_ATTEMPTS),
     userAgent: value(read('INGOT_DELIVERY_USER_AGENT')) ?? DEFAULT_USER_AGENT,
   };
@@ -125,6 +126,23 @@ function tryUrl(raw: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The webhook deadline, bounded above by the lease a delivery is claimed under.
+ *
+ * A delivery still in flight when its lease lapses is one a second replica may
+ * claim and send as well — which turns at-least-once into reliably-twice, for
+ * every receiver, and only shows up once there are enough replicas to make the
+ * second claim likely. Refused at boot rather than left as a comment, because
+ * the deployment that would hit it is the one least able to see it happening.
+ */
+function deadline(read: Setting): number {
+  const timeoutMs = positive(read, 'INGOT_DELIVERY_TIMEOUT_MS', DEFAULT_DELIVERY_TIMEOUT_MS);
+  const tooLong = tooLongForLease('INGOT_DELIVERY_TIMEOUT_MS', timeoutMs);
+  if (tooLong) throw new DeliveryMisconfigured(tooLong);
+
+  return timeoutMs;
 }
 
 function positive(read: Setting, key: string, fallback: number): number {

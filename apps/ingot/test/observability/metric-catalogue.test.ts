@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import { Metrics } from '../../src/observability/metrics/catalogue.js';
+import {
+  DEPLOYMENT_WIDE,
+  Metrics,
+  PER_PROCESS,
+} from '../../src/observability/metrics/catalogue.js';
 import { METRIC_PREFIX } from '../../src/observability/metrics/registry.js';
 
 /**
@@ -100,5 +104,52 @@ describe('the metric catalogue', () => {
   it('names every metric once', () => {
     const names = declared.map(([, metric]) => metric.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  /**
+   * Which gauges may be summed, decided here rather than on a dashboard.
+   *
+   * Some of these report this process's own state — requests in flight,
+   * connections checked out — and `sum()` across replicas is exactly right.
+   * Others are read out of Postgres at scrape time, so every replica answers
+   * with the same number: the depth of a queue they all share. `sum()` over
+   * one of those is wrong by the replica count, and wrong in the direction
+   * that hurts — a backlog that looks ten times worse than it is, on a panel
+   * nobody has reason to distrust.
+   *
+   * Nothing can stop somebody writing `sum()`. What this can do is force the
+   * question to be answered when a gauge is added rather than when a dashboard
+   * is already lying, which is what the two lists are for.
+   */
+  const gauges = declared.filter(
+    ([, metric]) => metric.buckets === undefined && !metric.name.endsWith('_total'),
+  );
+
+  it('classifies every gauge as deployment-wide or per-process', () => {
+    const classified = new Set([...DEPLOYMENT_WIDE, ...PER_PROCESS]);
+    const unclassified = gauges
+      .map(([, metric]) => metric.name)
+      .filter((name) => !classified.has(name));
+
+    expect(unclassified).toEqual([]);
+  });
+
+  it('classifies none of them as both, and names no metric that does not exist', () => {
+    const overlap = DEPLOYMENT_WIDE.filter((name) => PER_PROCESS.includes(name));
+    expect(overlap).toEqual([]);
+
+    const known = new Set(declared.map(([, metric]) => metric.name));
+    const invented = [...DEPLOYMENT_WIDE, ...PER_PROCESS].filter((name) => !known.has(name));
+    expect(invented).toEqual([]);
+  });
+
+  /**
+   * The instruction goes where somebody will see it: Prometheus renders `help`
+   * beside the metric, which is the moment a query is being written.
+   */
+  it.each(DEPLOYMENT_WIDE.map((name) => [name] as const))('%s says how to aggregate it', (name) => {
+    const metric = declared.find(([, candidate]) => candidate.name === name)?.[1];
+    expect(metric?.help).toContain('max()');
+    expect(metric?.help).toContain('never sum()');
   });
 });

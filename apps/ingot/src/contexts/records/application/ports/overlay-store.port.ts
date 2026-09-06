@@ -40,18 +40,12 @@ export interface PendingReceipt {
 }
 
 /**
- * How long a claim holds work before another worker may take it.
- *
- * A lease rather than a row lock, because neither queue does its work inside
- * the transaction that claimed it — a model is an HTTP round trip, and holding
- * a Postgres connection across one spends a pool of ten on background work
- * while the foreground is trying to answer.
- *
- * The number has one requirement: comfortably longer than the model timeout,
- * so a call still in flight is never handed to a second worker. Beyond that,
- * longer is only slower to recover from a worker that died mid-call.
+ * Re-exported so the adapters that claim work keep importing it from the port
+ * they implement. It lives in `shared/claim-lease.ts` because it is no longer
+ * only this queue's business: the settings modules hold their timeouts to it
+ * at boot, and neither of them should be reaching into a context to do that.
  */
-export const CLAIM_LEASE_MS = 5 * 60_000;
+export { CLAIM_LEASE_MS } from '../../../../shared/claim-lease.js';
 
 /**
  * The hot half of the store: rows that have been accepted but not yet rolled

@@ -689,6 +689,69 @@ lease set while the model is mid-call is proof the transaction closed first.
 Its second case runs the same worker inside a transaction and watches the
 assertion invert, which is what stops the first one passing vacuously.
 
+### How fast it goes
+
+Two bounds, and it is worth being precise about which does what, because for a
+while one of them was doing the other's job by accident.
+
+**`PASSES` bounds one drain** — 8 batches of 128 for embedding, 4 receipts, 32
+deliveries. It is a _yield point_, not a rate limit: it stops one drain holding
+a slot indefinitely against a large backlog. A drain that stops on it says so
+(`Drained.more`), and both callers restart immediately — `BackgroundWork` books
+another, and a sweeper keeps going within its own tick, up to the moment the
+next tick would have started. Without that, a drain that stopped with the queue
+still full waited out the sweep, so `PASSES` was silently a ceiling of one drain
+a minute: 1,024 rows, or **four receipts**, however fast the model answered and
+however many replicas were running. A single `/add` fanning out into five
+thousand embeddable rows is one wake, so it got one drain and then waited.
+
+**`CONCURRENCY` bounds how many drains of a kind run at once** — 2, 2 and 6.
+This one _is_ a rate limit, and deliberately: it is the only thing standing
+between a burst of writes and an unbounded burst of calls at whatever
+`INGOT_EMBEDDER` names.
+
+**It is per replica, and that is the number that matters in a cluster.** The
+wake path takes no advisory lock — only the sweep does — so what your provider
+sees is `CONCURRENCY × replicas`. At the chart's `maxReplicas: 10` that is
+twenty concurrent embed drains and sixty concurrent deliveries, and since the
+HPA scales on CPU, a write burst adds pods and multiplies the fan-out exactly
+when load is highest. Pick the number against your provider's quota divided by
+the replica ceiling, not against one pod. `ingot_embeddings_pending` is what
+says you got it wrong — read with `max()`, never `sum()`, for the reason
+`observability/README.md` gives.
+
+Which is why it is configurable rather than baked in: the right number is a
+quota divided by a replica ceiling, and neither of those lives in this
+repository.
+
+| variable                       | default |                                                                                       |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------- |
+| `INGOT_EMBEDDINGS_CONCURRENCY` | `2`     | Concurrent embed drains, per replica.                                                 |
+| `INGOT_RECEIPTS_CONCURRENCY`   | `2`     | Concurrent summariser calls, per replica.                                             |
+| `INGOT_DELIVERIES_CONCURRENCY` | `6`     | Concurrent deliveries, per replica. Higher because each goes to a different receiver. |
+
+Each is refused at boot below 1 or above 64 — the cap being a typo guard rather
+than a limit worth having, since the real bound is a quota this service cannot
+see. The chart exposes all three under `config.background`, and one line at boot
+says what a pod is running with.
+
+So the ceiling is now the model, not the timer:
+
+```
+embeddings ≈ CONCURRENCY × 128 / L   rows/sec per replica
+receipts   ≈ CONCURRENCY / L         receipts/sec per replica
+```
+
+`L` is one call's latency, which `ingot_embedding_duration_seconds` and
+`ingot_receipt_duration_seconds` already measure. The wake path takes no
+advisory lock, so it multiplies by replicas; the sweep path does, so a backlog
+with no incoming writes is drained by one replica at a time.
+
+The Postgres pool is not the constraint and that is the whole point of the
+split: a drain holds a connection for the few milliseconds of claim and save out
+of every `L`, so ten workers against a pool of ten sit at a few percent duty
+cycle rather than at capacity.
+
 ## Embedding
 
 Columns marked `"embed": true` are embedded asynchronously: `/add` queues the

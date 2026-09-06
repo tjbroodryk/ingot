@@ -3,6 +3,7 @@ import { EMBEDDER, type Embedder } from '../../../ai/embedder.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { ClaimEmbeddings, EMBED_BATCH } from './commands/claim-embeddings.command.js';
+import type { Drained } from './drained.js';
 import { ReleaseEmbeddings } from './commands/release-embeddings.command.js';
 import { type EmbeddedText, SaveEmbeddings } from './commands/save-embeddings.command.js';
 import type { PendingEmbedding } from './ports/overlay-store.port.js';
@@ -55,8 +56,9 @@ export class EmbedWorker {
    * rows with `FOR UPDATE SKIP LOCKED`, so they take different work rather than
    * the same work twice.
    */
-  async drain(): Promise<number> {
+  async drain(): Promise<Drained> {
     let embedded = 0;
+    let more = false;
 
     for (let pass = 0; pass < PASSES; pass++) {
       const done = await this.next();
@@ -64,10 +66,14 @@ export class EmbedWorker {
       // A short batch means the queue is empty; stop rather than spending the
       // rest of the pass asking again.
       if (done < EMBED_BATCH) break;
+      // A full batch on the last pass means the queue outlasted this drain.
+      // Saying so is what gets another one booked immediately rather than at
+      // the next sweep — see `Drained`.
+      more = pass === PASSES - 1;
     }
 
     if (embedded > 0) this.logger.log(`Embedded ${embedded} rows`);
-    return embedded;
+    return { done: embedded, more };
   }
 
   /** How many rows were embedded. Zero means the queue is empty or all leased. */

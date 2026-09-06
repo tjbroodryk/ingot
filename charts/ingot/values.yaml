@@ -251,6 +251,31 @@ config:
     embeddingDimensions: null
     summaryModel: ''
 
+  # ── background concurrency ───────────────────────────────────────────────
+  # How many drains of each queue run at once, **per replica**.
+  #
+  # That last word is the whole reason these are here rather than baked in. The
+  # wake path takes no advisory lock — only a sweep does — so what a provider
+  # actually sees is this times the number of pods, and `autoscaling` above
+  # moves that number on CPU. At the defaults below and `maxReplicas: 10` your
+  # embedder sees twenty concurrent batches and your receivers sixty concurrent
+  # deliveries, arriving precisely when load is highest.
+  #
+  # So set these against a quota divided by `autoscaling.maxReplicas`, not
+  # against one pod. Raise them when the embedder is local or the quota is
+  # generous; `ingot_embeddings_pending` is what says the queue is falling
+  # behind — read with `max()`, never `sum()`, since every replica reports the
+  # same shared depth.
+  #
+  # Deliveries are higher out of the box because a delivery goes to a receiver
+  # the caller nominated: sixty concurrent ones are sixty different endpoints
+  # rather than sixty calls at one provider, and one slow receiver must not hold
+  # up everybody else's.
+  background:
+    embeddings: 2
+    receipts: 2
+    deliveries: 6
+
   # ── delivering receipts ──────────────────────────────────────────────────
   # A receipt is collected by polling by default: /add hands back a SELECT and
   # the caller runs it. A memory can also nominate somewhere to push each one

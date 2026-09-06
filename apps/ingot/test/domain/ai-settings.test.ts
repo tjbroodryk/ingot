@@ -22,6 +22,7 @@ import { OpenAiEmbedder } from '../../src/ai/openai-embedder.js';
 import { OpenAiSummariser } from '../../src/ai/openai-summariser.js';
 import { AiProvider } from '../../src/ai/providers.js';
 import { parseReceipt } from '../../src/ai/summariser.port.js';
+import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 
 /**
  * Which models a deployment gets, and which configurations it is refused.
@@ -213,5 +214,46 @@ describe('reading what a model answered', () => {
     expect(() => parseReceipt('I cannot help with that.')).toThrow(/no JSON object/);
     expect(() => parseReceipt('{"summary":"a"}')).toThrow(/searchTerm/);
     expect(() => parseReceipt('{"summary":1,"searchTerm":"b"}')).toThrow(/strings/);
+  });
+});
+
+/**
+ * The deadline, and the bound on it that only shows up in a cluster.
+ *
+ * A batch of texts is claimed under a five-minute lease and the model is asked
+ * with the transaction closed — that split is what stops a background job
+ * holding a pooled connection across an HTTP round trip. A timeout longer than
+ * that lease means a call still running when a second replica becomes free to
+ * claim the same batch: the same texts embedded twice, paid for twice, and
+ * nothing anywhere reporting it.
+ *
+ * Refused at boot, because the deployment large enough to hit it is the one
+ * least able to see it happening.
+ */
+describe('the model deadline', () => {
+  it('takes a whole number of milliseconds, and refuses a typo for one', () => {
+    // Named, because the local stand-in has no deadline to parse: it is in
+    // this process and answers before anybody could time it.
+    const named = { INGOT_SUMMARISER: 'openai', ...OPENAI };
+
+    expect(summariserSettings(env({ ...named, INGOT_AI_TIMEOUT_MS: '5000' }))).toMatchObject({
+      timeoutMs: 5000,
+    });
+
+    expect(() => summariserSettings(env({ ...named, INGOT_AI_TIMEOUT_MS: '30' }))).toThrow(
+      AiMisconfigured,
+    );
+  });
+
+  it('refuses one that could outlive the claim it is held under', () => {
+    const fine = String(MAX_UPSTREAM_TIMEOUT_MS);
+    expect(
+      embedderSettings(env({ INGOT_EMBEDDER: 'openai', INGOT_AI_TIMEOUT_MS: fine, ...OPENAI })),
+    ).toMatchObject({ timeoutMs: MAX_UPSTREAM_TIMEOUT_MS });
+
+    const over = String(MAX_UPSTREAM_TIMEOUT_MS + 1);
+    expect(() =>
+      embedderSettings(env({ INGOT_EMBEDDER: 'openai', INGOT_AI_TIMEOUT_MS: over, ...OPENAI })),
+    ).toThrow(/INGOT_AI_TIMEOUT_MS.*lease/s);
   });
 });

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { TestingModule } from '@nestjs/testing';
 import { readCronSpec } from '../../src/sweepers/cron.js';
+import { drainWithin } from '../../src/sweepers/drain-within.js';
 import { hash32 } from '../../src/sweepers/exclusive.js';
 import { SweptKind } from '../../src/sweepers/kinds.js';
 import { Scheduler } from '../../src/sweepers/scheduler.js';
@@ -85,5 +86,64 @@ describe('the sweepers', () => {
 
   it('is scheduled by the real graph', () => {
     expect(app.get(Scheduler, { strict: false })).toBeDefined();
+  });
+});
+
+/**
+ * What a tick is worth, which is not one drain.
+ *
+ * Each worker bounds a single drain with `PASSES` so that it yields rather than
+ * holding a slot indefinitely. A sweeper that called `drain` once turned that
+ * bound into a rate limit — a backlog moved at one drain per tick, however fast
+ * the model answered and however many replicas were running, because nothing
+ * else restarted a drain that stopped with work still queued.
+ *
+ * Pure: `drainWithin` takes a function and a number, so both properties are
+ * asserted with no container, no database and no clock to wind forward.
+ */
+describe('a tick', () => {
+  it('keeps going while the queue outlasts a drain', async () => {
+    let calls = 0;
+
+    const done = await drainWithin(60_000, async () => {
+      calls += 1;
+      // Three drains' worth of backlog, then the queue runs out.
+      return { done: 10, more: calls < 3 };
+    });
+
+    expect(calls).toBe(3);
+    expect(done).toBe(30);
+  });
+
+  it('stops at the first drain, when there was nothing more to do', async () => {
+    let calls = 0;
+
+    await drainWithin(60_000, async () => {
+      calls += 1;
+      return { done: 0, more: false };
+    });
+
+    expect(calls).toBe(1);
+  });
+
+  /**
+   * The bound that keeps a tick a tick. Without it a sweeper handed a large
+   * enough backlog runs until it is gone — which is right for the work and
+   * wrong for a shutdown waiting on the turn, and for the advisory lock one
+   * replica would be holding throughout.
+   */
+  it('stops at the moment the next tick would have started', async () => {
+    let calls = 0;
+
+    // A deadline already in the past: the first drain runs, the second is the
+    // one the deadline refuses. Checked between drains rather than inside one,
+    // so a tick overruns by at most a single drain.
+    const done = await drainWithin(0, async () => {
+      calls += 1;
+      return { done: 5, more: true };
+    });
+
+    expect(calls).toBe(1);
+    expect(done).toBe(5);
   });
 });

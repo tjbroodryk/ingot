@@ -28,24 +28,47 @@ Everything else in this directory exists to keep that property true.
 Nothing needs opting in for the spine. Every one of these is instrumented at
 the single place all of its traffic passes through:
 
-| what             | where it is instrumented        | metric                                                    |
-| ---------------- | ------------------------------- | --------------------------------------------------------- |
-| HTTP requests    | `http/telemetry.middleware.ts`  | `ingot_http_request_duration_seconds`, `…_in_flight`      |
-| Commands         | `shared/application/dispatcher` | `ingot_command_duration_seconds`                          |
-| Queries          | `shared/application/dispatcher` | `ingot_query_duration_seconds`                            |
-| Writes           | `records/…/add-records.command` | `ingot_rows_ingested_total`, `ingot_overlay_rows`         |
-| DuckDB sessions  | `engine/duckdb-engine.ts`       | `ingot_query_session_duration_seconds`, `…_rows_returned` |
-| Refused SQL      | `engine/duckdb-engine.ts`       | `ingot_sql_refused_total`                                 |
-| Roll-up          | `sweepers`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total` |
-| Embeddings       | `sweepers`, `ai/`               | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds` |
+| what             | where it is instrumented        | metric                                                                    |
+| ---------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| HTTP requests    | `http/telemetry.middleware.ts`  | `ingot_http_request_duration_seconds`, `…_in_flight`                      |
+| Commands         | `shared/application/dispatcher` | `ingot_command_duration_seconds`                                          |
+| Queries          | `shared/application/dispatcher` | `ingot_query_duration_seconds`                                            |
+| Writes           | `records/…/add-records.command` | `ingot_rows_ingested_total`, `ingot_overlay_rows`                         |
+| DuckDB sessions  | `engine/duckdb-engine.ts`       | `ingot_query_session_duration_seconds`, `…_rows_returned`                 |
+| Refused SQL      | `engine/duckdb-engine.ts`       | `ingot_sql_refused_total`                                                 |
+| Roll-up          | `sweepers`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`         |
+| Embeddings       | `sweepers`, `ai/`               | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`            |
 | Receipts         | `records/…/receipt-worker.ts`   | `ingot_receipts_pending`, `…_abandoned`, `ingot_receipt_duration_seconds` |
-| Transactions     | `pg-unit-of-work`               | `ingot_transaction_duration_seconds`                      |
-| Connection pool  | `infrastructure-collectors`     | `ingot_db_pool_connections`                               |
-| Model calls      | `ai/`                           | `ingot_upstream_request_duration_seconds`                 |
-| The Node process | `metrics/registry.ts`           | `ingot_process_*`, `ingot_nodejs_*`                       |
+| Transactions     | `pg-unit-of-work`               | `ingot_transaction_duration_seconds`                                      |
+| Connection pool  | `infrastructure-collectors`     | `ingot_db_pool_connections`                                               |
+| Model calls      | `ai/`                           | `ingot_upstream_request_duration_seconds`                                 |
+| The Node process | `metrics/registry.ts`           | `ingot_process_*`, `ingot_nodejs_*`                                       |
 
 `metrics/catalogue.ts` is the list, and `test/observability/metric-catalogue.test.ts`
 is what keeps this table from being the second answer to the same question.
+
+### Two kinds of gauge, and one of them must not be summed
+
+`ingot_overlay_rows`, `ingot_embeddings_pending`, `ingot_receipts_pending`,
+`ingot_receipts_abandoned`, `ingot_deliveries_pending` and
+`ingot_deliveries_abandoned` are read out of **Postgres** at scrape time. Every
+replica answers with the same number, because it is the depth of a queue they
+all share.
+
+So `sum()` over one of these is wrong by exactly the replica count, and wrong in
+the direction that hurts — a backlog that looks ten times worse than it is, on a
+panel nobody has reason to distrust. **Use `max()`**; `avg()` gives the same
+answer.
+
+`ingot_http_requests_in_flight` and `ingot_db_pool_connections` are this
+process's own, and `sum()` across replicas is exactly right for them.
+
+Nothing can stop somebody writing `sum()`, so the catalogue does the next best
+two things: the instruction is in the `help` text, which Prometheus renders
+beside the metric at the moment a query is being written, and `DEPLOYMENT_WIDE`
+and `PER_PROCESS` are lists the catalogue test requires every gauge to appear in
+exactly one of. A new gauge cannot be added without somebody deciding which kind
+it is.
 
 A request arriving at `/api/v1/:account/:ingot/query` produces this in Jaeger
 with nobody having annotated anything:
@@ -101,9 +124,7 @@ back is a bug that typechecks.
 **A call to somebody else's service** — `@Upstream` / `upstream`:
 
 ```ts
-const token = await upstream('gcs', 'access_token', () =>
-  this.auth.getAccessToken(),
-);
+const token = await upstream('gcs', 'access_token', () => this.auth.getAccessToken());
 ```
 
 Its own metric with wider buckets, because external latency runs to tens of
@@ -247,6 +268,7 @@ route onto — `observed.decorator.ts` copies the metadata across, and without
 that it compiles, boots, and 404s. And the HTTP middleware's route label is a
 template rather than a path, which is a property of where it sits in Nest's
 pipeline: anything asserting on it has to go through a real server.
+
 - `spine.test.ts` — that a command nobody annotated is measured anyway.
 
 Use `resetMetrics()` between tests. A suite asserting on a counter otherwise

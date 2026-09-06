@@ -13,12 +13,11 @@ import { IngotAccess } from '../../src/contexts/ingots/application/ingot-access.
 import { OVERLAY_STORE } from '../../src/contexts/records/application/ports/overlay-store.port.js';
 import { EMBEDDER } from '../../src/ai/embedder.port.js';
 import { SUMMARISER } from '../../src/ai/summariser.port.js';
+import { BACKGROUND_CONCURRENCY } from '../../src/contexts/records/application/background.js';
 import { DELIVERY_OUTBOX } from '../../src/contexts/records/application/ports/delivery-outbox.port.js';
 import { RECEIPT_NOTIFIER } from '../../src/contexts/records/application/ports/receipt-notifier.port.js';
 import { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
-import {
-  DELIVERY_SETTINGS,
-} from '../../src/delivery/delivery-settings.js';
+import { DELIVERY_SETTINGS } from '../../src/delivery/delivery-settings.js';
 import { DELIVERY_TRANSPORT } from '../../src/delivery/delivery-transport.port.js';
 import { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
 import { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
@@ -92,6 +91,10 @@ describe('the real module graph', () => {
     ['the embed worker', EmbedWorker],
     ['the receipt worker', ReceiptWorker],
     ['the delivery worker', DeliveryWorker],
+    // Not a port, but bound the same way and for the same reason: a constructor
+    // default is not optional to Nest, so an unbound limit is a container that
+    // refuses to build the thing every wake goes through.
+    ['the background concurrency bound', BACKGROUND_CONCURRENCY],
     ['the MCP bridge', IngotMcpServer],
   ])('resolves %s', (_name, token) => {
     expect(app.get(token as never, { strict: false })).toBeDefined();

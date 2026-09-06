@@ -1,3 +1,4 @@
+import { tooLongForLease } from '../shared/claim-lease.js';
 import { Guard } from '../shared/domain/index.js';
 import { AiProvider } from './providers.js';
 
@@ -259,6 +260,12 @@ function timeout(read: Setting): number {
         'and anything under a second is a typo rather than a deadline.',
     );
   }
+  // Bounded above by the claim lease, not by taste. A model call still running
+  // when the lease it is held under lapses is a batch a second replica may
+  // claim as well — paid for twice, and invisible.
+  const tooLong = tooLongForLease('INGOT_AI_TIMEOUT_MS', parsed);
+  if (tooLong) throw new AiMisconfigured(tooLong);
+
   return parsed;
 }
 

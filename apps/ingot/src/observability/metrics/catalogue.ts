@@ -88,7 +88,9 @@ export const Metrics = {
    */
   OverlayRows: defineGauge({
     name: 'ingot_overlay_rows',
-    help: 'Rows sitting in the overlay, waiting to be rolled up into Parquet.',
+    help:
+      'Rows sitting in the overlay, waiting to be rolled up into Parquet. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
 
@@ -136,7 +138,9 @@ export const Metrics = {
   // ── embedding ───────────────────────────────────────────────────────────
   EmbeddingsPending: defineGauge({
     name: 'ingot_embeddings_pending',
-    help: 'Overlay rows with an embeddable column and no vector yet.',
+    help:
+      'Overlay rows with an embeddable column and no vector yet. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
   EmbeddingDuration: defineHistogram({
@@ -149,7 +153,9 @@ export const Metrics = {
   // ── receipts ─────────────────────────────────────────────────────────────
   ReceiptsPending: defineGauge({
     name: 'ingot_receipts_pending',
-    help: 'Writes that asked for a summary and have not been given one yet.',
+    help:
+      'Writes that asked for a summary and have not been given one yet. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
   /**
@@ -162,7 +168,9 @@ export const Metrics = {
    */
   ReceiptsAbandoned: defineGauge({
     name: 'ingot_receipts_abandoned',
-    help: 'Receipts a model refused often enough that they are no longer retried.',
+    help:
+      'Receipts a model refused often enough that they are no longer retried. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
   ReceiptDuration: defineHistogram({
@@ -175,7 +183,9 @@ export const Metrics = {
   // ── delivery ─────────────────────────────────────────────────────────────
   DeliveriesPending: defineGauge({
     name: 'ingot_deliveries_pending',
-    help: 'Receipts announced to a memory’s delivery target and not yet sent.',
+    help:
+      'Receipts announced to a memory’s delivery target and not yet sent. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
   /**
@@ -189,7 +199,9 @@ export const Metrics = {
    */
   DeliveriesAbandoned: defineGauge({
     name: 'ingot_deliveries_abandoned',
-    help: 'Receipts whose delivery failed often enough that it is no longer retried.',
+    help:
+      'Receipts whose delivery failed often enough that it is no longer retried. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
   /**
@@ -226,6 +238,47 @@ export const Metrics = {
     buckets: Buckets.Upstream,
   }),
 } as const;
+
+/**
+ * The gauges that report a **deployment-wide** quantity rather than this
+ * process's own.
+ *
+ * Every one of these is read out of Postgres at scrape time, so every replica
+ * answers with the same number — the depth of a queue they all share. Which
+ * makes `sum()` over them wrong by exactly the replica count, and wrong in the
+ * direction that matters: a backlog that looks ten times worse than it is,
+ * reported by a panel nobody has reason to distrust. `max()` is the answer, and
+ * `avg()` gives the same thing.
+ *
+ * There is no way to stop somebody writing `sum()`, so this does the next best
+ * two things. It puts the instruction in the help text, which Prometheus shows
+ * beside the metric; and `metric-catalogue.test.ts` requires every gauge to be
+ * classified here or in `PER_PROCESS`, so a new one cannot be added without
+ * somebody deciding which kind it is.
+ *
+ * The alternative — having only the replica that holds the sweeper's advisory
+ * lock report — was considered and refused: the series would go absent every
+ * time the lock moved, and a gap in a backlog gauge reads as "recovered".
+ */
+export const DEPLOYMENT_WIDE: readonly string[] = [
+  'ingot_overlay_rows',
+  'ingot_embeddings_pending',
+  'ingot_receipts_pending',
+  'ingot_receipts_abandoned',
+  'ingot_deliveries_pending',
+  'ingot_deliveries_abandoned',
+];
+
+/**
+ * The gauges that are genuinely this process's own, where `sum()` is right.
+ *
+ * Listed rather than inferred, so that "which kind is this" is a question
+ * answered when a gauge is added rather than when a dashboard is wrong.
+ */
+export const PER_PROCESS: readonly string[] = [
+  'ingot_http_requests_in_flight',
+  'ingot_db_pool_connections',
+];
 
 /** The pool states `DbPoolConnections` reports. */
 export enum PoolState {

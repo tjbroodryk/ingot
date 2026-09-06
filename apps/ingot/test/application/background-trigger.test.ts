@@ -5,6 +5,7 @@ import {
   BackgroundKind,
   BackgroundWork,
 } from '../../src/contexts/records/application/background.js';
+import type { Drained } from '../../src/contexts/records/application/drained.js';
 import type { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
 import type { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
 import type { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
@@ -114,61 +115,110 @@ describe('what a write sets off', () => {
 });
 
 /**
- * The coalescing, which is what replaced an idempotency key.
+ * The bound, which is what replaced an idempotency key.
  *
  * Restate collapsed duplicate sends on a key it held for a retention window.
  * In-process the equivalent is here, and it is worth testing directly because
  * the property it protects is not correctness — concurrent drains are safe,
- * the claim leases its rows — but spend: a burst of writes must not become a
- * burst of concurrent calls at whatever model `INGOT_EMBEDDER` names.
+ * the claim leases its rows — but spend: a burst of writes must not become an
+ * unbounded burst of concurrent calls at whatever model `INGOT_EMBEDDER` names.
  *
- * No database and no container: `BackgroundWork` orchestrates two workers and
+ * It is a *bound* rather than a lock, and the difference is latency. Serialised,
+ * a write arriving at the start of a busy drain waits behind every model call
+ * that drain still has to make before its own batch is claimed. So the tests
+ * below hold both halves: that a second drain may start while the first is
+ * mid-call, and that one past the bound may not.
+ *
+ * No database and no container: `BackgroundWork` orchestrates three workers and
  * nothing else, so the workers are stand-ins and the test is about the
  * orchestration.
  */
 describe('waking the background', () => {
-  /** A worker whose drain finishes when the test says so. */
-  function pausable() {
-    let release: (() => void) | undefined;
+  /**
+   * A worker whose drains finish when the test says so.
+   *
+   * Every drain in flight is held, and `release` lets all of them go — with a
+   * bound above one there can be several, and releasing only the newest would
+   * leave the earlier ones pending and hang `settled`.
+   */
+  function pausable(more = false) {
+    const holding: (() => void)[] = [];
     let started = 0;
 
     return {
       started: () => started,
-      release: () => release?.(),
+      release: () => {
+        for (const resolve of holding.splice(0)) resolve();
+      },
       worker: {
-        async drain() {
+        async drain(): Promise<Drained> {
           started++;
           await new Promise<void>((resolve) => {
-            release = resolve;
+            holding.push(resolve);
           });
-          return 0;
+          return { done: 0, more };
         },
       },
     };
   }
 
-  function workFrom(embed: { drain(): Promise<number> }): BackgroundWork {
+  /** The bound this file asserts against, rather than whatever ships today. */
+  const LIMITS: Record<BackgroundKind, number> = {
+    [BackgroundKind.Embeddings]: 2,
+    [BackgroundKind.Receipts]: 1,
+    [BackgroundKind.Deliveries]: 1,
+  };
+
+  function workFrom(embed: { drain(): Promise<Drained> }): BackgroundWork {
     const idle = {
-      async drain() {
-        return 0;
+      async drain(): Promise<Drained> {
+        return { done: 0, more: false };
       },
     };
     return new BackgroundWork(
       embed as unknown as EmbedWorker,
       idle as unknown as ReceiptWorker,
       idle as unknown as DeliveryWorker,
+      // Pinned, so this describes the mechanism rather than today's numbers.
+      // A test that read `CONCURRENCY` would pass whatever it was changed to,
+      // which is a test that asserts nothing.
+      LIMITS,
     );
   }
 
-  it('does not start a second drain while one is running', async () => {
+  it('runs drains up to the bound, and no more', async () => {
     const embed = pausable();
     const background = workFrom(embed.worker);
 
     background.wakeEmbeddings();
     background.wakeEmbeddings();
     background.wakeEmbeddings();
+    background.wakeEmbeddings();
 
+    // Two slots taken, the other two wakes collapsed onto the trailing re-run.
+    expect(embed.started()).toBe(LIMITS[BackgroundKind.Embeddings]);
+
+    embed.release();
+    await background.settled();
+  });
+
+  /**
+   * The half that is about latency rather than spend.
+   *
+   * A second write arriving while the first drain is mid-model-call gets its
+   * own drain rather than waiting for that call to come back. Serialised, this
+   * is where the seconds came from.
+   */
+  it('lets a second write start its own drain rather than queueing behind one', async () => {
+    const embed = pausable();
+    const background = workFrom(embed.worker);
+
+    background.wakeEmbeddings();
     expect(embed.started()).toBe(1);
+
+    // Nothing released: the first drain is still inside its model call.
+    background.wakeEmbeddings();
+    expect(embed.started()).toBe(2);
 
     embed.release();
     await background.settled();
@@ -179,22 +229,52 @@ describe('waking the background', () => {
    * would otherwise wait for the sweeper. One more pass costs an empty query
    * when there is nothing there.
    */
-  it('runs one more pass for the wakes that arrived while it was busy', async () => {
+  it('runs one more pass for the wakes that arrived with every slot taken', async () => {
     const embed = pausable();
     const background = workFrom(embed.worker);
 
+    // One past the bound, so the third is the one with nowhere to go.
     background.wakeEmbeddings();
     background.wakeEmbeddings();
+    background.wakeEmbeddings();
+    expect(embed.started()).toBe(2);
 
     embed.release();
     await background.settled();
-    // The trailing run is booked from the first one's `finally`, so it starts
-    // after `settled` resolved on the first promise.
+    // The trailing run is booked from a `finally`, so it starts after
+    // `settled` resolved on the promises that were in flight.
     await Promise.resolve();
     embed.release();
     await background.settled();
 
-    expect(embed.started()).toBe(2);
+    expect(embed.started()).toBe(3);
+  });
+
+  /**
+   * The other half of the throughput fix, and the one a sweeper cannot supply.
+   *
+   * A drain that stops on its own bound with the queue still full used to wait
+   * out a minute for the next tick — so `PASSES` was a rate limit rather than a
+   * yield point, and a single `/add` fanning out into thousands of rows got one
+   * drain and then nothing. `Drained.more` is the worker saying so, and the
+   * trailing re-run is what acts on it.
+   */
+  it('books another drain when one stops with the queue still full', async () => {
+    const embed = pausable(true);
+    const background = workFrom(embed.worker);
+
+    background.wakeEmbeddings();
+    expect(embed.started()).toBe(1);
+
+    embed.release();
+    await background.settled();
+    // Booked from the first drain's `then`, so it starts once that promise has
+    // settled — no wake arrived, and one is owed anyway.
+    await Promise.resolve();
+    expect(embed.started()).toBeGreaterThan(1);
+
+    embed.release();
+    await background.settled();
   });
 
   /**
@@ -202,10 +282,14 @@ describe('waking the background', () => {
    * response is gone. A throw here would be an unhandled rejection in a
    * detached promise — a way to take the process down over work the sweeper
    * already covers.
+   *
+   * It must also not chain: a drain that threw is a model that is down, and
+   * re-running immediately is a tight loop against it. `more` is read from the
+   * result, which a throw never produces.
    */
   it('swallows a drain that throws', async () => {
     const background = workFrom({
-      async drain(): Promise<number> {
+      async drain(): Promise<Drained> {
         throw new Error('the embedder is down');
       },
     });

@@ -3,6 +3,7 @@ import { MAX_BODY_CHARS, SUMMARISER, type Summariser, clamp } from '../../../ai/
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { ClaimReceipt, type ClaimedReceipt } from './commands/claim-receipt.command.js';
+import type { Drained } from './drained.js';
 import { FailReceipt } from './commands/fail-receipt.command.js';
 import { WriteReceipt } from './commands/write-receipt.command.js';
 
@@ -67,8 +68,9 @@ export class ReceiptWorker {
    * spend and on how long one pass takes. `ingot_receipts_pending` says whether
    * it is keeping up.
    */
-  async drain(): Promise<number> {
+  async drain(): Promise<Drained> {
     let written = 0;
+    let more = false;
 
     for (let pass = 0; pass < PASSES; pass++) {
       // Nothing claimed means the queue is empty, everything left is leased by
@@ -76,10 +78,14 @@ export class ReceiptWorker {
       // are the same answer: there is nothing to gain from asking again.
       if (!(await this.next())) break;
       written++;
+      // Work found on the last pass means the queue outlasted this drain, and
+      // another should start now rather than at the next sweep. `PASSES` is
+      // four here, so without this a backlog moved at four receipts a minute.
+      more = pass === PASSES - 1;
     }
 
     if (written > 0) this.logger.log(`Wrote ${written} receipt${written === 1 ? '' : 's'}`);
-    return written;
+    return { done: written, more };
   }
 
   /** Whether there was work. False means the queue is empty or all leased. */

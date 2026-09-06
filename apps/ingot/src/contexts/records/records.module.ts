@@ -1,6 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IngotsModule } from '../ingots/ingots.module.js';
-import { BackgroundWork } from './application/background.js';
+import {
+  BACKGROUND_CONCURRENCY,
+  type BackgroundKind,
+  BackgroundWork,
+} from './application/background.js';
+import { concurrencyFrom } from './application/background-settings.js';
 import { AddRecordsHandler } from './application/commands/add-records.command.js';
 import { ClaimDeliveryHandler } from './application/commands/claim-delivery.command.js';
 import { ClaimReceiptHandler } from './application/commands/claim-receipt.command.js';
@@ -44,6 +50,18 @@ import { RecordsController } from './interface/records.controller.js';
     // `/add` wakes this on commit rather than leaving the work to be found on
     // the next tick — see `background.ts`.
     BackgroundWork,
+    // How many drains of one kind may run at once. A binding rather than a
+    // default parameter: Nest reads `design:paramtypes` and would refuse to
+    // resolve a fourth argument it had never been given.
+    {
+      provide: BACKGROUND_CONCURRENCY,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): Record<BackgroundKind, number> => {
+        const bounds = concurrencyFrom((key) => config.get<string>(key));
+        announce(bounds);
+        return bounds;
+      },
+    },
     // The seam `WriteReceipt` wakes delivery through. A token rather than
     // `BackgroundWork` itself, because importing that from a command the
     // receipt worker dispatches would close an import cycle — the port says so.
@@ -80,3 +98,19 @@ import { RecordsController } from './interface/records.controller.js';
   exports: [RECEIPT_NOTIFIER, ReceiptWorker, EmbedWorker, DeliveryWorker, BackgroundWork],
 })
 export class RecordsModule {}
+
+/**
+ * One line at boot saying how much of somebody else's service this deployment
+ * is willing to use at once.
+ *
+ * Worth saying out loud, and worth saying *per replica*: the number that
+ * reaches a provider is this times however many pods are running, and the
+ * autoscaler moves that on CPU. An operator reading one pod's log should not
+ * have to work that out from the chart.
+ */
+function announce(bounds: Record<BackgroundKind, number>): void {
+  const said = Object.entries(bounds)
+    .map(([kind, limit]) => `${kind} ${limit}`)
+    .join(', ');
+  Logger.log(`Draining ${said} at a time, per replica`, 'Background');
+}

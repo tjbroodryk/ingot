@@ -1,5 +1,6 @@
 import { EmbedWorker } from '../contexts/records/application/embed-worker.js';
 import { Cron, minutes } from './cron.js';
+import { drainWithin } from './drain-within.js';
 
 const EVERY = minutes(1);
 
@@ -35,6 +36,10 @@ export class EmbeddingsSweeper {
   constructor(private readonly worker: EmbedWorker) {}
 
   async tick(): Promise<void> {
-    await this.worker.drain();
+    // Not one drain: a worker bounds each drain so it yields, and a tick that
+    // called it once turned that yield point into a rate limit of one drain a
+    // minute. `drainWithin` keeps going while the queue outlasts a drain, and
+    // stops at the moment the next tick would have started.
+    await drainWithin(EVERY, () => this.worker.drain());
   }
 }

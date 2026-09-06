@@ -9,6 +9,7 @@ import { Dispatcher } from '../../../shared/application/index.js';
 import { ClaimDelivery } from './commands/claim-delivery.command.js';
 import { CompleteDelivery } from './commands/complete-delivery.command.js';
 import { FailDelivery } from './commands/fail-delivery.command.js';
+import type { Drained } from './drained.js';
 import type { PendingDelivery } from './ports/delivery-outbox.port.js';
 
 /**
@@ -67,8 +68,9 @@ export class DeliveryWorker {
    * so a receiver hears about a receipt about as fast as the model wrote it,
    * rather than within the minute.
    */
-  async drain(): Promise<number> {
+  async drain(): Promise<Drained> {
     let sent = 0;
+    let more = false;
 
     for (let pass = 0; pass < PASSES; pass++) {
       // Nothing claimed means the outbox is empty, everything left is leased by
@@ -76,10 +78,13 @@ export class DeliveryWorker {
       // are the same answer: there is nothing to gain from asking again.
       if (!(await this.next())) break;
       sent++;
+      // Work found on the last pass means the outbox outlasted this drain, and
+      // another should start now rather than at the next sweep.
+      more = pass === PASSES - 1;
     }
 
     if (sent > 0) this.logger.log(`Delivered ${sent} receipt${sent === 1 ? '' : 's'}`);
-    return sent;
+    return { done: sent, more };
   }
 
   /** Whether there was work. False means the outbox is empty or all leased. */
