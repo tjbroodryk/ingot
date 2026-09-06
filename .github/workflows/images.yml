@@ -157,7 +157,8 @@ jobs:
       - name: Lint
         run: |
           helm lint charts/ingot --strict \
-            --set secrets.existingSecret=ci --set config.s3.bucket=ci
+            --set secrets.existingSecret=ci --set config.s3.bucket=ci \
+            --set config.auth.account=ci
 
       # Every branch of `ingot.validate` and of the storage switch, because the
       # default path never renders the PVC, the GCS staging override or the
@@ -166,7 +167,15 @@ jobs:
       - name: Render every path
         run: |
           set -euo pipefail
-          render() { echo "  $1"; shift; helm template ingot charts/ingot "$@" >/dev/null; }
+
+          # `config.auth.account` is in the helper rather than on each line
+          # below, because it is required on every path and a path that forgot
+          # it would fail for that reason rather than for its own. The refusals
+          # it exists for are asserted in the step after this one.
+          render() {
+            echo "  $1"; shift
+            helm template ingot charts/ingot --set config.auth.account=ci "$@" >/dev/null
+          }
           render "s3" --set config.s3.bucket=ci --set secrets.existingSecret=ci
           render "gcs" --set config.storage=gcs --set config.gcs.bucket=ci --set secrets.existingSecret=ci
           render "filesystem" --set config.storage=filesystem \
@@ -176,7 +185,36 @@ jobs:
           render "ingress + serviceMonitor + created secret" \
             --set config.s3.bucket=ci --set ingress.enabled=true --set ingress.host=ci.example.com \
             --set serviceMonitor.enabled=true \
+            --set secrets.create=true --set secrets.databaseUrl=postgres://ci \
+            --set secrets.apiKey=ing_sk_ci_0000000000000000000000
+          render "a broker and a tuned background" \
+            --set config.s3.bucket=ci --set secrets.existingSecret=ci \
+            --set secrets.rabbitmqUrl=amqps://ci:ci@broker:5671 \
+            --set config.delivery.exchange=receipts \
+            --set config.background.embeddings=8 --set config.background.deliveries=16
+
+      # The other half, and the half a render sweep cannot give you: that the
+      # chart still *refuses* what it is supposed to refuse. Every one of these
+      # guards exists because the value has no sensible default and getting it
+      # wrong is found in production — a sealed service on somebody else's URLs,
+      # or one with no root credential. A guard nothing exercises is a guard
+      # that can quietly stop firing.
+      - name: Refuse every misconfiguration
+        run: |
+          set -euo pipefail
+          refuses() {
+            echo "  $1"; shift
+            if helm template ingot charts/ingot "$@" >/dev/null 2>&1; then
+              echo "    ↳ rendered, and should not have"; exit 1
+            fi
+          }
+          refuses "a sealed deployment with no account" \
+            --set config.s3.bucket=ci --set secrets.existingSecret=ci
+          refuses "a created secret with no root key" \
+            --set config.auth.account=ci --set config.s3.bucket=ci \
             --set secrets.create=true --set secrets.databaseUrl=postgres://ci
+          refuses "s3 with no bucket" \
+            --set config.auth.account=ci --set secrets.existingSecret=ci
 
       - name: Log in to ghcr.io
         if: startsWith(github.ref, 'refs/tags/v')
