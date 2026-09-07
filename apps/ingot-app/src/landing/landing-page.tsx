@@ -9,15 +9,21 @@ import { SampleTone } from '../docs/reference';
 import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL } from '../site/mode';
 import './landing.css';
 import {
+  AI_SDK_SEEN,
+  AI_SDK_TOOL,
   FEATURES,
+  HARNESS,
+  HARNESS_RETURN,
+  LEDE,
   MCP_CONFIG,
   MCP_TOOLS,
   RECALL,
   RECEIPTS,
   REMEMBER,
+  RETRIEVAL,
+  SDK_NOTES,
   SPEAKS,
   STEPS,
-  TWO_WAYS,
 } from './sections';
 
 /**
@@ -45,6 +51,7 @@ export function LandingPage(): ReactNode {
           // be. Two nav items pointing at one section is one of them wearing
           // out.
           { href: '#how', label: 'How it works' },
+          { href: '#harness', label: 'Agent loop' },
           { href: '#mcp', label: 'MCP' },
         ]}
         actions={
@@ -58,7 +65,7 @@ export function LandingPage(): ReactNode {
         <section className="hero">
           <div className="hero-badge label">
             <span className="badge">Self-hosted</span>
-            <a href="#run">There is no hosted Ingot — you run it</a>
+            <a href="#run">There is no hosted Ingot yet — you run it</a>
           </div>
 
           <h1 className="hero-title">
@@ -67,10 +74,8 @@ export function LandingPage(): ReactNode {
             <span className="mark">model can query</span>
           </h1>
 
-          <p className="hero-lede">
-            Durable, typed memory for LLM agents. Store a tool result, read it back as SQL or search
-            — no vector plumbing, no re-reading transcripts.
-          </p>
+          {/* Also `layout.tsx`'s `description` — see the constant. */}
+          <p className="hero-lede">{LEDE}</p>
 
           <div className="hero-actions label">
             <a className="btn-solid btn-lg" href="#run-local">
@@ -159,6 +164,124 @@ export function LandingPage(): ReactNode {
         </section>
 
         {/*
+          Where the thing actually goes.
+
+          Everything above this is the API. This pair is the paragraph of your
+          own code that calls it, and it is told twice on purpose — once as a
+          diagram, because the point is a swap and a swap is a shape, and once
+          as a file, because a reader who is convinced now wants to type
+          something. Two sections rather than one: the diagram is true of any
+          harness and the sample is true of one, and merging them would make
+          the general claim look like a Vercel-shaped claim.
+
+          It sits after the features and before the splits because it is the
+          synthesis — `/add`, the receipt and `/query` all appear in it, and it
+          reads as a summary rather than as a fourth new idea.
+        */}
+        <section className="landblock" id="harness">
+          <div className="landhead">
+            <span className="label label-sm kicker">[ In the agent loop ]</span>
+            <h2 className="landtitle">
+              Store the result.
+              <br />
+              Return
+              <br />
+              <span className="mark">the receipt</span>
+            </h2>
+            <p>
+              A tool result does not have to enter the context window to be useful later. One POST
+              puts it in the memory; what comes back is small enough to be the tool&rsquo;s own
+              output, and carries the SQL that finds the rows again.
+            </p>
+            <a className="target-more landhead-more" href="#ai-sdk">
+              The same thing as a file you can type ↓
+            </a>
+          </div>
+
+          <div className="landfigure">
+            {/*
+              A panel rather than a bare grid, so it reads as one figure with
+              four cells instead of as four more feature tiles — this page has
+              a lot of three-up grids by now and the loop is not another one.
+            */}
+            <div className="panel landpanel">
+              <div className="panel-bar">
+                <span className="panel-glyph">≡ ×</span>
+                <span className="panel-rule" />
+                <span>One turn</span>
+                <span className="panel-rule" />
+              </div>
+
+              <div className="wire-lane">
+                {HARNESS.map((node) => (
+                  <div className="wire-node" key={node.actor}>
+                    <div className="wire-actor">{node.actor}</div>
+                    <h4>{node.title}</h4>
+                    <p>{node.body}</p>
+                    <code>{node.wire}</code>
+                  </div>
+                ))}
+              </div>
+
+              {/*
+                The arrowheads run one way across the lane; this is the one
+                that runs back, and it is the whole reason the loop is drawn as
+                a loop rather than as a pipeline.
+              */}
+              <div className="wire-return">{HARNESS_RETURN}</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landblock" id="ai-sdk">
+          <div className="landhead">
+            <span className="label label-sm kicker">[ Vercel AI SDK ]</span>
+            <h2 className="landtitle">
+              It fits inside
+              <br />
+              <span className="mark">one execute</span>
+            </h2>
+            <p>
+              <code>execute</code> already returns whatever the model is going to read. Have it
+              return the receipt rather than the rows, and the rest of the harness — the stream, the
+              parts, the steps — does not find out anything changed.
+            </p>
+          </div>
+
+          <div className="landfigure">
+            <div className="panel landpanel">
+              <div className="panel-bar">
+                <span className="panel-glyph">≡ ×</span>
+                <span className="panel-rule" />
+                <span>Ingot · ai-sdk</span>
+                <span className="panel-rule" />
+              </div>
+              <div className="panel-split">
+                <CodeBlock code={AI_SDK_TOOL} />
+                <CodeBlock code={AI_SDK_SEEN} />
+              </div>
+            </div>
+          </div>
+
+          {/*
+            `.steps` again, because these are the same object — a kicker, a
+            claim, and the line of API it is about. The cells happen to be
+            labelled rather than numbered, which is the data's business and not
+            the grid's.
+          */}
+          <div className="steps">
+            {SDK_NOTES.map((note) => (
+              <div className="step" key={note.kicker}>
+                <div className="step-num">{note.kicker.toUpperCase()}</div>
+                <h4>{note.title}</h4>
+                <p>{note.body}</p>
+                <code>{note.hint}</code>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/*
           Figure first, so the alternation with `#read` and `#mcp` holds: this
           page reads left-figure, right-figure, left-figure down the splits.
         */}
@@ -195,22 +318,39 @@ export function LandingPage(): ReactNode {
 
         <section className="split" id="read">
           <div className="split-copy">
-            <span className="label label-sm kicker">[ Two ways to read ]</span>
-            <h3>SQL when it knows the shape. Words when it doesn&rsquo;t.</h3>
+            <span className="label label-sm kicker">[ Retrieval, and RAG ]</span>
+            <h3>
+              RAG retrieval.
+              <br />
+              No second database.
+            </h3>
+            {/*
+              "SQL on its own" rather than a third `<code>` — the sentence
+              before it ends on one, and two accent words with only a full stop
+              between them read as a single token rather than as two clauses.
+            */}
             <p>
-              The same endpoint takes either, and given both it binds the embedding as{' '}
-              <code>$q</code> so a hybrid search is one round trip. A POST that changes nothing,
-              hence the explicit 200.
+              <code>text</code> alone embeds the question and ranks a table by cosine similarity, so
+              rows come back carrying a <code>score</code>. SQL on its own is exact. Given both, the
+              embedding binds as <code>$q</code> and one SELECT can rank by meaning, match BM25 and
+              filter on real columns at the same time.
+            </p>
+            <p>
+              That is what a vector store, a metadata index and a filtering hop are usually
+              assembled to do, and here it is one POST against the memory you already write to.
+              Neither half is on by default: embeddings are declared per column and the keyword
+              index per table, so a memory holding no prose pays for neither.
             </p>
             <div className="chips">
               <span className="chip chip-accent">one SELECT</span>
-              <span className="chip">FTS stemmer</span>
-              <span className="chip">stopwords</span>
-              <span className="chip">semantic</span>
+              <span className="chip">cosine</span>
+              <span className="chip">BM25</span>
+              <span className="chip">metadata filter</span>
+              <span className="chip">no vector db</span>
             </div>
           </div>
           <div className="split-figure">
-            <CodeBlock code={TWO_WAYS} />
+            <CodeBlock code={RETRIEVAL} />
           </div>
         </section>
 

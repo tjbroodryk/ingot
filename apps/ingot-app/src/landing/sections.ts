@@ -79,8 +79,8 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     kicker: 'Search',
-    title: 'Keyword and semantic',
-    body: 'Full-text with a configurable stemmer and stopwords, or semantic recall scoped to a table and a column.',
+    title: 'Keyword, semantic, hybrid',
+    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT — RAG retrieval with no vector store beside it.',
   },
   {
     kicker: 'Keys',
@@ -93,6 +93,18 @@ export const FEATURES: readonly Feature[] = [
     body: 'A receipt hands back the SELECT that finds it. Point a memory at a webhook or a queue and each one is pushed as it lands, from an outbox that survives a restart.',
   },
 ];
+
+/**
+ * The sentence under the title, and the one `layout.tsx` gives a search result
+ * and a link preview as `description`.
+ *
+ * A constant because it is said in two places and they are read in either
+ * order — a visitor who arrives from a search has read the preview first. Two
+ * copies of a pitch drift on the edit that only remembers one of them, and
+ * this is the pitch, so it is the one that gets edited.
+ */
+export const LEDE =
+  'Durable, typed memory for LLM agents. Store a tool result, read it back as SQL, by keyword or by meaning — RAG retrieval with no vector database to run beside it.';
 
 /** The row under the hero. What the thing already speaks, rather than logos. */
 export const SPEAKS: readonly string[] = [
@@ -189,14 +201,223 @@ POST /api/v1/acme/ing_01H8Z…/add
               renewal risk in EMEA",
   "search_term": "EMEA renewal risk" }`;
 
-/** One endpoint, two ways of asking. Lifted from the reference's own sample. */
-export const TWO_WAYS = `# structured
-{ "sql": "SELECT company, arr FROM contacts
-          WHERE stage = 'won'" }
+/**
+ * One endpoint, three ways of asking, and the switch that has to be on first.
+ *
+ * The `config` call opens the sample rather than being left out of it, and
+ * that is the whole reason this constant is longer than the two-line one it
+ * replaced. Keyword indexing is **off** until a table asks for it — see
+ * `FtsSettings.default()` in the service, which explains why: the index is
+ * built per session over the whole table, so defaulting it on would bill every
+ * query of every memory for prose most of them do not hold. A sample that went
+ * straight to `match_bm25` would be one somebody pastes, runs, and gets an
+ * empty result from, with nothing on the page to say why.
+ *
+ * The third block is the argument the section makes. It is valid as written:
+ * `match_bm25` may be computed in a SELECT list, and DuckDB will ORDER BY an
+ * output alias, so the subquery the FTS docs wrap this in is not needed when
+ * the ordering is the cosine column rather than the keyword one.
+ */
+export const RETRIEVAL = `# once — switch keyword indexing on
+POST /api/v1/acme/ing_01H8Z…/config/notes
+{ "fts": { "enabled": true } }
 
-# or in words
+# ask by meaning. Rows come back scored.
+POST /api/v1/acme/ing_01H8Z…/query
 { "text": "renewal risk in EMEA",
-  "table": "notes", "column": "body" }`;
+  "table": "notes", "column": "body" }
+
+200 OK
+{ "columns": ["id", "body", "region", "score"],
+  "rows": [ { "score": 0.83, … } ] }
+
+# or all three at once — one round trip
+{ "text": "renewal risk in EMEA",
+  "sql": "SELECT body, region,
+     array_cosine_similarity(body_vec, $q) AS near,
+     fts_main_notes.match_bm25(_row_id,
+       'renewal') AS words
+   FROM notes
+   WHERE region = 'EMEA' AND created > '2026-01-01'
+   ORDER BY near DESC LIMIT 8" }`;
+
+/* ── where this goes in an agent loop ───────────────────────────────────── */
+
+/**
+ * One node of the wire diagram under "In the agent loop".
+ *
+ * Four of them, and the count is not arbitrary: the first exists to rule
+ * something out. A reader arriving at a memory service assumes it wants to sit
+ * between the model and the tool, and it does not — the dispatch is untouched
+ * and the only edit is inside the tool's own body. Dropping node 01 would save
+ * a cell and leave that assumption standing.
+ */
+export interface WireNode {
+  /**
+   * `01 · Harness`, or `02 · Your tool -> Ingot` for a hop between two of
+   * them. The arrow is ASCII rather than U+2192 for the reason `.wire-node`
+   * draws its arrowheads instead of typing them: the mono face is subsetted
+   * to `latin` and does not carry one, so a real arrow here would arrive in
+   * whatever the reader's system offers, half a size off the label it sits in.
+   */
+  readonly actor: string;
+  readonly title: string;
+  readonly body: string;
+  /** The call, the id or the status the node is, printed under it. */
+  readonly wire: string;
+}
+
+export const HARNESS: readonly WireNode[] = [
+  {
+    actor: '01 · Harness',
+    title: 'Dispatches the tool',
+    body: 'Unchanged. The model asks for a tool, your harness runs it, and nothing about that hop knows Ingot exists.',
+    wire: 'toolCallId: call_01H8Z…',
+  },
+  {
+    actor: '02 · Your tool -> Ingot',
+    title: 'Sends the result to the memory',
+    body: 'One POST, before you return. The tool-call id rides along as externalId, which is what lets you ask for this receipt back by something that means anything to you.',
+    wire: 'POST /:ingot/add',
+  },
+  {
+    actor: '03 · Ingot -> your tool',
+    title: 'Answers with a receipt',
+    body: 'How many rows, which table, and a SELECT that returns exactly them. Return that as the tool output — it goes in the slot the blob would have filled.',
+    wire: '201 · 412 rows',
+  },
+  {
+    actor: '04 · Model -> Ingot',
+    title: 'Reads back what it needs',
+    body: 'Narrowed over typed columns, in this step or in a session next week: twenty rows out of four hundred, chosen by the model rather than by whoever wrote the tool.',
+    wire: 'POST /:ingot/query',
+  },
+];
+
+/** The strip under the wire: what the loop closing actually buys. */
+export const HARNESS_RETURN =
+  'The rows outlive the turn. A receipt hands back SQL rather than an id, so it still finds them from a context window that never saw them stored.';
+
+/**
+ * The tool, as the AI SDK wants it written.
+ *
+ * Set against AI SDK 5, and the two names that moved in it are the two most
+ * likely to be copied wrong: the schema is `inputSchema` (it was `parameters`),
+ * and the multi-step loop is `stopWhen: stepCountIs(n)` (it was `maxSteps`).
+ * `execute`'s second argument carrying `toolCallId` is the seam that makes any
+ * of this work — it is the caller's own id for the result, which is exactly
+ * what `externalId` is for.
+ *
+ * `post` is left undefined on purpose and said to be `fetch` with the bearer
+ * key on it. Writing that helper out would be six lines of nothing, and this
+ * sample has to fit a pane.
+ */
+export const AI_SDK_TOOL = `// tool.ts — AI SDK 5.
+// post() is fetch with the bearer key on it.
+import { tool } from 'ai';
+import { z } from 'zod';
+
+const INGOT = 'http://localhost:3002/api/v1/acme';
+const memory = INGOT + '/ing_01H8Z…';
+
+export const searchContacts = tool({
+  description: 'Search the CRM by stage.',
+  inputSchema: z.object({ stage: z.string() }),
+
+  async execute({ stage }, { toolCallId }) {
+    const result = await crm.contacts.search({ stage });
+
+    const { receipt } = await post(memory + '/add', {
+      table: 'contacts',
+      rows: '$.contacts[*]',
+      columns: {
+        id:      { from: '$.id',       type: 'VARCHAR' },
+        company: { from: '$.org.name', type: 'VARCHAR' },
+        arr:     { from: '$.deal.arr', type: 'DOUBLE' } },
+      key: ['id'],
+      externalId: toolCallId,
+      receipt: 'full',
+      result,
+    });
+
+    // The 412 contacts stay in the memory. This
+    // is what goes back in their place.
+    return {
+      rows: receipt.totalResults,
+      table: receipt.table.name,
+      query: receipt.query,
+    };
+  },
+});`;
+
+/**
+ * The other half: what the model is handed, and what it does with it.
+ *
+ * The token figures are the argument this whole section makes, so they are the
+ * one thing here that is an estimate and has to read as one — `about`, twice.
+ * `payload.estimatedTokens` is what `/add` answers with and it says the same of
+ * itself.
+ */
+export const AI_SDK_SEEN = `# the tool-result part, as the model reads it
+{ "rows": 412,
+  "table": "contacts",
+  "query": "SELECT * FROM contacts WHERE
+            source_batch = 'batch_1508c8…'" }
+
+# about 180 tokens. The result it stands in
+# for was 412 objects and about 48,000.
+
+# the browser is handed the same small object,
+# as the stream's tool-output-available part —
+# it is one JSON either way, and this one fits
+
+# next step — the model narrows it itself
+POST /api/v1/acme/ing_01H8Z…/query
+{ "sql": "SELECT company, arr FROM contacts
+          WHERE source_batch = 'batch_1508c8…'
+            AND arr > 100000
+          ORDER BY arr DESC
+          LIMIT 20" }
+
+200 OK · 31ms
+{ "columns": ["company", "arr"],
+  "rows": [ { "company": "Northwind",
+              "arr": 184000 }, … ],
+  "truncated": false }`;
+
+/** One of the three notes under the AI SDK sample. */
+export interface SdkNote {
+  readonly kicker: string;
+  readonly title: string;
+  readonly body: string;
+  /** The line of API the note is about, printed under it. */
+  readonly hint: string;
+}
+
+/**
+ * The three things the sample above does not show, and each is a thing
+ * somebody would otherwise find out by shipping it.
+ */
+export const SDK_NOTES: readonly SdkNote[] = [
+  {
+    kicker: 'Stream',
+    title: 'The write is not a model call',
+    body: '/add returns as soon as the rows land; the précis is written behind it and the receipt says pending. A tool-result part is never blocked on a second model finishing its sentence.',
+    hint: 'receipt.status: pending',
+  },
+  {
+    kicker: 'Loop',
+    title: 'Give it something to run SQL with',
+    body: 'A receipt hands back a SELECT, which is worth having only if the model can execute one. Wrap /query as a second tool, or point it at the MCP server and write neither.',
+    hint: 'stopWhen: stepCountIs(8)',
+  },
+  {
+    kicker: 'Your UI',
+    title: 'The browser can still have the rows',
+    body: 'Nothing bound for the interface has to pass through the context window. Return the full result from execute and hand the model the receipt from toModelOutput — one streams, the other is read.',
+    hint: 'toModelOutput()',
+  },
+];
 
 export const MCP_CONFIG = `# claude_desktop_config.json
 { "mcpServers": { "ingot": {

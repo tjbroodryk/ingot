@@ -14,8 +14,15 @@ import { SampleTone } from './reference';
  * with a shell comment between them.
  */
 
-/** `# …` — the aside above or below a sample. */
-const COMMENT = /^\s*#/;
+/**
+ * `# …` or `// …` — the aside above or below a sample.
+ *
+ * Two markers rather than one because the samples are in two languages now:
+ * the HTTP ones comment with `#`, and the landing page's harness sample is
+ * TypeScript, which does not. Both are anchored to the start of the line, so
+ * the `//` in a URL is a URL and stays one.
+ */
+const COMMENT = /^\s*(#|\/\/)/;
 
 /** `200 OK`, `201 Created`, `204 No Content` — the response's own line. */
 const STATUS = /^\s*\d{3}\b/;

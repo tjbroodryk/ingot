@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LandingPage } from '../src/landing/landing-page';
-import { FEATURES, SPEAKS, STEPS } from '../src/landing/sections';
+import {
+  AI_SDK_SEEN,
+  AI_SDK_TOOL,
+  FEATURES,
+  HARNESS,
+  LEDE,
+  RETRIEVAL,
+  SDK_NOTES,
+  SPEAKS,
+  STEPS,
+} from '../src/landing/sections';
 import { DeploymentPage } from '../src/deployment/deployment-page';
 import { RUN_TARGETS } from '../src/deployment/targets';
 import { SiteMode, routesFor } from '../src/site/mode';
@@ -114,6 +124,129 @@ describe('the landing page', () => {
    */
   it('advertises no address nobody can reach', () => {
     expect(markup).not.toContain('ingot.dev');
+  });
+
+  /**
+   * The lede a visitor reads is the same string `layout.tsx` hands a search
+   * result and a link preview. That is a constant rather than this test's job
+   * — what this holds is the other half, that the hero still renders it, which
+   * a rewrite of the JSX could quietly stop doing while `description` went on
+   * promising it.
+   */
+  it('puts the shared lede in the hero, where the preview promised it', () => {
+    expect(markup).toContain(LEDE);
+  });
+});
+
+/**
+ * The claim that Ingot retrieves without a vector database beside it.
+ *
+ * It is the one section whose sample would fail silently if it were wrong:
+ * keyword indexing is off until a table asks for it, so a reader who pastes a
+ * `match_bm25` query against a fresh table gets an empty result and no reason
+ * for it. The sample has to open with the switch, and that ordering is the
+ * thing worth holding.
+ */
+describe('the retrieval sample', () => {
+  it('turns keyword indexing on before it uses it', () => {
+    const enabled = RETRIEVAL.indexOf('"fts"');
+    const used = RETRIEVAL.indexOf('match_bm25');
+
+    expect(enabled).toBeGreaterThan(-1);
+    expect(used).toBeGreaterThan(enabled);
+  });
+
+  /**
+   * The three modes the section names, each present as the thing it actually
+   * is: `text` for meaning, `match_bm25` for words, and a WHERE on a column
+   * that is neither. A sample that dropped one would leave the copy claiming a
+   * hybrid the figure does not show.
+   */
+  it('shows all three of the ways it says can be combined', () => {
+    expect(RETRIEVAL).toContain('"text"');
+    expect(RETRIEVAL).toContain('array_cosine_similarity(body_vec, $q)');
+    expect(RETRIEVAL).toContain('match_bm25');
+    expect(RETRIEVAL).toContain('WHERE region');
+  });
+
+  /**
+   * `$q` is bound only when `text` and `sql` arrive together, so the hybrid
+   * block is wrong the moment somebody tidies the `text` line out of it.
+   */
+  it('sends the text alongside the SQL that binds it', () => {
+    const hybrid = RETRIEVAL.slice(RETRIEVAL.indexOf('# or all three'));
+
+    expect(hybrid).toContain('"text"');
+    expect(hybrid).toContain('$q');
+  });
+});
+
+/**
+ * The pair that shows where this goes in somebody else's code.
+ *
+ * The diagram's own risk is not that it fails to render — it is that the
+ * arrowheads are `::after` on every cell but the last, so a fifth node added
+ * to `HARNESS` silently keeps the four-column grid and wraps into a second row
+ * whose arrows point off the end of the first. The count is asserted here
+ * because the CSS cannot assert it and the page still draws either way.
+ */
+describe('the agent loop', () => {
+  const markup = renderToStaticMarkup(<LandingPage />);
+
+  it('draws every node of the wire', () => {
+    for (const node of HARNESS) {
+      expect(markup).toContain(node.title);
+      expect(markup).toContain(node.wire);
+    }
+  });
+
+  /**
+   * `.wire-lane` is `repeat(4, 1fr)` and the rules that clear the left border
+   * are written `4n + 1`. Both are arithmetic about this number, in a file the
+   * data does not import.
+   */
+  it('keeps the lane to the four cells the grid is cut for', () => {
+    expect(HARNESS.length).toBe(4);
+  });
+
+  /**
+   * The sample is set against a named version of somebody else's library, and
+   * the three names below are the ones that moved in it — `parameters` became
+   * `inputSchema`, `maxSteps` became `stopWhen`. A landing page that shows a
+   * reader the previous major's API is the same lie as one advertising an
+   * address nobody can reach, and it is the kind that ages into being true
+   * again if nobody writes it down.
+   */
+  it('shows the AI SDK 5 names rather than the ones they replaced', () => {
+    expect(AI_SDK_TOOL).toContain('inputSchema');
+    expect(AI_SDK_TOOL).not.toContain('parameters:');
+    expect(SDK_NOTES.map((note) => note.hint).join(' ')).toContain('stepCountIs');
+  });
+
+  /**
+   * The join between the two halves. `toolCallId` is what `execute` is handed
+   * and `externalId` is what `/add` takes; the sample is only worth printing
+   * if it shows one being passed as the other, and that is one line somebody
+   * tidying the block would not miss.
+   */
+  it("passes the tool-call id in as the receipt's external id", () => {
+    expect(AI_SDK_TOOL).toContain('externalId: toolCallId');
+  });
+
+  /**
+   * The claim the section makes is a size comparison, and it is only a claim
+   * if both numbers are on the page. Either one alone is a number.
+   */
+  it('prints both sides of the swap it is selling', () => {
+    expect(AI_SDK_SEEN).toContain('180 tokens');
+    expect(AI_SDK_SEEN).toContain('48,000');
+  });
+
+  it('offers a note for each thing the sample leaves out', () => {
+    for (const note of SDK_NOTES) {
+      expect(markup).toContain(note.title);
+      expect(markup).toContain(note.hint);
+    }
   });
 });
 
