@@ -1,5 +1,11 @@
 import type { ReactNode } from 'react';
-import { DASHBOARD_HREF, DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF } from '../site/mode';
+import {
+  DASHBOARD_HREF,
+  DEPLOYMENT_HREF,
+  DOCS_HREF,
+  HOME_HREF,
+  WHY_HREF,
+} from '../site/mode';
 import { BrandMark } from './brand-mark';
 
 /** Which nav item is the page you are on. */
@@ -7,6 +13,7 @@ export enum SiteSection {
   Landing = 'landing',
   Docs = 'docs',
   Dashboard = 'dashboard',
+  Why = 'why',
   Deployment = 'deployment',
 }
 
@@ -41,6 +48,17 @@ export function SiteHeader({
   return (
     <header className="topbar label">
       <nav className="topbar-nav">
+        {/*
+          Before the reference, because it is the question asked before that
+          one: why is this shaped like this. A dashboard build has no such
+          page — its reader is running the service and has been persuaded by
+          whoever deployed it — so the value that would name it is `null`.
+        */}
+        {WHY_HREF ? (
+          <a href={WHY_HREF} aria-current={current === SiteSection.Why ? 'page' : undefined}>
+            Why
+          </a>
+        ) : null}
         <a href={DOCS_HREF} aria-current={current === SiteSection.Docs ? 'page' : undefined}>
           Docs
         </a>

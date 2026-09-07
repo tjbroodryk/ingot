@@ -1,10 +1,16 @@
 /*
- * The landing page, and only the landing page.
+ * The landing page's layout: a hero, three grids and two splits.
  *
  * Everything the rest of the site already has — the label voice, the buttons,
  * `.mark`, the framed panel, the code tokens, the closing band — comes from
- * `src/app/globals.css` and is used here rather than restated. What is below
- * is the layout this one page needs: a hero, three grids and two splits.
+ * `src/app/globals.css` and is used here rather than restated.
+ *
+ * `src/why/` imports this sheet too, and that is deliberate rather than a
+ * shortcut: `/why` is the same shape of document in the same idiom — a ruled
+ * frame, centred heads, three-up grids, splits — and two copies of a hero
+ * would be two heroes that disagree on the first edit. What that page needs
+ * and this one does not is in `src/why/why.css`, and nothing here is written
+ * for it.
  *
  * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
  * is over there. Every value here resolves to a token.
@@ -123,8 +129,18 @@
 
 /* ══ the two-pane terminal ══════════════════════════════════════════════ */
 
+/*
+ * One width for every framed figure on the page — the terminal, the wire
+ * diagram and the harness sample all sit on it.
+ *
+ * It was 940px while the samples were folded to fit: keys doubled up on a
+ * line, closing braces piled at the end of the last value. Those read as
+ * something you would have to reformat before believing, so the samples are
+ * plain pretty-printed JSON now and this is the measure that holds one at
+ * roughly 62 characters a line without a horizontal scrollbar.
+ */
 .panel-wide {
-  max-width: 940px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
@@ -223,16 +239,6 @@
 /* A figure that sits under a head, inside a section that draws its own rules. */
 .landfigure {
   padding: 0 var(--space-8) 64px;
-}
-
-/*
- * Wider than the hero's terminal, which is set to a comfortable reading
- * measure for two short samples. These two are a four-column diagram and a
- * pane of TypeScript; both want the room.
- */
-.landpanel {
-  max-width: 1040px;
-  margin: 0 auto;
 }
 
 .wire-lane {
@@ -445,6 +451,17 @@
 .chip-accent {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+/*
+ * The "the longer answer is over there" link a split can end on, under the
+ * chips rather than beside them. The margin is on this pairing rather than on
+ * `.target-more` itself, because that class is also the last line of a
+ * deployment row, where the spacing above it is the row's business.
+ */
+.split-copy .chips + .target-more {
+  display: inline-block;
+  margin-top: 22px;
 }
 
 /* — the MCP tool list, which is a table without being one — */

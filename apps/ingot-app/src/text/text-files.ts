@@ -26,6 +26,7 @@ import { absolute, BASE_PATH, MODE, REPO_URL, routesFor, SITE_URL, SiteMode } fr
 import { DEPLOYMENT } from './deployment-text';
 import { type Article, blocks, bullets, heading } from './markdown';
 import { REFERENCE } from './reference-text';
+import { WHY } from './why-text';
 
 /** One file, and where under `out/` it goes. */
 export interface TextFile {
@@ -45,12 +46,18 @@ const SITEMAP = 'sitemap.xml';
  *
  * The reference's path is a function of the mode for the same reason its
  * *route* is: it is the front page of a dashboard build and `/docs` of a
- * landing one. The deployment page belongs to a landing build only — a reader
- * looking at the site that ships beside a running service has already done the
- * thing that page describes.
+ * landing one. `/why` and the deployment page belong to a landing build
+ * only — a reader looking at the site that ships beside a running service has
+ * already been persuaded by, and has already done, what those two describe.
+ *
+ * `/why` is first in a landing build, and that ordering is the index doing
+ * its job rather than a preference: this list is what a model reads to decide
+ * which file to open, and "why is this shaped like this" is the document that
+ * makes the other two legible. It is also the order the site's own nav is in.
  */
 function articles(landing: boolean): readonly (Article & { readonly path: string })[] {
   return [
+    ...(landing ? [{ ...WHY, path: 'why.md' }] : []),
     { ...REFERENCE, path: landing ? 'docs.md' : 'index.md' },
     ...(landing ? [{ ...DEPLOYMENT, path: 'deployment.md' }] : []),
   ];
@@ -155,7 +162,7 @@ function robotsTxt(mode: SiteMode): string {
  */
 function sitemapXml(mode: SiteMode): string {
   const routes = routesFor(mode);
-  const pages = [routes.home, routes.docs, routes.deployment].filter(
+  const pages = [routes.home, routes.why, routes.docs, routes.deployment].filter(
     (route): route is string => route !== null,
   );
 
