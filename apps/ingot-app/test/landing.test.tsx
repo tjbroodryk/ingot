@@ -7,6 +7,10 @@ import {
   FEATURES,
   HARNESS,
   LEDE,
+  MCP_CONFIG,
+  RECALL,
+  RECEIPTS,
+  REMEMBER,
   RETRIEVAL,
   SDK_NOTES,
   SPEAKS,
@@ -147,6 +151,77 @@ describe('the landing page', () => {
  * for it. The sample has to open with the switch, and that ordering is the
  * thing worth holding.
  */
+/**
+ * The samples are pretty-printed JSON, and pretty-printing is what pushes a
+ * line past the pane holding it.
+ *
+ * `.code` scrolls rather than wraps, so an over-long line is not a wrapped
+ * line — it is a horizontal scrollbar under a figure, and the half of the
+ * sample that made the point is the half now off the right edge. Nothing about
+ * the page says so when it happens, which is why it is asserted here.
+ *
+ * 62 is the narrowest column any of them renders in: half of `.panel-wide` at
+ * its 1040px maximum, less the panel's padding, at the mono face's advance —
+ * and, near enough the same number, a `.split-figure` at the width the splits
+ * collapse from. Widening a sample means widening `.panel-wide` with it.
+ */
+describe('the samples on the page', () => {
+  const SAMPLES = {
+    REMEMBER,
+    RECALL,
+    RECEIPTS,
+    RETRIEVAL,
+    AI_SDK_TOOL,
+    AI_SDK_SEEN,
+    MCP_CONFIG,
+  };
+
+  it('keeps every line inside the narrowest pane it renders in', () => {
+    const overlong = Object.entries(SAMPLES).flatMap(([name, sample]) =>
+      sample
+        .split('\n')
+        // Spread rather than `.length`: `…` and `—` are one glyph each in a
+        // monospace face, and counting them as their UTF-16 size would be
+        // counting columns the sample does not occupy.
+        .filter((line) => [...line].length > 62)
+        .map((line) => `${name}: ${line}`),
+    );
+
+    expect(overlong).toEqual([]);
+  });
+
+  /**
+   * The formatting itself, over the samples that are JSON — `AI_SDK_TOOL` is
+   * TypeScript and closes a call as well as an object, so this rule is not
+   * about it.
+   *
+   * The shape being ruled out is `"embed": true } },` — a value and the two
+   * braces that close the objects it was nested in, piled onto one line. Every
+   * sample here was written that way to fit a narrower pane, and it is what
+   * reads as something you would reformat before believing.
+   *
+   * A line that opens and closes in the same breath is not that and stays
+   * allowed: `{ "fts": { "enabled": true } }` is a whole object, and spreading
+   * a single setting over five lines would be the other kind of unreadable.
+   * The test is the arithmetic — a line only offends when it closes more than
+   * it opened, which means it is closing something from a line above.
+   */
+  it('closes its objects on their own lines', () => {
+    const { AI_SDK_TOOL: _typescript, ...json } = SAMPLES;
+
+    for (const [name, sample] of Object.entries(json)) {
+      const piled = sample.split('\n').filter((line) => {
+        const opened = (line.match(/[{[]/g) ?? []).length;
+        const closed = (line.match(/[}\]]/g) ?? []).length;
+
+        return closed > opened && !/^[\s}\],]*$/.test(line);
+      });
+
+      expect({ [name]: piled }).toEqual({ [name]: [] });
+    }
+  });
+});
+
 describe('the retrieval sample', () => {
   it('turns keyword indexing on before it uses it', () => {
     const enabled = RETRIEVAL.indexOf('"fts"');

@@ -6,6 +6,7 @@ import { ENDPOINTS } from '../src/docs/reference';
 import { REPO_URL, SITE_URL, SiteMode } from '../src/site/mode';
 import { DEPLOYMENT } from '../src/text/deployment-text';
 import { REFERENCE } from '../src/text/reference-text';
+import { WHY } from '../src/text/why-text';
 import { type TextFile, textFiles } from '../src/text/text-files';
 
 /**
@@ -27,6 +28,14 @@ import { type TextFile, textFiles } from '../src/text/text-files';
 describe('the markdown pages', () => {
   const reference = REFERENCE.render();
   const deployment = DEPLOYMENT.render();
+  const why = WHY.render();
+
+  /**
+   * The three of them, wherever an assertion is about the notation rather than
+   * about what a particular page says. `test/why.test.tsx` holds what that
+   * page argues; a broken table is a property of every document that has one.
+   */
+  const documents = [reference, deployment, why];
 
   it('describes every route the reference does', () => {
     const missing = ENDPOINTS.filter(
@@ -59,7 +68,7 @@ describe('the markdown pages', () => {
    * concatenation goes wrong, and one no reader of the HTML would ever see.
    */
   it('keeps every table row the width of its header', () => {
-    for (const document of [reference, deployment]) {
+    for (const document of documents) {
       let width = 0;
 
       for (const line of document.split('\n')) {
@@ -75,7 +84,7 @@ describe('the markdown pages', () => {
   });
 
   it('opens every fence it closes', () => {
-    for (const document of [reference, deployment]) {
+    for (const document of documents) {
       expect(document.split('\n').filter((line) => line === '```').length % 2).toBe(0);
     }
   });
@@ -115,6 +124,15 @@ describe.each([
 
   it('writes a deployment page only where there is one', () => {
     expect(at('deployment.md') !== undefined).toBe(landing);
+  });
+
+  /**
+   * `/why` is a landing document for the reason the deployment page is:
+   * the other build ships beside a running service, whose reader has already
+   * been persuaded by whoever deployed it.
+   */
+  it('writes the why page only where there is one', () => {
+    expect(at('why.md') !== undefined).toBe(landing);
   });
 
   it('links only to files it wrote', () => {
@@ -212,7 +230,12 @@ describe('an origin, once there is one', () => {
       ...(at(withOrigin, 'sitemap.xml')?.body.matchAll(/<loc>([^<]+)<\/loc>/g) ?? []),
     ].map((match) => match[1]);
 
-    expect(locations).toEqual([`${SITE}/`, `${SITE}/docs/`, `${SITE}/deployment/`]);
+    expect(locations).toEqual([
+      `${SITE}/`,
+      `${SITE}/why/`,
+      `${SITE}/docs/`,
+      `${SITE}/deployment/`,
+    ]);
   });
 
   it('points robots.txt at it, absolutely — a relative one is discarded', () => {
@@ -223,6 +246,7 @@ describe('an origin, once there is one', () => {
   it('makes the index links absolute, so they survive being copied off the site', () => {
     const index = at(withOrigin, 'llms.txt')?.body ?? '';
 
+    expect(index).toContain(`(${SITE}/why.md)`);
     expect(index).toContain(`(${SITE}/docs.md)`);
     expect(index).toContain(`(${SITE}/deployment.md)`);
     expect(index).toContain(`(${SITE}/llms-full.txt)`);

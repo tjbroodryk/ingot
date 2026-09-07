@@ -18,8 +18,9 @@ export enum SiteMode {
   /**
    * The page in front of the project. Ingot is self-hosted only, so there is
    * no account to sign into and no console to sign into it with: `/` is the
-   * landing page, `/docs` is the reference, `/deployment` is how to run one
-   * and what it costs you in infrastructure, and that is the whole site.
+   * landing page, `/docs` is the reference, `/why` is the argument for the
+   * shape of the thing, `/deployment` is how to run one and what it costs you
+   * in infrastructure, and that is the whole site.
    */
   Landing = 'landing',
   /**
@@ -90,6 +91,13 @@ export interface SiteRoutes {
   /** The console, or `null` where the build does not have one. */
   readonly dashboard: string | null;
   /**
+   * Why the service is shaped the way it is — the argument, rather than the
+   * contract. `null` in a dashboard build, for the reason `deployment` is:
+   * that site ships beside a running service, and its reader has already been
+   * persuaded by whoever deployed it.
+   */
+  readonly why: string | null;
+  /**
    * How to run one — the three places, and the two things each of them needs.
    * `null` in a dashboard build.
    *
@@ -120,6 +128,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
     home: `${basePath}/`,
     docs: landing ? `${basePath}/docs/` : `${basePath}/`,
     dashboard: landing ? null : `${basePath}/dashboard/`,
+    why: landing ? `${basePath}/why/` : null,
     deployment: landing ? `${basePath}/deployment/` : null,
   };
 }
@@ -129,6 +138,7 @@ const ROUTES = routesFor(MODE);
 export const HOME_HREF = ROUTES.home;
 export const DOCS_HREF = ROUTES.docs;
 export const DASHBOARD_HREF = ROUTES.dashboard;
+export const WHY_HREF = ROUTES.why;
 export const DEPLOYMENT_HREF = ROUTES.deployment;
 
 /**

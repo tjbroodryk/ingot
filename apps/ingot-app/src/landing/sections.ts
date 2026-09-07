@@ -116,19 +116,25 @@ export const SPEAKS: readonly string[] = [
   'SQL',
 ];
 
-/** The left half of the terminal: a tool result going in. */
+/**
+ * The left half of the terminal: a tool result going in.
+ *
+ * Pretty-printed the way a JSON formatter would leave it — one key to a line,
+ * every closing brace on its own. The three column mappings are the exception
+ * and stay one to a line, because they are a *table*: three rows of the same
+ * four fields, where the alignment is what lets you read down the `type`
+ * column instead of across nine lines to compare two of them.
+ */
 export const REMEMBER = `# 1 — remember a tool result
 POST /api/v1/acme/ing_01H8Z…/add
 {
   "table": "contacts",
   "rows": "$.contacts[*]",
   "columns": {
-    "id":      { "from": "$.id",
-                 "type": "VARCHAR" },
-    "company": { "from": "$.org.name",
-                 "type": "VARCHAR" },
-    "arr":     { "from": "$.deal.arr",
-                 "type": "DOUBLE" } },
+    "id":      { "from": "$.id",       "type": "VARCHAR" },
+    "company": { "from": "$.org.name", "type": "VARCHAR" },
+    "arr":     { "from": "$.deal.arr", "type": "DOUBLE"  }
+  },
   "key": ["id"],
   "result": toolResult
 }
@@ -155,12 +161,14 @@ POST /api/v1/acme/ing_01H8Z…/query
 }
 
 200 OK · 34ms
-{ "columns": ["company", "arr"],
-  "rows": [ { "company": "Northwind",
-              "arr": 184000 },
-            { "company": "Contoso",
-              "arr": 96500 } ],
-  "truncated": false }`;
+{
+  "columns": ["company", "arr"],
+  "rows": [
+    { "company": "Northwind", "arr": 184000 },
+    { "company": "Contoso",   "arr": 96500 }
+  ],
+  "truncated": false
+}`;
 
 /**
  * The two things a write can opt into, and what each hands back.
@@ -181,25 +189,34 @@ POST /api/v1/acme/ing_01H8Z…/add
   "table": "notes",
   "rows": "$.notes[*]",
   "columns": {
-    "body": { "from": "$.body",
-              "type": "VARCHAR",
-              "embed": true } },
+    "body": {
+      "from": "$.body",
+      "type": "VARCHAR",
+      "embed": true
+    }
+  },
   "receipt": "full",
   "result": toolResult
 }
 
 201 Created · queuedForEmbedding 412
-{ "receipt": {
+{
+  "receipt": {
     "status": "pending",
     "model": "gpt-4.1-mini",
-    "summary": null, "searchTerm": null,
+    "summary": null,
+    "searchTerm": null,
     "receiptQuery": "SELECT … WHERE
-       source_batch = 'batch_1508c8…'" } }
+                     source_batch = 'batch_1508c8…'"
+  }
+}
 
 # seconds later, that query answers
-{ "summary": "412 call notes, 17 flagging
+{
+  "summary": "412 call notes, 17 flagging
               renewal risk in EMEA",
-  "search_term": "EMEA renewal risk" }`;
+  "search_term": "EMEA renewal risk"
+}`;
 
 /**
  * One endpoint, three ways of asking, and the switch that has to be on first.
@@ -224,22 +241,30 @@ POST /api/v1/acme/ing_01H8Z…/config/notes
 
 # ask by meaning. Rows come back scored.
 POST /api/v1/acme/ing_01H8Z…/query
-{ "text": "renewal risk in EMEA",
-  "table": "notes", "column": "body" }
+{
+  "text": "renewal risk in EMEA",
+  "table": "notes",
+  "column": "body"
+}
 
 200 OK
-{ "columns": ["id", "body", "region", "score"],
-  "rows": [ { "score": 0.83, … } ] }
+{
+  "columns": ["id", "body", "region", "score"],
+  "rows": [{ "score": 0.83, … }]
+}
 
 # or all three at once — one round trip
-{ "text": "renewal risk in EMEA",
+{
+  "text": "renewal risk in EMEA",
   "sql": "SELECT body, region,
-     array_cosine_similarity(body_vec, $q) AS near,
-     fts_main_notes.match_bm25(_row_id,
-       'renewal') AS words
-   FROM notes
-   WHERE region = 'EMEA' AND created > '2026-01-01'
-   ORDER BY near DESC LIMIT 8" }`;
+            array_cosine_similarity(body_vec, $q) AS near,
+            fts_main_notes.match_bm25(_row_id, 'renewal')
+              AS words
+          FROM notes
+          WHERE region = 'EMEA' AND created > '2026-01-01'
+          ORDER BY near DESC
+          LIMIT 8"
+}`;
 
 /* ── where this goes in an agent loop ───────────────────────────────────── */
 
@@ -359,10 +384,12 @@ export const searchContacts = tool({
  * itself.
  */
 export const AI_SDK_SEEN = `# the tool-result part, as the model reads it
-{ "rows": 412,
+{
+  "rows": 412,
   "table": "contacts",
-  "query": "SELECT * FROM contacts WHERE
-            source_batch = 'batch_1508c8…'" }
+  "query": "SELECT * FROM contacts
+            WHERE source_batch = 'batch_1508c8…'"
+}
 
 # about 180 tokens. The result it stands in
 # for was 412 objects and about 48,000.
@@ -373,17 +400,24 @@ export const AI_SDK_SEEN = `# the tool-result part, as the model reads it
 
 # next step — the model narrows it itself
 POST /api/v1/acme/ing_01H8Z…/query
-{ "sql": "SELECT company, arr FROM contacts
+{
+  "sql": "SELECT company, arr
+          FROM contacts
           WHERE source_batch = 'batch_1508c8…'
             AND arr > 100000
           ORDER BY arr DESC
-          LIMIT 20" }
+          LIMIT 20"
+}
 
 200 OK · 31ms
-{ "columns": ["company", "arr"],
-  "rows": [ { "company": "Northwind",
-              "arr": 184000 }, … ],
-  "truncated": false }`;
+{
+  "columns": ["company", "arr"],
+  "rows": [
+    { "company": "Northwind", "arr": 184000 },
+    …
+  ],
+  "truncated": false
+}`;
 
 /** One of the three notes under the AI SDK sample. */
 export interface SdkNote {
@@ -419,12 +453,24 @@ export const SDK_NOTES: readonly SdkNote[] = [
   },
 ];
 
+/**
+ * The MCP block, nested the way the file it goes in is nested.
+ *
+ * The URL sits on its own line under the key rather than being folded across
+ * two, because a URL broken mid-path is one somebody reassembles wrongly — the
+ * previous version put the `/` at the start of the second line and read as
+ * though the path began there.
+ */
 export const MCP_CONFIG = `# claude_desktop_config.json
-{ "mcpServers": { "ingot": {
-    "url": "http://localhost:3002/api/v1/
-           acme/ing_01H8Z…/mcp",
-    "headers": { "Authorization":
-      "Bearer ing_sk_…" } } } }`;
+{
+  "mcpServers": {
+    "ingot": {
+      "url":
+        "http://localhost:3002/api/v1/acme/ing_01H8Z…/mcp",
+      "headers": { "Authorization": "Bearer ing_sk_…" }
+    }
+  }
+}`;
 
 /** The tools the MCP server exposes, at each of the two scopes it is mounted. */
 export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: string }[] = [

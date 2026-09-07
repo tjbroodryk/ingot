@@ -1,0 +1,193 @@
+/*
+ * `/why`, and only the parts of it the landing page did not already have.
+ *
+ * This page is drawn in the landing page's idiom and imports that sheet, so
+ * the frame, the hero, the ruled bands, the three-up grids and the two splits
+ * are all over there and are used here rather than restated. What is left is
+ * three things this page needs and that one does not: a strip that closes a
+ * grid with the claim the grid adds up to, the same shape again under the
+ * scopes, and a table sitting inside a band whose children own their padding.
+ *
+ * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
+ * is over there. Every value here resolves to a token.
+ */
+
+/*
+ * A band that closes a grid with the sentence the grid was making.
+ *
+ * The landing page has one of these — `.wire-return`, the hop that runs
+ * backwards under the wire diagram — and this is not that class because that
+ * one belongs inside a panel and draws the panel's strong rule. This sits
+ * directly on the section, under a grid whose cells already drew the rules
+ * either side of them, so it needs the ordinary one.
+ *
+ * The arrowhead is drawn rather than typed, for the reason the wire's are:
+ * `next/font` subsets both faces to `latin`, so a `→` here would arrive in
+ * whatever face the reader happens to have, at whatever metrics that face
+ * sets. A clipped square has no font in it.
+ */
+.why-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 22px var(--space-8);
+  border-top: var(--rule);
+  background: var(--ink-08);
+  font-size: 15px;
+  color: var(--ink-70);
+}
+
+.why-strip::before {
+  content: '';
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+/*
+ * The limit under the four scopes, which is the same band with something in
+ * it that wraps: a sentence at a reading measure and the calls that manage a
+ * memory, rather than one line with an arrow in front of it.
+ *
+ * It is not a `.why-strip` with extra rules for that reason — the two look
+ * alike and are laid out differently, and a shared class with a modifier that
+ * changes the display would be one class doing two jobs.
+ */
+.grain-limit {
+  padding: 30px var(--space-8) 34px;
+  border-top: var(--rule);
+  background: var(--ink-08);
+}
+
+.grain-limit p {
+  max-width: 76ch;
+  margin: 0 0 18px;
+  font-size: 15px;
+  color: var(--ink-70);
+}
+
+/*
+ * The one place on this page a `strong` appears: the sentence that says the
+ * grain you pick is the grain you can join across, which is the sentence
+ * somebody skimming this section has to leave with.
+ */
+.grain-limit strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* ══ the four scopes ════════════════════════════════════════════════════
+   `.features` in `landing.css` is a three-column grid that draws its rules
+   from a three-column arithmetic — `3n + 1` starts a row, `n + 4` starts the
+   second one. The four scopes want four columns, so every one of those
+   statements is false here and has to be replaced rather than added to: cell
+   4 begins a row in this grid and ends one in that.
+
+   Each rule below is one selector more specific than the one it is undoing,
+   which is what makes the order of the two sheets irrelevant.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.grains {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.grains .feature:not(:nth-child(4n + 1)) {
+  border-left: var(--rule);
+}
+
+.grains .feature:nth-child(4n + 1) {
+  border-left: 0;
+}
+
+/* One row, so nothing starts a second one. */
+.grains .feature:nth-child(n + 4) {
+  border-top: 0;
+}
+
+/*
+ * A `.landblock` lets its children own their padding, because its grids need
+ * to reach the section's edges for their own rules to meet it. A table is not
+ * a grid and has no rules to line up, so it brings the padding back.
+ */
+.why-table {
+  padding: 8px var(--space-8) 56px;
+  border-top: var(--rule);
+}
+
+/*
+ * Wide enough for the longest item — "CPU, while a query runs" — on one line,
+ * because the left column of this table is a list somebody reads down and a
+ * two-line entry in the middle of it breaks the scan.
+ */
+.cost-item-col {
+  width: 210px;
+}
+
+/* ══ narrower ═══════════════════════════════════════════════════════════
+   The splits and the three-up grids collapse in `landing.css`, at the two
+   widths that page sets. What is left here is the four-up, which has one more
+   step to take than a three-up does, and the bands' padding.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Four across goes to two before it goes to one. A four-column grid at this
+ * width is four columns of about eleven characters, which is a scope title
+ * broken over three lines — and the pairing is not arbitrary either: it puts
+ * the two clock-bounded scopes on one row and the two that outlive a clock on
+ * the other.
+ */
+@media (max-width: 1000px) {
+  .grains {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grains .feature:not(:nth-child(4n + 1)) {
+    border-left: 0;
+  }
+
+  .grains .feature:not(:nth-child(2n + 1)) {
+    border-left: var(--rule);
+  }
+
+  .grains .feature:nth-child(n + 3) {
+    border-top: var(--rule);
+  }
+}
+
+@media (max-width: 820px) {
+  .grains {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /*
+   * Written with the same selector the rule above uses rather than a shorter
+   * one: that media query still matches at this width, and a `.grains
+   * .feature` here would lose to it on specificity and leave every second
+   * cell with a left border and nothing to its left.
+   */
+  .grains .feature:not(:nth-child(2n + 1)) {
+    border-left: 0;
+  }
+
+  .grains .feature + .feature {
+    border-top: var(--rule);
+  }
+
+  .why-strip,
+  .grain-limit,
+  .why-table {
+    padding-right: var(--space-6);
+    padding-left: var(--space-6);
+  }
+
+  /*
+   * The item column stops being a column: at this width the table is already
+   * as narrow as it goes, and 210px of it reserved for two words is the rest
+   * of the sentence wrapping four times beside it.
+   */
+  .cost-item-col {
+    width: auto;
+  }
+}

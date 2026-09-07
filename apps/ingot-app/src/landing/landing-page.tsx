@@ -6,7 +6,7 @@ import { RunTargetRow } from '../deployment/run-target';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { SampleTone } from '../docs/reference';
-import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL } from '../site/mode';
+import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
 import './landing.css';
 import {
   AI_SDK_SEEN,
@@ -204,7 +204,7 @@ export function LandingPage(): ReactNode {
               four cells instead of as four more feature tiles — this page has
               a lot of three-up grids by now and the loop is not another one.
             */}
-            <div className="panel landpanel">
+            <div className="panel panel-wide">
               <div className="panel-bar">
                 <span className="panel-glyph">≡ ×</span>
                 <span className="panel-rule" />
@@ -249,7 +249,7 @@ export function LandingPage(): ReactNode {
           </div>
 
           <div className="landfigure">
-            <div className="panel landpanel">
+            <div className="panel panel-wide">
               <div className="panel-bar">
                 <span className="panel-glyph">≡ ×</span>
                 <span className="panel-rule" />
@@ -348,6 +348,18 @@ export function LandingPage(): ReactNode {
               <span className="chip">metadata filter</span>
               <span className="chip">no vector db</span>
             </div>
+            {/*
+              This section says what the retrieval does; `/why` says why it is
+              the shape of the whole service rather than a feature of it.
+              The link is here rather than in the hero because a reader who has
+              got this far is the one the argument is for — and it is guarded
+              because the route is `null` in a build that does not have it.
+            */}
+            {WHY_HREF ? (
+              <a className="target-more" href={WHY_HREF}>
+                Why a query engine, and not a vector store →
+              </a>
+            ) : null}
           </div>
           <div className="split-figure">
             <CodeBlock code={RETRIEVAL} />

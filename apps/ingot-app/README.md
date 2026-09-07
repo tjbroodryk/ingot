@@ -19,10 +19,10 @@ not going to be one — see below.
 One codebase, two sites, and they have **different routes** rather than the
 same routes with something hidden:
 
-| Mode                   | `/`              | `/docs`   | `/deployment`  | `/dashboard` |
-| ---------------------- | ---------------- | --------- | -------------- | ------------ |
-| `dashboard` *(default)* | The reference    | —         | —              | The console  |
-| `landing`              | The landing page | Reference | How to run one | —            |
+| Mode                   | `/`              | `/docs`   | `/why`        | `/deployment`  | `/dashboard` |
+| ---------------------- | ---------------- | --------- | ------------- | -------------- | ------------ |
+| `dashboard` *(default)* | The reference    | —         | —             | —              | The console  |
+| `landing`              | The landing page | Reference | Why it is this shape | How to run one | —     |
 
 `NEXT_PUBLIC_INGOT_MODE` picks one, and a static export has no server to pick
 later, so the two sites are two builds — the same way the API's address already
@@ -54,8 +54,16 @@ Which mode goes where:
 | ------------- | --------------------------------------------------------------------- |
 | `/`           | The landing page, in a landing build. The reference otherwise.        |
 | `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
+| `/why`        | The argument: why a query engine and not a vector store. Landing only. |
 | `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
 | `/dashboard`  | Paste a key, pick a memory, run one SELECT, read the grid.            |
+
+`/why` is the only page on the site that argues rather than describes, and it
+is held to a stricter standard for it: every claim on it is a fact about a
+named file in `apps/ingot`, and `src/why/why.ts` names the file beside the
+claim. It is drawn in the landing page's idiom and imports
+`src/landing/landing.css` rather than restating it — what it needs and that
+page does not is `src/why/why.css`.
 
 `/deployment` and the landing page's own "ways to run it" are the same rows,
 from `src/deployment/targets.ts` through `src/deployment/run-target.tsx`. One
