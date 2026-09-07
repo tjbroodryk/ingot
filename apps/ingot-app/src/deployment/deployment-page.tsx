@@ -6,14 +6,22 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { DOCS_HREF, REPO_URL } from '../site/mode';
-import { type Dependency, NOT_NEEDED, OPTIONAL, REQUIRED, SUMMARY } from './dependencies';
+import {
+  BRING_IT_UP_LEDE,
+  DEPLOYMENT_DESCRIPTION,
+  DEPLOYMENT_LEDE,
+  type Dependency,
+  NOT_NEEDED,
+  OPTIONAL,
+  REQUIRED,
+  SUMMARY,
+} from './dependencies';
 import { RunTargetRow } from './run-target';
 import { RUN_TARGETS } from './targets';
 
 export const deploymentMetadata: Metadata = {
   title: 'Deployment',
-  description:
-    'How to run Ingot — on your machine, as a container, on Kubernetes — and the infrastructure all three need: a Postgres, somewhere to put Parquet, and an argument for why there is nothing else on the list.',
+  description: DEPLOYMENT_DESCRIPTION,
 };
 
 /**
@@ -68,15 +76,7 @@ export function DeploymentPage(): ReactNode {
               Three places, <span className="mark">two dependencies</span>
             </h1>
             <p className="lede">
-              <Prose
-                text={
-                  'Ingot is one process that needs a Postgres and somewhere to put Parquet, ' +
-                  'and every way of running it below is those two in a different dialect. ' +
-                  'Everything under them is a choice you are allowed to decline, and the ' +
-                  'things that are not on the list at all — a broker, a scheduler, a vector ' +
-                  'database — are missing on purpose rather than by omission.'
-                }
-              />
+              <Prose text={DEPLOYMENT_LEDE} />
             </p>
           </section>
 
@@ -106,13 +106,7 @@ export function DeploymentPage(): ReactNode {
             <span className="label section-kicker">[ Bring it up ]</span>
             <h2 className="deps-heading">Pick a place</h2>
             <p className="deps-para">
-              <Prose
-                text={
-                  'Each of these answers the same four questions in the same order — what ' +
-                  'you need, what to run, how you know it worked, and the one thing that ' +
-                  'catches people. What they need is the two sections after them.'
-                }
-              />
+              <Prose text={BRING_IT_UP_LEDE} />
             </p>
 
             <div className="targets">

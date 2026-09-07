@@ -6,14 +6,20 @@ import { DASHBOARD_HREF, IS_LANDING, REPO_URL } from '../site/mode';
 import { CodeBlock } from './code-block';
 import { DocsNav } from './docs-nav';
 import { EndpointRow } from './endpoint-row';
-import { BASICS, QUICKSTART, STATUS_CODES } from './page-sections';
+import {
+  BASICS,
+  QUICKSTART,
+  REFERENCE_DESCRIPTION,
+  REFERENCE_LEDE,
+  REFERENCE_TITLE,
+  STATUS_CODES,
+} from './page-sections';
 import { Prose } from './prose';
 import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
 export const referenceMetadata: Metadata = {
-  title: 'The Ingot HTTP API',
-  description:
-    'Every route Ingot serves, with its authentication, its request body and the shape it answers with.',
+  title: REFERENCE_TITLE,
+  description: REFERENCE_DESCRIPTION,
 };
 
 /**
@@ -74,9 +80,7 @@ export function ReferencePage() {
               The <span className="mark">Ingot</span> HTTP API
             </h1>
             <p className="lede">
-              <Prose
-                text={`${ENDPOINTS.length} routes. One bearer key. Everything sits under \`/api/v1\` except the two version-neutral service routes, so a load balancer never has to be updated when the contract is.`}
-              />
+              <Prose text={REFERENCE_LEDE} />
             </p>
           </section>
 

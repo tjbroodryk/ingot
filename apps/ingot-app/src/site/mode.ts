@@ -44,8 +44,43 @@ export const IS_LANDING = MODE === SiteMode.Landing;
  * Pages puts a project site under `/<repo>/`. Next prepends `basePath` to its
  * own asset URLs and to a `<Link>`, but not to an `href` written by hand, so
  * every hand-written one goes through {@link href} below.
+ *
+ * Exported because the plain-text build in `src/text/` writes its own links
+ * and is not markup, so `<Link>` cannot prepend anything for it.
  */
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
+/**
+ * The origin this build is served from, where that is known — `https://…`,
+ * with no trailing slash.
+ *
+ * Empty by default, and everything the site writes works with it empty: a page
+ * links its own site with a root-relative path, which is right at every
+ * address at once. What it is *not* enough for is the handful of files that
+ * are read off this site by something that is not on it — `robots.txt`'s
+ * `Sitemap:` line and every `<loc>` in the sitemap it points at must be
+ * absolute, per their own specifications, and a canonical URL is absolute by
+ * definition. So those are written when this is set and left out when it is
+ * not, rather than guessed at or written relative and quietly ignored.
+ *
+ * The pair with {@link BASE_PATH}, not an alternative to it. A GitHub Pages
+ * project site is `''` + `/<repo>`; a custom domain at the root is an origin +
+ * `''`; a site under a path on a domain of its own is both, and
+ * {@link absolute} composes them in that order.
+ */
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/+$/, '');
+
+/**
+ * A path on this site, as far as this build can address it: an absolute URL
+ * once {@link SITE_URL} is set, and the root-relative path until then.
+ *
+ * Takes a path that already carries {@link BASE_PATH} — the routes below are
+ * the things worth passing it — so the two halves of the address are composed
+ * in one place rather than concatenated at each call.
+ */
+export function absolute(path: string): string {
+  return `${SITE_URL}${path}`;
+}
 
 /** Where each page is, for one mode. */
 export interface SiteRoutes {

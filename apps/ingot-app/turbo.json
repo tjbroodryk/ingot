@@ -10,7 +10,18 @@
       // missing from this list is a cache that hands back the other build:
       // `NEXT_PUBLIC_INGOT_MODE` decides which routes exist at all, so a
       // landing build restored from a dashboard one would ship the console.
-      "env": ["NEXT_PUBLIC_INGOT_URL", "NEXT_PUBLIC_INGOT_MODE", "NEXT_PUBLIC_BASE_PATH"]
+      //
+      // `NEXT_PUBLIC_SITE_URL` is on it for the same reason and reaches
+      // further than the HTML: it decides whether `robots.txt` carries a
+      // `Sitemap:` line and whether `sitemap.xml` is written at all, so a
+      // build restored from before a domain was configured is a site that
+      // silently has neither.
+      "env": [
+        "NEXT_PUBLIC_INGOT_URL",
+        "NEXT_PUBLIC_INGOT_MODE",
+        "NEXT_PUBLIC_BASE_PATH",
+        "NEXT_PUBLIC_SITE_URL"
+      ]
     }
   }
 }

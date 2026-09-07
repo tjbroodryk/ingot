@@ -13,6 +13,30 @@
  * bring up is worth exactly what it is accurate.
  */
 
+/**
+ * The head of the page, as data, for the reason the reference's is — see
+ * `src/docs/page-sections.ts`. The HTML page and the markdown build both
+ * render these, and neither renders the other's copy.
+ */
+export const DEPLOYMENT_TITLE = 'Three places, two dependencies';
+
+export const DEPLOYMENT_DESCRIPTION =
+  'How to run Ingot — on your machine, as a container, on Kubernetes — and the infrastructure all three need: a Postgres, somewhere to put Parquet, and an argument for why there is nothing else on the list.';
+
+/** The paragraph under the title. Backticks render as code. */
+export const DEPLOYMENT_LEDE =
+  'Ingot is one process that needs a Postgres and somewhere to put Parquet, ' +
+  'and every way of running it below is those two in a different dialect. ' +
+  'Everything under them is a choice you are allowed to decline, and the ' +
+  'things that are not on the list at all — a broker, a scheduler, a vector ' +
+  'database — are missing on purpose rather than by omission.';
+
+/** The paragraph under "Pick a place". */
+export const BRING_IT_UP_LEDE =
+  'Each of these answers the same four questions in the same order — what ' +
+  'you need, what to run, how you know it worked, and the one thing that ' +
+  'catches people. What they need is the two sections after them.';
+
 /** One of the three cells under the page head. Backticks render as code. */
 export interface Summary {
   readonly kicker: string;
@@ -178,10 +202,10 @@ export const OPTIONAL: readonly Dependency[] = [
     kicker: 'Optional · embeddings and summaries',
     title: 'Two selectors, not one',
     body: [
-      'They are two purchases, so they are chosen separately. Embedding is a per-row cost paid once; a summary is an LLM call paid every time a caller asks for `receipt: "full"`. A deployment should be able to have real semantic search without buying the second.',
-      'Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, no key and no bill. They are good defaults and bad surprises, so each says at boot that it is one.',
-      'A provider named without its credentials refuses to boot, for the reason the base tier does. Falling back to the stand-in would leave a service that answers, accepts writes and hands back receipts that are lexical nonsense, with the only evidence a warning nobody was watching for.',
-      '`openai` is the adapter for anything speaking that API — Azure, a gateway, a local vLLM — through `OPENAI_BASE_URL`, which is what keeps those from being three more adapters. The embedding width is declared rather than discovered: it is baked into every stored vector and into the column a query session builds, so changing it is a re-embed rather than a configuration change, and a model that returns a different width is refused.',
+      'Two purchases, so two choices. Embedding is a per-row cost paid once; a summary is an LLM call paid every time a caller asks for `receipt: "full"`. Semantic search should not require buying the second.',
+      'Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, key or bill. Good defaults but bad surprises, so each announces itself at boot.',
+      'A provider named without its credentials refuses to boot. Falling back to the stand-in would leave a service that answers, accepts writes and hands back receipts that are lexical nonsense, with only a warning nobody was watching for as evidence.',
+      '`openai` is the adapter for anything speaking that API — Azure, a gateway, a local vLLM — through `OPENAI_BASE_URL`. The embedding width is declared, not discovered: it is baked into every stored vector and every query column, so changing it means a re-embed, and a model that returns a different width is refused.',
     ],
     settings: [
       { name: 'INGOT_EMBEDDER', fallback: 'local', note: 'One of `local`, `openai`, `gcp`.' },

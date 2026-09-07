@@ -3,6 +3,27 @@
  * the first route makes sense, and what every route can answer with.
  */
 
+import { ENDPOINTS } from './reference';
+
+/**
+ * The head of the page, as data, because two artefacts render it.
+ *
+ * `reference-page.tsx` uses these for its `<Metadata>` and its lede, and
+ * `src/text/reference-text.ts` uses the same three for the markdown build. A
+ * title or a summary that disagreed across two files of one build is the
+ * failure this whole content-as-data arrangement exists to prevent, and it
+ * would be a quiet one — nothing renders both.
+ *
+ * The `<h1>` is still markup, because it sets `Ingot` in the accent face.
+ */
+export const REFERENCE_TITLE = 'The Ingot HTTP API';
+
+export const REFERENCE_DESCRIPTION =
+  'Every route Ingot serves, with its authentication, its request body and the shape it answers with.';
+
+/** The paragraph under the title. Backticks render as code. */
+export const REFERENCE_LEDE = `${ENDPOINTS.length} routes. One bearer key. Everything sits under \`/api/v1\` except the two version-neutral service routes, so a load balancer never has to be updated when the contract is.`;
+
 /** One of the three ruled cells under the page head. */
 export interface Basic {
   /** The anchor, where the sidebar links to one. */

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "next build",
+    "build": "next build && bun scripts/emit-text.ts",
     "clean": "rm -rf .next dist .turbo *.tsbuildinfo",
     "dev": "next dev --port 5174",
     "lint": "biome lint .",

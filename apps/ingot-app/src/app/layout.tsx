@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Archivo, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { LEDE } from '../landing/sections';
+import { SITE_URL } from '../site/mode';
 import './globals.css';
 
 /**
@@ -28,12 +30,31 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  /**
+   * What a relative URL in this object is relative *to*.
+   *
+   * Undefined until the site has an address of its own, and that is the honest
+   * state rather than a gap: metadata is what other people's software quotes
+   * this page as, and a canonical or a preview URL is a claim about where the
+   * page lives. A self-hosted copy lives at whatever somebody typed, so there
+   * is nothing true to say, and Next leaves the tags off rather than resolving
+   * them against a guess.
+   */
+  metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
+  // Guarded by the same condition rather than written unconditionally: a
+  // relative `canonical` with no `metadataBase` under it is not left out, it
+  // is resolved against Next's own `http://localhost:3000` default — so the
+  // unguarded version of this line ships every page claiming to be canonically
+  // somebody's dev server.
+  ...(SITE_URL ? { alternates: { canonical: './' } } : {}),
   title: {
     default: 'Ingot — memory your model can query',
     template: '%s · Ingot',
   },
-  description:
-    'Durable, typed memory for LLM agents. Store a tool result, read it back as SQL or search — no vector plumbing, no re-reading transcripts.',
+  // The landing page's own lede. It is a constant over there rather than a
+  // second string here, because a preview and a hero that disagree is a thing
+  // nobody sees from inside either file.
+  description: LEDE,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
