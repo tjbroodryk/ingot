@@ -16,9 +16,12 @@ import {
   BENCHMARKS_LEDE,
   CATEGORIES,
   CONTROL_NAMES,
+  CORPUS_JOINS,
   CORPUS_LEDE,
+  countWord,
   HAS_RESULTS,
   leadStats,
+  mappingWriter,
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
@@ -120,6 +123,7 @@ export function BenchmarksPage(): ReactNode {
               <HeatMatrix categories={categories} adapters={adapters} />
               <Provenance />
               <CostTable adapters={adapters} />
+              <Failures adapters={adapters} />
               <p className="bench-note">
                 Evidence recall is the share of the answer-bearing records that came back through
                 the tools; precision is the share of what came back that was answer-bearing. Both
@@ -164,8 +168,14 @@ export function BenchmarksPage(): ReactNode {
         <section className="landblock" id="method">
           <div className="landhead">
             <span className="label label-sm kicker">[ What is compared ]</span>
+            {/*
+              "Columns" rather than "memories", because two of them are not
+              memories: `raw-context` and `oracle` answer from the prompt and
+              are reference points. The heading counting nine and the section
+              listing nine cells is the agreement that matters.
+            */}
             <h2 className="landtitle">
-              Six memories,
+              {countWord(ADAPTERS.length)} columns,
               <br />
               <span className="mark">one agent</span>
             </h2>
@@ -280,7 +290,7 @@ function Provenance(): ReactNode {
     ['embedder', run.embedder],
     ['runs per question', String(run.repeats)],
     ['tool-call budget', String(run.maxToolCalls)],
-    ['ingot schema', `${run.mapping}-written`],
+    ['ingot column mapping', mappingWriter(run.mapping)],
     ['questions', String(run.questions)],
     // Kept when the run stamp went, because how old a benchmark is changes
     // what it is worth — a table with no date is a table nobody can age.
@@ -369,6 +379,33 @@ function CorpusShape(): ReactNode {
           </dl>
         </div>
       ) : null}
+
+      {/*
+        Between the totals and the samples, because it is the fact that makes
+        the samples mean something: six payloads that describe themselves and
+        nothing else, joined only by values that happen to match.
+      */}
+      <div className="bench-joins">
+        <div className="bench-rule label label-sm">
+          <span>What joins them</span>
+          <span className="bench-rule-line" aria-hidden="true" />
+          <span>No schema, no keys</span>
+        </div>
+        <dl>
+          {CORPUS_JOINS.map((join) => (
+            <div key={`${join.from}-${join.to}`}>
+              <dt>
+                <code>{join.from}</code>
+                <span aria-hidden="true"> → </span>
+                <code>{join.to}</code>
+              </dt>
+              <dd>
+                <Prose text={join.by} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
       <div className="bench-sources">
         {entries.map(({ source, blurb }) => {
@@ -671,6 +708,44 @@ function HeatMatrix({
           </tbody>
         ) : null}
       </table>
+    </div>
+  );
+}
+
+/**
+ * Runs that never happened, named beside the numbers they dragged down.
+ *
+ * A provider throwing is scored as a wrong answer — a memory that could not be
+ * asked did not answer — and that is the right call for the accuracy column.
+ * It is the wrong thing to leave unsaid, because "this adapter did badly" and
+ * "a fifth of this adapter's runs died on a rate limit" are different readings
+ * of the same figure, and only the first one is about retrieval.
+ *
+ * Rendered as a warning rather than a table column: it is almost always zero
+ * for every row, and a column of noughts would earn its width about once a
+ * year while making the table harder to read the rest of the time.
+ */
+function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
+  const hit = adapters.filter((adapter) => adapter.failures > 0);
+  if (hit.length === 0) return null;
+
+  const total = hit.reduce((sum, adapter) => sum + adapter.failures, 0);
+  const runs = adapters.reduce((sum, adapter) => sum + adapter.runs, 0);
+
+  return (
+    <div className="bench-prov">
+      <p className="bench-warning">
+        {`${total} of ${runs} agent runs failed outright — the provider threw and nothing was answered: `}
+        {hit.map((adapter, index) => (
+          <span key={adapter.name}>
+            {index > 0 ? ', ' : ''}
+            <code>{adapter.name}</code> {adapter.failures} of {adapter.runs}
+          </span>
+        ))}
+        {'. They are scored wrong, because a memory that could not be asked did not answer — but ' +
+          'they are infrastructure failures rather than retrieval failures, and a column carrying ' +
+          'several of them is reading lower than what it did with the questions it got.'}
+      </p>
     </div>
   );
 }

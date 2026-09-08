@@ -700,6 +700,7 @@
   .bench-ranked,
   .bench-prov,
   .bench-facts,
+  .bench-joins,
   .bench-sources,
   .bench-note,
   .bench-empty,
@@ -707,4 +708,40 @@
     padding-left: var(--space-4);
     padding-right: var(--space-4);
   }
+}
+
+/*
+ * How the payloads connect.
+ *
+ * A definition list rather than a table: each row is a pair and a sentence
+ * about it, and the pair is the term. It sits between the totals and the
+ * samples because it is what makes the samples legible — six results that
+ * describe themselves and never each other, joined by values that merely
+ * happen to match.
+ */
+.bench-joins {
+  padding: var(--space-6) var(--space-8) var(--space-4);
+}
+
+.bench-joins > dl {
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.bench-joins dt {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--ink-80);
+  overflow-wrap: anywhere;
+}
+
+.bench-joins dt code {
+  color: var(--color-accent);
+}
+
+.bench-joins dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--ink-70);
 }
