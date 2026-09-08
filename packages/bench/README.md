@@ -239,6 +239,8 @@ part of `bun run test` at the repository root, and spends real money.
                        Adaptive thinking on Claude, reasoningEffort on GPT.
 --no-thinking          Send no reasoning settings at all.
 --publish FILE         Also write the site's summary JSON here.
+--from FILE.jsonl      Report on a finished run instead of buying a new one.
+--rescore              With --from: run the scorer again over the transcripts.
 --mapping MODE         authored | agent
 --categories a,b       Restrict to these question categories.
 --out DIR              Where the JSONL and the report are written. (results)
@@ -258,16 +260,47 @@ part of `bun run test` at the repository root, and spends real money.
 | `INGOT_API_KEY` | The key the server was started with |
 | `HYPERSPELL_API_KEY` | Only for `--adapters hyperspell` |
 
-The Ingot adapters need a running server (`bun run db:up && bun run dev`) and
-they talk to it over MCP, not over the REST API — the tool names, the
-descriptions and the schema handed over at connect time are part of what is
-being measured, and reimplementing that against `/query` would benchmark
-something no agent uses.
+The Ingot adapters need a running server (`bun run db:up && bun run dev`).
+`ingot` and `ingot-recall-only` reach it over MCP, because the tool names, the
+descriptions and the schema handed over at connect time are part of what an
+agent gets; `ingot-rest` and `ingot-rest-recall-only` reach the same store over
+`/add` and `/query` with tools authored here. See [the interface
+question](#the-interface-question) for why both are in the table.
 
-Each run writes two files into `--out`: a `.jsonl` with one row per
-(adapter, question, repeat) including the full tool transcript, and a `.md`
-report. The transcripts are the expensive part, so a change to the scorer can
-be replayed over an existing run rather than bought again.
+### What a run leaves behind
+
+Three files in `--out`, named after the run:
+
+| | |
+| --- | --- |
+| `<run>.jsonl` | One row per (adapter, question, repeat), with the full tool transcript. Appended as each row is bought. |
+| `<run>.meta.json` | The provenance — seed, provider, model, effort, embedder, mapping, warnings. Written *before* the first question. |
+| `<run>.md` | The report. Derived; safe to regenerate. |
+
+The sidecar is written first on purpose. The transcripts are the expensive half
+and they were always durable, but the provenance used to live in memory until
+the report was rendered — so a run that died at question ninety left ninety
+paid-for transcripts that nobody could publish, because a number nobody can
+trace to a seed and a model is not a result.
+
+With both on disk, everything downstream of the buying is free:
+
+```bash
+bun run bench --from results/<run>.jsonl                  # regenerate the report
+bun run bench --from results/<run>.jsonl --publish FILE   # and the site's summary
+bun run bench --from results/<run>.jsonl --rescore        # run the scorer again
+```
+
+`--rescore` rebuilds the corpus and the question set from the sidecar's seed,
+replays the stored transcripts through `scoreRun`, and says how many verdicts
+moved. It never writes to the `.jsonl` — the transcripts are the artefact and
+the scores are derived from them. A question id in the rows that the seed no
+longer generates is a hard failure rather than a skipped row, because scoring
+an answer against a question it was never asked is worse than refusing.
+
+It re-scores; it does not re-decide what should have been run. A run bought
+before `oracle` learned to skip the questions it cannot bound still has those
+rows in it, and re-scoring will still score them zero.
 
 ## Running it on Azure
 

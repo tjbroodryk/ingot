@@ -18,6 +18,7 @@ import { buildQuestions, categoryCounts, type Category } from '../questions/ques
 import { scoreRun } from '../score/score.js';
 import { renderLine, renderReport, type RunRecord } from './report.js';
 import { publishable } from './publish.js';
+import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
 
 /**
  * `ingot` and `ingot-rest` are the same store reached through two interfaces:
@@ -79,6 +80,10 @@ interface Options {
   thinking: boolean;
   /** Where to write the site's summary, if this run is meant to be published. */
   publish: string | null;
+  /** A finished run's JSONL to report on, instead of buying a new one. */
+  from: string | null;
+  /** With `--from`: run the scorer again over the stored transcripts. */
+  rescore: boolean;
 }
 
 function parse(argv: readonly string[]): Options {
@@ -103,6 +108,8 @@ function parse(argv: readonly string[]): Options {
     provider: 'foundry-gpt',
     thinking: true,
     publish: null,
+    from: null,
+    rescore: false,
   };
 
   for (let at = 0; at < argv.length; at += 1) {
@@ -179,6 +186,13 @@ function parse(argv: readonly string[]): Options {
         options.publish = next(flag, value);
         at += 1;
         break;
+      case '--from':
+        options.from = next(flag, value);
+        at += 1;
+        break;
+      case '--rescore':
+        options.rescore = true;
+        break;
       case '--allow-hash-embedder':
         options.allowHashEmbedder = true;
         break;
@@ -227,6 +241,11 @@ const HELP = `bun run bench [flags]
                          repository writes REST's. Run both; the gap is a result.
   --categories a,b       Restrict to these question categories.
   --out DIR              Where results.jsonl and report.md are written. (results)
+  --from FILE.jsonl      Report on a finished run instead of buying a new one.
+                         Regenerates its .md, and with --publish writes the
+                         site's summary. Needs the .meta.json beside it.
+  --rescore              With --from: run the scorer again over the stored
+                         transcripts. The transcripts are never modified.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -297,13 +316,12 @@ async function build(
   }
 }
 
-function required(name: string, value: string | undefined): string {
+function required(name: string, value: string | undefined | null): string {
   if (!value) throw new Error(`${name} is not set`);
   return value;
 }
 
-async function main(): Promise<void> {
-  const options = parse(process.argv.slice(2));
+async function main(options: Options): Promise<void> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
 
   const world = buildWorld({ seed: options.seed });
@@ -378,6 +396,26 @@ async function main(): Promise<void> {
   await mkdir(options.out, { recursive: true });
   const jsonlPath = join(options.out, `${runId}.jsonl`);
 
+  // Written before the first question rather than after the last, so a run that
+  // dies halfway still leaves rows that can be reported on and published. See
+  // the note in `store.ts`.
+  const meta: RunMeta = {
+    runId,
+    seed: options.seed,
+    model: options.model,
+    effort: options.effort,
+    repeats: options.repeats,
+    perTemplate: options.perTemplate,
+    maxToolCalls: options.maxToolCalls,
+    embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
+    mapping: options.mapping,
+    provider: options.provider,
+    thinking: options.thinking,
+    warnings,
+    adapters: options.adapters,
+  };
+  await writeMeta(jsonlPath, meta);
+
   for (const name of options.adapters) {
     const adapter = await build(name, options, model, runId);
     console.log(`\n── ${adapter.name} ──`);
@@ -428,36 +466,93 @@ async function main(): Promise<void> {
     }
   }
 
-  const header = {
-    runId,
-      seed: options.seed,
-      model: options.model,
-      effort: options.effort,
-      repeats: options.repeats,
-      maxToolCalls: options.maxToolCalls,
-      embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
-      mapping: options.mapping,
-      provider: options.provider,
-    thinking: options.thinking,
-    warnings,
-  };
+  await emit(meta, rows, jsonlPath, options.publish);
+}
 
-  const report = renderReport(header, rows, CATEGORIES);
-  const reportPath = join(options.out, `${runId}.md`);
+/**
+ * Everything a run produces once the buying is done: the report, and the site's
+ * summary if this run is meant to be published.
+ *
+ * Shared with `--from`, which is the whole point. A report regenerated from
+ * stored transcripts has to be the same report, rendered by the same code, or
+ * "replay it rather than buy it again" is a claim about two different things.
+ */
+async function emit(
+  meta: RunMeta,
+  rows: readonly RunRecord[],
+  jsonlPath: string,
+  publish: string | null,
+): Promise<void> {
+  const report = renderReport(meta, rows, CATEGORIES);
+  const reportPath = jsonlPath.replace(/\.jsonl$/, '.md');
   await writeFile(reportPath, report);
   console.log(`\n${report}`);
   console.log(`\nrows: ${jsonlPath}\nreport: ${reportPath}`);
 
-  if (options.publish) {
+  if (publish) {
     // Pretty-printed and newline-terminated because it is a tracked file that
     // people will read in a diff: a one-line JSON blob makes every run look
     // like a total rewrite.
-    await writeFile(
-      options.publish,
-      `${JSON.stringify(publishable(header, rows, CATEGORIES), null, 2)}\n`,
-    );
-    console.log(`published: ${options.publish}`);
+    await writeFile(publish, `${JSON.stringify(publishable(meta, rows, CATEGORIES), null, 2)}\n`);
+    console.log(`published: ${publish}`);
   }
 }
 
-await main();
+/**
+ * A finished run, read back off disk instead of bought again.
+ *
+ * The transcripts are the expensive part and they are already durable, so
+ * everything downstream of them — the report, the site's summary, and the
+ * scorer itself — is replayable for free. `--rescore` is why the scorer is a
+ * pure function of (question, answer, observed text): a change to it can be
+ * tried against every run ever paid for, which is the only way to know whether
+ * it moved a number for a good reason.
+ */
+async function replay(options: Options): Promise<void> {
+  const jsonlPath = required('--from', options.from);
+  const { meta, rows } = await readRun(jsonlPath);
+
+  if (!options.rescore) {
+    console.log(`${rows.length} rows from ${jsonlPath}, scored as they were bought`);
+    await emit(meta, rows, jsonlPath, options.publish);
+    return;
+  }
+
+  // The corpus and the questions follow from the seed, so the same seed and the
+  // same per-template count rebuild the identical set. A question id that is no
+  // longer generated means the generator has moved underneath these rows, and
+  // scoring them against a question they were never asked is worse than
+  // refusing.
+  const world = buildWorld({ seed: meta.seed });
+  const knownRefs = corpusRefs(buildCorpus(world));
+  const questions = new Map(
+    buildQuestions(world, { perTemplate: meta.perTemplate }).map((question) => [
+      question.id,
+      question,
+    ]),
+  );
+
+  let changed = 0;
+  const rescored = rows.map((row): RunRecord => {
+    const question = questions.get(row.questionId);
+    if (!question) {
+      throw new Error(
+        `${row.questionId} is in ${jsonlPath} but is not generated by seed ${meta.seed} at ` +
+          `--per-template ${meta.perTemplate}. The question set has changed since this run, ` +
+          'so these rows cannot be re-scored against it.',
+      );
+    }
+    const score = scoreRun(question, row.answer, observedTextOf(row), knownRefs);
+    if (score.correct !== row.correct || score.f1 !== row.f1) changed += 1;
+    return { ...row, ...score };
+  });
+
+  console.log(
+    `${rescored.length} rows from ${jsonlPath}, re-scored — ` +
+      `${changed} verdict(s) changed. The transcripts were not touched.`,
+  );
+  await emit(meta, rescored, jsonlPath, options.publish);
+}
+
+const parsed = parse(process.argv.slice(2));
+await (parsed.from ? replay(parsed) : main(parsed));

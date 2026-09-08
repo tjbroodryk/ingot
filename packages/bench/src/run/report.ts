@@ -78,6 +78,7 @@ export interface ReportHeader {
   readonly model: string;
   readonly effort: string;
   readonly repeats: number;
+  readonly perTemplate: number;
   readonly maxToolCalls: number;
   readonly embedder: string;
   readonly mapping: string;
@@ -100,7 +101,8 @@ export function renderReport(
   lines.push(
     `seed \`${header.seed}\` · provider \`${header.provider}\` · model \`${header.model}\` · ` +
       `${header.thinking ? `effort \`${header.effort}\`` : 'thinking off'} · ` +
-      `${header.repeats} run(s) per question · budget ${header.maxToolCalls} tool calls · ` +
+      `${header.repeats} run(s) per question · ${header.perTemplate} per template · ` +
+      `budget ${header.maxToolCalls} tool calls · ` +
       `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\``,
   );
   lines.push('');

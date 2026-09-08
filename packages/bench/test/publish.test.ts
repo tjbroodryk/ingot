@@ -18,6 +18,7 @@ const HEADER: ReportHeader = {
   model: 'gpt-5-mini',
   effort: 'high',
   repeats: 2,
+  perTemplate: 3,
   maxToolCalls: 12,
   embedder: 'text-embedding-3-small',
   mapping: 'authored',
