@@ -50,7 +50,7 @@ function renderBenchmarks(): string {
     ),
 
     heading(2, 'The questions'),
-    'The categories are the design. Similarity search cannot aggregate, cannot express absence and cannot order — and it does well on meaning. A single number would be hiding which of those it was made of.',
+    'The split by category is what the benchmark is for. The claim under test is that SQL over typed rows, on top of ranking by meaning, recalls more of the answer than similarity search alone — and each category is a place that claim can fail. `aggregate`, `absence`, `ordering` and `join` are where structure should tell; `semantic` is where embeddings should. A single number would average them together.',
     table(
       ['Category', 'What it asks'],
       CATEGORIES.map((category) => [`\`${category.name}\``, category.blurb]),

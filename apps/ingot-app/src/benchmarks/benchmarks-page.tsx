@@ -92,9 +92,12 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">per category</span>
             </h2>
             <p>
-              The categories are the design. Similarity search cannot aggregate, cannot express
-              absence and cannot order — and it does well on meaning. A table that reported one
-              number would be hiding which of those it was made of.
+              The split by category is what the benchmark is for. The claim under test is that SQL
+              over typed rows, on top of ranking by meaning, recalls more of the answer than
+              similarity search alone — and each category is a place that claim can fail.
+              Aggregates, absence, ordering and joins are where structure should tell; the semantic
+              questions are where embeddings should. A table that reported one number would average
+              them together.
             </p>
           </div>
 
