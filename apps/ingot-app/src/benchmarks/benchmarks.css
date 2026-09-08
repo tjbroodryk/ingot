@@ -106,6 +106,16 @@
   color: var(--ink-70);
   text-transform: none;
   letter-spacing: 0;
+  line-height: 1.7;
+}
+
+/*
+ * The subject of the figure, set in the accent the way every other emphasis on
+ * this site is. `.mark` is built for a word in a 64px headline, so the padding
+ * comes down to something a 13px label can carry.
+ */
+.bench-tile-mark {
+  padding: 1px 6px 2px;
 }
 
 /*
@@ -137,12 +147,26 @@
   list-style: none;
 }
 
+/*
+ * One adapter: name, accuracy, and what the accuracy cost.
+ *
+ * The two metrics share a row because the pair is the reading that matters —
+ * answering well on eighty thousand tokens is not the same achievement as
+ * answering well on four thousand, and two separate tables make a reader hold
+ * one in their head while looking at the other.
+ */
 .bench-rank {
   display: grid;
-  grid-template-columns: 210px 1fr 108px;
+  grid-template-columns: 190px minmax(120px, 1fr) 104px minmax(70px, 0.45fr) 76px;
   align-items: center;
   gap: var(--space-4);
   padding: 9px 0;
+}
+
+/* The column labels, which are the only thing naming the two halves. */
+.bench-rank-head {
+  padding-bottom: var(--space-2);
+  color: var(--ink-60);
 }
 
 .bench-rank-name {
@@ -162,9 +186,31 @@
   background: var(--color-accent);
 }
 
+/*
+ * Cost is drawn in a lighter register than accuracy: shorter, quieter, and
+ * scaled to the heaviest adapter in the run rather than to a percentage. More
+ * is worse here and less is better, which is the opposite of the bar beside
+ * it — so it must not look like the same measurement.
+ */
+.bench-rank-track-cost {
+  height: 6px;
+}
+
+.bench-rank-fill-cost {
+  background: var(--ink-45);
+}
+
+.bench-rank-cost {
+  color: var(--ink-70);
+}
+
 /* The controls read quieter, because they are context rather than contenders. */
 .bench-rank-muted .bench-rank-fill {
   background: var(--ink-45);
+}
+
+.bench-rank-muted .bench-rank-fill-cost {
+  background: var(--ink-30);
 }
 
 .bench-rank-value {

@@ -256,7 +256,15 @@ function Tiles(): ReactNode {
       {stats.map((stat) => (
         <div className="bench-tile" key={stat.label}>
           <div className="bench-tile-value">{stat.value}</div>
-          <div className="bench-tile-label label label-sm">{stat.label}</div>
+          <div className="bench-tile-label label label-sm">
+            {stat.label} —{' '}
+            {stat.subjects.map((subject, index) => (
+              <span key={subject}>
+                {index > 0 ? ' to ' : ''}
+                <span className="mark bench-tile-mark">{subject}</span>
+              </span>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -276,6 +284,12 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
   const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
   const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
 
+  // Context bars are scaled against the heaviest adapter in the run, controls
+  // included: the point of putting the two side by side is that `raw-context`
+  // reading the whole corpus is the thing the retrieval columns are cheaper
+  // than, and a scale that excluded it would hide that.
+  const peak = Math.max(...adapters.map((adapter) => adapter.contextTokens), 1);
+
   const row = (adapter: PublishedAdapter, muted: boolean): ReactNode => (
     <li className={muted ? 'bench-rank bench-rank-muted' : 'bench-rank'} key={adapter.name}>
       <code className="bench-rank-name">{adapter.name}</code>
@@ -286,12 +300,35 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
         <strong>{percent(adapter.accuracy)}</strong>{' '}
         <span className="muted">±{percent(adapter.stderr)}</span>
       </span>
+      <span className="bench-rank-track bench-rank-track-cost">
+        <span
+          className="bench-rank-fill bench-rank-fill-cost"
+          style={bar(adapter.contextTokens / peak)}
+          aria-hidden="true"
+        />
+      </span>
+      <span className="bench-rank-value bench-rank-cost">
+        {adapter.contextTokens.toLocaleString('en-GB')}
+      </span>
     </li>
   );
 
   return (
     <div className="bench-ranked">
-      <h3 className="bench-subhead label label-sm">Overall accuracy</h3>
+      {/*
+        Accuracy and cost on one row, because the interesting reading of this
+        benchmark is the pair. An adapter that answers well by pulling eighty
+        thousand tokens through the model has not solved the problem the same
+        way as one that answers well on four thousand, and two separate tables
+        make a reader hold one in their head while looking at the other.
+      */}
+      <div className="bench-rank bench-rank-head label label-sm">
+        <span>Overall accuracy</span>
+        <span />
+        <span />
+        <span />
+        <span className="bench-rank-cost">Context tokens</span>
+      </div>
       <ol className="bench-ranks">{memories.map((adapter) => row(adapter, false))}</ol>
       {controls.length > 0 ? (
         <>

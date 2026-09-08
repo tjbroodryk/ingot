@@ -71,6 +71,13 @@ export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracl
 export interface LeadStat {
   readonly value: string;
   readonly label: string;
+  /**
+   * The adapters the figure is about, kept apart from the label so the page
+   * can set them in the accent the way every other emphasis on this site is
+   * set. A figure with no subject is the marketing version of itself, so the
+   * subject is never folded into the prose.
+   */
+  readonly subjects: readonly string[];
 }
 
 export function leadStats(): readonly LeadStat[] {
@@ -86,11 +93,13 @@ export function leadStats(): readonly LeadStat[] {
   const stats: LeadStat[] = [
     {
       value: `${Math.round(best.accuracy * 100)}%`,
-      label: `highest overall accuracy — ${best.name}`,
+      label: 'highest overall accuracy',
+      subjects: [best.name],
     },
     {
       value: leanest.contextTokens.toLocaleString('en-GB'),
-      label: `fewest context tokens per answer — ${leanest.name}`,
+      label: 'fewest context tokens per answer',
+      subjects: [leanest.name],
     },
   ];
 
@@ -98,7 +107,8 @@ export function leadStats(): readonly LeadStat[] {
   if (leanest.contextTokens > 0 && heaviest.contextTokens > leanest.contextTokens) {
     stats.push({
       value: `${(heaviest.contextTokens / leanest.contextTokens).toFixed(1)}×`,
-      label: `spread between ${leanest.name} and ${heaviest.name}`,
+      label: 'context-token spread, leanest to heaviest',
+      subjects: [leanest.name, heaviest.name],
     });
   }
   return stats;
