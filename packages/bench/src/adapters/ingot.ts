@@ -85,7 +85,7 @@ export class IngotAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotOptions) {
     this.mode = options.mode ?? 'full';
-    this.name = this.mode === 'full' ? 'ingot' : 'ingot-text-search-only';
+    this.name = this.mode === 'full' ? 'ingot-mcp' : 'ingot-mcp-text-search-only';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
   }

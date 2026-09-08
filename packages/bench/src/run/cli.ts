@@ -27,7 +27,7 @@ import { pool } from './pool.js';
 import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
 
 /**
- * `ingot` and `ingot-rest` are the same store reached through two interfaces:
+ * `ingot-mcp` and `ingot-rest` are the same store reached through two interfaces:
  * MCP, whose tool descriptions and schema summary the server writes, and REST,
  * whose tools are authored in this repository in the same voice as the
  * baselines'. Both are columns rather than a flag on one column, because the
@@ -36,8 +36,8 @@ import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
  * same table, from the same model on the same day.
  */
 const ADAPTERS = [
-  'ingot',
-  'ingot-text-search-only',
+  'ingot-mcp',
+  'ingot-mcp-text-search-only',
   'ingot-rest',
   'ingot-rest-text-search-only',
   'vector',
@@ -102,7 +102,7 @@ interface Options {
 function parse(argv: readonly string[]): Options {
   const options: Options = {
     seed: 1,
-    adapters: ['ingot', 'ingot-text-search-only', 'vector', 'raw-context', 'oracle'],
+    adapters: ['ingot-mcp', 'ingot-mcp-text-search-only', 'vector', 'raw-context', 'oracle'],
     repeats: 3,
     perTemplate: 3,
     maxToolCalls: 12,
@@ -359,14 +359,14 @@ async function build(
     options.mapping === 'agent' ? agentMapping(model) : authoredMapping;
 
   switch (name) {
-    case 'ingot':
-    case 'ingot-text-search-only':
+    case 'ingot-mcp':
+    case 'ingot-mcp-text-search-only':
       return new IngotAdapter({
         baseUrl: env.INGOT_URL ?? 'http://localhost:3002',
         account: env.INGOT_ACCOUNT ?? 'dev',
         apiKey: required('INGOT_API_KEY', env.INGOT_API_KEY),
         runId,
-        mode: name === 'ingot' ? 'full' : 'text-search-only',
+        mode: name === 'ingot-mcp' ? 'full' : 'text-search-only',
         mapping,
       });
     case 'ingot-rest':

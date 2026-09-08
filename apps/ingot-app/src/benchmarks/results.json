@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-08T12:29:22.598Z",
+  "generatedAt": "2026-09-08T12:46:24.061Z",
   "run": {
     "runId": "2026-09-08T11-43-35-947Z-seed1",
     "seed": 1,
@@ -33,7 +33,7 @@
   ],
   "adapters": [
     {
-      "name": "ingot",
+      "name": "ingot-mcp",
       "runs": 25,
       "accuracy": 0.92,
       "stderr": 0.05425863986500213,
@@ -52,7 +52,7 @@
       }
     },
     {
-      "name": "ingot-text-search-only",
+      "name": "ingot-mcp-text-search-only",
       "runs": 25,
       "accuracy": 0.52,
       "stderr": 0.09991996797437437,

@@ -71,9 +71,16 @@
  * sheet exists to avoid. Each one is a fact with its subject named underneath —
  * a number without "which adapter" attached would be the marketing version.
  */
+/*
+ * The horizontal padding is `var(--space-8)` here and in every other block on
+ * this page, so the tiles, the bars and the matrix share one left edge. The
+ * rules still run the full width of the band, because a border sits outside
+ * the padding — which is the arrangement `.bench-strip` already relies on.
+ */
 .bench-tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 var(--space-8);
   border-top: var(--rule);
   border-bottom: var(--rule);
 }
@@ -109,7 +116,7 @@
  * replaced.
  */
 .bench-ranked {
-  padding: var(--space-6) var(--space-8) var(--space-4) 0;
+  padding: var(--space-6) var(--space-8) var(--space-4);
 }
 
 .bench-subhead {
@@ -440,6 +447,8 @@
 
 @media (max-width: 720px) {
   .bench-scroll,
+  .bench-tiles,
+  .bench-ranked,
   .bench-prov,
   .bench-note,
   .bench-defs,

@@ -6,7 +6,7 @@ What an agent can get back out, and what it costs to get it.
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,oracle,raw-context
-bun run bench --adapters ingot,ingot-text-search-only,vector,hyperspell,raw-context,oracle
+bun run bench --adapters ingot,ingot-mcp-text-search-only,vector,hyperspell,raw-context,oracle
 bun run bench --adapters ingot,ingot-rest   # the same store, two interfaces
 ```
 
@@ -22,10 +22,10 @@ embeddings". It is **whether typed rows and SQL, on top of the same
 embeddings, retrieve better than the embeddings alone** — and, separately, what
 each answer costs in context.
 
-That is why `ingot-text-search-only` exists and why it is the most important column
+That is why `ingot-mcp-text-search-only` exists and why it is the most important column
 in the table. It is the same store, the same rows and the same vectors, reached
 only through top-k semantic search. If Ingot beats a vector store but
-`ingot-text-search-only` beats it by the same margin, the win came from chunking,
+`ingot-mcp-text-search-only` beats it by the same margin, the win came from chunking,
 not from structure, and the honest conclusion is a smaller one.
 
 ### The interface question
@@ -47,19 +47,19 @@ because `/info` costs no tool call either way, but the words are ours.
 
 Neither column is the honest one alone:
 
-- **`ingot`** is what an agent connecting to Ingot today actually gets. The
+- **`ingot-mcp`** is what an agent connecting to Ingot today actually gets. The
   product claim.
 - **`ingot-rest`** is typed rows and SQL with the packaging removed, symmetric
   with `vector` and `hyperspell`. The substrate claim.
 
 The gap between them is the result: how much of the advantage is the data model
 and how much is the surface it is reached through. Report both, or report
-neither — a table with only `ingot` in it cannot answer the question, and a
+neither — a table with only `ingot-mcp` in it cannot answer the question, and a
 table with only `ingot-rest` in it just moves the thumb to the other side of the
 scale, since then *we* are the ones writing Ingot's descriptions and nobody can
 check whether we wrote them well or badly.
 
-`ingot-rest-text-search-only` is the same ablation as `ingot-text-search-only`, for the
+`ingot-rest-text-search-only` is the same ablation as `ingot-mcp-text-search-only`, for the
 same reason.
 
 ## What is measured
@@ -228,7 +228,7 @@ part of `bun run test` at the repository root, and spends real money.
 
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
---adapters a,b,c       ingot, ingot-text-search-only, ingot-rest, ingot-rest-text-search-only,
+--adapters a,b,c       ingot, ingot-mcp-text-search-only, ingot-rest, ingot-rest-text-search-only,
                        vector, hyperspell, raw-context, oracle
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
@@ -262,7 +262,7 @@ part of `bun run test` at the repository root, and spends real money.
 | `HYPERSPELL_API_KEY` | Only for `--adapters hyperspell` |
 
 The Ingot adapters need a running server (`bun run db:up && bun run dev`).
-`ingot` and `ingot-text-search-only` reach it over MCP, because the tool names, the
+`ingot-mcp` and `ingot-mcp-text-search-only` reach it over MCP, because the tool names, the
 descriptions and the schema handed over at connect time are part of what an
 agent gets; `ingot-rest` and `ingot-rest-text-search-only` reach the same store over
 `/add` and `/query` with tools authored here. See [the interface
@@ -313,8 +313,8 @@ tokens a question, and dropping it cuts wall time close to proportionally —
 fine while iterating, but the report stamps the effort because runs at
 different efforts are not comparable.
 
-Worth noticing in those numbers: `ingot-text-search-only` averaged 5,238 output
-tokens against `ingot`'s 2,452, and took twice as long. That is not overhead.
+Worth noticing in those numbers: `ingot-mcp-text-search-only` averaged 5,238 output
+tokens against `ingot-mcp`'s 2,452, and took twice as long. That is not overhead.
 Take away SQL and the model thinks twice as hard to compensate, which is a
 result rather than a cost.
 

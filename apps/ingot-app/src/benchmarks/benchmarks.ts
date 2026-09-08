@@ -119,12 +119,17 @@ export const BENCHMARKS_LEDE =
 /** What each adapter in the table is, in the order the table shows them. */
 export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] = [
   {
-    name: 'ingot',
+    name: 'ingot-mcp',
     blurb:
       'The read surface a real agent gets over MCP: the schema at connect time, SQL, and ranking by meaning.',
   },
   {
-    name: 'ingot-text-search-only',
+    name: 'ingot-rest',
+    blurb:
+      'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot-mcp` is how much of the result is the surface rather than the data model.',
+  },
+  {
+    name: 'ingot-mcp-text-search-only',
     blurb:
       'The ablation, and the most important column. The same store, the same rows and the same vectors, reachable only through top-k semantic search.',
   },
