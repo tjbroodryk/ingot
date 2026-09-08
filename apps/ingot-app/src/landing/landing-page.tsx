@@ -45,15 +45,6 @@ export function LandingPage(): ReactNode {
     <>
       <SiteHeader
         current={SiteSection.Landing}
-        anchors={[
-          // No `#run` here: the header carries Deployment on every page of a
-          // landing build, and on this one it is already the jump this would
-          // be. Two nav items pointing at one section is one of them wearing
-          // out.
-          { href: '#how', label: 'How it works' },
-          { href: '#harness', label: 'Agent loop' },
-          { href: '#mcp', label: 'MCP' },
-        ]}
         actions={
           <a className="btn-solid" href={REPO_URL}>
             Get the source

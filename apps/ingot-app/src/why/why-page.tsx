@@ -71,11 +71,6 @@ export function WhyPage(): ReactNode {
     <>
       <SiteHeader
         current={SiteSection.Why}
-        anchors={[
-          { href: '#sql', label: 'Why SQL' },
-          { href: '#grain', label: 'Scope' },
-          { href: '#cost', label: 'Cost' },
-        ]}
         actions={
           <a className="btn-solid" href={REPO_URL}>
             Get the source

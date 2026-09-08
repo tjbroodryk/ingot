@@ -40,10 +40,6 @@ export function ReferencePage() {
     <>
       <SiteHeader
         current={SiteSection.Docs}
-        anchors={[
-          { href: '#reference', label: 'Reference' },
-          { href: '#mcp-account', label: 'MCP' },
-        ]}
         actions={
           <>
             {/*

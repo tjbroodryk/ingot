@@ -28,15 +28,17 @@ export enum SiteSection {
  *
  * The links are anchors rather than `<Link>` because their targets move
  * between builds; `mode.ts` carries the reasoning.
+ *
+ * What it does not carry is in-page jumps. A header that mixes routes with
+ * section links reads as one list, and a reader cannot tell which entries
+ * leave the page: "Why" beside "Why SQL" looks like two pages, and only one
+ * of them is. The pages that want a section list have a sidebar for it.
  */
 export function SiteHeader({
   current,
-  anchors = [],
   actions,
 }: {
   current: SiteSection;
-  /** In-page jumps, for a page long enough to want them. */
-  anchors?: readonly { href: string; label: string }[];
   /**
    * The buttons at the right-hand end, which are the caller's for the same
    * reason the footer's links are: "Get a key" is an anchor on the reference
@@ -78,11 +80,6 @@ export function SiteHeader({
             Deployment
           </a>
         ) : null}
-        {anchors.map((anchor) => (
-          <a href={anchor.href} key={anchor.href}>
-            {anchor.label}
-          </a>
-        ))}
       </nav>
 
       <a className="brand" href={HOME_HREF}>

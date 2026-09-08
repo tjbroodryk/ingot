@@ -50,10 +50,6 @@ export function DeploymentPage(): ReactNode {
     <>
       <SiteHeader
         current={SiteSection.Deployment}
-        anchors={[
-          { href: '#bring-it-up', label: 'Bring it up' },
-          { href: '#nothing-else', label: 'Not needed' },
-        ]}
         actions={
           <>
             <a className="btn-solid" href={REPO_URL}>
