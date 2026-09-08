@@ -155,3 +155,19 @@ export const BENCHMARKS_HREF = ROUTES.benchmarks;
  * link — there is nothing to sign up to, and running it is how you get it.
  */
 export const REPO_URL = 'https://github.com/tjbroodryk/ingot';
+
+/**
+ * A file in the repository, on the default branch.
+ *
+ * Pinned to `main` rather than to a tag or a commit: these links exist so a
+ * reader can check a claim against the code, and the code they should be
+ * checking is the code that is there now, not the code as it was when a page
+ * was written.
+ */
+export function sourceHref(path: string): string {
+  // GitHub serves files under `/blob/` and directories under `/tree/`, and the
+  // wrong one is a 404 rather than a redirect. A trailing segment with a dot in
+  // it is a file; anything else is a directory.
+  const kind = /\.[a-z0-9]+$/i.test(path) ? 'blob' : 'tree';
+  return `${REPO_URL}/${kind}/main/${path}`;
+}

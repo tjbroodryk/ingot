@@ -178,6 +178,51 @@ export const CATEGORIES: readonly { readonly name: string; readonly blurb: strin
   { name: 'multi-hop', blurb: 'Two hops and an argmax.' },
 ];
 
+/**
+ * Where to check each claim this page makes.
+ *
+ * A benchmark published by the thing it measures is worth exactly as much as
+ * a reader's ability to go and look. Every load-bearing part of it is one
+ * file, and each is named here by the question it answers rather than by what
+ * it is — "where do the questions come from" is what somebody wants, not
+ * `questions.ts`.
+ */
+export const SOURCES: readonly {
+  readonly question: string;
+  readonly path: string;
+  readonly detail: string;
+}[] = [
+  {
+    question: 'Where do the questions come from?',
+    path: 'packages/bench/src/questions/questions.ts',
+    detail:
+      'Every question and every gold answer, computed from the generated world rather than annotated. Nothing here is written by hand.',
+  },
+  {
+    question: 'What is the corpus?',
+    path: 'packages/bench/src/corpus/world.ts',
+    detail:
+      'The seeded generator. `--seed` reproduces it exactly, and the tool results the adapters ingest are a lossy view of these objects.',
+  },
+  {
+    question: 'How is correctness decided?',
+    path: 'packages/bench/src/score/score.ts',
+    detail:
+      'Counts exact, sets by F1, ordered lists in order. No model grades anything.',
+  },
+  {
+    question: 'What does each memory get?',
+    path: 'packages/bench/src/adapters',
+    detail: 'One interface, eight implementations. The tools each adapter puts in front of the agent.',
+  },
+  {
+    question: 'What does the agent do with them?',
+    path: 'packages/bench/src/agent/loop.ts',
+    detail:
+      'One loop for every column: same model, same budget, same answer channel. Only the tool list differs.',
+  },
+];
+
 /** The caveats, stated on the page rather than in a footnote nobody opens. */
 export const LIMITS: readonly { readonly title: string; readonly body: string }[] = [
   {

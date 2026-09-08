@@ -495,27 +495,21 @@
   color: var(--ink-70);
 }
 
-/* Terms and what they mean: the categories, and the limits. */
-.bench-defs {
-  margin: 0;
-  padding: 8px var(--space-8) 56px;
+/*
+ * A source link, in a cell that is otherwise the method grid's twin.
+ *
+ * `.step-num` is the accent already, so the link cannot signal itself with
+ * colour — the underline is what says it is one, and it only firms up on
+ * hover.
+ */
+.step-num a {
+  color: inherit;
+  text-decoration-color: var(--ink-30);
+  text-underline-offset: 3px;
 }
 
-.bench-defs > div {
-  padding: 18px 0;
-  border-top: var(--rule);
-}
-
-.bench-defs dt {
-  font-size: 16px;
-  margin-bottom: 6px;
-}
-
-.bench-defs dd {
-  margin: 0;
-  max-width: 68ch;
-  color: var(--ink-70);
-  font-size: 15px;
+.step-num a:hover {
+  text-decoration-color: currentColor;
 }
 
 /*
@@ -581,7 +575,6 @@
   .bench-ranked,
   .bench-prov,
   .bench-note,
-  .bench-defs,
   .bench-empty,
   .bench-strip {
     padding-left: var(--space-4);

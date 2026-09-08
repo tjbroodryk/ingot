@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
+import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // The landing page's layout, used rather than restated, the way `/why` uses
 // it: this page is the same shape of document — a hero and ruled bands.
 import '../landing/landing.css';
@@ -17,6 +17,7 @@ import {
   HAS_RESULTS,
   leadStats,
   LIMITS,
+  SOURCES,
   type PublishedAdapter,
 } from './benchmarks';
 
@@ -171,23 +172,59 @@ export function BenchmarksPage(): ReactNode {
             </p>
           </div>
 
-          <dl className="bench-defs">
+          <div className="steps">
             {LIMITS.map((limit) => (
-              <div key={limit.title}>
-                <dt>{limit.title}</dt>
-                <dd>{limit.body}</dd>
+              <div className="step" key={limit.title}>
+                {/*
+                  `.step-num` rather than a heading, so these read as the
+                  method section's cells do. That class sets the treatment —
+                  mono, letterspaced, accent — and not the casing, which is
+                  why the adapter names are upper-cased at their call site and
+                  a sentence like this one is not.
+                */}
+                <div className="step-num">{limit.title}</div>
+                <p>{limit.body}</p>
               </div>
             ))}
-          </dl>
+          </div>
+
+        </section>
+
+        <section className="landblock" id="check">
+          <div className="landhead">
+            <span className="label label-sm kicker">[ Check it ]</span>
+            <h2 className="landtitle">
+              Every claim,
+              <br />
+              <span className="mark">one file away</span>
+            </h2>
+            <p>
+              A benchmark published by the thing it measures is worth what a reader’s ability to
+              go and look is worth. Each part of this one is a single file, linked by the question
+              it answers.
+            </p>
+          </div>
+
+          <div className="steps">
+            {SOURCES.map((source) => (
+              <div className="step" key={source.path}>
+                <div className="step-num">
+                  <a href={sourceHref(source.path)}>{source.question}</a>
+                </div>
+                <p>{source.detail}</p>
+                <code>{source.path}</code>
+              </div>
+            ))}
+          </div>
 
           <div className="bench-strip">
             <p>
-              The harness, the generator and the scorer are in <code>packages/bench</code>. Run it
-              against your own seed and see whether it holds.
+              Or run it yourself against a seed of your own — <code>--dry-run</code> prints every
+              question and every gold answer without spending anything.
             </p>
             <div className="hero-actions label">
-              <a className="btn-solid" href={REPO_URL}>
-                Read the harness
+              <a className="btn-solid" href={sourceHref('packages/bench/README.md')}>
+                The methodology
               </a>
               <a className="btn-outline" href={DOCS_HREF}>
                 View docs

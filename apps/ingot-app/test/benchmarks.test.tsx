@@ -6,9 +6,11 @@ import {
   CATEGORIES,
   HAS_RESULTS,
   LIMITS,
+  SOURCES,
   type PublishedBenchmark,
 } from '../src/benchmarks/benchmarks';
 import { BenchmarksPage } from '../src/benchmarks/benchmarks-page';
+import { sourceHref } from '../src/site/mode';
 import { BENCHMARKS } from '../src/text/benchmarks-text';
 
 /**
@@ -85,6 +87,18 @@ describe('the benchmarks page', () => {
 
   it('states its limits on the page rather than in a footnote', () => {
     for (const limit of LIMITS) expect(markup).toContain(limit.title);
+  });
+
+  /**
+   * The page's whole standing rests on a reader being able to go and check it,
+   * so a source link that rots is worse than no link: it reads as an invitation
+   * and lands on a 404.
+   */
+  it('links every source by the question it answers', () => {
+    for (const source of SOURCES) {
+      expect(markup).toContain(source.question);
+      expect(markup).toContain(sourceHref(source.path));
+    }
   });
 
   /**

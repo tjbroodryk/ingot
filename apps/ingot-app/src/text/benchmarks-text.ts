@@ -20,7 +20,9 @@ import {
   CATEGORIES,
   HAS_RESULTS,
   LIMITS,
+  SOURCES,
 } from '../benchmarks/benchmarks';
+import { sourceHref } from '../site/mode';
 import type { Article } from './markdown';
 import { blocks, bullets, fence, heading, table } from './markdown';
 
@@ -57,6 +59,14 @@ function renderBenchmarks(): string {
     heading(2, 'What this does not measure'),
     'A benchmark published by the thing it measures has one obligation above the rest: say plainly where it is weak.',
     ...LIMITS.flatMap((limit) => [heading(3, limit.title), limit.body]),
+
+    heading(2, 'Check it'),
+    'Each part of this is a single file. A reader who wants to know whether the questions were shaped to flatter anybody should read the generator rather than take this page’s word for it.',
+    table(
+      ['Question', 'Where'],
+      SOURCES.map((source) => [source.question, `[\`${source.path}\`](${sourceHref(source.path)})`]),
+    ),
+    '`bun run bench --dry-run` prints every question and every gold answer without making a single API call.',
   )}\n`;
 }
 
