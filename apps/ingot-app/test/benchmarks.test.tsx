@@ -85,6 +85,15 @@ describe('the benchmarks page', () => {
     }
   });
 
+  it('describes every column the published table shows', () => {
+    // The inverse of the test above, and the one that catches a column added
+    // to `packages/bench`, published, and never written down. A row of numbers
+    // with no account of what produced them is a number nobody can read — and
+    // the page filters its blurbs to the run, so the omission is silent.
+    const described = ADAPTERS.map((adapter) => adapter.name);
+    for (const adapter of BENCHMARK.adapters) expect(described).toContain(adapter.name);
+  });
+
   it('states its limits on the page rather than in a footnote', () => {
     for (const limit of LIMITS) expect(markup).toContain(limit.title);
   });

@@ -119,15 +119,16 @@ export const HAS_RESULTS = BENCHMARK.run !== null && BENCHMARK.adapters.length >
 
 export const BENCHMARKS_DESCRIPTION =
   'What an agent gets back out of a memory, and what it costs to get it — Ingot ' +
-  'against a vector baseline, a hosted memory, and its own embedding path with SQL taken away.';
+  'against vector search local and hosted, a hosted memory, and its own embedding ' +
+  'path with SQL taken away.';
 
 export const BENCHMARKS_LEDE =
   'Ingot contains a vector index. So the question is not whether structure beats ' +
   'embeddings — it is whether typed rows and SQL on top of the same embeddings ' +
   'retrieve better than the embeddings alone, and what each answer costs in context.';
 
-/** What each adapter in the table is, in the order the table shows them. */
-export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] = [
+/** What each adapter is, in the order the table shows them. */
+const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }[] = [
   {
     name: 'ingot-mcp',
     blurb:
@@ -149,6 +150,16 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
       'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. It is chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available, given deliberately. Same embedding model as Ingot, and brute-force exact cosine rather than an approximate index, so what it cannot do is a property of top-k retrieval and not of a weak baseline.',
   },
   {
+    name: 'pinecone',
+    blurb:
+      'The hosted vector database, given the identical embeddings, chunking and search tool as `vector`. It is here to answer the objection that a baseline written in this repository is a strawman: if a production ANN index cannot beat brute-force cosine over the same vectors, what the top-k rows cannot do belongs to top-k retrieval and not to the baseline. Pinecone’s own embedding models are deliberately not used — one embedder across the table is the rule.',
+  },
+  {
+    name: 'turbopuffer',
+    blurb:
+      'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only, and hybrid retrieval deserves its own column rather than a silent edge in this one.',
+  },
+  {
     name: 'hyperspell',
     blurb: 'A hosted memory, configured as its own documentation says to configure it.',
   },
@@ -163,6 +174,23 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
       'Perfect retrieval: exactly the answer-bearing records and nothing else. The gap to an adapter is retrieval; the gap to 100% is the model.',
   },
 ];
+
+/**
+ * The blurbs for the columns this published run actually has.
+ *
+ * The catalogue above outlives any one run: a column is described there as
+ * soon as it exists in `packages/bench`, which is before the next run has been
+ * bought. Describing a column the table does not show would be the page
+ * claiming a comparison nobody has run — so the page renders the intersection,
+ * and falls back to the whole catalogue only when there are no results at all
+ * and it is explaining what it is going to measure rather than what it found.
+ */
+export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] =
+  BENCHMARK.adapters.length > 0
+    ? ADAPTER_BLURBS.filter((blurb) =>
+        BENCHMARK.adapters.some((adapter) => adapter.name === blurb.name),
+      )
+    : ADAPTER_BLURBS;
 
 /** What each question category is for. The categories are the whole design. */
 export const CATEGORIES: readonly { readonly name: string; readonly blurb: string }[] = [
@@ -213,7 +241,7 @@ export const SOURCES: readonly {
   {
     question: 'What does each memory get?',
     path: 'packages/bench/src/adapters',
-    detail: 'One interface, eight implementations. The tools each adapter puts in front of the agent.',
+    detail: 'One interface, ten implementations. The tools each adapter puts in front of the agent.',
   },
   {
     question: 'What does the agent do with them?',

@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import type { RunRecord } from '../src/run/report.js';
-import { metaPathFor, observedTextOf, readRun, writeMeta, type RunMeta } from '../src/run/store.js';
+import {
+  metaPathFor,
+  observedTextOf,
+  readRun,
+  readRuns,
+  writeMeta,
+  type RunMeta,
+} from '../src/run/store.js';
 
 /**
  * Reading a paid-for run back off disk.
@@ -96,5 +103,121 @@ describe('a run on disk', () => {
 
   test('rebuilds what the tools handed back, the way the loop joined it', () => {
     expect(observedTextOf(ROW)).toBe('first\nsecond');
+  });
+});
+
+/**
+ * Splicing a new column into a table already paid for.
+ *
+ * The reason this is a function rather than a `cat` is that it is the easiest
+ * way in the whole package to publish something that looks like a comparison
+ * and is not — one column bought from a different model, at a different seed,
+ * or with a different number of repeats behind its ±. So the assertions here
+ * are mostly about what it refuses.
+ */
+describe('merging finished runs', () => {
+  const write = async (
+    dir: string,
+    name: string,
+    meta: Partial<RunMeta>,
+    adapters: readonly string[],
+  ): Promise<string> => {
+    const jsonl = join(dir, `${name}.jsonl`);
+    await writeFile(
+      jsonl,
+      adapters.map((adapter) => `${JSON.stringify({ ...ROW, adapter })}\n`).join(''),
+    );
+    await writeMeta(jsonl, { ...META, runId: name, adapters, ...meta });
+    return jsonl;
+  };
+
+  test('one file is read exactly as it was, with nothing added', async () => {
+    const dir = await scratch();
+    const only = await write(dir, 'solo', {}, ['oracle']);
+
+    const merged = await readRuns([only]);
+    expect(merged.meta.runId).toBe('solo');
+    expect(merged.meta.warnings).toEqual([]);
+  });
+
+  test('joins the columns and says which run each came from', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector', 'oracle']);
+    const extra = await write(dir, 'extra', {}, ['pinecone']);
+
+    const merged = await readRuns([base, extra]);
+    expect(merged.rows.map((row) => row.adapter)).toEqual(['vector', 'oracle', 'pinecone']);
+    // Its own run, not either input's, because it is neither of them.
+    expect(merged.meta.runId).toMatch(/^combined-seed42-/);
+    expect(merged.meta.adapters).toEqual(['vector', 'oracle', 'pinecone']);
+
+    const [warning] = merged.meta.warnings;
+    expect(warning).toContain('assembled from 2 runs');
+    expect(warning).toContain('`vector`, `oracle` from base');
+    expect(warning).toContain('`pinecone` from extra');
+  });
+
+  test('refuses runs that disagree about anything that moves a number', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector']);
+    const other = await write(dir, 'other', { repeats: 3 }, ['pinecone']);
+
+    // Not a comparison: a column bought once beside a column bought three
+    // times is a difference in spread nobody chose.
+    expect(readRuns([base, other])).rejects.toThrow(/repeats=3 where base has 1/);
+  });
+
+  test('an Ingot-only run makes no claim about the embedder, so it cannot clash', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector']);
+    // What `cli.ts` records when no adapter in the run embeds locally: Ingot's
+    // vectors are the server's, so the run built no embedder at all.
+    const ingot = await write(
+      dir,
+      'ingot',
+      { embedder: 'none (no local vector adapter in this run)' },
+      ['ingot-rest'],
+    );
+
+    const merged = await readRuns([base, ingot]);
+    expect(merged.rows.map((row) => row.adapter)).toEqual(['vector', 'ingot-rest']);
+  });
+
+  test('still refuses two runs that each name an embedder and disagree', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector']);
+    const hashed = await write(dir, 'hashed', { embedder: 'hash-bow-v1' }, ['pinecone']);
+
+    // The case the rule exists for: one column ranked lexically, the other
+    // semantically, in a table about semantic search.
+    expect(readRuns([base, hashed])).rejects.toThrow(/embedder="hash-bow-v1"/);
+  });
+
+  test('refuses a column that is in both files', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector', 'oracle']);
+    const again = await write(dir, 'again', {}, ['vector']);
+
+    expect(readRuns([base, again])).rejects.toThrow(/`vector` has rows in both/);
+  });
+
+  test('carries every input run’s own warnings through, once', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', { warnings: ['hash embedder'] }, ['vector']);
+    const extra = await write(dir, 'extra', { warnings: ['hash embedder'] }, ['pinecone']);
+
+    const merged = await readRuns([base, extra]);
+    expect(merged.meta.warnings.filter((warning) => warning === 'hash embedder')).toHaveLength(1);
+  });
+
+  test('notes a concurrency difference rather than refusing over it', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', { concurrency: 1 }, ['vector']);
+    const extra = await write(dir, 'extra', { concurrency: 5 }, ['pinecone']);
+
+    // It moves the ms column, which is not published, so it is operator
+    // detail rather than a reason to block a table.
+    const merged = await readRuns([base, extra]);
+    expect(merged.meta.notes.join(' ')).toContain('different concurrency');
   });
 });

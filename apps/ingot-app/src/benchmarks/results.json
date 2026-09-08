@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-08T12:46:24.061Z",
+  "generatedAt": "2026-09-08T16:03:43.568Z",
   "run": {
-    "runId": "2026-09-08T11-43-35-947Z-seed1",
+    "runId": "combined-seed1-2026-09-08T16-03-43-455Z",
     "seed": 1,
     "provider": "foundry-gpt",
     "model": "gpt-5-mini",
     "effort": "high",
     "thinking": true,
-    "repeats": 1,
+    "repeats": 3,
     "maxToolCalls": 12,
     "embedder": "text-embedding-3-small",
     "mapping": "authored",
@@ -21,7 +21,9 @@
       "semantic": 6,
       "multi-hop": 2
     },
-    "warnings": []
+    "warnings": [
+      "This table was assembled from 3 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `ingot-mcp-text-search-only`, `vector`, `hyperspell`, `raw-context`, `oracle` from 2026-09-08T13-24-18-252Z-seed1; `pinecone`, `turbopuffer` from 2026-09-08T15-16-49-990Z-seed1; `ingot-rest` from 2026-09-08T15-58-42-061Z-seed1. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them."
+    ]
   },
   "categories": [
     "aggregate",
@@ -34,105 +36,105 @@
   "adapters": [
     {
       "name": "ingot-mcp",
-      "runs": 25,
-      "accuracy": 0.92,
-      "stderr": 0.05425863986500213,
-      "f1": 0.92,
-      "evidenceRecall": 0.8759398496240601,
-      "evidencePrecision": 0.6614661654135338,
-      "toolCalls": 2.84,
-      "contextTokens": 5073,
+      "runs": 75,
+      "accuracy": 0.8666666666666667,
+      "stderr": 0.03925227051701265,
+      "f1": 0.8666666666666667,
+      "evidenceRecall": 0.9035087719298246,
+      "evidencePrecision": 0.544784742029615,
+      "toolCalls": 2.8666666666666667,
+      "contextTokens": 5021,
       "byCategory": {
-        "aggregate": 0.8333333333333334,
+        "aggregate": 0.6111111111111112,
         "absence": 1,
         "ordering": 1,
-        "join": 1,
-        "semantic": 0.8333333333333334,
-        "multi-hop": 1
+        "join": 0.9444444444444444,
+        "semantic": 0.9444444444444444,
+        "multi-hop": 0.8333333333333334
       }
     },
     {
       "name": "ingot-mcp-text-search-only",
-      "runs": 25,
-      "accuracy": 0.52,
-      "stderr": 0.09991996797437437,
-      "f1": 0.5890909090909091,
-      "evidenceRecall": 0.7293233082706767,
-      "evidencePrecision": 0.05607782679963624,
-      "toolCalls": 5.28,
-      "contextTokens": 26785,
+      "runs": 75,
+      "accuracy": 0.3333333333333333,
+      "stderr": 0.05443310539518174,
+      "f1": 0.3810500610500611,
+      "evidenceRecall": 0.552046783625731,
+      "evidencePrecision": 0.06503535986235767,
+      "toolCalls": 4.733333333333333,
+      "contextTokens": 20693,
       "byCategory": {
-        "aggregate": 0.3333333333333333,
-        "absence": 0,
-        "ordering": 0.3333333333333333,
+        "aggregate": 0.16666666666666666,
+        "absence": 0.5,
+        "ordering": 0.2222222222222222,
         "join": 0.5,
-        "semantic": 1,
-        "multi-hop": 0.5
-      }
-    },
-    {
-      "name": "ingot-rest",
-      "runs": 25,
-      "accuracy": 1,
-      "stderr": 0,
-      "f1": 1,
-      "evidenceRecall": 0.9548872180451128,
-      "evidencePrecision": 0.5002122241086587,
-      "toolCalls": 2.52,
-      "contextTokens": 3854,
-      "byCategory": {
-        "aggregate": 1,
-        "absence": 1,
-        "ordering": 1,
-        "join": 1,
-        "semantic": 1,
-        "multi-hop": 1
+        "semantic": 0.4444444444444444,
+        "multi-hop": 0
       }
     },
     {
       "name": "vector",
-      "runs": 25,
-      "accuracy": 0.68,
-      "stderr": 0.0932952303175248,
-      "f1": 0.7793523809523809,
-      "evidenceRecall": 0.8941970310391363,
-      "evidencePrecision": 0.04902451617964213,
-      "toolCalls": 6.6,
-      "contextTokens": 36435,
+      "runs": 75,
+      "accuracy": 0.6533333333333333,
+      "stderr": 0.05495317872381772,
+      "f1": 0.7348591347650172,
+      "evidenceRecall": 0.8943769680611786,
+      "evidencePrecision": 0.04651645668972485,
+      "toolCalls": 6.76,
+      "contextTokens": 37818,
       "byCategory": {
-        "aggregate": 0.6666666666666666,
+        "aggregate": 0.6111111111111112,
         "absence": 0.5,
-        "ordering": 0,
-        "join": 0.6666666666666666,
-        "semantic": 1,
+        "ordering": 0.1111111111111111,
+        "join": 0.6111111111111112,
+        "semantic": 0.9444444444444444,
         "multi-hop": 1
+      }
+    },
+    {
+      "name": "hyperspell",
+      "runs": 75,
+      "accuracy": 0.7466666666666667,
+      "stderr": 0.050220255615379676,
+      "f1": 0.7466666666666667,
+      "evidenceRecall": 0.9052631578947369,
+      "evidencePrecision": 0.0387616081944973,
+      "toolCalls": 7.173333333333333,
+      "contextTokens": 94892,
+      "byCategory": {
+        "aggregate": 0.5,
+        "absence": 1,
+        "ordering": 0.3333333333333333,
+        "join": 1,
+        "semantic": 0.9444444444444444,
+        "multi-hop": 0.5
       }
     },
     {
       "name": "raw-context",
-      "runs": 25,
-      "accuracy": 0.88,
-      "stderr": 0.06499230723708768,
-      "f1": 0.9142857142857143,
+      "runs": 75,
+      "accuracy": 0.84,
+      "stderr": 0.04233202097703345,
+      "f1": 0.8733893557422969,
       "evidenceRecall": null,
       "evidencePrecision": null,
       "toolCalls": 0,
-      "contextTokens": 33935,
+      "contextTokens": 33030,
       "byCategory": {
-        "aggregate": 0.6666666666666666,
-        "absence": 1,
-        "ordering": 1,
-        "join": 0.8333333333333334,
+        "aggregate": 0.7222222222222222,
+        "absence": 0.8333333333333334,
+        "ordering": 0.8888888888888888,
+        "join": 0.9444444444444444,
         "semantic": 1,
-        "multi-hop": 1
+        "multi-hop": 0.3333333333333333
       }
     },
     {
       "name": "oracle",
-      "runs": 19,
+      "runs": 57,
       "accuracy": 0.8421052631578947,
-      "stderr": 0.08365467518305542,
-      "f1": 0.8421052631578947,
+      "stderr": 0.04829804923590775,
+      "f1": 0.8538011695906432,
       "evidenceRecall": null,
       "evidencePrecision": null,
       "toolCalls": 0,
@@ -146,22 +148,60 @@
       }
     },
     {
-      "name": "hyperspell",
-      "runs": 25,
-      "accuracy": 0.72,
-      "stderr": 0.0897997772825746,
-      "f1": 0.7537777777777778,
-      "evidenceRecall": 0.854251012145749,
-      "evidencePrecision": 0.04862260881631327,
-      "toolCalls": 6.32,
-      "contextTokens": 83938,
+      "name": "pinecone",
+      "runs": 75,
+      "accuracy": 0.68,
+      "stderr": 0.05386402633793108,
+      "f1": 0.7485216308745721,
+      "evidenceRecall": 0.9045883940620782,
+      "evidencePrecision": 0.04469396607403944,
+      "toolCalls": 7.013333333333334,
+      "contextTokens": 39959,
       "byCategory": {
-        "aggregate": 0.5,
-        "absence": 0.5,
+        "aggregate": 0.6666666666666666,
+        "absence": 0.8333333333333334,
         "ordering": 0.3333333333333333,
+        "join": 0.6666666666666666,
+        "semantic": 0.9444444444444444,
+        "multi-hop": 0.3333333333333333
+      }
+    },
+    {
+      "name": "turbopuffer",
+      "runs": 75,
+      "accuracy": 0.6933333333333334,
+      "stderr": 0.05324437024665578,
+      "f1": 0.7823586679116091,
+      "evidenceRecall": 0.8973909131803869,
+      "evidencePrecision": 0.04920133548632686,
+      "toolCalls": 7.546666666666667,
+      "contextTokens": 43701,
+      "byCategory": {
+        "aggregate": 0.6666666666666666,
+        "absence": 0.6666666666666666,
+        "ordering": 0.2222222222222222,
+        "join": 0.6111111111111112,
+        "semantic": 1,
+        "multi-hop": 0.8333333333333334
+      }
+    },
+    {
+      "name": "ingot-rest",
+      "runs": 75,
+      "accuracy": 0.9866666666666667,
+      "stderr": 0.0132441461562234,
+      "f1": 0.9866666666666667,
+      "evidenceRecall": 0.9523809523809524,
+      "evidencePrecision": 0.5506523391974972,
+      "toolCalls": 2.453333333333333,
+      "contextTokens": 3948,
+      "byCategory": {
+        "aggregate": 1,
+        "absence": 1,
+        "ordering": 1,
         "join": 1,
         "semantic": 1,
-        "multi-hop": 0.5
+        "multi-hop": 0.8333333333333334
       }
     }
   ]

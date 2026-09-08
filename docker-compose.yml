@@ -21,7 +21,16 @@ services:
       POSTGRES_PASSWORD: ingot
       POSTGRES_DB: ingot
     ports:
+      # Both, because 5432 is the port every tool guesses and is also the one
+      # most likely to be taken already — by Postgres.app, by a system service,
+      # by another project's compose file. When it is, the bind here silently
+      # loses and `localhost:5432` reaches that other server instead: it
+      # answers, it is not this database, and the first symptom is `role
+      # "ingot" does not exist` from an app that looks correctly configured.
+      # 5433 is the address that is actually this container, which is why
+      # `apps/ingot/.env` points there.
       - '5432:5432'
+      - '5433:5432'
     volumes:
       # The migrations are the whole schema — tables, the retention indexes,
       # and the receipt/embed queue triggers — so a fresh container comes up
