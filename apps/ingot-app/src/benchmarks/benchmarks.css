@@ -168,22 +168,142 @@
 }
 
 /*
- * The category grid, shaded by value.
+ * The category grid.
  *
- * One hue getting darker, never a red-to-green ramp. Intensity here encodes
- * the number itself — a fact — where a good/bad palette would encode a verdict,
- * and at these error bars the verdict would be invented.
+ * A real <table> for the semantics, spaced with `border-spacing` so the eye
+ * reads blocks rather than a ruled wall. `border-collapse: separate` is what
+ * makes that possible and is the reason this does not share `.bench-table`.
  */
-.bench-heat {
-  background: color-mix(in srgb, var(--color-accent) calc(var(--v) * 0.55%), transparent);
+.bench-matrix {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
-.bench-matrix tbody tr.bench-ctl th code {
+.bench-matrix thead th {
+  padding: 0 0 6px;
+  font-family: var(--font-code);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bench-matrix tbody th {
+  width: 200px;
+  padding-right: var(--space-4);
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--ink-80);
+  white-space: nowrap;
+}
+
+/* The two leaders read heavier — the ranking is already the row order. */
+.bench-matrix tbody th.bench-lead {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+/*
+ * One cell.
+ *
+ * The fill is `--v` percent of the accent mixed into the page, so the ramp is
+ * the value itself rather than a set of buckets somebody chose.
+ */
+.bench-heat {
+  height: 52px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) calc(var(--v) * 1%), var(--color-bg));
+}
+
+/* Past the midpoint the fill is too dark to carry dark ink. */
+.bench-heat-deep {
+  color: var(--color-ink-inverse);
+}
+
+/*
+ * Zero is an outline, not the palest fill.
+ *
+ * "None of them" and "a few of them" are different findings, and on a pale
+ * ramp they are three percent of luminance apart. An empty box says it.
+ */
+.bench-heat-zero {
+  background: var(--color-bg);
+  box-shadow: inset 0 0 0 1px var(--ink-25);
+  color: var(--ink-50);
+}
+
+/* A question never asked, which is neither a zero nor a value. */
+.bench-heat-na {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--ink-16);
+  color: var(--ink-45);
+  font-weight: 400;
+}
+
+/*
+ * The controls, drawn as outlines.
+ *
+ * They are reference points, so they carry the same numbers without competing
+ * for attention with them: no fill, a dashed edge, shorter rows.
+ */
+.bench-matrix-gap td {
+  height: 1px;
+  padding: 0;
+  background: var(--ink-25);
+}
+
+.bench-matrix-ctl th {
+  color: var(--ink-60);
+}
+
+.bench-heat-ctl {
+  height: 40px;
+  background: none;
+  box-shadow: none;
+  border: 1px dashed var(--ink-35);
+  font-size: 14px;
+  font-weight: 400;
   color: var(--ink-70);
 }
 
-.bench-matrix tbody tr.bench-ctl .bench-heat {
-  background: color-mix(in srgb, var(--ink-70) calc(var(--v) * 0.35%), transparent);
+/*
+ * A section label with a rule running to the far edge, and a legend at the
+ * end of it. The rule is what stops the legend reading as a second heading.
+ */
+.bench-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 18px;
+  color: var(--ink-60);
+}
+
+.bench-rule-line {
+  flex: 1;
+  height: 1px;
+  background: var(--ink-25);
+}
+
+/* Present for screen readers, absent for everyone else. */
+.bench-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /*

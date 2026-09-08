@@ -331,12 +331,19 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
 }
 
 /**
- * Per-category accuracy as a shaded grid.
+ * Per-category accuracy as a heat matrix.
  *
- * Intensity encodes the value itself, which is a fact, and not a judgement
- * about it — one hue getting darker, never a red-to-green ramp. At these error
- * bars a good/bad palette would invent winners the run did not produce, and
- * the categories are where the differences are structural rather than narrow.
+ * A real table, because it is tabular data and a screen reader should get row
+ * and column headers — but spaced and filled so the eye reads it as a grid of
+ * blocks rather than a wall of numerals. The number is centred and set large
+ * because at this size the *fill* is the first read and the digits are the
+ * confirmation.
+ *
+ * Intensity is one hue getting darker, never a red-to-green ramp: it encodes
+ * the value, which is a fact, where a good/bad palette would encode a verdict
+ * these error bars cannot support. Zero is drawn as an outline rather than the
+ * palest fill, so "none of them" cannot be mistaken for "a few", and `—` — a
+ * question never asked — stays visually distinct from both.
  */
 function HeatMatrix({
   categories,
@@ -346,18 +353,54 @@ function HeatMatrix({
   adapters: readonly PublishedAdapter[];
 }): ReactNode {
   const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
-  const ordered = [
-    ...adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore),
-    ...adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore),
-  ];
+  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
+  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
+
+  const cells = (adapter: PublishedAdapter, control: boolean): ReactNode =>
+    categories.map((category) => {
+      const value = adapter.byCategory[category];
+      if (value === undefined) {
+        return (
+          <td key={category} className="bench-heat bench-heat-na" aria-label="not applicable">
+            —
+          </td>
+        );
+      }
+      if (control) {
+        return (
+          <td key={category} className="bench-heat bench-heat-ctl">
+            {Math.round(value * 100)}
+          </td>
+        );
+      }
+      // The flip point is where the fill stops being light enough to carry
+      // dark text. Below it the cell is pale and the ink stays dark.
+      const dark = value >= 0.55;
+      return (
+        <td
+          key={category}
+          className={`bench-heat${value === 0 ? ' bench-heat-zero' : ''}${dark ? ' bench-heat-deep' : ''}`}
+          style={bar(value)}
+        >
+          {Math.round(value * 100)}
+        </td>
+      );
+    });
 
   return (
     <div className="bench-scroll">
-      <h3 className="bench-subhead label label-sm">By question category</h3>
-      <table className="bench-table bench-matrix">
+      <div className="bench-rule label label-sm">
+        <span>Accuracy by task class</span>
+        <span className="bench-rule-line" aria-hidden="true" />
+        <span>Darker = higher</span>
+      </div>
+
+      <table className="bench-matrix">
         <thead>
           <tr>
-            <th scope="col">adapter</th>
+            <th scope="col">
+              <span className="bench-sr">adapter</span>
+            </th>
             {categories.map((category) => (
               <th scope="col" key={category}>
                 {category}
@@ -366,29 +409,33 @@ function HeatMatrix({
           </tr>
         </thead>
         <tbody>
-          {ordered.map((adapter) => (
-            <tr key={adapter.name} className={CONTROL_NAMES.has(adapter.name) ? 'bench-ctl' : ''}>
-              <th scope="row">
-                <code>{adapter.name}</code>
+          {memories.map((adapter, index) => (
+            <tr key={adapter.name}>
+              <th scope="row" className={index < 2 ? 'bench-lead' : ''}>
+                {adapter.name}
               </th>
-              {categories.map((category) => {
-                const value = adapter.byCategory[category];
-                if (value === undefined) {
-                  return (
-                    <td key={category} className="bench-na" aria-label="not applicable">
-                      —
-                    </td>
-                  );
-                }
-                return (
-                  <td key={category} className="bench-heat" style={bar(value)}>
-                    {percent(value)}
-                  </td>
-                );
-              })}
+              {cells(adapter, false)}
             </tr>
           ))}
         </tbody>
+        {controls.length > 0 ? (
+          <tbody className="bench-matrix-ctl">
+            {/*
+              A spacer row rather than a border on the tbody: under
+              `border-collapse: separate` only cells paint borders, so a rule
+              on the group would simply not appear.
+            */}
+            <tr className="bench-matrix-gap" aria-hidden="true">
+              <td colSpan={categories.length + 1} />
+            </tr>
+            {controls.map((adapter) => (
+              <tr key={adapter.name}>
+                <th scope="row">{adapter.name}</th>
+                {cells(adapter, true)}
+              </tr>
+            ))}
+          </tbody>
+        ) : null}
       </table>
     </div>
   );
