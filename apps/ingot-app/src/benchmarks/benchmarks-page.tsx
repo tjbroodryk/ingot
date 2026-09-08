@@ -13,7 +13,9 @@ import {
   BENCHMARKS_DESCRIPTION,
   BENCHMARKS_LEDE,
   CATEGORIES,
+  CONTROL_NAMES,
   HAS_RESULTS,
+  leadStats,
   LIMITS,
   type PublishedAdapter,
 } from './benchmarks';
@@ -97,8 +99,10 @@ export function BenchmarksPage(): ReactNode {
 
           {run ? (
             <>
+              <Tiles />
+              <RankedAccuracy adapters={adapters} />
+              <HeatMatrix categories={categories} adapters={adapters} />
               <Provenance />
-              <AccuracyTable categories={categories} adapters={adapters} />
               <CostTable adapters={adapters} />
               <p className="bench-note">
                 Evidence recall is the share of the answer-bearing records that came back through
@@ -263,85 +267,97 @@ function Provenance(): ReactNode {
   );
 }
 
-/**
- * The controls, which are reference lines rather than contenders.
- *
- * Rendered in their own group under a rule, because a table that lists them
- * flush with the memories invites the reading that `oracle` came fourth. It
- * did not compete: it is handed the answer-bearing records and exists to say
- * how much of the remaining gap is the model rather than the retrieval.
- */
-const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
-
 /** A number as a share of the row, for the bar behind it. */
 function bar(value: number): Record<string, string> {
   return { ['--v' as string]: String(Math.round(value * 100)) };
 }
 
-function Cell({ value }: { value: number | undefined }): ReactNode {
-  // An empty cell is not a zero, and the two must not look alike: `—` is a
-  // question this adapter was never asked.
-  if (value === undefined) {
-    return (
-      <td className="bench-na" aria-label="not applicable">
-        —
-      </td>
-    );
-  }
+/** The three figures that lead the section, computed in `benchmarks.ts`. */
+function Tiles(): ReactNode {
+  const stats = leadStats();
+  if (stats.length === 0) return null;
   return (
-    <td className="bench-cell" style={bar(value)}>
-      <span className="bench-fill" aria-hidden="true" />
-      <span className="bench-num">{percent(value)}</span>
-    </td>
-  );
-}
-
-function Row({
-  adapter,
-  categories,
-}: {
-  adapter: PublishedAdapter;
-  categories: readonly string[];
-}): ReactNode {
-  return (
-    <tr>
-      <th scope="row">
-        <code>{adapter.name}</code>
-      </th>
-      <td className="bench-cell bench-overall" style={bar(adapter.accuracy)}>
-        <span className="bench-fill" aria-hidden="true" />
-        <span className="bench-num">
-          <strong>{percent(adapter.accuracy)}</strong>{' '}
-          <span className="muted">±{percent(adapter.stderr)}</span>
-        </span>
-      </td>
-      {categories.map((category) => (
-        <Cell key={category} value={adapter.byCategory[category]} />
+    <div className="bench-tiles">
+      {stats.map((stat) => (
+        <div className="bench-tile" key={stat.label}>
+          <div className="bench-tile-value">{stat.value}</div>
+          <div className="bench-tile-label label label-sm">{stat.label}</div>
+        </div>
       ))}
-    </tr>
+    </div>
   );
 }
 
-function AccuracyTable({
+/**
+ * Overall accuracy as a ranked bar list.
+ *
+ * A bar you can compare by length beats a column of percentages you have to
+ * compare by reading, and ranking makes the order the reading order. The
+ * controls keep their own group: `oracle` placed fourth in a race it was not
+ * running is the wrong reading, and a flush list invites exactly that.
+ */
+function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
+  const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
+  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
+  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
+
+  const row = (adapter: PublishedAdapter, muted: boolean): ReactNode => (
+    <li className={muted ? 'bench-rank bench-rank-muted' : 'bench-rank'} key={adapter.name}>
+      <code className="bench-rank-name">{adapter.name}</code>
+      <span className="bench-rank-track">
+        <span className="bench-rank-fill" style={bar(adapter.accuracy)} aria-hidden="true" />
+      </span>
+      <span className="bench-rank-value">
+        <strong>{percent(adapter.accuracy)}</strong>{' '}
+        <span className="muted">±{percent(adapter.stderr)}</span>
+      </span>
+    </li>
+  );
+
+  return (
+    <div className="bench-ranked">
+      <h3 className="bench-subhead label label-sm">Overall accuracy</h3>
+      <ol className="bench-ranks">{memories.map((adapter) => row(adapter, false))}</ol>
+      {controls.length > 0 ? (
+        <>
+          <h3 className="bench-subhead label label-sm bench-subhead-quiet">
+            Reference points — not competitors
+          </h3>
+          <ol className="bench-ranks">{controls.map((adapter) => row(adapter, true))}</ol>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Per-category accuracy as a shaded grid.
+ *
+ * Intensity encodes the value itself, which is a fact, and not a judgement
+ * about it — one hue getting darker, never a red-to-green ramp. At these error
+ * bars a good/bad palette would invent winners the run did not produce, and
+ * the categories are where the differences are structural rather than narrow.
+ */
+function HeatMatrix({
   categories,
   adapters,
 }: {
   categories: readonly string[];
   adapters: readonly PublishedAdapter[];
 }): ReactNode {
-  // Best first, so the ranking is the reading order rather than something to
-  // be worked out. Controls are ordered among themselves and kept below.
   const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
-  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
-  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
+  const ordered = [
+    ...adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore),
+    ...adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore),
+  ];
 
   return (
     <div className="bench-scroll">
-      <table className="bench-table">
+      <h3 className="bench-subhead label label-sm">By question category</h3>
+      <table className="bench-table bench-matrix">
         <thead>
           <tr>
             <th scope="col">adapter</th>
-            <th scope="col">overall</th>
             {categories.map((category) => (
               <th scope="col" key={category}>
                 {category}
@@ -350,23 +366,29 @@ function AccuracyTable({
           </tr>
         </thead>
         <tbody>
-          {memories.map((adapter) => (
-            <Row key={adapter.name} adapter={adapter} categories={categories} />
+          {ordered.map((adapter) => (
+            <tr key={adapter.name} className={CONTROL_NAMES.has(adapter.name) ? 'bench-ctl' : ''}>
+              <th scope="row">
+                <code>{adapter.name}</code>
+              </th>
+              {categories.map((category) => {
+                const value = adapter.byCategory[category];
+                if (value === undefined) {
+                  return (
+                    <td key={category} className="bench-na" aria-label="not applicable">
+                      —
+                    </td>
+                  );
+                }
+                return (
+                  <td key={category} className="bench-heat" style={bar(value)}>
+                    {percent(value)}
+                  </td>
+                );
+              })}
+            </tr>
           ))}
         </tbody>
-        {controls.length > 0 ? (
-          <tbody className="bench-controls">
-            <tr>
-              <th scope="row" colSpan={categories.length + 2} className="bench-group">
-                Controls — not competitors. `raw-context` reads the whole corpus; `oracle` is
-                handed the answer-bearing records.
-              </th>
-            </tr>
-            {controls.map((adapter) => (
-              <Row key={adapter.name} adapter={adapter} categories={categories} />
-            ))}
-          </tbody>
-        ) : null}
       </table>
     </div>
   );

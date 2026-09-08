@@ -55,6 +55,55 @@ export interface PublishedBenchmark {
 
 export const BENCHMARK = results as PublishedBenchmark;
 
+/** The controls, which are reference points rather than entrants. */
+export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
+
+/**
+ * The three figures worth putting at the top, computed rather than chosen.
+ *
+ * Every one is a fact with a name attached: which adapter, how much, of what.
+ * The temptation with a lead like this is a headline claim — "structured
+ * memory wins" — and the reason not to is that a benchmark published by the
+ * thing it measures has to be readable by somebody who assumes it is
+ * marketing. Facts survive that reading; a verdict does not, and a verdict
+ * these error bars cannot support survives it least of all.
+ */
+export interface LeadStat {
+  readonly value: string;
+  readonly label: string;
+}
+
+export function leadStats(): readonly LeadStat[] {
+  const memories = BENCHMARK.adapters.filter((a) => !CONTROL_NAMES.has(a.name));
+  if (memories.length === 0) return [];
+
+  const byAccuracy = [...memories].sort((a, b) => b.accuracy - a.accuracy);
+  const byContext = [...memories].sort((a, b) => a.contextTokens - b.contextTokens);
+  const best = byAccuracy[0] as PublishedAdapter;
+  const leanest = byContext[0] as PublishedAdapter;
+  const heaviest = byContext[byContext.length - 1] as PublishedAdapter;
+
+  const stats: LeadStat[] = [
+    {
+      value: `${Math.round(best.accuracy * 100)}%`,
+      label: `highest overall accuracy — ${best.name}`,
+    },
+    {
+      value: leanest.contextTokens.toLocaleString('en-GB'),
+      label: `fewest context tokens per answer — ${leanest.name}`,
+    },
+  ];
+
+  // Only worth a tile when there is a spread to report.
+  if (leanest.contextTokens > 0 && heaviest.contextTokens > leanest.contextTokens) {
+    stats.push({
+      value: `${(heaviest.contextTokens / leanest.contextTokens).toFixed(1)}×`,
+      label: `spread between ${leanest.name} and ${heaviest.name}`,
+    });
+  }
+  return stats;
+}
+
 /** Whether there is anything to show, which decides which page this is. */
 export const HAS_RESULTS = BENCHMARK.run !== null && BENCHMARK.adapters.length > 0;
 

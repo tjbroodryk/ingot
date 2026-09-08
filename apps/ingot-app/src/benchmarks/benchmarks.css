@@ -64,6 +64,129 @@
 }
 
 /*
+ * The three figures that lead the section.
+ *
+ * Set large because the first question a reader has is "what does this say",
+ * and making them hunt through a matrix for it is the failure the rest of this
+ * sheet exists to avoid. Each one is a fact with its subject named underneath —
+ * a number without "which adapter" attached would be the marketing version.
+ */
+.bench-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+}
+
+.bench-tile {
+  padding: var(--space-6) var(--space-4) var(--space-6) 0;
+}
+
+.bench-tile + .bench-tile {
+  padding-left: var(--space-6);
+  border-left: var(--rule);
+}
+
+.bench-tile-value {
+  font-family: var(--font-code);
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.bench-tile-label {
+  margin-top: 12px;
+  color: var(--ink-70);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/*
+ * Overall accuracy, ranked.
+ *
+ * Length is the comparison a reader makes without deciding to, which is the
+ * whole reason this is a bar list rather than the column of percentages it
+ * replaced.
+ */
+.bench-ranked {
+  padding: var(--space-6) var(--space-8) var(--space-4) 0;
+}
+
+.bench-subhead {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-70);
+  font-weight: 400;
+}
+
+.bench-subhead-quiet {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: var(--rule);
+}
+
+.bench-ranks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-rank {
+  display: grid;
+  grid-template-columns: 210px 1fr 108px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 9px 0;
+}
+
+.bench-rank-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.bench-rank-track {
+  height: 12px;
+  background: var(--ink-08);
+}
+
+.bench-rank-fill {
+  display: block;
+  height: 100%;
+  width: calc(var(--v) * 1%);
+  background: var(--color-accent);
+}
+
+/* The controls read quieter, because they are context rather than contenders. */
+.bench-rank-muted .bench-rank-fill {
+  background: var(--ink-45);
+}
+
+.bench-rank-value {
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The category grid, shaded by value.
+ *
+ * One hue getting darker, never a red-to-green ramp. Intensity here encodes
+ * the number itself — a fact — where a good/bad palette would encode a verdict,
+ * and at these error bars the verdict would be invented.
+ */
+.bench-heat {
+  background: color-mix(in srgb, var(--color-accent) calc(var(--v) * 0.55%), transparent);
+}
+
+.bench-matrix tbody tr.bench-ctl th code {
+  color: var(--ink-70);
+}
+
+.bench-matrix tbody tr.bench-ctl .bench-heat {
+  background: color-mix(in srgb, var(--ink-70) calc(var(--v) * 0.35%), transparent);
+}
+
+/*
  * A percentage you can read without reading it.
  *
  * Six columns of bare numerals all look the same at a glance, which is the one
