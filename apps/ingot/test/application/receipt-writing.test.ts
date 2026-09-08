@@ -75,7 +75,7 @@ describe('a receipt', () => {
     expect(receipt.status).toBe(ReceiptStatus.Pending);
     expect(receipt.receiptQuery).toContain(RECEIPT_TABLE);
 
-    // The compact half cotera splices over a bulky tool output is filled in
+    // The compact half a caller splices over a bulky tool output is filled in
     // from the start — only the model-written fields have to wait.
     expect(receipt.externalId).toBe('call_42');
     expect(receipt.totalResults).toBe(1);

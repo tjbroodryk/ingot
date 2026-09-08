@@ -23,6 +23,7 @@
  */
 
 import { absolute, BASE_PATH, MODE, REPO_URL, routesFor, SITE_URL, SiteMode } from '../site/mode';
+import { BENCHMARKS } from './benchmarks-text';
 import { DEPLOYMENT } from './deployment-text';
 import { type Article, blocks, bullets, heading } from './markdown';
 import { REFERENCE } from './reference-text';
@@ -58,6 +59,11 @@ const SITEMAP = 'sitemap.xml';
 function articles(landing: boolean): readonly (Article & { readonly path: string })[] {
   return [
     ...(landing ? [{ ...WHY, path: 'why.md' }] : []),
+    // Straight after the argument, and before the reference, because it is the
+    // same question answered the other way round: `/why` reasons about the
+    // shape, this reports whether the reasoning survived a corpus. A reader
+    // deciding whether to believe the first one wants this next.
+    ...(landing ? [{ ...BENCHMARKS, path: 'benchmarks.md' }] : []),
     { ...REFERENCE, path: landing ? 'docs.md' : 'index.md' },
     ...(landing ? [{ ...DEPLOYMENT, path: 'deployment.md' }] : []),
   ];

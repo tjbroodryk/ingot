@@ -1,0 +1,583 @@
+/*
+ * `/benchmarks`, and only the parts of it the landing page did not already
+ * have.
+ *
+ * This page is drawn in the landing page's idiom and imports that sheet, so
+ * the frame, the hero, the ruled bands and the three-up grids are all over
+ * there and are used here rather than restated. What is left is what a page of
+ * measurements needs and a page of argument does not: two result tables, the
+ * provenance block that has to sit beside them, a definition list, and the
+ * empty state the page wears until a run has been published into it.
+ *
+ * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
+ * is over there. Every value here resolves to a token.
+ */
+
+/*
+ * The bands' children reach the section's edges so their own rules meet it. A
+ * table has no rules to line up, so it brings the padding back — the same
+ * argument `.why-table` makes.
+ *
+ * It scrolls on its own rather than widening the page: this table gains a
+ * column per question category, and a reader on a narrow screen should lose
+ * the right-hand categories rather than the whole layout.
+ */
+.bench-scroll {
+  padding: 8px var(--space-8) 0;
+  overflow-x: auto;
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  /* Figures line up in a column only if the face gives them one width. */
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-table th,
+.bench-table td {
+  padding: 10px var(--space-4) 10px 0;
+  text-align: right;
+  border-bottom: var(--rule);
+  white-space: nowrap;
+}
+
+/* The adapter name and the header row's first cell: the axis, so it reads left. */
+.bench-table thead th:first-child,
+.bench-table tbody th {
+  text-align: left;
+  font-weight: 400;
+}
+
+.bench-table thead th {
+  color: var(--ink-70);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: var(--rule);
+}
+
+.bench-table tbody tr:last-child th,
+.bench-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/*
+ * The three figures that lead the section.
+ *
+ * Set large because the first question a reader has is "what does this say",
+ * and making them hunt through a matrix for it is the failure the rest of this
+ * sheet exists to avoid. Each one is a fact with its subject named underneath —
+ * a number without "which adapter" attached would be the marketing version.
+ */
+/*
+ * The horizontal padding is `var(--space-8)` here and in every other block on
+ * this page, so the tiles, the bars and the matrix share one left edge. The
+ * rules still run the full width of the band, because a border sits outside
+ * the padding — which is the arrangement `.bench-strip` already relies on.
+ */
+.bench-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 var(--space-8);
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+}
+
+.bench-tile {
+  padding: var(--space-6) var(--space-4) var(--space-6) 0;
+}
+
+.bench-tile + .bench-tile {
+  padding-left: var(--space-6);
+  border-left: var(--rule);
+}
+
+.bench-tile-value {
+  font-family: var(--font-code);
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.bench-tile-label {
+  margin-top: 12px;
+  color: var(--ink-70);
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.7;
+}
+
+/*
+ * The subject of the figure, set in the accent the way every other emphasis on
+ * this site is. `.mark` is built for a word in a 64px headline, so the padding
+ * comes down to something a 13px label can carry.
+ */
+.bench-tile-mark {
+  padding: 1px 6px 2px;
+}
+
+/*
+ * Overall accuracy, ranked.
+ *
+ * Length is the comparison a reader makes without deciding to, which is the
+ * whole reason this is a bar list rather than the column of percentages it
+ * replaced.
+ */
+.bench-ranked {
+  padding: var(--space-6) var(--space-8) var(--space-4);
+}
+
+.bench-subhead {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-70);
+  font-weight: 400;
+}
+
+.bench-subhead-quiet {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: var(--rule);
+}
+
+.bench-ranks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One adapter: name, accuracy, and what the accuracy cost.
+ *
+ * The two metrics share a row because the pair is the reading that matters —
+ * answering well on eighty thousand tokens is not the same achievement as
+ * answering well on four thousand, and two separate tables make a reader hold
+ * one in their head while looking at the other.
+ */
+.bench-rank {
+  display: grid;
+  grid-template-columns: 190px minmax(120px, 1fr) 104px minmax(70px, 0.45fr) 76px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 9px 0;
+}
+
+/* The column labels, which are the only thing naming the two halves. */
+.bench-rank-head {
+  padding-bottom: var(--space-2);
+  color: var(--ink-60);
+}
+
+.bench-rank-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.bench-rank-track {
+  height: 12px;
+  background: var(--ink-08);
+}
+
+.bench-rank-fill {
+  display: block;
+  height: 100%;
+  width: calc(var(--v) * 1%);
+  background: var(--color-accent);
+}
+
+/*
+ * Cost is drawn in a lighter register than accuracy: shorter, quieter, and
+ * scaled to the heaviest adapter in the run rather than to a percentage. More
+ * is worse here and less is better, which is the opposite of the bar beside
+ * it — so it must not look like the same measurement.
+ */
+.bench-rank-track-cost {
+  height: 6px;
+}
+
+.bench-rank-fill-cost {
+  background: var(--ink-45);
+}
+
+.bench-rank-cost {
+  color: var(--ink-70);
+}
+
+/* The controls read quieter, because they are context rather than contenders. */
+.bench-rank-muted .bench-rank-fill {
+  background: var(--ink-45);
+}
+
+.bench-rank-muted .bench-rank-fill-cost {
+  background: var(--ink-30);
+}
+
+.bench-rank-value {
+  text-align: right;
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The category grid.
+ *
+ * A real <table> for the semantics, spaced with `border-spacing` so the eye
+ * reads blocks rather than a ruled wall. `border-collapse: separate` is what
+ * makes that possible and is the reason this does not share `.bench-table`.
+ */
+.bench-matrix {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A column header and its definition.
+ *
+ * The header is the right place for "what does `absence` mean" because the
+ * cell underneath is meaningless without it, and a section further down the
+ * page is a section the reader has already scrolled past.
+ *
+ * It opens downward, always. `.bench-scroll` sets `overflow-x: auto`, and a
+ * box that scrolls on one axis clips the other — so a tooltip rising above the
+ * header would be cut off by the container, while one dropping into the table
+ * has the whole height of the matrix to live in.
+ */
+.bench-th {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bench-info {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink-45);
+  cursor: help;
+}
+
+.bench-info svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.bench-info:hover,
+.bench-info:focus-visible {
+  color: var(--color-accent);
+}
+
+.bench-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  width: 250px;
+  padding: 10px 12px;
+  background: var(--color-ink);
+  color: var(--color-ink-inverse);
+  /* The header is mono, uppercase and letterspaced; the definition is prose. */
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+}
+
+/* The rightmost columns open leftward, or into the container's clip. */
+.bench-tip-end {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.bench-info:hover .bench-tip,
+.bench-info:focus-visible .bench-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bench-tip {
+    transition: none;
+  }
+}
+
+.bench-matrix thead th {
+  overflow: visible;
+  padding: 0 0 6px;
+  font-family: var(--font-code);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bench-matrix tbody th {
+  width: 200px;
+  padding-right: var(--space-4);
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--ink-80);
+  white-space: nowrap;
+}
+
+/* The two leaders read heavier — the ranking is already the row order. */
+.bench-matrix tbody th.bench-lead {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+/*
+ * One cell.
+ *
+ * The fill is `--v` percent of the accent mixed into the page, so the ramp is
+ * the value itself rather than a set of buckets somebody chose.
+ */
+.bench-heat {
+  height: 52px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) calc(var(--v) * 1%), var(--color-bg));
+}
+
+/* Past the midpoint the fill is too dark to carry dark ink. */
+.bench-heat-deep {
+  color: var(--color-ink-inverse);
+}
+
+/*
+ * Zero is an outline, not the palest fill.
+ *
+ * "None of them" and "a few of them" are different findings, and on a pale
+ * ramp they are three percent of luminance apart. An empty box says it.
+ */
+.bench-heat-zero {
+  background: var(--color-bg);
+  box-shadow: inset 0 0 0 1px var(--ink-25);
+  color: var(--ink-50);
+}
+
+/* A question never asked, which is neither a zero nor a value. */
+.bench-heat-na {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--ink-16);
+  color: var(--ink-45);
+  font-weight: 400;
+}
+
+/*
+ * The controls, drawn as outlines.
+ *
+ * They are reference points, so they carry the same numbers without competing
+ * for attention with them: no fill, a dashed edge, shorter rows.
+ */
+.bench-matrix-gap td {
+  height: 1px;
+  padding: 0;
+  background: var(--ink-25);
+}
+
+.bench-matrix-ctl th {
+  color: var(--ink-60);
+}
+
+.bench-heat-ctl {
+  height: 40px;
+  background: none;
+  box-shadow: none;
+  border: 1px dashed var(--ink-35);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-70);
+}
+
+/*
+ * A section label with a rule running to the far edge, and a legend at the
+ * end of it. The rule is what stops the legend reading as a second heading.
+ */
+.bench-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 18px;
+  color: var(--ink-60);
+}
+
+.bench-rule-line {
+  flex: 1;
+  height: 1px;
+  background: var(--ink-25);
+}
+
+/* Present for screen readers, absent for everyone else. */
+.bench-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * What produced the numbers, above the numbers.
+ *
+ * Deliberately not a footnote. A result whose seed, model and embedder are
+ * somewhere else is a result a reader has to take on trust, and this page's
+ * whole claim is that they do not have to.
+ */
+.bench-prov {
+  padding: 8px var(--space-8) var(--space-4);
+}
+
+.bench-prov > dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-4) 0;
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+}
+
+.bench-prov dt {
+  color: var(--ink-70);
+  margin-bottom: 4px;
+}
+
+.bench-prov dd {
+  margin: 0;
+  font-size: 15px;
+}
+
+/*
+ * A warning the run itself recorded — an offline embedder, reasoning switched
+ * off. It is rendered rather than filtered because a run carrying one is a run
+ * whose numbers mean something narrower, and the page that hid it would be
+ * publishing the number without the condition on it.
+ */
+.bench-warning {
+  margin: var(--space-4) 0 0;
+  padding: 12px var(--space-4);
+  border-left: 2px solid var(--ink-70);
+  background: var(--ink-08);
+  font-size: 14px;
+  color: var(--ink-70);
+}
+
+.bench-note {
+  padding: var(--space-4) var(--space-8) 56px;
+  font-size: 14px;
+  color: var(--ink-70);
+}
+
+/*
+ * A source link, in a cell that is otherwise the method grid's twin.
+ *
+ * `.step-num` is the accent already, so the link cannot signal itself with
+ * colour — the underline is what says it is one, and it only firms up on
+ * hover.
+ */
+.step-num a {
+  color: inherit;
+  text-decoration-color: var(--ink-30);
+  text-underline-offset: 3px;
+}
+
+.step-num a:hover {
+  text-decoration-color: currentColor;
+}
+
+/*
+ * The page before there has been a run.
+ *
+ * It exists because the alternative is placeholder numbers, and a page about
+ * measurement that shipped invented figures would undo the only thing it is
+ * for.
+ */
+.bench-empty {
+  padding: var(--space-4) var(--space-8) 56px;
+  max-width: 68ch;
+}
+
+.bench-empty h3 {
+  margin: 0 0 var(--space-4);
+  font-size: 20px;
+}
+
+.bench-empty p {
+  color: var(--ink-70);
+}
+
+.bench-pre {
+  margin: var(--space-4) 0;
+  padding: 14px var(--space-4);
+  overflow-x: auto;
+  border: var(--rule);
+  background: var(--ink-08);
+  font-size: 14px;
+}
+
+.bench-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 22px var(--space-8);
+  border-top: var(--rule);
+  background: var(--ink-08);
+  font-size: 15px;
+  color: var(--ink-70);
+}
+
+.bench-strip p {
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* ══ narrower ═══════════════════════════════════════════════════════════
+   The bands' padding collapses in `landing.css` at these widths; what is left
+   here is the provenance grid, which has four columns and needs two steps. */
+@media (max-width: 900px) {
+  .bench-prov > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .bench-scroll,
+  .bench-tiles,
+  .bench-ranked,
+  .bench-prov,
+  .bench-note,
+  .bench-empty,
+  .bench-strip {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}

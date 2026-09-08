@@ -38,6 +38,7 @@ apps/ingot            @ingot/server   NestJS. The API, the engine, the sweepers.
 apps/ingot-app        @ingot/app      Next.js, statically exported. Landing, docs, dashboard.
 packages/shared       @ingot/shared   The v1 wire contract. Types only, no runtime.
 packages/versioning   @ingot/versioning  Wire versioning for Nest — changesets and an interceptor.
+packages/bench        @ingot/bench    The retrieval benchmark. Not built; run by hand.
 
 charts/ingot                          The Helm chart. Not a workspace, and not built.
 ```
@@ -48,6 +49,12 @@ hand.
 
 Each app has its own README and it is the longer answer:
 [the server](apps/ingot/README.md), [the site](apps/ingot-app/README.md).
+
+`packages/bench` measures what an agent gets back out of a memory, and what it
+costs — Ingot against a vector baseline, against Hyperspell, and against its
+own embedding path with SQL taken away. It needs API keys and spends money, so
+it is deliberately not part of `bun run test`:
+[the methodology](packages/bench/README.md).
 
 ## The shape
 

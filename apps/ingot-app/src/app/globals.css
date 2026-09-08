@@ -983,14 +983,43 @@ pre {
     border-left: 0;
   }
 
+  /*
+   * Two rows rather than three, and the brand leads.
+   *
+   * The old rule collapsed to a single column in source order, which put the
+   * nav above the wordmark and pushed the actions onto a third row — a header
+   * three deep before any of the page had started. Identity and the action sit
+   * together on the first row; the nav gets the full width of the second and
+   * scrolls if it outgrows it, which it now can, having gained an item.
+   */
   .topbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     row-gap: var(--space-3);
-    justify-items: start;
+    column-gap: var(--space-4);
   }
 
-  .topbar > * {
+  .brand {
+    order: -1;
+    grid-column: 1;
     justify-self: start;
+  }
+
+  .topbar-meta {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .topbar-nav {
+    grid-column: 1 / -1;
+    gap: 20px;
+    overflow-x: auto;
+    /* A nav that scrolls should not also clip its own underline. */
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .topbar-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .basics {

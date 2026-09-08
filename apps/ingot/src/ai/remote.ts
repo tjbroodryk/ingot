@@ -1,11 +1,19 @@
-import { upstream } from '../observability/index.js';
+import { APICallError } from 'ai';
+import { upstream, type Recording } from '../observability/index.js';
 
 /**
  * One call to somebody else's model, measured and bounded.
  *
- * Shared by all four remote adapters so that the things which are true of
- * every hosted model are true once: a deadline, a single retry, and a failure
- * that says which host and which status rather than `fetch failed`.
+ * Shared by every remote adapter so that the things which are true of every
+ * hosted model are true once: a deadline, a single retry, and a failure that
+ * says which host and which status rather than `fetch failed`.
+ *
+ * Two shapes reach it. The embedders hand over a URL and a body and this file
+ * does the `fetch` — there is no library worth the dependency for two JSON
+ * endpoints. The summariser hands over a thunk that runs inside the AI SDK,
+ * which does its own HTTP and would do its own retries if `maxRetries` were
+ * not set to zero. `retryOnce` is what both go through, so the policy below is
+ * one policy and not two that drift.
  *
  * **One retry, not a backoff ladder.** Both callers of this run inside a
  * command, and a command runs inside a Postgres transaction — so every second
@@ -59,19 +67,64 @@ export class RemoteModelError extends Error {
 }
 
 export async function callModel<T>(call: RemoteCall): Promise<T> {
-  return upstream(call.host, call.operation, async (span) => {
+  return retryOnce(call.host, call.operation, (span) => {
     span.set({ 'ai.url': call.url });
+    return once<T>(call);
+  });
+}
 
+/**
+ * The policy, with the transport left to the caller.
+ *
+ * `work` is run, and run a second time if the first attempt failed in a way a
+ * second could plausibly fix. That is the whole of it — see the note at the
+ * top of this file for why it is one retry and not a ladder.
+ */
+export async function retryOnce<T>(
+  host: string,
+  operation: string,
+  work: (span: Recording) => Promise<T>,
+): Promise<T> {
+  return upstream(host, operation, async (span) => {
     try {
-      return await once<T>(call);
+      return await work(span);
     } catch (error) {
-      if (!(error instanceof RemoteModelError) || !error.transient) throw error;
+      const failure = transience(error);
+      if (!failure.transient) throw error;
 
-      span.set({ 'ai.retried': true, 'ai.first_status': error.status });
-      await pause(error);
-      return once<T>(call);
+      span.set({ 'ai.retried': true, 'ai.first_status': failure.status ?? 0 });
+      await pause(failure.retryAfter);
+      return work(span);
     }
   });
+}
+
+/**
+ * Whether a later attempt could plausibly succeed, from either transport.
+ *
+ * `RemoteModelError` is this file's own; `APICallError` is what the AI SDK
+ * throws, and it carries the same three facts under different names. Its
+ * `isRetryable` is deliberately not consulted — it treats every 5xx as
+ * transient, including the two that mean "this API does not have that",
+ * and the set at the top of this file is the one this service has decided on.
+ */
+function transience(error: unknown): {
+  transient: boolean;
+  status?: number;
+  retryAfter?: string | null;
+} {
+  if (error instanceof RemoteModelError) {
+    return { transient: error.transient, status: error.status, retryAfter: retryAfter.get(error) };
+  }
+  if (APICallError.isInstance(error)) {
+    const status = error.statusCode;
+    return {
+      transient: status !== undefined && RETRYABLE.has(status),
+      status,
+      retryAfter: error.responseHeaders?.['retry-after'] ?? null,
+    };
+  }
+  return { transient: false };
 }
 
 async function once<T>(call: RemoteCall): Promise<T> {
@@ -101,8 +154,7 @@ async function once<T>(call: RemoteCall): Promise<T> {
  * otherwise. Anything longer is an outage rather than a wait, and waiting for
  * it inside a transaction is the wrong place to find that out.
  */
-async function pause(error: RemoteModelError): Promise<void> {
-  const header = retryAfter.get(error);
+async function pause(header: string | null | undefined): Promise<void> {
   const seconds = header === null || header === undefined ? Number.NaN : Number(header);
   const wanted = Number.isFinite(seconds) ? seconds * 1_000 : 250;
 

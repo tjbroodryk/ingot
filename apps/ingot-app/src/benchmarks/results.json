@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-09-08T12:46:24.061Z",
+  "run": {
+    "runId": "2026-09-08T11-43-35-947Z-seed1",
+    "seed": 1,
+    "provider": "foundry-gpt",
+    "model": "gpt-5-mini",
+    "effort": "high",
+    "thinking": true,
+    "repeats": 1,
+    "maxToolCalls": 12,
+    "embedder": "text-embedding-3-small",
+    "mapping": "authored",
+    "questions": 25,
+    "categoryCounts": {
+      "aggregate": 6,
+      "absence": 2,
+      "ordering": 3,
+      "join": 6,
+      "semantic": 6,
+      "multi-hop": 2
+    },
+    "warnings": []
+  },
+  "categories": [
+    "aggregate",
+    "absence",
+    "ordering",
+    "join",
+    "semantic",
+    "multi-hop"
+  ],
+  "adapters": [
+    {
+      "name": "ingot-mcp",
+      "runs": 25,
+      "accuracy": 0.92,
+      "stderr": 0.05425863986500213,
+      "f1": 0.92,
+      "evidenceRecall": 0.8759398496240601,
+      "evidencePrecision": 0.6614661654135338,
+      "toolCalls": 2.84,
+      "contextTokens": 5073,
+      "byCategory": {
+        "aggregate": 0.8333333333333334,
+        "absence": 1,
+        "ordering": 1,
+        "join": 1,
+        "semantic": 0.8333333333333334,
+        "multi-hop": 1
+      }
+    },
+    {
+      "name": "ingot-mcp-text-search-only",
+      "runs": 25,
+      "accuracy": 0.52,
+      "stderr": 0.09991996797437437,
+      "f1": 0.5890909090909091,
+      "evidenceRecall": 0.7293233082706767,
+      "evidencePrecision": 0.05607782679963624,
+      "toolCalls": 5.28,
+      "contextTokens": 26785,
+      "byCategory": {
+        "aggregate": 0.3333333333333333,
+        "absence": 0,
+        "ordering": 0.3333333333333333,
+        "join": 0.5,
+        "semantic": 1,
+        "multi-hop": 0.5
+      }
+    },
+    {
+      "name": "ingot-rest",
+      "runs": 25,
+      "accuracy": 1,
+      "stderr": 0,
+      "f1": 1,
+      "evidenceRecall": 0.9548872180451128,
+      "evidencePrecision": 0.5002122241086587,
+      "toolCalls": 2.52,
+      "contextTokens": 3854,
+      "byCategory": {
+        "aggregate": 1,
+        "absence": 1,
+        "ordering": 1,
+        "join": 1,
+        "semantic": 1,
+        "multi-hop": 1
+      }
+    },
+    {
+      "name": "vector",
+      "runs": 25,
+      "accuracy": 0.68,
+      "stderr": 0.0932952303175248,
+      "f1": 0.7793523809523809,
+      "evidenceRecall": 0.8941970310391363,
+      "evidencePrecision": 0.04902451617964213,
+      "toolCalls": 6.6,
+      "contextTokens": 36435,
+      "byCategory": {
+        "aggregate": 0.6666666666666666,
+        "absence": 0.5,
+        "ordering": 0,
+        "join": 0.6666666666666666,
+        "semantic": 1,
+        "multi-hop": 1
+      }
+    },
+    {
+      "name": "raw-context",
+      "runs": 25,
+      "accuracy": 0.88,
+      "stderr": 0.06499230723708768,
+      "f1": 0.9142857142857143,
+      "evidenceRecall": null,
+      "evidencePrecision": null,
+      "toolCalls": 0,
+      "contextTokens": 33935,
+      "byCategory": {
+        "aggregate": 0.6666666666666666,
+        "absence": 1,
+        "ordering": 1,
+        "join": 0.8333333333333334,
+        "semantic": 1,
+        "multi-hop": 1
+      }
+    },
+    {
+      "name": "oracle",
+      "runs": 19,
+      "accuracy": 0.8421052631578947,
+      "stderr": 0.08365467518305542,
+      "f1": 0.8421052631578947,
+      "evidenceRecall": null,
+      "evidencePrecision": null,
+      "toolCalls": 0,
+      "contextTokens": 727,
+      "byCategory": {
+        "absence": 1,
+        "ordering": 1,
+        "join": 0.5,
+        "semantic": 1,
+        "multi-hop": 1
+      }
+    },
+    {
+      "name": "hyperspell",
+      "runs": 25,
+      "accuracy": 0.72,
+      "stderr": 0.0897997772825746,
+      "f1": 0.7537777777777778,
+      "evidenceRecall": 0.854251012145749,
+      "evidencePrecision": 0.04862260881631327,
+      "toolCalls": 6.32,
+      "contextTokens": 83938,
+      "byCategory": {
+        "aggregate": 0.5,
+        "absence": 0.5,
+        "ordering": 0.3333333333333333,
+        "join": 1,
+        "semantic": 1,
+        "multi-hop": 0.5
+      }
+    }
+  ]
+}

@@ -27,6 +27,10 @@ coverage/
 # itself, reproducible by re-running whatever produced it.
 .ingot-data/
 
+# @ingot/bench's transcripts and reports. A published result belongs in the
+# site or in a release, not committed from whoever happened to run it last.
+packages/bench/results/
+
 # editor / os
 .DS_Store
 .idea/

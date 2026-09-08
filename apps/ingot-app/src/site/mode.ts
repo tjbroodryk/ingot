@@ -106,6 +106,13 @@ export interface SiteRoutes {
    * a reader looking at it has already done the thing the page describes.
    */
   readonly deployment: string | null;
+  /**
+   * What an agent gets back out, measured. `null` in a dashboard build, for
+   * the reason `why` and `deployment` are — and for one more: the page renders
+   * from a results file that a run publishes into the repository, which is a
+   * property of this project rather than of anybody's deployment.
+   */
+  readonly benchmarks: string | null;
 }
 
 /**
@@ -130,6 +137,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
     dashboard: landing ? null : `${basePath}/dashboard/`,
     why: landing ? `${basePath}/why/` : null,
     deployment: landing ? `${basePath}/deployment/` : null,
+    benchmarks: landing ? `${basePath}/benchmarks/` : null,
   };
 }
 
@@ -140,9 +148,26 @@ export const DOCS_HREF = ROUTES.docs;
 export const DASHBOARD_HREF = ROUTES.dashboard;
 export const WHY_HREF = ROUTES.why;
 export const DEPLOYMENT_HREF = ROUTES.deployment;
+export const BENCHMARKS_HREF = ROUTES.benchmarks;
 
 /**
  * Where the source is, which on a self-hosted-only project is the sign-up
  * link — there is nothing to sign up to, and running it is how you get it.
  */
 export const REPO_URL = 'https://github.com/tjbroodryk/ingot';
+
+/**
+ * A file in the repository, on the default branch.
+ *
+ * Pinned to `main` rather than to a tag or a commit: these links exist so a
+ * reader can check a claim against the code, and the code they should be
+ * checking is the code that is there now, not the code as it was when a page
+ * was written.
+ */
+export function sourceHref(path: string): string {
+  // GitHub serves files under `/blob/` and directories under `/tree/`, and the
+  // wrong one is a 404 rather than a redirect. A trailing segment with a dot in
+  // it is a file; anything else is a directory.
+  const kind = /\.[a-z0-9]+$/i.test(path) ? 'blob' : 'tree';
+  return `${REPO_URL}/${kind}/main/${path}`;
+}

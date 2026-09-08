@@ -16,12 +16,11 @@ import {
 import { buildEmbedder, buildSummariser } from '../../src/ai/ai.module.js';
 import { ExtractiveSummariser } from '../../src/ai/extractive-summariser.js';
 import { GcpEmbedder } from '../../src/ai/gcp-embedder.js';
-import { GcpSummariser } from '../../src/ai/gcp-summariser.js';
 import { HashEmbedder } from '../../src/ai/hash-embedder.js';
+import { ModelSummariser } from '../../src/ai/model-summariser.js';
 import { OpenAiEmbedder } from '../../src/ai/openai-embedder.js';
-import { OpenAiSummariser } from '../../src/ai/openai-summariser.js';
 import { AiProvider } from '../../src/ai/providers.js';
-import { parseReceipt } from '../../src/ai/summariser.port.js';
+import { extractJson, receiptFrom } from '../../src/ai/summariser.port.js';
 import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 
 /**
@@ -156,12 +155,20 @@ describe('choosing a summariser', () => {
   });
 
   it('builds the adapter each provider names', () => {
-    expect(
-      buildSummariser(summariserSettings(env({ INGOT_SUMMARISER: 'openai', ...OPENAI }))),
-    ).toBeInstanceOf(OpenAiSummariser);
-    expect(
-      buildSummariser(summariserSettings(env({ INGOT_SUMMARISER: 'gcp', ...GCP }))),
-    ).toBeInstanceOf(GcpSummariser);
+    // Both hosted providers are one class now, so the assertion is on what
+    // that class was pointed at rather than on which class it is. `host` is
+    // the metric label `ingot_upstream_duration` is cut by, and `model` is
+    // recorded beside every receipt — getting either wrong is the failure
+    // this test exists for, and neither is visible from the type.
+    const openai = buildSummariser(
+      summariserSettings(env({ INGOT_SUMMARISER: 'openai', ...OPENAI })),
+    );
+    const gcp = buildSummariser(summariserSettings(env({ INGOT_SUMMARISER: 'gcp', ...GCP })));
+
+    expect(openai).toBeInstanceOf(ModelSummariser);
+    expect(openai).toMatchObject({ host: 'openai', model: OPENAI_SUMMARY_MODEL });
+    expect(gcp).toBeInstanceOf(ModelSummariser);
+    expect(gcp).toMatchObject({ host: 'vertex', model: GCP_SUMMARY_MODEL });
   });
 
   it('refuses a provider named without its credentials', () => {
@@ -180,40 +187,42 @@ describe('choosing a summariser', () => {
 });
 
 describe('reading what a model answered', () => {
-  it('takes a bare JSON object', () => {
-    expect(parseReceipt('{"summary":"what it was","searchTerm":"how to find it"}')).toEqual({
-      summary: 'what it was',
-      searchTerm: 'how to find it',
-    });
+  // A schema is sent now and the SDK validates against it, so what is left to
+  // test here is the middleware in front of that — the concession to a gateway
+  // that accepts `response_format` and ignores it — and the clamp behind it.
+  it('leaves a bare JSON object alone', () => {
+    const bare = '{"summary":"what it was","searchTerm":"how to find it"}';
+
+    expect(extractJson(bare)).toBe(bare);
   });
 
-  it('survives a fenced block and a sentence of preamble', () => {
-    // Every provider gets this wrong the same way, and refusing it would make
-    // the feature fail for a reason the caller can neither see nor fix.
-    expect(parseReceipt('```json\n{"summary":"a","searchTerm":"b"}\n```')).toEqual({
-      summary: 'a',
-      searchTerm: 'b',
-    });
-    expect(parseReceipt('Sure! {"summary":"a","searchTerm":"b"}')).toEqual({
-      summary: 'a',
-      searchTerm: 'b',
-    });
+  it('unwraps a fenced block and a sentence of preamble', () => {
+    // Every provider that ignores the schema gets it wrong the same two ways,
+    // and refusing them would make the feature fail for a reason the caller
+    // can neither see nor fix.
+    expect(extractJson('```json\n{"summary":"a","searchTerm":"b"}\n```')).toBe(
+      '{"summary":"a","searchTerm":"b"}',
+    );
+    expect(extractJson('Sure! {"summary":"a","searchTerm":"b"}')).toBe(
+      '{"summary":"a","searchTerm":"b"}',
+    );
+  });
+
+  it('hands prose back untouched rather than throwing', () => {
+    // This runs as a language-model middleware, inside the SDK's own parse.
+    // Throwing here would replace "the model answered with prose" — which is
+    // what happened — with a stack from a transform, which is not.
+    expect(extractJson('I cannot help with that.')).toBe('I cannot help with that.');
   });
 
   it('clamps what came back, so one model cannot widen a column', () => {
     const long = 'x'.repeat(5_000);
-    const receipt = parseReceipt(JSON.stringify({ summary: long, searchTerm: long }));
+    const receipt = receiptFrom({ summary: long, searchTerm: long });
 
     expect(receipt.summary.length).toBeLessThanOrEqual(1_000);
     expect(receipt.searchTerm.length).toBeLessThanOrEqual(200);
     // Marked, so a clipped value never reads as a complete one.
     expect(receipt.summary.endsWith('…')).toBe(true);
-  });
-
-  it('refuses prose, and an object missing either half', () => {
-    expect(() => parseReceipt('I cannot help with that.')).toThrow(/no JSON object/);
-    expect(() => parseReceipt('{"summary":"a"}')).toThrow(/searchTerm/);
-    expect(() => parseReceipt('{"summary":1,"searchTerm":"b"}')).toThrow(/strings/);
   });
 });
 

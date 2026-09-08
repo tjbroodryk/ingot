@@ -129,9 +129,9 @@ export interface ReceiptItem {
 export interface AddReceipt {
   // ── the compact stand-in ───────────────────────────────────────────────
   // These four are the shape an agent framework splices over a bulky tool
-  // output. Cotera's `Receipt` is `{ toolCallId, summary, searchTerm,
-  // totalResults }`; `externalId` is the same field under a name that does not
-  // assume the caller's id came from a tool call.
+  // output. A typical framework's receipt is `{ toolCallId, summary,
+  // searchTerm, totalResults }`; `externalId` is the same field under a name
+  // that does not assume the caller's id came from a tool call.
 
   /**
    * The caller's own id for the result this describes — a tool call id, a job

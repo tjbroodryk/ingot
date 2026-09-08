@@ -205,6 +205,23 @@
   border-left: var(--rule);
 }
 
+/*
+ * A cell that starts a row draws no left edge.
+ *
+ * `.step + .step` is a source-order rule and the grid wraps every three, so
+ * the fourth and seventh cells inherited a border against the section's own —
+ * invisible while a grid held exactly three, and wrong the moment one held
+ * more. The rows above it get a top rule for the same reason: a wrapped grid
+ * needs its rows separated, and only the first row had the container's.
+ */
+.step:nth-child(3n + 1) {
+  border-left: 0;
+}
+
+.step:nth-child(n + 4) {
+  border-top: var(--rule);
+}
+
 .step-num {
   font-family: var(--font-code);
   font-size: 12px;

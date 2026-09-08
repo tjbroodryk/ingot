@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import {
+  BENCHMARKS_HREF,
   DASHBOARD_HREF,
   DEPLOYMENT_HREF,
   DOCS_HREF,
@@ -15,6 +16,7 @@ export enum SiteSection {
   Dashboard = 'dashboard',
   Why = 'why',
   Deployment = 'deployment',
+  Benchmarks = 'benchmarks',
 }
 
 /**
@@ -59,6 +61,19 @@ export function SiteHeader({
         {WHY_HREF ? (
           <a href={WHY_HREF} aria-current={current === SiteSection.Why ? 'page' : undefined}>
             Why
+          </a>
+        ) : null}
+        {/*
+          After "Why" because it is the same question answered the other way
+          round: that page argues the shape, this one measures whether the
+          argument survives contact with a corpus.
+        */}
+        {BENCHMARKS_HREF ? (
+          <a
+            href={BENCHMARKS_HREF}
+            aria-current={current === SiteSection.Benchmarks ? 'page' : undefined}
+          >
+            Benchmarks
           </a>
         ) : null}
         <a href={DOCS_HREF} aria-current={current === SiteSection.Docs ? 'page' : undefined}>
