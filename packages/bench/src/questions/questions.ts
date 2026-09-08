@@ -174,6 +174,11 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     );
   }
 
+  // The one template in this category that is not a join between tools: both
+  // the service name and the severity are fields on the incident, so this is a
+  // predicate over one payload. It stays because a two-clause filter is a real
+  // thing to ask and something has to hold the easy end of the category — the
+  // joins that cross tool results are appended at the foot of this function.
   for (const service of world.services.slice(0, limit)) {
     const matching = world.incidents.filter(
       (incident) => incident.service === service.name && incident.severity !== 'sev3',
@@ -200,6 +205,21 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   }
 
   // ── multi-hop ────────────────────────────────────────────────────────────
+  /*
+   * The two questions below and the churn one at the foot of this file answer
+   * with a *team name*, and all three are scored on the answer alone.
+   *
+   * They cited the winning service and everything it beat until a run showed
+   * what that does to the cheapest correct path: `ingot-mcp` and `ingot-rest`
+   * answered from one grouped count returning `(owner, n)`, no record came
+   * back through a tool, and rows that got the question right scored 0%
+   * evidence recall for it. That is the aggregate trap in a different
+   * category — a name computed over the corpus is a statistic, and being
+   * right about it is the evidence.
+   *
+   * `q-025` is deliberately not in this group. Its answer is a `svc:` ref, so
+   * the answer is itself a record and recall over it means something.
+   */
   const incidentsByService = new Map<string, number>();
   for (const incident of world.incidents) {
     incidentsByService.set(incident.service, (incidentsByService.get(incident.service) ?? 0) + 1);
@@ -214,7 +234,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
         'multi-hop',
         'Which team owns the service with the most incidents? Answer with the team name.',
         { kind: 'set', values: [service.owner] },
-        [service.ref, ...world.incidents.filter((i) => i.service === service.name).map((i) => i.ref)],
+        null,
       );
     }
   }
@@ -234,12 +254,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
         'multi-hop',
         'Which team owns the service with the most open issues? Answer with the team name.',
         { kind: 'set', values: [service.owner] },
-        [
-          service.ref,
-          ...world.issues
-            .filter((issue) => issue.service === service.name && issue.state === 'open')
-            .map((issue) => issue.ref),
-        ],
+        null,
       );
     }
   }
@@ -305,6 +320,131 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
         'Which service owns the file with the most total churn (additions plus deletions summed over every pull request that touched it)? Answer with the service ref.',
         { kind: 'set', values: [`svc:${file.service}`] },
         [file.ref, `svc:${file.service}`],
+      );
+    }
+  }
+
+  // ── joins across tool results ────────────────────────────────────────────
+  /*
+   * The questions whose answer lives in no single payload.
+   *
+   * Everything above joins at most two record types, and the linking value is
+   * usually sitting in the same result the answer is: a PR carries the file
+   * paths it touched, an incident carries the service it hit. These do not.
+   * The team that owns a service is recorded in `catalog.list_services`, the
+   * file-to-service mapping in `catalog.list_files`, and the change itself in
+   * `github.list_pull_requests` — three results, arriving at different times,
+   * sharing nothing but a bare string in a field. Nobody declared a foreign
+   * key; the agent has to notice that `src/billing/router.ts` in one payload
+   * and `billing` in another are the same thing.
+   *
+   * That is the case worth measuring, because it is the one where top-k has
+   * the least to work with. A cosine neighbourhood is computed per record, and
+   * no single record here is similar to the question: the service page does
+   * not mention pull requests, the PR page does not mention teams, and the
+   * record that would answer the question outright does not exist. Retrieval
+   * has to bring back two disjoint sets and the model has to do the join, or
+   * the store has to do it before the model sees anything.
+   *
+   * Appended rather than slotted in beside the joins above, and that is load
+   * bearing: question ids are positional, so inserting a template renumbers
+   * every question after it and silently invalidates `--rescore` over every
+   * run ever bought. New templates go at the end.
+   */
+  const teams = [
+    ...new Set(world.services.map((service) => service.owner).filter((o): o is string => o !== null)),
+  ];
+  const ownedBy = (team: string): ReadonlySet<string> =>
+    new Set(
+      world.services.filter((service) => service.owner === team).map((service) => service.name),
+    );
+
+  // Two results: the pager knows which service, the catalogue knows whose it
+  // is. Neither knows both.
+  for (const team of teams.slice(0, limit)) {
+    const owned = ownedBy(team);
+    const matching = world.incidents.filter((incident) => owned.has(incident.service));
+    if (matching.length === 0) continue;
+    add(
+      'join',
+      `Which incidents happened on a service owned by the ${team} team? Answer with their refs.`,
+      { kind: 'set', values: matching.map((incident) => incident.ref) },
+      matching.map((incident) => incident.ref),
+    );
+  }
+
+  // Three results, and a hop through a value that is neither an id nor a name:
+  // a path in a PR's `files` array is a row in the file listing, whose
+  // `service` is a row in the catalogue, whose `owner` is the team asked about.
+  const serviceOfPath = new Map(world.files.map((file) => [file.path, file.service]));
+  for (const team of teams.slice(0, limit)) {
+    const owned = ownedBy(team);
+    const matching = world.pullRequests.filter((pr) => {
+      if (pr.state !== 'open') return false;
+      return pr.files.some((path) => {
+        const service = serviceOfPath.get(path);
+        return service !== undefined && owned.has(service);
+      });
+    });
+    if (matching.length === 0) continue;
+    add(
+      'join',
+      `Which pull requests are still open and touched a file belonging to a service owned by the ${team} team? Answer with their refs.`,
+      { kind: 'set', values: matching.map((pr) => pr.ref) },
+      matching.map((pr) => pr.ref),
+    );
+  }
+
+  // The anti-join, and the reason it is filed under `absence` rather than
+  // `join`: the answer is the services that are missing from the other side.
+  // A top-k over either payload alone ranks nothing useful — there is no text
+  // to be similar to — and unlike the ownerless services above, the emptiness
+  // is not stated anywhere. It is a property of two results held together.
+  const troubled = new Set(world.incidents.map((incident) => incident.service));
+  const quiet = world.services.filter((service) => !troubled.has(service.name));
+  if (quiet.length > 0 && quiet.length < world.services.length) {
+    add(
+      'absence',
+      'Which services have had no incidents at all? Answer with their refs.',
+      { kind: 'set', values: quiet.map((service) => service.ref) },
+      quiet.map((service) => service.ref),
+    );
+  }
+
+  // Three hops and an argmax: churn is on the pull requests, the path-to-
+  // service mapping is in the file listing, and the team is in the catalogue.
+  // Churn rather than a count of pull requests because a sum over line counts
+  // almost never ties, and a tie would make two answers correct.
+  const serviceChurn = new Map<string, number>();
+  for (const pr of world.pullRequests) {
+    for (const path of pr.files) {
+      const service = serviceOfPath.get(path);
+      if (service === undefined) continue;
+      serviceChurn.set(service, (serviceChurn.get(service) ?? 0) + pr.additions + pr.deletions);
+    }
+  }
+  const churnByService = [...serviceChurn.entries()].sort((a, b) => b[1] - a[1]);
+  const busiest = churnByService[0];
+  const nextBusiest = churnByService[1];
+  if (busiest && (!nextBusiest || nextBusiest[1] < busiest[1])) {
+    const service = world.services.find((candidate) => candidate.name === busiest[0]);
+    if (service?.owner) {
+      add(
+        'multi-hop',
+        'Which team owns the service whose files have the most total churn (additions plus deletions summed over every pull request that touched a file in that service)? Answer with the team name.',
+        { kind: 'set', values: [service.owner] },
+        /*
+         * Scored on the answer alone, by the same rule as the aggregates.
+         *
+         * This cited the winning service record until a run showed what that
+         * does: `ingot-mcp` answered correctly from one grouped sum returning
+         * `(owner, total_churn)`, the `svc:` ref never came back through a
+         * tool, and the row scored 0% evidence recall for having taken the
+         * cheapest right path. The answer here is a name computed over the
+         * corpus, not a set of records — so, like a count of thirty-seven pull
+         * requests, being right about it is the evidence.
+         */
+        null,
       );
     }
   }

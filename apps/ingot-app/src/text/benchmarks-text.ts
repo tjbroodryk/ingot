@@ -22,6 +22,7 @@ import {
   CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
+  mappingWriter,
   SOURCE_BLURBS,
   SOURCES,
 } from '../benchmarks/benchmarks';
@@ -142,7 +143,7 @@ function results(): readonly string[] {
     bullets([
       `Seed \`${run.seed}\`, ${run.questions} questions, ${run.repeats} run(s) each.`,
       `Agent: \`${run.model}\` on \`${run.provider}\`, reasoning ${run.thinking ? `\`${run.effort}\`` : 'off'}.`,
-      `Embedder: \`${run.embedder}\`. Ingot schema: ${run.mapping}-written.`,
+      `Embedder: \`${run.embedder}\`. Ingot's column mappings: ${mappingWriter(run.mapping)}.`,
       `Retrieval budget: ${run.maxToolCalls} tool calls per question.`,
       `Run \`${run.runId}\`${BENCHMARK.generatedAt ? `, published ${BENCHMARK.generatedAt.slice(0, 10)}` : ''}.`,
     ]),
@@ -175,5 +176,17 @@ function results(): readonly string[] {
       ]),
     ),
     'Evidence recall is the share of the answer-bearing records that came back through the tools; precision is the share of what came back that was answer-bearing. Both are computed only over questions whose answer is a set of records — an aggregate answer is a statistic, and a correct count is its own evidence.',
+    // Named here as well as on the page: an assistant quoting a column that
+    // lost a fifth of its runs to a rate limit should be able to say so.
+    ...(adapters.some((adapter) => adapter.failures > 0)
+      ? [
+          `Runs that failed outright — the provider threw and nothing was answered: ${adapters
+            .filter((adapter) => adapter.failures > 0)
+            .map((adapter) => `\`${adapter.name}\` ${adapter.failures} of ${adapter.runs}`)
+            .join(
+              ', ',
+            )}. They are scored wrong, but they are infrastructure failures rather than retrieval failures.`,
+        ]
+      : []),
   ];
 }

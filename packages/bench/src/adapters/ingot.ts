@@ -85,7 +85,11 @@ export class IngotAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotOptions) {
     this.mode = options.mode ?? 'full';
-    this.name = this.mode === 'full' ? 'ingot-mcp' : 'ingot-mcp-text-search-only';
+    // The mode says what was taken away; the column name says what the row is
+    // for. Those are different sentences, and the one a reader meets in a
+    // table should be the second — see `names.ts` for the spellings this has
+    // answered to.
+    this.name = this.mode === 'full' ? 'ingot-mcp' : 'control-same-store-top-k';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
   }

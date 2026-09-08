@@ -63,6 +63,8 @@ export interface PublishedAdapter {
   readonly evidencePrecision: number | null;
   readonly toolCalls: number;
   readonly contextTokens: number;
+  /** Runs where the provider threw and nothing was answered. Scored wrong. */
+  readonly failures: number;
   readonly byCategory: Readonly<Record<string, number>>;
 }
 
@@ -77,8 +79,19 @@ export interface PublishedBenchmark {
 
 export const BENCHMARK = results as PublishedBenchmark;
 
-/** The controls, which are reference points rather than entrants. */
-export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
+/**
+ * The control, which is a reference point rather than an entrant.
+ *
+ * `oracle` was the other one. It placed exactly the answer-bearing records in
+ * the prompt and was described as perfect retrieval, which it was not: it got
+ * the records that *constitute* an answer and never the ones that establish
+ * why they are the answer, so on a question whose predicate spans two record
+ * types it was asked to assert what its prompt could not support, and it
+ * answered nothing. A ceiling that sits below the columns it is meant to bound
+ * is worse than no ceiling — a reader takes the gap for a finding. This one
+ * bounds the model with strictly more information and needs no caveat.
+ */
+export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context']);
 
 /**
  * The three figures worth putting at the top, computed rather than chosen.
@@ -162,9 +175,14 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
       'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot-mcp` is how much of the result is the surface rather than the data model.',
   },
   {
-    name: 'ingot-mcp-text-search-only',
+    name: 'control-same-store-top-k',
     blurb:
-      'The ablation, and the most important column. The same store, the same rows and the same vectors, reachable only through top-k semantic search.',
+      'The control, and the most important column on this page — the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: the same rows, the same vectors, the same server, reachable only through top-k semantic search. Whatever separates it from `ingot-mcp` is what SQL over typed rows is worth, and nothing else.',
+  },
+  {
+    name: 'control-same-store-top-k-rest',
+    blurb:
+      'The same control over the REST surface, for when `ingot-rest` is in the table: the gap between the two says how much of the surface’s result survives without SQL.',
   },
   {
     name: 'vector',
@@ -189,11 +207,6 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
     name: 'raw-context',
     blurb:
       'No retrieval at all — the whole corpus in the prompt. The ceiling for a memory that fits in the window, and the cost baseline everything else should undercut.',
-  },
-  {
-    name: 'oracle',
-    blurb:
-      'Perfect retrieval: exactly the answer-bearing records and nothing else. The gap to an adapter is retrieval; the gap to 100% is the model.',
   },
 ];
 
@@ -234,6 +247,58 @@ export const CORPUS_LEDE =
   'them is what they can do with the same bytes afterwards.';
 
 /**
+ * A small count as a word, for a heading that has to agree with the table.
+ *
+ * The section that compares the columns was headed "Six memories" — true when
+ * it was written, false the moment `pinecone`, `turbopuffer` and `ingot-rest`
+ * were added, and nobody noticed because a heading is not a number anybody
+ * checks. On a page whose whole claim is that no figure in it was typed by
+ * hand, a hand-typed count in 48pt is the worst place for one to rot, so the
+ * heading counts the columns the run actually published.
+ *
+ * Words to twelve, digits after: "Fourteen columns" reads as prose that has
+ * lost track of itself, and by then the number is the point anyway.
+ */
+export function countWord(value: number): string {
+  const words = [
+    'No',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+  ];
+  return words[value] ?? String(value);
+}
+
+/**
+ * Who wrote Ingot's column mappings, in words rather than as a flag's value.
+ *
+ * The run records `authored` or `agent`, and this page used to render it as
+ * `${mapping}-written` — which reads correctly for one of the two values and
+ * as "authored-written" for the other. The distinction is real and worth
+ * saying plainly: `authored` is the hand-written schema a careful engineer
+ * would produce knowing the shape of each tool's output, and `agent` is the
+ * realistic case where the agent meets a payload for the first time and has to
+ * invent the mapping. The gap between them is how much of Ingot's result
+ * survives nobody tuning it by hand.
+ */
+export function mappingWriter(mapping: string): string {
+  if (mapping === 'authored') return 'hand-written';
+  if (mapping === 'agent') return 'agent-written';
+  // A value this build has not met. Showing it beats claiming one of the two
+  // above and being wrong about which.
+  return mapping;
+}
+
+/**
  * How one source's payloads arrived, in a line.
  *
  * Shared by the page and the markdown half rather than written twice, because
@@ -253,6 +318,50 @@ export function arrival(source: PublishedSource): string {
   }
   return `${count(source.results)} payloads, ${source.perResult} records a page, ${count(source.records)} records, ${count(source.largest)} characters in the largest`;
 }
+
+/**
+ * How the payloads connect, which is the part a reader has to be told.
+ *
+ * Every source above describes itself. None of them describes the others, and
+ * there is no schema, no foreign key and no shared identifier scheme — the
+ * only thing joining two results is a value in one that happens to equal a
+ * value in the other. An agent has to notice that, and get it right, before a
+ * question spanning two payloads can be answered at all.
+ *
+ * The last row is not a curiosity. A run of this benchmark had Ingot answer
+ * "which services have had no incidents" with *all eight services*, because
+ * the model joined `incidents.service` to `services.ref` — `catalog` against
+ * `svc:catalog` — and matched nothing. Confidently, plausibly, and completely
+ * wrong. Real tool payloads spell the same entity two ways all the time, and a
+ * corpus that tidied it up would be modelling a friendlier world than the one
+ * the agent works in.
+ */
+export const CORPUS_JOINS: readonly {
+  readonly from: string;
+  readonly to: string;
+  readonly by: string;
+}[] = [
+  {
+    from: 'github.list_pull_requests.files[]',
+    to: 'catalog.list_files.path',
+    by: 'a file path, as a bare string inside a nested array',
+  },
+  {
+    from: 'ci.list_runs.pr',
+    to: 'github.list_pull_requests.number',
+    by: 'an integer that is a key in one payload and an ordinary field in the other',
+  },
+  {
+    from: 'catalog.list_files.service',
+    to: 'catalog.list_services.name',
+    by: 'a service name — matching `name`, never the `ref` beside it',
+  },
+  {
+    from: 'pagerduty.list_incidents.service',
+    to: 'catalog.list_services.name',
+    by: 'the same name again: `catalog`, where the service record answers to `svc:catalog`',
+  },
+];
 
 /**
  * What each tool result is, and what shape it arrives in.
@@ -315,9 +424,17 @@ export const SOURCE_BLURBS: readonly {
 /** What each question category is for. The categories are the whole design. */
 export const CATEGORIES: readonly { readonly name: string; readonly blurb: string }[] = [
   { name: 'aggregate', blurb: 'A statistic over the whole corpus, not a lookup.' },
-  { name: 'absence', blurb: 'The answer is defined by what is missing. There is no text to be similar to.' },
+  {
+    name: 'absence',
+    blurb:
+      'The answer is defined by what is missing — a field left null, or a record with no counterpart in another tool result. There is no text to be similar to.',
+  },
   { name: 'ordering', blurb: 'Requires a total order, not a neighbourhood.' },
-  { name: 'join', blurb: 'Two record types and a predicate across them.' },
+  {
+    name: 'join',
+    blurb:
+      'Records from two or three different tool results, joined on a value nobody declared as a key — a file path in one payload, a service name in another, the team that owns it in a third.',
+  },
   {
     name: 'semantic',
     blurb:
@@ -398,6 +515,16 @@ export const LIMITS: readonly { readonly title: string; readonly body: string }[
     title: 'Write cost is not scored',
     body:
       'Ingot asks for a column mapping up front; a vector store does not. Ingestion is timed but that asymmetry is real and this page does not put a number on it.',
+  },
+  {
+    title: 'There is one ceiling, and it has a size limit',
+    body:
+      '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only while the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here and would not for a memory a thousand times larger.',
+  },
+  {
+    title: 'The generator moves faster than the runs',
+    body:
+      'Question templates are added to the harness as the workload it models gets better understood; a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away — but a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
   },
   {
     title: 'One corpus, one size',

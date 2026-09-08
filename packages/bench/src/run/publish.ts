@@ -102,6 +102,17 @@ export interface PublishedAdapter {
   readonly evidencePrecision: number | null;
   readonly toolCalls: number;
   readonly contextTokens: number;
+  /**
+   * Runs where the provider threw and nothing was answered.
+   *
+   * Scored wrong, because a memory that could not be asked did not answer —
+   * but published separately, because "did badly" and "a fifth of its runs
+   * never happened" are different readings and only one of them is about
+   * retrieval. It lands hardest on the columns nobody here is rooting for, so
+   * leaving it out of the summary would be the most comfortable omission on
+   * the page.
+   */
+  readonly failures: number;
   /** Accuracy per category; a category with no questions is absent. */
   readonly byCategory: Readonly<Record<string, number>>;
 }
@@ -205,6 +216,11 @@ export function publishable(
       evidencePrecision: overall.evidencePrecision,
       toolCalls: overall.toolCalls,
       contextTokens: Math.round(overall.finalInputTokens),
+      // Same rule as the report's banner: the provider throwing is an
+      // infrastructure failure, a corpus that does not fit is a finding.
+      failures: mine.filter(
+        (row) => row.stopReason === 'provider-error' || row.stopReason?.startsWith('error:'),
+      ).length,
       byCategory,
     };
   });

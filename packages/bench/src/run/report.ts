@@ -147,7 +147,19 @@ export function renderReport(
   // a wrong one. They are scored wrong either way — nothing came back — but a
   // column whose zeroes are timeouts is not evidence about retrieval, and a
   // reader has to be able to see that before reading the tables.
-  const failed = rows.filter((row) => row.stopReason?.startsWith('error:'));
+  // `provider-error` is the string `loop.ts` actually writes when the provider
+  // throws — a rate limit, a 500, a socket closed mid-stream. The filter here
+  // looked for `error:`, which nothing has ever produced, so the banner has
+  // been silent through every run that had infrastructure failures in it. That
+  // is the worst way for this to be wrong: a column with a fifth of its runs
+  // dead reads as a column that simply did badly.
+  //
+  // `context-overflow` is deliberately not counted. A request refused because
+  // the corpus does not fit is the most interesting outcome this benchmark can
+  // produce, not a failure of the harness, and it has its own note.
+  const failed = rows.filter(
+    (row) => row.stopReason === 'provider-error' || row.stopReason?.startsWith('error:'),
+  );
   if (failed.length > 0) {
     const byAdapter = new Map<string, number>();
     for (const row of failed) byAdapter.set(row.adapter, (byAdapter.get(row.adapter) ?? 0) + 1);
@@ -177,10 +189,8 @@ export function renderReport(
   }
   lines.push('');
   lines.push(
-    '_A `—` is a cell with no runs in it, not a zero. `oracle` has one for every category ' +
-      'whose answer is a statistic rather than a set of records: there is no evidence to place ' +
-      'in the prompt, so there is no ceiling to be had, and its overall is therefore taken over ' +
-      'fewer questions than the other rows. `raw-context` is the ceiling for those._',
+    '_A `—` is a cell with no runs in it, not a zero: a category this run asked no questions ' +
+      'in, or an adapter that never reached it._',
   );
   lines.push('');
 
