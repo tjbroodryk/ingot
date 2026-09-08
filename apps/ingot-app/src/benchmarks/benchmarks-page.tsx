@@ -170,9 +170,9 @@ export function BenchmarksPage(): ReactNode {
             <span className="label label-sm kicker">[ What is compared ]</span>
             {/*
               "Columns" rather than "memories", because two of them are not
-              memories: `raw-context` and `oracle` answer from the prompt and
-              are reference points. The heading counting nine and the section
-              listing nine cells is the agreement that matters.
+              memories: `raw-context` answers from the prompt and is a
+              reference point. The heading counting the columns and the section
+              listing that many cells is the agreement that matters.
             */}
             <h2 className="landtitle">
               {countWord(ADAPTERS.length)} columns,
@@ -488,8 +488,8 @@ function Tiles(): ReactNode {
  *
  * A bar you can compare by length beats a column of percentages you have to
  * compare by reading, and ranking makes the order the reading order. The
- * controls keep their own group: `oracle` placed fourth in a race it was not
- * running is the wrong reading, and a flush list invites exactly that.
+ * control keeps its own group: `raw-context` placed fourth in a race it was
+ * not running is the wrong reading, and a flush list invites exactly that.
  */
 function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
   const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;

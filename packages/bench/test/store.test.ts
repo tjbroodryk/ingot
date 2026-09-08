@@ -37,12 +37,12 @@ const META: RunMeta = {
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
-  adapters: ['oracle'],
+  adapters: ['hyperspell'],
 };
 
 const ROW = {
   runId: 'test-run',
-  adapter: 'oracle',
+  adapter: 'hyperspell',
   questionId: 'q-001',
   category: 'absence',
   repeat: 0,
@@ -137,7 +137,7 @@ describe('merging finished runs', () => {
 
   test('one file is read exactly as it was, with nothing added', async () => {
     const dir = await scratch();
-    const only = await write(dir, 'solo', {}, ['oracle']);
+    const only = await write(dir, 'solo', {}, ['hyperspell']);
 
     const merged = await readRuns([only]);
     expect(merged.meta.runId).toBe('solo');
@@ -146,19 +146,57 @@ describe('merging finished runs', () => {
 
   test('joins the columns and says which run each came from', async () => {
     const dir = await scratch();
-    const base = await write(dir, 'base', {}, ['vector', 'oracle']);
+    const base = await write(dir, 'base', {}, ['vector', 'hyperspell']);
     const extra = await write(dir, 'extra', {}, ['pinecone']);
 
     const merged = await readRuns([base, extra]);
-    expect(merged.rows.map((row) => row.adapter)).toEqual(['vector', 'oracle', 'pinecone']);
+    expect(merged.rows.map((row) => row.adapter)).toEqual(['vector', 'hyperspell', 'pinecone']);
     // Its own run, not either input's, because it is neither of them.
     expect(merged.meta.runId).toMatch(/^combined-seed42-/);
-    expect(merged.meta.adapters).toEqual(['vector', 'oracle', 'pinecone']);
+    expect(merged.meta.adapters).toEqual(['vector', 'hyperspell', 'pinecone']);
 
     const [warning] = merged.meta.warnings;
     expect(warning).toContain('assembled from 2 runs');
-    expect(warning).toContain('`vector`, `oracle` from base');
+    expect(warning).toContain('`vector`, `hyperspell` from base');
     expect(warning).toContain('`pinecone` from extra');
+  });
+
+  /**
+   * Reporting on part of a finished run.
+   *
+   * The case that made this necessary: `oracle` was retired after the run that
+   * bought it, and a published table showing a column for an adapter that no
+   * longer exists is a table nobody can reproduce. The rows keep it — they are
+   * the record of what ran — and the report leaves it out.
+   */
+  test('keeps only the columns asked for, and says so in the provenance', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector', 'hyperspell']);
+    const extra = await write(dir, 'extra', {}, ['pinecone']);
+
+    const merged = await readRuns([base, extra], new Set(['vector', 'pinecone']));
+    expect(merged.rows.map((row) => row.adapter)).toEqual(['vector', 'pinecone']);
+    expect(merged.meta.adapters).toEqual(['vector', 'pinecone']);
+
+    // The warning names the table's columns, not the file's. Naming a column
+    // the reader cannot see would be worse than saying nothing.
+    const [warning] = merged.meta.warnings;
+    expect(warning).toContain('`vector` from base');
+    expect(warning).not.toContain('hyperspell');
+
+    // And the table says what it is not showing, because the warnings a merge
+    // inherits were written when the run was bought and go on naming it.
+    expect(merged.meta.warnings.join(' ')).toContain('also hold `hyperspell`');
+  });
+
+  test('refuses to report on a file that contributes no column', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector']);
+    const extra = await write(dir, 'extra', {}, ['pinecone']);
+
+    // Silently dropping the file would report a two-run merge as a one-run
+    // table, warning and all.
+    expect(readRuns([base, extra], new Set(['vector']))).rejects.toThrow(/no rows left/);
   });
 
   test('refuses runs that disagree about anything that moves a number', async () => {
@@ -199,7 +237,7 @@ describe('merging finished runs', () => {
 
   test('refuses a column that answers the same question in both files', async () => {
     const dir = await scratch();
-    const base = await write(dir, 'base', {}, ['vector', 'oracle']);
+    const base = await write(dir, 'base', {}, ['vector', 'hyperspell']);
     const again = await write(dir, 'again', {}, ['vector']);
 
     expect(readRuns([base, again])).rejects.toThrow(/`vector` answers q-001 in both/);
@@ -216,8 +254,8 @@ describe('merging finished runs', () => {
    */
   test('joins the same columns over questions neither file duplicates', async () => {
     const dir = await scratch();
-    const base = await write(dir, 'base', {}, ['vector', 'oracle'], ['q-001', 'q-002']);
-    const topUp = await write(dir, 'top-up', {}, ['vector', 'oracle'], ['q-003']);
+    const base = await write(dir, 'base', {}, ['vector', 'hyperspell'], ['q-001', 'q-002']);
+    const topUp = await write(dir, 'top-up', {}, ['vector', 'hyperspell'], ['q-003']);
 
     const merged = await readRuns([base, topUp]);
     expect(merged.rows).toHaveLength(6);
@@ -228,7 +266,7 @@ describe('merging finished runs', () => {
     // And the reader is told, because a column finished across two sittings is
     // not the same claim as a column bought in one.
     const [warning] = merged.meta.warnings;
-    expect(warning).toContain('`vector`, `oracle` from base on 2 questions');
+    expect(warning).toContain('`vector`, `hyperspell` from base on 2 questions');
     // Named once. The second run's columns are the same nine (here two), and
     // repeating them buries which questions came from where.
     expect(warning).toContain('the same columns from top-up on 1 question');

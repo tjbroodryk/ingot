@@ -127,12 +127,53 @@ const MUST_MATCH: readonly (keyof RunMeta)[] = [
  * every reader. A splice nobody can see in the output is the thing worth
  * preventing, not the splice.
  */
-export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
+export async function readRuns(
+  paths: readonly string[],
+  /**
+   * Which columns to keep, if not all of them.
+   *
+   * For reporting on part of a finished run — a column retired since it was
+   * bought, or one being looked at on its own. Applied before anything else
+   * reads the rows, so the provenance warning names the columns the table
+   * actually shows rather than the ones the file happens to hold.
+   *
+   * The rows on disk are untouched, which is the point: dropping a column from
+   * a report is a decision about what to publish, and rewriting the transcript
+   * to match would turn it into a decision about what happened.
+   */
+  keep?: ReadonlySet<string>,
+): Promise<StoredRun> {
   if (paths.length === 0) throw new Error('no run files to read');
 
-  const runs = await Promise.all(paths.map((path) => readRun(path)));
+  const all = await Promise.all(paths.map((path) => readRun(path)));
+  const runs = keep ? all.map((run) => onlyColumns(run, keep)) : all;
+
+  // What the files hold and the table does not show. Worth its own line
+  // because the warnings a merge inherits are prose written when the run was
+  // bought, and they go on naming a column after it is dropped — a reader
+  // otherwise hunts a published table for a row that provenance promised.
+  const dropped = keep
+    ? [...new Set(all.flatMap((run) => run.rows.map((row) => row.adapter)))]
+        .filter((name) => !keep.has(name))
+        .sort()
+    : [];
+  for (const run of runs) {
+    if (run.rows.length === 0) {
+      throw new Error(
+        `${run.meta.runId} has no rows left once the columns were filtered. Nothing here can ` +
+          'report on a run that contributes no column; drop the file rather than the columns.',
+      );
+    }
+  }
+
   const [base, ...rest] = runs as [StoredRun, ...StoredRun[]];
-  if (rest.length === 0) return base;
+  // A single file needs no merge, but it can still have been narrowed, and the
+  // reader is owed the same sentence either way.
+  if (rest.length === 0) {
+    return dropped.length === 0
+      ? base
+      : { ...base, meta: { ...base.meta, warnings: [...base.meta.warnings, droppedNote(dropped)] } };
+  }
 
   for (const run of rest) {
     for (const key of MUST_MATCH) {
@@ -175,7 +216,7 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
   const questionsOf = new Map<string, Set<string>>();
   for (const run of runs) {
     for (const row of run.rows) {
-      const cell = `${row.adapter} ${row.questionId}`;
+      const cell = `${row.adapter}\u0000${row.questionId}`;
       const already = from.get(cell);
       if (already && already !== run.meta.runId) {
         throw new Error(
@@ -211,7 +252,7 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
   );
 
   const columnsIn = (runId: string): readonly string[] => [...(columnsOf.get(runId) ?? [])];
-  const leading = columnsIn(base.meta.runId).join(' ');
+  const leading = columnsIn(base.meta.runId).join('\u0000');
 
   const contributed = runs.map((run, index) => {
     const columns = columnsIn(run.meta.runId);
@@ -221,7 +262,7 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
     // buries the one thing that sentence has to say — which questions came
     // from where — under a repeated list.
     const named =
-      index > 0 && columns.join(' ') === leading
+      index > 0 && columns.join('\u0000') === leading
         ? 'the same columns'
         : columns.map((adapter) => `\`${adapter}\``).join(', ');
     return `${named} from ${run.meta.runId}${scope}`;
@@ -240,6 +281,7 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
           'both together.'
         : ''),
   );
+  if (dropped.length > 0) warnings.add(droppedNote(dropped));
 
   const notes = new Set(runs.flatMap((run) => run.meta.notes));
   const concurrencies = new Set(runs.map((run) => run.meta.concurrency));
@@ -260,6 +302,33 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
       notes: [...notes],
     },
     rows: runs.flatMap((run) => run.rows),
+  };
+}
+
+/**
+ * The line that reconciles a narrowed table with its own provenance.
+ *
+ * Warnings are inherited from the runs that were merged, and they are prose
+ * written when those runs were bought — so they go on naming a column after it
+ * has been dropped from the report. Without this, a reader follows the
+ * provenance to a row the table does not have and concludes the table is
+ * hiding it.
+ */
+function droppedNote(dropped: readonly string[]): string {
+  const names = dropped.map((name) => `\`${name}\``).join(', ');
+  return (
+    `The rows behind this table also hold ${names}, which ${dropped.length === 1 ? 'is' : 'are'} ` +
+    'not shown. Provenance above may still name that column: it was bought, and the transcript ' +
+    'keeps it. Leaving it out of the table is a decision about what to publish, not about what ' +
+    'happened.'
+  );
+}
+
+/** One run, narrowed to the columns asked for. */
+function onlyColumns(run: StoredRun, keep: ReadonlySet<string>): StoredRun {
+  return {
+    meta: { ...run.meta, adapters: run.meta.adapters.filter((name) => keep.has(name)) },
+    rows: run.rows.filter((row) => keep.has(row.adapter)),
   };
 }
 

@@ -79,8 +79,19 @@ export interface PublishedBenchmark {
 
 export const BENCHMARK = results as PublishedBenchmark;
 
-/** The controls, which are reference points rather than entrants. */
-export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
+/**
+ * The control, which is a reference point rather than an entrant.
+ *
+ * `oracle` was the other one. It placed exactly the answer-bearing records in
+ * the prompt and was described as perfect retrieval, which it was not: it got
+ * the records that *constitute* an answer and never the ones that establish
+ * why they are the answer, so on a question whose predicate spans two record
+ * types it was asked to assert what its prompt could not support, and it
+ * answered nothing. A ceiling that sits below the columns it is meant to bound
+ * is worse than no ceiling — a reader takes the gap for a finding. This one
+ * bounds the model with strictly more information and needs no caveat.
+ */
+export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context']);
 
 /**
  * The three figures worth putting at the top, computed rather than chosen.
@@ -196,11 +207,6 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
     name: 'raw-context',
     blurb:
       'No retrieval at all — the whole corpus in the prompt. The ceiling for a memory that fits in the window, and the cost baseline everything else should undercut.',
-  },
-  {
-    name: 'oracle',
-    blurb:
-      'Perfect retrieval, and a narrower ceiling than the name suggests. The prompt gets exactly the records that constitute the answer and nothing else — which is everything the question needs only when the record itself shows why it belongs. “Which incidents on the auth service were sev1 or sev2” is settled by the incident record. “Which pull requests had a failing CI run” is not: the pull requests arrive without the CI runs that made them the answer, and the model declines to claim what it cannot see. So read this row as the ceiling for questions answerable from the answer — on the cross-tool joins it can sit below columns that were free to go and look.',
   },
 ];
 
@@ -511,9 +517,9 @@ export const LIMITS: readonly { readonly title: string; readonly body: string }[
       'Ingot asks for a column mapping up front; a vector store does not. Ingestion is timed but that asymmetry is real and this page does not put a number on it.',
   },
   {
-    title: 'The oracle is not a ceiling for every question',
+    title: 'There is one ceiling, and it has a size limit',
     body:
-      'It is handed the records that constitute the answer, and never the records that establish why they are the answer — the two are the same thing for “which incidents were sev1”, and different things for “which pull requests had a failing CI run”, where the answer is pull requests and the proof is CI runs the oracle is not given. On questions whose predicate spans two record types it is therefore working with less than a retrieval column can fetch for itself, and its row can fall below theirs. Where that happens the reading is a limit of this control, not a demonstration that querying beats perfect retrieval; fixing it means giving the oracle the predicate’s records too, and re-buying that column.',
+      '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only while the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here and would not for a memory a thousand times larger.',
   },
   {
     title: 'The generator moves faster than the runs',

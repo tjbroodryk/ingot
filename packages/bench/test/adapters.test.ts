@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { OracleAdapter, RawContextAdapter } from '../src/adapters/controls.js';
+import { RawContextAdapter } from '../src/adapters/controls.js';
 import { HyperspellAdapter } from '../src/adapters/hyperspell.js';
 import { IngotRestAdapter, renderSchema } from '../src/adapters/ingot-rest.js';
 import { PineconeAdapter } from '../src/adapters/pinecone.js';
@@ -143,43 +143,6 @@ describe('the controls', () => {
     const note = await adapter.systemNote();
     expect(adapter.tools()).toHaveLength(0);
     expect(refsIn(note, knownRefs).size).toBe(knownRefs.size);
-  });
-
-  test('oracle carries exactly the evidence and nothing else', async () => {
-    const adapter = new OracleAdapter();
-    await adapter.ingest(corpus);
-
-    const question = questions.find((candidate) => candidate.evidence !== null);
-    if (!question?.evidence) throw new Error('no question with evidence');
-
-    const note = await adapter.systemNote(question);
-    const found = refsIn(note, knownRefs);
-    // A record can legitimately mention another — a PR names file paths, not
-    // file refs — so the assertion is that every piece of evidence is present,
-    // and that nothing irrelevant was added beyond what the records say.
-    for (const ref of question.evidence) expect(found.has(ref)).toBe(true);
-    expect(found.size).toBeLessThanOrEqual(question.evidence.length + 1);
-  });
-
-  test('oracle refuses to fake a ceiling for statistic questions', async () => {
-    const adapter = new OracleAdapter();
-    await adapter.ingest(corpus);
-
-    const aggregate = questions.find((candidate) => candidate.evidence === null);
-    if (!aggregate) throw new Error('no aggregate question');
-    expect(await adapter.systemNote(aggregate)).toContain('ORACLE_UNAVAILABLE');
-  });
-
-  test('oracle declines the questions it cannot bound, and claims the rest', () => {
-    const adapter = new OracleAdapter();
-    const aggregate = questions.find((candidate) => candidate.evidence === null);
-    const withEvidence = questions.find((candidate) => candidate.evidence !== null);
-    if (!aggregate || !withEvidence) throw new Error('need one question of each kind');
-
-    // The runner reads this, and a `false` is why the cell is `—` rather than
-    // a zero that would drag the upper bound below what it bounds.
-    expect(adapter.supports(aggregate)).toBe(false);
-    expect(adapter.supports(withEvidence)).toBe(true);
   });
 
   test('raw-context bounds every question, including the statistics', () => {

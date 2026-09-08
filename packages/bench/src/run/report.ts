@@ -189,10 +189,8 @@ export function renderReport(
   }
   lines.push('');
   lines.push(
-    '_A `—` is a cell with no runs in it, not a zero. `oracle` has one for every category ' +
-      'whose answer is a statistic rather than a set of records: there is no evidence to place ' +
-      'in the prompt, so there is no ceiling to be had, and its overall is therefore taken over ' +
-      'fewer questions than the other rows. `raw-context` is the ceiling for those._',
+    '_A `—` is a cell with no runs in it, not a zero: a category this run asked no questions ' +
+      'in, or an adapter that never reached it._',
   );
   lines.push('');
 

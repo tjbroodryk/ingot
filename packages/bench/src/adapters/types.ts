@@ -28,8 +28,8 @@ export interface MemoryAdapter {
    * and it costs no tool call, so withholding it would benchmark a crippled
    * version of the thing. Adapters with nothing to say return ''.
    *
-   * `question` is passed because the controls need it: `oracle` places the
-   * gold evidence here, which is what makes it an upper bound.
+   * `question` is passed because a control may need it — an adapter that
+   * answers from the prompt decides what to put there per question.
    */
   systemNote(question: Question): Promise<string>;
 
@@ -38,12 +38,11 @@ export interface MemoryAdapter {
   /**
    * Whether this adapter can answer this question at all. Absent means yes.
    *
-   * Only the controls ever say no, and only `oracle` says it in practice: a
-   * question whose answer is a statistic has no record-level evidence, so
-   * there is nothing to place in the prompt and no ceiling to be had. The
-   * runner skips those rows rather than buying them — scoring a control zero
-   * on a question it deliberately declined would push the *upper bound* below
-   * the adapters it is supposed to bound, which is worse than an empty cell.
+   * Nothing says no today: `raw-context` holds the whole corpus and can be
+   * asked anything. It is kept because the alternative, for an adapter that
+   * cannot bound a question, is to be scored zero on one it deliberately
+   * declined — which pushes an upper bound below the adapters it is supposed
+   * to bound, and that is worse than an empty cell.
    */
   supports?(question: Question): boolean;
 

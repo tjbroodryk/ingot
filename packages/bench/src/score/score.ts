@@ -89,7 +89,7 @@ export function scoreRun(
   /**
    * Whether this adapter reaches its memory through tools at all.
    *
-   * `raw-context` and `oracle` do not: their evidence is placed in the prompt,
+   * `raw-context` does not: its evidence is placed in the prompt,
    * so nothing ever comes back through a tool call and scanning the tool
    * output finds nothing. Scoring that as 0% recall would report the two
    * controls — one of which holds *every* record and the other exactly the

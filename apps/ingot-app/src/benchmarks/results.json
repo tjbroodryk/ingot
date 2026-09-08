@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-08T20:53:40.533Z",
+  "generatedAt": "2026-09-08T21:33:53.623Z",
   "run": {
     "runId": "combined-seed1-2026-09-08T20-53-40-301Z",
     "seed": 1,
@@ -25,7 +25,8 @@
     "warnings": [
       "This table was assembled from 3 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `ingot-mcp-text-search-only`, `vector`, `hyperspell`, `raw-context`, `oracle` from 2026-09-08T13-24-18-252Z-seed1; `pinecone`, `turbopuffer` from 2026-09-08T15-16-49-990Z-seed1; `ingot-rest` from 2026-09-08T15-58-42-061Z-seed1. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them.",
       "Bought as a top-up: this run asked only the 8 question(s) that results/combined-seed1-2026-09-08T16-03-43-455Z.jsonl had not already answered. On its own that is a slice of the question set rather than a sample of it.",
-      "This table was assembled from 2 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `control-same-store-top-k`, `vector`, `hyperspell`, `raw-context`, `oracle`, `pinecone`, `turbopuffer`, `ingot-rest` from combined-seed1-2026-09-08T16-03-43-455Z on 25 questions; `ingot-mcp`, `control-same-store-top-k`, `ingot-rest`, `vector`, `pinecone`, `turbopuffer`, `hyperspell`, `raw-context`, `oracle` from 2026-09-08T19-35-58-166Z-seed1 on 8 questions. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them. A column here was finished across more than one sitting: the question set grew, the questions it had not been asked were bought later, and its accuracy averages both together."
+      "This table was assembled from 2 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `control-same-store-top-k`, `vector`, `hyperspell`, `raw-context`, `oracle`, `pinecone`, `turbopuffer`, `ingot-rest` from combined-seed1-2026-09-08T16-03-43-455Z on 25 questions; `ingot-mcp`, `control-same-store-top-k`, `ingot-rest`, `vector`, `pinecone`, `turbopuffer`, `hyperspell`, `raw-context`, `oracle` from 2026-09-08T19-35-58-166Z-seed1 on 8 questions. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them. A column here was finished across more than one sitting: the question set grew, the questions it had not been asked were bought later, and its accuracy averages both together.",
+      "The rows behind this table also hold `oracle`, which is not shown. Provenance above may still name that column: it was bought, and the transcript keeps it. Leaving it out of the table is a decision about what to publish, not about what happened."
     ]
   },
   "corpus": {
@@ -202,25 +203,6 @@
         "join": 0.9444444444444444,
         "semantic": 1,
         "multi-hop": 0.4444444444444444
-      }
-    },
-    {
-      "name": "oracle",
-      "runs": 81,
-      "accuracy": 0.691358024691358,
-      "stderr": 0.05132589007920359,
-      "f1": 0.7686654908877129,
-      "evidenceRecall": null,
-      "evidencePrecision": null,
-      "toolCalls": 0,
-      "contextTokens": 783,
-      "failures": 0,
-      "byCategory": {
-        "absence": 1,
-        "ordering": 1,
-        "join": 0.3333333333333333,
-        "semantic": 1,
-        "multi-hop": 0.8888888888888888
       }
     },
     {

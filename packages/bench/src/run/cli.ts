@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { buildModel, reasoningOptions, type Provider } from '../agent/model.js';
 import { agentMapping } from '../adapters/agent-mapping.js';
-import { OracleAdapter, RawContextAdapter } from '../adapters/controls.js';
+import { RawContextAdapter } from '../adapters/controls.js';
 import { HyperspellAdapter } from '../adapters/hyperspell.js';
 import { IngotAdapter } from '../adapters/ingot.js';
 import { IngotRestAdapter } from '../adapters/ingot-rest.js';
@@ -48,7 +48,6 @@ const ADAPTERS = [
   'turbopuffer',
   'hyperspell',
   'raw-context',
-  'oracle',
 ] as const;
 type AdapterName = (typeof ADAPTERS)[number];
 
@@ -89,7 +88,7 @@ const ALIASES = LEGACY_NAMES as Readonly<Record<string, AdapterName>>;
 const PROVIDERS: readonly Provider[] = ['anthropic', 'foundry-claude', 'foundry-gpt'];
 
 /** The controls, which answer from the prompt and offer no tools. */
-const NO_TOOL_ADAPTERS: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
+const NO_TOOL_ADAPTERS: ReadonlySet<string> = new Set(['raw-context']);
 
 /**
  * The default model per provider, because "the default model" is not one thing
@@ -134,6 +133,8 @@ interface Options {
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
   from: string | null;
+  /** Whether `--adapters` was passed. See the parse case for why it matters. */
+  adaptersGiven: boolean;
   /**
    * A finished run's JSONL whose questions this run should skip.
    *
@@ -150,7 +151,7 @@ interface Options {
 function parse(argv: readonly string[]): Options {
   const options: Options = {
     seed: 1,
-    adapters: ['ingot-mcp', 'control-same-store-top-k', 'vector', 'raw-context', 'oracle'],
+    adapters: ['ingot-mcp', 'control-same-store-top-k', 'vector', 'raw-context'],
     repeats: 3,
     perTemplate: 3,
     maxToolCalls: 12,
@@ -175,6 +176,7 @@ function parse(argv: readonly string[]): Options {
     // purpose rather than inherit from a default.
     concurrency: 1,
     from: null,
+    adaptersGiven: false,
     questionsNotIn: null,
     rescore: false,
   };
@@ -194,6 +196,10 @@ function parse(argv: readonly string[]): Options {
         at += 1;
         break;
       case '--adapters':
+        // Recorded because the default is a list rather than an absence, and
+        // `--from` has to tell "report on these columns" from "report on the
+        // columns the file happens to hold".
+        options.adaptersGiven = true;
         options.adapters = next(flag, value)
           .split(',')
           .map((name) => name.trim())
@@ -356,11 +362,14 @@ const HELP = `bun run bench [flags]
 
   --seed N               World seed. The corpus and every gold answer follow from it. (1)
   --adapters a,b,c       ${ADAPTERS.join(', ')}
+                         With --from, selects which of a finished run's columns
+                         the report and the publish should show. The rows on
+                         disk keep every column they were bought with.
   --repeats N            Runs per question; agents are stochastic. (3)
   --per-template N       Questions generated per template. (3)
   --max-tool-calls N     Retrieval budget per question, identical for every adapter. (12)
   --model ID             Model id, or on Azure the DEPLOYMENT name. (${DEFAULT_MODEL['foundry-gpt']})
-                         \$BENCH_AGENT_MODEL overrides it, for foundry-gpt only.
+                         $BENCH_AGENT_MODEL overrides it, for foundry-gpt only.
   --provider NAME        ${PROVIDERS.join(' | ')} — where the agent runs. (foundry-gpt)
   --effort LEVEL         low | medium | high | xhigh | max  (high)
                          Maps to adaptive thinking on Claude, reasoningEffort on GPT.
@@ -491,8 +500,6 @@ async function build(
       });
     case 'raw-context':
       return new RawContextAdapter();
-    case 'oracle':
-      return new OracleAdapter();
   }
 }
 
@@ -577,14 +584,7 @@ async function main(options: Options): Promise<void> {
       console.log(`\n${question.id} [${question.category}] ${question.text}`);
       console.log(`  gold: ${JSON.stringify(question.gold)}`);
     }
-    // `oracle` skips the questions it cannot be built for, so a flat
-    // questions × adapters × repeats would quote a price nobody pays.
-    const answerable = questions.filter((question) => question.evidence !== null).length;
-    const runs = options.adapters.reduce(
-      (total, name) =>
-        total + (name === 'oracle' ? answerable : questions.length) * options.repeats,
-      0,
-    );
+    const runs = options.adapters.length * questions.length * options.repeats;
     console.log(`\n${runs} agent runs would be executed. Nothing was spent.`);
     return;
   }
@@ -842,7 +842,11 @@ async function replay(options: Options): Promise<void> {
     .split(',')
     .map((path) => path.trim())
     .filter((path) => path.length > 0);
-  const { meta, rows } = await readRuns(paths);
+  // With `--adapters`, the table shows those columns and no others — for a
+  // column retired since the run was bought, or one being looked at alone. The
+  // rows on disk keep every column they were bought with.
+  const keep = options.adaptersGiven ? new Set<string>(options.adapters) : undefined;
+  const { meta, rows } = await readRuns(paths, keep);
 
   // A merge is written out before anything is rendered from it, so what was
   // published is one file somebody can `--from` again. A table that exists

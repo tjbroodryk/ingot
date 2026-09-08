@@ -5,8 +5,8 @@ What an agent can get back out, and what it costs to get it.
 ```bash
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
-bun run bench --adapters vector,oracle,raw-context
-bun run bench --adapters ingot,control-same-store-top-k,vector,hyperspell,raw-context,oracle
+bun run bench --adapters vector,raw-context
+bun run bench --adapters ingot,control-same-store-top-k,vector,hyperspell,raw-context
 bun run bench --adapters ingot,ingot-rest        # the same store, two interfaces
 bun run bench --adapters vector,pinecone,turbopuffer   # the same vectors, three indexes
 ```
@@ -233,8 +233,7 @@ Everything below is a rule the harness enforces, not an aspiration.
   from the server over MCP and from this repository over REST, and both are in
   the table. See [the interface question](#the-interface-question).
 - **A control that cannot bound a question is skipped, not scored zero.**
-  `oracle` has no evidence to place for a question answered with a statistic,
-  and marking that a failure would push the upper bound below the adapters it
+  Marking that a failure would push an upper bound below the adapters it
   exists to bound. Those cells are `—` and the report says why.
 - **Keyword search is switched on.** `configure_table` enables BM25 on the
   prose tables during ingest, because leaving a documented feature off would
@@ -273,51 +272,38 @@ of Ingot's advantage survives the hard part being done by a model.
 
 ## The controls
 
-`raw-context` and `oracle` are cheap to run and they are what make every other
-number readable.
+`raw-context` is cheap to run and it is what makes every other number
+readable. It puts the entire corpus in the prompt and gives the model no tools:
+the ceiling for a corpus that fits in the window, the honest reminder that for
+small memories the right answer is often to skip retrieval, and the cost
+baseline every other adapter should undercut by an order of magnitude. Without
+it a table of percentages has no scale — nobody can tell whether 61% is close
+to the ceiling or half of it.
 
-- **`raw-context`** puts the entire corpus in the prompt and gives the model no
-  tools. It is the ceiling for a corpus that fits in the window, the honest
-  reminder that for small memories the right answer is often to skip retrieval,
-  and the cost baseline every other adapter should undercut by an order of
-  magnitude.
-- **`oracle`** places exactly the answer-bearing records in the prompt and
-  nothing else. A gap between `oracle` and a real adapter is retrieval; a gap
-  between `oracle` and 100% is the model's reasoning. Separating those two is
-  the only reason a percentage means anything — with the caveat below, which
-  is a real one.
+Its limit is the window. In `--logs` mode the corpus does not fit, the request
+is refused before inference, and a run at that size has no ceiling in the table
+at all. That is a real gap and not a rounding error.
 
-Without them, a table of percentages has no scale.
+### The oracle, and why it is gone
 
-### Where the oracle stops being a ceiling
+There used to be a second control. `oracle` placed exactly the answer-bearing
+records in the prompt and was described as perfect retrieval, which it was not.
+It received the records that *constitute* an answer and never the ones that
+establish **why** they are the answer. Those are the same set for "which
+incidents on `auth` were sev1 or sev2" — the incident record carries both
+fields, so the prompt contains its own proof. They are not the same set for
+"which pull requests had a failing CI run": the answer is pull requests, the
+proof is CI runs, and the oracle was handed the former without the latter.
+Asked to assert what its prompt could not support, the model did the defensible
+thing and answered nothing.
 
-It is given the records that *constitute* the answer, and never the records
-that establish **why** they are the answer. Those are the same set for "which
-incidents on `auth` were sev1 or sev2" — the incident record carries both the
-service and the severity, so the prompt contains its own proof. They are not
-the same set for "which pull requests had a failing CI run": the answer is
-pull requests, the proof is CI runs, and the oracle is handed the former
-without the latter. Asked to assert something the prompt cannot support, the
-model does the defensible thing and answers nothing.
-
-So on questions whose predicate spans two record types — most of the `join`
-category, all of the cross-tool ones — the oracle is working with strictly
-less than a retrieval column can fetch for itself, and its row can fall below
-theirs. When it does, that is a limit of this control and not a demonstration
-that querying beats perfect retrieval. Reading it the flattering way would be
-the easiest mistake on the page to make.
-
-Fixing it means changing what the oracle is given: the predicate's records as
-well as the answer's. That is a different control, and it costs a re-buy of
-the column, so it is a decision rather than a patch.
-
-`oracle` is a ceiling only for the questions whose answer *is* a set of
-records. A question answered with a statistic has no record-level evidence to
-place in the prompt, so the oracle cannot be built for it and the runner skips
-it — those cells are `—`, its overall is taken over fewer questions than the
-other rows, and the report says so. For those questions `raw-context` is the
-ceiling: a count over the corpus needs the corpus, and the control that holds
-all of it is the one that bounds them.
+That made it a ceiling that sat *below* the columns it was meant to bound —
+33% on the join category in the run that retired it, against 100% for
+`ingot-rest`. A reader takes a gap like that for a finding, and the finding
+would have flattered this project. Repairing it meant giving the oracle the
+predicate's records too, which is a different control and a re-buy of the
+column; `raw-context` already bounds the model with strictly more information
+and needs no caveat, so the second control was removed rather than rebuilt.
 
 ## Running it
 
@@ -328,7 +314,9 @@ part of `bun run test` at the repository root, and spends real money.
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
 --adapters a,b,c       ingot, control-same-store-top-k, ingot-rest, control-same-store-top-k-rest,
-                       vector, pinecone, turbopuffer, hyperspell, raw-context, oracle
+                       vector, pinecone, turbopuffer, hyperspell, raw-context
+                       With --from, selects which of a finished run's columns
+                       the report shows. The rows on disk are untouched.
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
 --max-tool-calls N     Retrieval budget per question, identical for every adapter. (12)
@@ -531,8 +519,10 @@ longer generates is a hard failure rather than a skipped row, because scoring
 an answer against a question it was never asked is worse than refusing.
 
 It re-scores; it does not re-decide what should have been run. A run bought
-before `oracle` learned to skip the questions it cannot bound still has those
-rows in it, and re-scoring will still score them zero.
+under an older set of adapters still has those rows in it, and re-scoring will
+score them as they stand. Use `--adapters` with `--from` to report on a subset
+of the columns a file holds — how the `oracle` column was retired from the
+published table without touching the transcript that bought it.
 
 ## Running it on Azure
 
@@ -545,7 +535,7 @@ SDK, so a provider is a `LanguageModel` and nothing downstream of
 ```bash
 export AZURE_FOUNDRY_RESOURCE=your-resource   # https://{resource}.services.ai.azure.com
 export AZURE_FOUNDRY_KEY=...
-bun run bench --adapters oracle --repeats 1 --per-template 1
+bun run bench --adapters raw-context --repeats 1 --per-template 1
 ```
 
 `--provider foundry-gpt` (the default) points `@ai-sdk/openai` at
