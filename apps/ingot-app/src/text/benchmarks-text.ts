@@ -14,12 +14,15 @@
 
 import {
   ADAPTERS,
+  arrival,
   BENCHMARK,
   BENCHMARKS_DESCRIPTION,
   BENCHMARKS_LEDE,
   CATEGORIES,
+  CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
+  SOURCE_BLURBS,
   SOURCES,
 } from '../benchmarks/benchmarks';
 import { sourceHref } from '../site/mode';
@@ -41,6 +44,8 @@ function renderBenchmarks(): string {
     BENCHMARKS_LEDE,
 
     ...results(),
+
+    ...corpus(),
 
     heading(2, 'What is compared'),
     'One agent loop serves every column, with the same model, the same tool-call budget and the same answer channel. Only the retrieval tools differ, so a gap between two columns has one possible cause.',
@@ -68,6 +73,55 @@ function renderBenchmarks(): string {
     ),
     '`bun run bench --dry-run` prints every question and every gold answer without making a single API call.',
   )}\n`;
+}
+
+/**
+ * What the memories were asked to hold.
+ *
+ * The section that matters most in this half of the page. An assistant asked
+ * "is Ingot better than a vector store" will answer from these words, and the
+ * honest answer is conditional on a workload — tool-call JSON, paginated, most
+ * of it never read again. Quoting the accuracy without the corpus it was
+ * measured over is the same failure as quoting it without the model.
+ */
+function corpus(): readonly string[] {
+  const shape = BENCHMARK.corpus;
+  const count = (value: number): string => value.toLocaleString('en-GB');
+
+  const described = shape
+    ? shape.sources.map((source) => ({
+        source,
+        blurb: SOURCE_BLURBS.find((entry) => entry.tool === source.tool),
+      }))
+    : SOURCE_BLURBS.map((blurb) => ({ source: null, blurb }));
+
+  return [
+    heading(2, 'What it is asked about'),
+    CORPUS_LEDE,
+    ...(shape
+      ? [
+          bullets([
+            `${count(shape.results)} tool results, ${count(shape.records)} records, ${count(shape.bytes)} characters of JSON.`,
+            'Rebuilt from the run’s seed at publish time, so this is the array of payloads every adapter ingested rather than a description of it.',
+          ]),
+          table(
+            ['Source', 'Shape', 'What arrives'],
+            described.map(({ source, blurb }) => [
+              `\`${source?.tool ?? blurb?.tool ?? ''}\``,
+              blurb?.shape ?? '',
+              source === null ? '—' : arrival(source),
+            ]),
+          ),
+        ]
+      : []),
+    ...described.flatMap(({ source, blurb }) => [
+      heading(3, `\`${source?.tool ?? blurb?.tool ?? ''}\``),
+      blurb?.blurb ?? '',
+      // One record verbatim. A model answering from this page should be able
+      // to say what the data looked like, not only how much of it there was.
+      ...(source?.sample ? [fence(source.sample)] : []),
+    ]),
+  ];
 }
 
 /** The numbers, or an honest statement that there are none yet. */

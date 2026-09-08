@@ -7,16 +7,20 @@ import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // it: this page is the same shape of document — a hero and ruled bands.
 import '../landing/landing.css';
 import './benchmarks.css';
+import { Prose } from '../docs/prose';
 import {
   ADAPTERS,
+  arrival,
   BENCHMARK,
   BENCHMARKS_DESCRIPTION,
   BENCHMARKS_LEDE,
   CATEGORIES,
   CONTROL_NAMES,
+  CORPUS_LEDE,
   HAS_RESULTS,
   leadStats,
   LIMITS,
+  SOURCE_BLURBS,
   SOURCES,
   type PublishedAdapter,
 } from './benchmarks';
@@ -60,6 +64,14 @@ export function BenchmarksPage(): ReactNode {
         <section className="hero">
           <div className="hero-badge label">
             <span className="badge">The measurement</span>
+            {/*
+              The workload is linked from the hero because it is the first
+              thing that decides whether the table below applies to anybody's
+              own problem. A reader whose corpus is prose documents should find
+              out that this one is tool-call JSON before they read a number,
+              not three sections after it.
+            */}
+            <a href="#corpus">What it is asked about</a>
             <a href="#method">How this is scored</a>
           </div>
 
@@ -133,6 +145,20 @@ export function BenchmarksPage(): ReactNode {
               </p>
             </div>
           )}
+        </section>
+
+        <section className="landblock" id="corpus">
+          <div className="landhead">
+            <span className="label label-sm kicker">[ What it is asked about ]</span>
+            <h2 className="landtitle">
+              Tool results,
+              <br />
+              <span className="mark">not documents</span>
+            </h2>
+            <p>{CORPUS_LEDE}</p>
+          </div>
+
+          <CorpusShape />
         </section>
 
         <section className="landblock" id="method">
@@ -279,6 +305,115 @@ function Provenance(): ReactNode {
         </p>
       ))}
     </div>
+  );
+}
+
+/**
+ * The workload, shown rather than characterised.
+ *
+ * Every figure and every sample here comes out of `results.json` the same way
+ * the accuracies do — `packages/bench` rebuilds the corpus from the run's seed
+ * at publish time, so what a card shows is the payload that adapter actually
+ * ingested, down to the bytes. A hand-written "roughly five hundred records of
+ * engineering data" would be a description of the fixture; this is the fixture.
+ *
+ * The sample matters more than the counts. "Tool results" is an abstraction a
+ * reader has to take on trust, and one record of real JSON with a nested array
+ * of file paths in it settles what kind of thing is being remembered in less
+ * time than a paragraph does.
+ */
+function CorpusShape(): ReactNode {
+  const { corpus, run } = BENCHMARK;
+  const count = (value: number): string => value.toLocaleString('en-GB');
+
+  // Described by the catalogue, in the order the agent met them. With no
+  // published run there are no numbers to attach, and the section falls back
+  // to saying what the harness will collect — the same rule the adapter
+  // blurbs follow.
+  const entries = corpus
+    ? corpus.sources.map((source) => ({
+        source,
+        blurb: SOURCE_BLURBS.find((entry) => entry.tool === source.tool),
+      }))
+    : SOURCE_BLURBS.map((blurb) => ({ source: null, blurb }));
+
+  // What the whole thing weighs in the window, measured rather than estimated:
+  // `raw-context` puts the corpus in the prompt, so its input-token count is
+  // the corpus in tokens plus a question. A characters-to-tokens ratio would
+  // be this page guessing at the one number it can simply read.
+  const rawContext = BENCHMARK.adapters.find((adapter) => adapter.name === 'raw-context');
+
+  return (
+    <>
+      {corpus ? (
+        <div className="bench-facts">
+          <dl>
+            <div>
+              <dt className="label label-sm">payloads</dt>
+              <dd>{count(corpus.results)}</dd>
+            </div>
+            <div>
+              <dt className="label label-sm">records</dt>
+              <dd>{count(corpus.records)}</dd>
+            </div>
+            <div>
+              <dt className="label label-sm">characters of JSON</dt>
+              <dd>{count(corpus.bytes)}</dd>
+            </div>
+            {rawContext ? (
+              <div>
+                <dt className="label label-sm">tokens, in raw-context’s prompt</dt>
+                <dd>{count(rawContext.contextTokens)}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
+
+      <div className="bench-sources">
+        {entries.map(({ source, blurb }) => {
+          const tool = source?.tool ?? blurb?.tool ?? '';
+          return (
+            <div className="bench-source" key={tool}>
+              <div className="bench-source-head">
+                <code className="bench-source-tool">{tool}</code>
+                {blurb ? <span className="label label-sm bench-source-shape">{blurb.shape}</span> : null}
+              </div>
+
+              {source ? <p className="bench-source-stat">{arrival(source)}</p> : null}
+
+              {blurb ? (
+                <p>
+                  <Prose text={blurb.blurb} />
+                </p>
+              ) : null}
+
+              {source?.sample ? (
+                <pre className="bench-sample">
+                  <code>{source.sample}</code>
+                </pre>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {run && run.logs === 0 ? (
+        <p className="bench-note">
+          <Prose
+            text={
+              'This run is the ordinary corpus — `--logs 0` — so every payload above is a ' +
+              'paginated listing that fits in a window. The other shape does not: one ' +
+              '`logs.search` that comes back with tens of thousands of lines in a single ' +
+              'result. It is a different experiment rather than a bigger one — `raw-context` ' +
+              'is refused before inference rather than scored, and top-k finds a shrinking ' +
+              'share of what an aggregate needs while a count over rows does not care how ' +
+              'many there are — and no such run is published here yet.'
+            }
+          />
+        </p>
+      ) : null}
+    </>
   );
 }
 

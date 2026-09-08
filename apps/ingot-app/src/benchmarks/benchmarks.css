@@ -450,11 +450,19 @@
  * somewhere else is a result a reader has to take on trust, and this page's
  * whole claim is that they do not have to.
  */
-.bench-prov {
+/*
+ * `.bench-facts` is the same block over the corpus section: four terms and
+ * four values, ruled top and bottom. Shared rather than restated because they
+ * are the same object — a row of facts a reader should be able to check —
+ * and two sheets of identical rules would drift the first time one is touched.
+ */
+.bench-prov,
+.bench-facts {
   padding: 8px var(--space-8) var(--space-4);
 }
 
-.bench-prov > dl {
+.bench-prov > dl,
+.bench-facts > dl {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-4);
@@ -464,14 +472,120 @@
   border-bottom: var(--rule);
 }
 
-.bench-prov dt {
+.bench-prov dt,
+.bench-facts dt {
   color: var(--ink-70);
   margin-bottom: 4px;
 }
 
-.bench-prov dd {
+.bench-prov dd,
+.bench-facts dd {
   margin: 0;
   font-size: 15px;
+}
+
+/* The corpus figures are quantities, so they get the figure treatment the
+   rest of the page's numbers have and the provenance strings do not. */
+.bench-facts dd {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * One card per source of tool results.
+ *
+ * Two columns of cells divided by rules, which is the grid the method section
+ * already uses — this is the same kind of content, a list of things that each
+ * need a paragraph — except that each cell also carries a sample, and the
+ * sample is the point. Nobody believes "paginated JSON with nested arrays in
+ * it" the way they believe eighteen lines of it.
+ */
+.bench-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: var(--space-4) var(--space-8) 0;
+  border-top: var(--rule);
+}
+
+.bench-source {
+  padding: var(--space-6) var(--space-6) var(--space-6) 0;
+  border-bottom: var(--rule);
+}
+
+/* The right-hand column takes the divider, so the grid reads as cells. */
+.bench-source:nth-child(even) {
+  padding-left: var(--space-6);
+  border-left: var(--rule);
+}
+
+.bench-source p {
+  color: var(--ink-70);
+  font-size: 15px;
+}
+
+.bench-source-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.bench-source-tool {
+  font-size: 15px;
+  color: var(--color-accent);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The shape, which is the answer to the question this whole section exists to
+ * answer: what kind of thing is this. Set as a chip so it is readable at a
+ * glance down the column without reading a paragraph.
+ */
+.bench-source-shape {
+  padding: 3px 8px 4px;
+  background: var(--ink-08);
+  color: var(--ink-70);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.bench-source-stat {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.7;
+  color: var(--ink-60);
+}
+
+/*
+ * One record, verbatim.
+ *
+ * Capped and scrollable rather than truncated: a sample that ends in an
+ * ellipsis is a sample somebody has edited, and the whole argument for
+ * printing these is that nobody edited them.
+ */
+.bench-sample {
+  margin: var(--space-4) 0 0;
+  padding: 12px var(--space-4);
+  /* Tall enough for the longest record the corpus holds. The cap is a guard
+     against a future source with a hundred fields, not a crop. */
+  max-height: 420px;
+  overflow: auto;
+  border: var(--rule);
+  background: var(--ink-08);
+  font-size: 12.5px;
+  line-height: 1.55;
+  /*
+   * Wrapped rather than scrolled sideways: one field here is a sentence of
+   * English, and a summary that runs off the right edge of the box is the one
+   * line in the sample a reader most needs to finish.
+   */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
 }
 
 /*
@@ -564,8 +678,19 @@
    The bands' padding collapses in `landing.css` at these widths; what is left
    here is the provenance grid, which has four columns and needs two steps. */
 @media (max-width: 900px) {
-  .bench-prov > dl {
+  .bench-prov > dl,
+  .bench-facts > dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* One column, so the divider goes back to being the bottom rule alone. */
+  .bench-sources {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bench-source:nth-child(even) {
+    padding-left: 0;
+    border-left: 0;
   }
 }
 
@@ -574,6 +699,8 @@
   .bench-tiles,
   .bench-ranked,
   .bench-prov,
+  .bench-facts,
+  .bench-sources,
   .bench-note,
   .bench-empty,
   .bench-strip {

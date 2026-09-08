@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Category } from '../src/questions/questions.js';
-import { publishable } from '../src/run/publish.js';
+import { corpusShape, publishable } from '../src/run/publish.js';
 import type { ReportHeader, RunRecord } from '../src/run/report.js';
 
 /**
@@ -119,6 +119,42 @@ describe('publishable', () => {
     expect(published.run?.model).toBe('gpt-5-mini');
     expect(published.run?.provider).toBe('foundry-gpt');
     expect(published.run?.embedder).toBe('text-embedding-3-small');
+  });
+
+  /**
+   * The published corpus is the page's answer to "measured over what", and it
+   * has to be the corpus the adapters were actually handed rather than a
+   * description of one. It is rebuilt from the seed at publish time, so the
+   * assertion worth having is that it still matches the fixture the run used.
+   */
+  test('describes the corpus the seed produces', () => {
+    const published = publishable(HEADER, [row({})], CATEGORIES);
+    const corpus = corpusShape(HEADER.seed, HEADER.logs);
+
+    expect(published.corpus).toEqual(corpus);
+    expect(published.run?.logs).toBe(0);
+    expect(corpus.results).toBe(
+      corpus.sources.reduce((total, source) => total + source.results, 0),
+    );
+
+    const prs = corpus.sources.find((source) => source.tool === 'github.list_pull_requests');
+    expect(prs?.paginated).toBe(true);
+    expect(prs?.perResult).toBe(25);
+    // Verbatim, and therefore parseable: a sample that had been trimmed to
+    // fit a card would be a sample nobody could check against the generator.
+    expect(JSON.parse(prs?.sample as string)).toMatchObject({ ref: expect.any(String) });
+  });
+
+  test('gives the log flood its own row when a run opted into one', () => {
+    const flooded = corpusShape(HEADER.seed, 500);
+    const logs = flooded.sources.find((source) => source.tool === 'logs.search');
+
+    // The whole point of `--logs`: one result, however many lines. A corpus
+    // that paginated it would be modelling a kinder tool than the one that
+    // causes the problem, and the page would draw it as an ordinary listing.
+    expect(logs?.paginated).toBe(false);
+    expect(logs?.results).toBe(1);
+    expect(logs?.records).toBe(500);
   });
 
   test('leaves evidence metrics null when no question had record-level evidence', () => {

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-09-08T16:03:43.568Z",
+  "generatedAt": "2026-09-08T18:14:32.460Z",
   "run": {
     "runId": "combined-seed1-2026-09-08T16-03-43-455Z",
     "seed": 1,
@@ -12,6 +12,7 @@
     "maxToolCalls": 12,
     "embedder": "text-embedding-3-small",
     "mapping": "authored",
+    "logs": 0,
     "questions": 25,
     "categoryCounts": {
       "aggregate": 6,
@@ -23,6 +24,73 @@
     },
     "warnings": [
       "This table was assembled from 3 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `ingot-mcp-text-search-only`, `vector`, `hyperspell`, `raw-context`, `oracle` from 2026-09-08T13-24-18-252Z-seed1; `pinecone`, `turbopuffer` from 2026-09-08T15-16-49-990Z-seed1; `ingot-rest` from 2026-09-08T15-58-42-061Z-seed1. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them."
+    ]
+  },
+  "corpus": {
+    "results": 19,
+    "records": 501,
+    "bytes": 101758,
+    "sources": [
+      {
+        "tool": "catalog.list_services",
+        "results": 1,
+        "records": 8,
+        "perResult": 8,
+        "paginated": true,
+        "bytes": 556,
+        "largest": 556,
+        "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}"
+      },
+      {
+        "tool": "catalog.list_files",
+        "results": 2,
+        "records": 73,
+        "perResult": 40,
+        "paginated": true,
+        "bytes": 6014,
+        "largest": 3275,
+        "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}"
+      },
+      {
+        "tool": "github.list_pull_requests",
+        "results": 5,
+        "records": 120,
+        "perResult": 25,
+        "paginated": true,
+        "bytes": 37335,
+        "largest": 8010,
+        "sample": "{\n  \"ref\": \"pr:1400\",\n  \"number\": 1400,\n  \"title\": \"document the retry path\",\n  \"author\": \"akiyama\",\n  \"state\": \"open\",\n  \"created_at\": \"2026-05-26T18:00:00.000Z\",\n  \"merged_at\": null,\n  \"additions\": 469,\n  \"deletions\": 88,\n  \"files\": [\n    \"src/auth/cache.ts\",\n    \"src/delivery/config.ts\",\n    \"src/notify/client.ts\",\n    \"src/search/schema.ts\"\n  ],\n  \"labels\": []\n}"
+      },
+      {
+        "tool": "ci.list_runs",
+        "results": 6,
+        "records": 226,
+        "perResult": 40,
+        "paginated": true,
+        "bytes": 38300,
+        "largest": 6837,
+        "sample": "{\n  \"ref\": \"ci:run-0001\",\n  \"id\": \"run-0001\",\n  \"pr\": 1400,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 854,\n  \"started_at\": \"2026-05-26T18:00:00.000Z\",\n  \"failed_step\": null\n}"
+      },
+      {
+        "tool": "pagerduty.list_incidents",
+        "results": 2,
+        "records": 14,
+        "perResult": 10,
+        "paginated": true,
+        "bytes": 4438,
+        "largest": 3144,
+        "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}"
+      },
+      {
+        "tool": "linear.search_issues",
+        "results": 3,
+        "records": 60,
+        "perResult": 20,
+        "paginated": true,
+        "bytes": 15115,
+        "largest": 5066,
+        "sample": "{\n  \"ref\": \"iss:ENG-200\",\n  \"id\": \"ENG-200\",\n  \"title\": \"refactor the retry path in billing\",\n  \"service\": \"billing\",\n  \"state\": \"open\",\n  \"assignee\": \"kowalski\",\n  \"created_at\": \"2026-05-13T17:00:00.000Z\",\n  \"body\": \"Reported against billing. Needs a look before the next release.\"\n}"
+      }
     ]
   },
   "categories": [

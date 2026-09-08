@@ -4,8 +4,10 @@ import {
   ADAPTERS,
   BENCHMARK,
   CATEGORIES,
+  CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
+  SOURCE_BLURBS,
   SOURCES,
   type PublishedBenchmark,
 } from '../src/benchmarks/benchmarks';
@@ -57,6 +59,27 @@ describe('the published results file', () => {
     }
   });
 
+  it('describes the corpus it was measured over', () => {
+    // A published run with no corpus block is a table whose workload nobody
+    // can see, which is the misreading the section exists to prevent: this
+    // benchmark is over tool-call JSON, and a reader whose data is documents
+    // should be told so rather than left to assume.
+    expect(file.corpus === null).toBe(file.run === null);
+    if (!file.corpus) return;
+
+    expect(file.corpus.sources.length).toBeGreaterThan(0);
+    expect(file.corpus.records).toBe(
+      file.corpus.sources.reduce((total, source) => total + source.records, 0),
+    );
+    for (const source of file.corpus.sources) {
+      expect(source.records).toBeGreaterThan(0);
+      // The sample is the load-bearing part. A source that published counts
+      // and no record would leave the page asserting a shape it cannot show.
+      expect(source.sample.length).toBeGreaterThan(0);
+      expect(JSON.parse(source.sample)).toHaveProperty('ref');
+    }
+  });
+
   it('never claims an accuracy outside 0..1', () => {
     for (const adapter of file.adapters) {
       expect(adapter.accuracy).toBeGreaterThanOrEqual(0);
@@ -92,6 +115,30 @@ describe('the benchmarks page', () => {
     // the page filters its blurbs to the run, so the omission is silent.
     const described = ADAPTERS.map((adapter) => adapter.name);
     for (const adapter of BENCHMARK.adapters) expect(described).toContain(adapter.name);
+  });
+
+  /**
+   * The workload, on the page and not only in the harness.
+   *
+   * The failure this catches is a source added to `packages/bench` and
+   * published with nothing said about it — the page filters its blurbs to the
+   * run, so the omission is silent, and a card with counts and no account of
+   * what the records are is the shape of thing this page exists to not ship.
+   */
+  it('says what kind of payloads it was asked about', () => {
+    expect(markup).toContain(CORPUS_LEDE);
+
+    const described = SOURCE_BLURBS.map((blurb) => blurb.tool);
+    for (const source of BENCHMARK.corpus?.sources ?? []) {
+      expect(described).toContain(source.tool);
+      expect(markup).toContain(source.tool);
+      // The sample is rendered verbatim, so a distinctive line of it is enough
+      // to prove the record reached the page rather than only its counts. The
+      // quotes come back escaped, which is React doing its job and not the
+      // sample having been altered.
+      const line = (source.sample.split('\n')[1] as string).trim();
+      expect(markup).toContain(line.replaceAll('"', '&quot;'));
+    }
   });
 
   it('states its limits on the page rather than in a footnote', () => {
@@ -133,6 +180,19 @@ describe('the markdown half', () => {
   it('says the same thing as the page', () => {
     for (const adapter of ADAPTERS) expect(body).toContain(adapter.name);
     for (const limit of LIMITS) expect(body).toContain(limit.title);
+  });
+
+  /**
+   * The half of the page most likely to be read by a model rather than a
+   * person, and the answer it gives to "is this better than a vector store"
+   * is conditional on a workload. Quoting the accuracy without the corpus is
+   * the same failure as quoting it without the model.
+   */
+  it('carries the corpus and a record of it verbatim', () => {
+    for (const source of BENCHMARK.corpus?.sources ?? []) {
+      expect(body).toContain(source.tool);
+      expect(body).toContain(source.sample);
+    }
   });
 
   it('does not quote a figure without the conditions on it', () => {

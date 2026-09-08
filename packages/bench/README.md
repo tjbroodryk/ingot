@@ -299,7 +299,10 @@ part of `bun run test` at the repository root, and spends real money.
 --effort LEVEL         low | medium | high | xhigh | max  (high)
                        Adaptive thinking on Claude, reasoningEffort on GPT.
 --no-thinking          Send no reasoning settings at all.
---publish FILE         Also write the site's summary JSON here.
+--publish FILE         Also write the site's summary JSON here. It carries the
+                       corpus as well as the scores — every source, its page
+                       size, and one record verbatim — rebuilt from the seed,
+                       so the page can say what the numbers were measured over.
 --from A.jsonl,B.jsonl Report on finished runs instead of buying new ones.
                        More than one splices their columns into one table.
 --rescore              With --from: run the scorer again over the transcripts.

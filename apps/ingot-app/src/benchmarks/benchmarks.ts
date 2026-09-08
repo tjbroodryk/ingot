@@ -27,9 +27,30 @@ export interface PublishedRun {
   readonly maxToolCalls: number;
   readonly embedder: string;
   readonly mapping: string;
+  /** Log lines in the corpus, as one unpaginated result. 0 is the ordinary run. */
+  readonly logs: number;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
+}
+
+/** What the agents were given to remember, measured from the seed. */
+export interface PublishedCorpus {
+  readonly results: number;
+  readonly records: number;
+  readonly bytes: number;
+  readonly sources: readonly PublishedSource[];
+}
+
+export interface PublishedSource {
+  readonly tool: string;
+  readonly results: number;
+  readonly records: number;
+  readonly perResult: number;
+  readonly paginated: boolean;
+  readonly bytes: number;
+  readonly largest: number;
+  readonly sample: string;
 }
 
 export interface PublishedAdapter {
@@ -49,6 +70,7 @@ export interface PublishedBenchmark {
   readonly schema: number;
   readonly generatedAt: string | null;
   readonly run: PublishedRun | null;
+  readonly corpus: PublishedCorpus | null;
   readonly categories: readonly string[];
   readonly adapters: readonly PublishedAdapter[];
 }
@@ -192,6 +214,104 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
       )
     : ADAPTER_BLURBS;
 
+/**
+ * What the memories were asked to hold, said before the table is read.
+ *
+ * The commonest misreading of a benchmark like this one is to take it as a
+ * claim about documents. It is not: nothing here is a wiki page or a PDF or a
+ * support thread. It is an agent's tool traffic — the JSON that comes back
+ * from a listing endpoint, thirty records at a time, in the middle of a
+ * conversation about something else. That is the workload Ingot is for, and a
+ * reader whose corpus is prose should know that before they read a number and
+ * not after.
+ */
+export const CORPUS_LEDE =
+  'Nothing in this corpus is a document. Every byte of it arrived the way an agent’s ' +
+  'context actually fills up: as the JSON a tool call hands back — paginated listings ' +
+  'from a code catalogue, a pull-request API, a CI service, a pager and an issue ' +
+  'tracker, each one a blob with no schema attached, most of it never referred to ' +
+  'again. Every adapter ingests the identical array of payloads, so what separates ' +
+  'them is what they can do with the same bytes afterwards.';
+
+/**
+ * How one source's payloads arrived, in a line.
+ *
+ * Shared by the page and the markdown half rather than written twice, because
+ * the two would drift and the reading is the same either way. The cases are
+ * genuinely different rather than a plural: a listing that fits in one payload
+ * has no page size worth quoting, and the tool that does not paginate is the
+ * one whose whole point is that everything came at once.
+ */
+export function arrival(source: PublishedSource): string {
+  const count = (value: number): string => value.toLocaleString('en-GB');
+
+  if (!source.paginated) {
+    return `one unpaginated payload, ${count(source.records)} records, ${count(source.bytes)} characters in a single message`;
+  }
+  if (source.results === 1) {
+    return `one payload, ${count(source.records)} records, ${count(source.bytes)} characters`;
+  }
+  return `${count(source.results)} payloads, ${source.perResult} records a page, ${count(source.records)} records, ${count(source.largest)} characters in the largest`;
+}
+
+/**
+ * What each tool result is, and what shape it arrives in.
+ *
+ * The catalogue outlives any one run — `logs.search` is described here whether
+ * or not the published run opted into it — and the page renders the
+ * intersection with what was actually published, the same rule the adapter
+ * blurbs follow.
+ */
+export const SOURCE_BLURBS: readonly {
+  readonly tool: string;
+  /** The shape, in the words somebody would use to describe it out loud. */
+  readonly shape: string;
+  readonly blurb: string;
+}[] = [
+  {
+    tool: 'catalog.list_services',
+    shape: 'One small JSON page',
+    blurb:
+      'A service catalogue, arriving whole. It is the only place ownership is recorded, and two of the services record it as `null` — present and empty rather than absent, so the absence questions are hard rather than unanswerable.',
+  },
+  {
+    tool: 'catalog.list_files',
+    shape: 'JSON pages of 40',
+    blurb:
+      'A repository listing: path, service, size. Nothing an embedding can distinguish — every record reads almost exactly like every other one, which is what makes a top-k over them a coin flip.',
+  },
+  {
+    tool: 'github.list_pull_requests',
+    shape: 'JSON pages of 25, nested',
+    blurb:
+      'The largest payloads in the corpus, and the ones with structure inside the structure: each record carries an array of touched files and an array of labels. This is the blob an agent reads once, answers one question from, and drops.',
+  },
+  {
+    tool: 'ci.list_runs',
+    shape: 'JSON pages of 40',
+    blurb:
+      'The most repetitive source, and the biggest by record count: build after build, most of them green and uninteresting until a question is about the one that failed or the three that took longest.',
+  },
+  {
+    tool: 'pagerduty.list_incidents',
+    shape: 'JSON pages of 10, with prose',
+    blurb:
+      'Incidents, each with a written summary — a sentence of English inside a JSON field, which is where the cause of an outage actually lives. The semantic questions ask about these in words the summary never uses.',
+  },
+  {
+    tool: 'linear.search_issues',
+    shape: 'JSON pages of 20, with free text',
+    blurb:
+      'Issues: a title, a state, an assignee who is sometimes nobody, and a free-text body. The most document-like thing here, and still mostly fields.',
+  },
+  {
+    tool: 'logs.search',
+    shape: 'One unpaginated flood',
+    blurb:
+      'The other case entirely: a single search that comes back with tens of thousands of lines and does not fit in the window at all. Opt-in with `--logs N`, because it changes what the benchmark is — `raw-context` stops being a ceiling and starts being a refused request.',
+  },
+];
+
 /** What each question category is for. The categories are the whole design. */
 export const CATEGORIES: readonly { readonly name: string; readonly blurb: string }[] = [
   { name: 'aggregate', blurb: 'A statistic over the whole corpus, not a lookup.' },
@@ -231,6 +351,12 @@ export const SOURCES: readonly {
     path: 'packages/bench/src/corpus/world.ts',
     detail:
       'The seeded generator. `--seed` reproduces it exactly, and the tool results the adapters ingest are a lossy view of these objects.',
+  },
+  {
+    question: 'What does the agent actually receive?',
+    path: 'packages/bench/src/corpus/stream.ts',
+    detail:
+      'The world rendered as tool results: paginated JSON with no schema attached, at the page sizes the APIs it imitates use. Every adapter ingests this identical array, and the samples on this page are records out of it.',
   },
   {
     question: 'How is correctness decided?',
