@@ -114,6 +114,31 @@ const AUTHORED: Record<ToolName, RememberMapping> = {
       summary: text('$.summary', true),
     },
   },
+  /**
+   * The oversized one, and the schema is the whole argument.
+   *
+   * Every field a question asks about is a real column with a real type —
+   * `level` filterable, `duration_ms` an INTEGER that can be ordered and
+   * averaged, `status` a number rather than text. Nothing is embedded: these
+   * rows are identifiers, levels and durations, and embedding `message` would
+   * buy a ranking over eight repeated phrases while costing an embedding call
+   * per line. That is the case `configure_table` exists to decline.
+   */
+  'logs.search': {
+    table: 'logs',
+    rows: '$.items[*]',
+    key: ['ref'],
+    columns: {
+      ref: text('$.ref'),
+      at: stamp('$.at'),
+      level: text('$.level'),
+      service: text('$.service'),
+      route: text('$.route'),
+      status: int('$.status'),
+      duration_ms: int('$.duration_ms'),
+      message: text('$.message'),
+    },
+  },
   'linear.search_issues': {
     table: 'issues',
     rows: '$.items[*]',

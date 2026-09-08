@@ -237,6 +237,11 @@ function Provenance(): ReactNode {
     ['tool-call budget', String(run.maxToolCalls)],
     ['ingot schema', `${run.mapping}-written`],
     ['questions', String(run.questions)],
+    // Kept when the run stamp went, because how old a benchmark is changes
+    // what it is worth — a table with no date is a table nobody can age.
+    ...(BENCHMARK.generatedAt
+      ? ([['published', BENCHMARK.generatedAt.slice(0, 10)]] as [string, string][])
+      : []),
   ];
 
   return (
@@ -249,17 +254,71 @@ function Provenance(): ReactNode {
           </div>
         ))}
       </dl>
-      {BENCHMARK.generatedAt ? (
-        <p className="muted bench-stamp">
-          Run <code>{run.runId}</code>, published {BENCHMARK.generatedAt.slice(0, 10)}.
-        </p>
-      ) : null}
       {run.warnings.map((warning) => (
         <p className="bench-warning" key={warning}>
           {warning}
         </p>
       ))}
     </div>
+  );
+}
+
+/**
+ * The controls, which are reference lines rather than contenders.
+ *
+ * Rendered in their own group under a rule, because a table that lists them
+ * flush with the memories invites the reading that `oracle` came fourth. It
+ * did not compete: it is handed the answer-bearing records and exists to say
+ * how much of the remaining gap is the model rather than the retrieval.
+ */
+const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
+
+/** A number as a share of the row, for the bar behind it. */
+function bar(value: number): Record<string, string> {
+  return { ['--v' as string]: String(Math.round(value * 100)) };
+}
+
+function Cell({ value }: { value: number | undefined }): ReactNode {
+  // An empty cell is not a zero, and the two must not look alike: `—` is a
+  // question this adapter was never asked.
+  if (value === undefined) {
+    return (
+      <td className="bench-na" aria-label="not applicable">
+        —
+      </td>
+    );
+  }
+  return (
+    <td className="bench-cell" style={bar(value)}>
+      <span className="bench-fill" aria-hidden="true" />
+      <span className="bench-num">{percent(value)}</span>
+    </td>
+  );
+}
+
+function Row({
+  adapter,
+  categories,
+}: {
+  adapter: PublishedAdapter;
+  categories: readonly string[];
+}): ReactNode {
+  return (
+    <tr>
+      <th scope="row">
+        <code>{adapter.name}</code>
+      </th>
+      <td className="bench-cell bench-overall" style={bar(adapter.accuracy)}>
+        <span className="bench-fill" aria-hidden="true" />
+        <span className="bench-num">
+          <strong>{percent(adapter.accuracy)}</strong>{' '}
+          <span className="muted">±{percent(adapter.stderr)}</span>
+        </span>
+      </td>
+      {categories.map((category) => (
+        <Cell key={category} value={adapter.byCategory[category]} />
+      ))}
+    </tr>
   );
 }
 
@@ -270,6 +329,12 @@ function AccuracyTable({
   categories: readonly string[];
   adapters: readonly PublishedAdapter[];
 }): ReactNode {
+  // Best first, so the ranking is the reading order rather than something to
+  // be worked out. Controls are ordered among themselves and kept below.
+  const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
+  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
+  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
+
   return (
     <div className="bench-scroll">
       <table className="bench-table">
@@ -285,25 +350,23 @@ function AccuracyTable({
           </tr>
         </thead>
         <tbody>
-          {adapters.map((adapter) => (
-            <tr key={adapter.name}>
-              <th scope="row">
-                <code>{adapter.name}</code>
-              </th>
-              <td>
-                <strong>{percent(adapter.accuracy)}</strong>{' '}
-                <span className="muted">±{percent(adapter.stderr)}</span>
-              </td>
-              {categories.map((category) => (
-                <td key={category}>
-                  {adapter.byCategory[category] === undefined
-                    ? '—'
-                    : percent(adapter.byCategory[category] as number)}
-                </td>
-              ))}
-            </tr>
+          {memories.map((adapter) => (
+            <Row key={adapter.name} adapter={adapter} categories={categories} />
           ))}
         </tbody>
+        {controls.length > 0 ? (
+          <tbody className="bench-controls">
+            <tr>
+              <th scope="row" colSpan={categories.length + 2} className="bench-group">
+                Controls — not competitors. `raw-context` reads the whole corpus; `oracle` is
+                handed the answer-bearing records.
+              </th>
+            </tr>
+            {controls.map((adapter) => (
+              <Row key={adapter.name} adapter={adapter} categories={categories} />
+            ))}
+          </tbody>
+        ) : null}
       </table>
     </div>
   );

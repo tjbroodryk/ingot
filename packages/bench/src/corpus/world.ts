@@ -85,6 +85,40 @@ export interface Issue {
   readonly body: string;
 }
 
+/**
+ * One line from a log search, and the reason this fixture exists.
+ *
+ * A tool that returns four hundred rows is the ordinary case the rest of the
+ * corpus models. This is the other one: a single `logs.search` that comes back
+ * with forty thousand lines and does not fit in the window at all. It is the
+ * shape of result an agent meets constantly and currently throws away, because
+ * there is nowhere to put it.
+ *
+ * What it separates is not what a reader might first assume. *Any* retrieval
+ * survives it — a vector index chunks it per line and ranks the same as ever —
+ * so this is not an argument for structure over embeddings. Two things are
+ * genuinely different here:
+ *
+ *   - `raw-context` stops working. Not scores badly: the request is refused
+ *     before inference, so the honest ceiling for a memory this size is that
+ *     there is no ceiling, and the report has to say so rather than print 0%.
+ *   - top-k gets relatively worse as the corpus grows. Ten lines out of forty
+ *     thousand is a smaller share of the evidence than ten out of five
+ *     hundred, while `SELECT count(*)` is indifferent to the row count. That
+ *     is the Ingot-versus-vector result, and it is a property of scale rather
+ *     than of this fixture being unusual.
+ */
+export interface LogLine {
+  readonly ref: Ref;
+  readonly at: string;
+  readonly level: 'debug' | 'info' | 'warn' | 'error';
+  readonly service: string;
+  readonly route: string;
+  readonly status: number;
+  readonly durationMs: number;
+  readonly message: string;
+}
+
 export interface World {
   readonly seed: number;
   readonly now: string;
@@ -94,6 +128,8 @@ export interface World {
   readonly ciRuns: readonly CiRun[];
   readonly incidents: readonly Incident[];
   readonly issues: readonly Issue[];
+  /** Empty unless `logs` was asked for. See {@link LogLine}. */
+  readonly logs: readonly LogLine[];
 }
 
 interface Cause {
@@ -238,6 +274,19 @@ const PR_OBJECTS = [
   'the error mapper',
 ] as const;
 
+const LOG_ROUTES = ['list', 'create', 'update', 'delete', 'search', 'health', 'batch'] as const;
+
+const LOG_MESSAGES = [
+  'request completed',
+  'upstream call returned',
+  'cache miss',
+  'retry scheduled',
+  'connection reset by peer',
+  'payload validated',
+  'token refreshed',
+  'queue drained',
+] as const;
+
 const DAY = 86_400_000;
 
 /** A fixed clock. Relative dates in questions would make gold answers rot. */
@@ -248,6 +297,17 @@ export interface WorldOptions {
   readonly pullRequests?: number;
   readonly incidents?: number;
   readonly issues?: number;
+  /**
+   * How many log lines to add, as ONE unpaginated tool result.
+   *
+   * Zero by default, because it changes what the benchmark is: at any
+   * interesting size this single result does not fit in a context window, so
+   * `raw-context` stops being a ceiling and starts being a failure, and the
+   * question set gains a category no amount of top-k can answer well.
+   *
+   * Opt in with `--logs N`. See `LogLine` for what it is for.
+   */
+  readonly logs?: number;
 }
 
 export function buildWorld(options: WorldOptions): World {
@@ -363,5 +423,42 @@ export function buildWorld(options: WorldOptions): World {
     });
   }
 
-  return { seed: options.seed, now: NOW, services, files, pullRequests, ciRuns, incidents, issues };
+  const logs: LogLine[] = [];
+  const logCount = options.logs ?? 0;
+  for (let index = 0; index < logCount; index += 1) {
+    const service = rng.pick(services);
+    // Skewed on purpose: errors are the minority, which is what makes
+    // "how many errors did X emit" a question worth asking and a hard one to
+    // answer from ten nearest neighbours.
+    const level = rng.chance(0.04)
+      ? 'error'
+      : rng.chance(0.1)
+        ? 'warn'
+        : rng.chance(0.5)
+          ? 'info'
+          : 'debug';
+    const status = level === 'error' ? rng.pick([500, 502, 503]) : rng.pick([200, 201, 204, 304]);
+    logs.push({
+      ref: `log:l-${String(index + 1).padStart(6, '0')}`,
+      at: at(rng.int(0, 2), rng.int(0, 23)),
+      level,
+      service: service.name,
+      route: `/${service.name}/${rng.pick(LOG_ROUTES)}`,
+      status,
+      durationMs: rng.int(2, 9000),
+      message: `${rng.pick(LOG_MESSAGES)} on ${service.name}`,
+    });
+  }
+
+  return {
+    seed: options.seed,
+    now: NOW,
+    services,
+    files,
+    pullRequests,
+    ciRuns,
+    incidents,
+    issues,
+    logs,
+  };
 }

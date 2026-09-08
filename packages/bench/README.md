@@ -6,7 +6,7 @@ What an agent can get back out, and what it costs to get it.
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,oracle,raw-context
-bun run bench --adapters ingot,ingot-recall-only,vector,hyperspell,raw-context,oracle
+bun run bench --adapters ingot,ingot-text-search-only,vector,hyperspell,raw-context,oracle
 bun run bench --adapters ingot,ingot-rest   # the same store, two interfaces
 ```
 
@@ -22,10 +22,10 @@ embeddings". It is **whether typed rows and SQL, on top of the same
 embeddings, retrieve better than the embeddings alone** — and, separately, what
 each answer costs in context.
 
-That is why `ingot-recall-only` exists and why it is the most important column
+That is why `ingot-text-search-only` exists and why it is the most important column
 in the table. It is the same store, the same rows and the same vectors, reached
 only through top-k semantic search. If Ingot beats a vector store but
-`ingot-recall-only` beats it by the same margin, the win came from chunking,
+`ingot-text-search-only` beats it by the same margin, the win came from chunking,
 not from structure, and the honest conclusion is a smaller one.
 
 ### The interface question
@@ -59,7 +59,7 @@ table with only `ingot-rest` in it just moves the thumb to the other side of the
 scale, since then *we* are the ones writing Ingot's descriptions and nobody can
 check whether we wrote them well or badly.
 
-`ingot-rest-recall-only` is the same ablation as `ingot-recall-only`, for the
+`ingot-rest-text-search-only` is the same ablation as `ingot-text-search-only`, for the
 same reason.
 
 ## What is measured
@@ -228,11 +228,12 @@ part of `bun run test` at the repository root, and spends real money.
 
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
---adapters a,b,c       ingot, ingot-recall-only, ingot-rest, ingot-rest-recall-only,
+--adapters a,b,c       ingot, ingot-text-search-only, ingot-rest, ingot-rest-text-search-only,
                        vector, hyperspell, raw-context, oracle
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
 --max-tool-calls N     Retrieval budget per question, identical for every adapter. (12)
+--concurrency N        Agent runs in flight at once, within one adapter. (1)
 --model ID             Model id, or on Azure the DEPLOYMENT name. (gpt-5-mini)
 --provider NAME        anthropic | foundry-claude | foundry-gpt. (foundry-gpt)
 --effort LEVEL         low | medium | high | xhigh | max  (high)
@@ -261,11 +262,61 @@ part of `bun run test` at the repository root, and spends real money.
 | `HYPERSPELL_API_KEY` | Only for `--adapters hyperspell` |
 
 The Ingot adapters need a running server (`bun run db:up && bun run dev`).
-`ingot` and `ingot-recall-only` reach it over MCP, because the tool names, the
+`ingot` and `ingot-text-search-only` reach it over MCP, because the tool names, the
 descriptions and the schema handed over at connect time are part of what an
-agent gets; `ingot-rest` and `ingot-rest-recall-only` reach the same store over
+agent gets; `ingot-rest` and `ingot-rest-text-search-only` reach the same store over
 `/add` and `/query` with tools authored here. See [the interface
 question](#the-interface-question) for why both are in the table.
+
+### How long it takes, and what to do about it
+
+A default full run is 25 questions × 3 repeats × 8 adapters — around 580 agent
+runs. Measured over real transcripts, one run averages 30 seconds, so serial
+that is about five hours.
+
+Almost none of it is retrieval:
+
+```
+tool time:   7.8s  ( 1% of wall)   54 calls, 144ms mean
+model time:  539s  (99% of wall)
+correlation(output tokens, wall ms) = 0.98
+```
+
+Wall time is token generation, and each question is up to fourteen *sequential*
+model round-trips — one per tool call, each with a longer context than the last.
+The adapters are not the bottleneck; a `query` round trip is 144ms.
+
+So `--concurrency N` runs N questions in flight within an adapter, and the
+speed-up is close to linear:
+
+```bash
+bun run bench --concurrency 8    # ~5 hours becomes ~40 minutes
+```
+
+It defaults to 1, because it costs two things worth deciding on rather than
+inheriting:
+
+- **The `ms` column.** Every row's latency was measured while the provider was
+  serving other runs from the same benchmark. Accuracy, tokens and tool calls
+  are untouched — each agent run is independent and sees the identical corpus —
+  but latency is comparable within the report and not against a serial one. The
+  report is stamped with the concurrency and warns about exactly this.
+- **Your rate limit.** A Foundry deployment has a TPM ceiling, and the AI SDK's
+  default two retries mean hitting it makes the run *slower* rather than
+  failing it.
+
+Ingest stays serial whatever this says: writes go in corpus order, one page at
+a time, exactly as an agent would have produced them.
+
+The other lever is `--effort`. At `high` the model spends 2,400–5,200 output
+tokens a question, and dropping it cuts wall time close to proportionally —
+fine while iterating, but the report stamps the effort because runs at
+different efforts are not comparable.
+
+Worth noticing in those numbers: `ingot-text-search-only` averaged 5,238 output
+tokens against `ingot`'s 2,452, and took twice as long. That is not overhead.
+Take away SQL and the model thinks twice as hard to compensate, which is a
+result rather than a cost.
 
 ### What a run leaves behind
 

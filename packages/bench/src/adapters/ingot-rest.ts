@@ -30,10 +30,10 @@ import { schema, type AdapterTool, type MemoryAdapter } from './types.js';
 
 const READ_TOOLS: Record<IngotRestMode, readonly string[]> = {
   full: ['query', 'search'],
-  'recall-only': ['search'],
+  'text-search-only': ['search'],
 };
 
-export type IngotRestMode = 'full' | 'recall-only';
+export type IngotRestMode = 'full' | 'text-search-only';
 
 export interface IngotRestOptions {
   /** e.g. `http://localhost:3002` — the service root, without `/api`. */
@@ -135,7 +135,7 @@ export class IngotRestAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotRestOptions) {
     this.mode = options.mode ?? 'full';
-    this.name = this.mode === 'full' ? 'ingot-rest' : 'ingot-rest-recall-only';
+    this.name = this.mode === 'full' ? 'ingot-rest' : 'ingot-rest-text-search-only';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
   }
@@ -212,7 +212,7 @@ export class IngotRestAdapter implements MemoryAdapter {
   }
 
   async systemNote(): Promise<string> {
-    if (this.mode === 'recall-only') {
+    if (this.mode === 'text-search-only') {
       return (
         'Your memory holds the stored records. The only way to reach it is `search`, ' +
         'which returns the rows whose embedded column is closest in meaning to your query.\n\n' +

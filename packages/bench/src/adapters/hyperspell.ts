@@ -70,7 +70,10 @@ export class HyperspellAdapter implements MemoryAdapter {
   async ingest(corpus: readonly ToolResult[]): Promise<void> {
     this.records = flattenRecords(corpus);
 
-    await pool(this.records, 4, async (record) => {
+    // Two at a time, not four. The documented ceiling is 300 writes a minute
+    // and a 429 costs a full minute of waiting, so pacing under the limit
+    // finishes sooner than racing at it and backing off.
+    await pool(this.records, 2, async (record) => {
       const body = await this.post<AddResponse>('/memories/add', {
         text: record.text,
         title: record.ref,
@@ -168,7 +171,19 @@ export class HyperspellAdapter implements MemoryAdapter {
     });
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  /**
+   * One request, waiting out a rate limit rather than failing the column.
+   *
+   * Hyperspell allows 300 writes a minute and this corpus is five hundred
+   * records, so ingest *will* meet a 429 — that is the service working, not an
+   * error, and a benchmark that reported "hyperspell: skipped" because it was
+   * asked to slow down would be publishing a fact about the harness.
+   *
+   * `Retry-After` is honoured where it is sent, and a minute is assumed where
+   * it is not, because the limit is per minute and a shorter guess just burns
+   * another attempt against it.
+   */
+  private async post<T>(path: string, body: unknown, attempt = 0): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: {
@@ -178,6 +193,14 @@ export class HyperspellAdapter implements MemoryAdapter {
       },
       body: JSON.stringify(body),
     });
+
+    if (response.status === 429 && attempt < 6) {
+      const after = Number(response.headers.get('retry-after'));
+      const waitMs = Number.isFinite(after) && after > 0 ? after * 1000 : 60_000;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      return this.post<T>(path, body, attempt + 1);
+    }
+
     if (!response.ok) {
       throw new Error(`hyperspell ${path} ${response.status}: ${await response.text()}`);
     }

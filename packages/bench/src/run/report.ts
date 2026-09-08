@@ -80,8 +80,36 @@ export interface ReportHeader {
   readonly repeats: number;
   readonly perTemplate: number;
   readonly maxToolCalls: number;
+  /**
+   * Agent runs in flight at once. Provenance rather than trivia: above 1 the
+   * `ms` on every row was measured against a loaded provider, so latency is
+   * comparable within the run and not with a run that had the API to itself.
+   */
+  readonly concurrency: number;
   readonly embedder: string;
   readonly mapping: string;
+  /**
+   * Log lines in the corpus, as one unpaginated tool result. 0 for the
+   * ordinary corpus.
+   *
+   * Provenance rather than trivia: at any interesting value this is the run
+   * where `raw-context` is refused rather than scored, so a report that did
+   * not say which kind of run it was would be two different experiments under
+   * one heading.
+   */
+  readonly logs: number;
+  /**
+   * Operational facts about how the run was executed, kept out of the
+   * published summary.
+   *
+   * The split is between "you should read the numbers differently" and "here
+   * is how the machine was driven". An offline embedder or reasoning switched
+   * off changes what the table means and belongs in front of every reader; a
+   * concurrency setting that moves only the `ms` column, or an adapter that
+   * was skipped and is present anyway, is operator detail. Publishing the
+   * second kind trains readers to skip the block that carries the first.
+   */
+  readonly notes: readonly string[];
   /** Where the agent ran. Two providers are two runs, never two columns. */
   readonly provider: string;
   readonly thinking: boolean;
@@ -103,12 +131,34 @@ export function renderReport(
       `${header.thinking ? `effort \`${header.effort}\`` : 'thinking off'} · ` +
       `${header.repeats} run(s) per question · ${header.perTemplate} per template · ` +
       `budget ${header.maxToolCalls} tool calls · ` +
+      `${header.concurrency === 1 ? 'serial' : `${header.concurrency} in flight`} · ` +
       `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\``,
   );
   lines.push('');
 
   for (const warning of header.warnings) lines.push(`> **${warning}**`);
   if (header.warnings.length > 0) lines.push('');
+
+  // Local report only — see `notes` on the header.
+  for (const note of header.notes ?? []) lines.push(`> ${note}`);
+  if ((header.notes ?? []).length > 0) lines.push('');
+
+  // Runs that never produced an answer, counted apart from runs that produced
+  // a wrong one. They are scored wrong either way — nothing came back — but a
+  // column whose zeroes are timeouts is not evidence about retrieval, and a
+  // reader has to be able to see that before reading the tables.
+  const failed = rows.filter((row) => row.stopReason?.startsWith('error:'));
+  if (failed.length > 0) {
+    const byAdapter = new Map<string, number>();
+    for (const row of failed) byAdapter.set(row.adapter, (byAdapter.get(row.adapter) ?? 0) + 1);
+    lines.push(
+      `> **${failed.length} of ${rows.length} runs failed outright** and are scored wrong: ` +
+        `${[...byAdapter].map(([name, count]) => `${name} ${count}`).join(', ')}. ` +
+        'These are infrastructure failures, not retrieval failures — the JSONL carries the reason ' +
+        'on each row.',
+    );
+    lines.push('');
+  }
 
   lines.push('## Accuracy by category');
   lines.push('');

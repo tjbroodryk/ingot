@@ -14,10 +14,16 @@ import { buildCorpus, corpusRefs } from '../corpus/stream.js';
 import { buildWorld } from '../corpus/world.js';
 import { embedderFromEnv } from '../embed/embedder.js';
 import { runAgent, type AgentConfig } from '../agent/loop.js';
-import { buildQuestions, categoryCounts, type Category } from '../questions/questions.js';
+import {
+  buildQuestions,
+  categoryCounts,
+  type Category,
+  type Question,
+} from '../questions/questions.js';
 import { scoreRun } from '../score/score.js';
 import { renderLine, renderReport, type RunRecord } from './report.js';
 import { publishable } from './publish.js';
+import { pool } from './pool.js';
 import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
 
 /**
@@ -31,9 +37,9 @@ import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
  */
 const ADAPTERS = [
   'ingot',
-  'ingot-recall-only',
+  'ingot-text-search-only',
   'ingot-rest',
-  'ingot-rest-recall-only',
+  'ingot-rest-text-search-only',
   'vector',
   'hyperspell',
   'raw-context',
@@ -42,6 +48,9 @@ const ADAPTERS = [
 type AdapterName = (typeof ADAPTERS)[number];
 
 const PROVIDERS: readonly Provider[] = ['anthropic', 'foundry-claude', 'foundry-gpt'];
+
+/** The controls, which answer from the prompt and offer no tools. */
+const NO_TOOL_ADAPTERS: ReadonlySet<string> = new Set(['raw-context', 'oracle']);
 
 /**
  * The default model per provider, because "the default model" is not one thing
@@ -80,6 +89,10 @@ interface Options {
   thinking: boolean;
   /** Where to write the site's summary, if this run is meant to be published. */
   publish: string | null;
+  /** Log lines in one unpaginated tool result. 0 leaves the corpus as it was. */
+  logs: number;
+  /** How many agent runs to have in flight at once, within one adapter. */
+  concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
   from: string | null;
   /** With `--from`: run the scorer again over the stored transcripts. */
@@ -89,7 +102,7 @@ interface Options {
 function parse(argv: readonly string[]): Options {
   const options: Options = {
     seed: 1,
-    adapters: ['ingot', 'ingot-recall-only', 'vector', 'raw-context', 'oracle'],
+    adapters: ['ingot', 'ingot-text-search-only', 'vector', 'raw-context', 'oracle'],
     repeats: 3,
     perTemplate: 3,
     maxToolCalls: 12,
@@ -108,6 +121,11 @@ function parse(argv: readonly string[]): Options {
     provider: 'foundry-gpt',
     thinking: true,
     publish: null,
+    logs: 0,
+    // One by default. Concurrency makes a run faster and its latency column
+    // meaningless, and that is a trade the person running it should make on
+    // purpose rather than inherit from a default.
+    concurrency: 1,
     from: null,
     rescore: false,
   };
@@ -186,6 +204,19 @@ function parse(argv: readonly string[]): Options {
         options.publish = next(flag, value);
         at += 1;
         break;
+      case '--logs':
+        options.logs = Number(next(flag, value));
+        at += 1;
+        break;
+      case '--concurrency': {
+        const concurrency = Number(next(flag, value));
+        if (!Number.isInteger(concurrency) || concurrency < 1) {
+          throw new Error(`--concurrency must be a positive integer, got "${value}"`);
+        }
+        options.concurrency = concurrency;
+        at += 1;
+        break;
+      }
       case '--from':
         options.from = next(flag, value);
         at += 1;
@@ -217,6 +248,47 @@ function parse(argv: readonly string[]): Options {
   return options;
 }
 
+/**
+ * A run that never produced an answer, as a row.
+ *
+ * Scored wrong, because it is: the adapter was asked and nothing came back.
+ * But `stopReason` carries *why*, so a column full of timeouts is
+ * distinguishable from a column full of bad answers when somebody reads the
+ * JSONL — and the report counts them separately rather than letting an
+ * infrastructure failure quietly become evidence about retrieval.
+ */
+function failedRow(input: {
+  runId: string;
+  adapter: string;
+  question: Question;
+  repeat: number;
+  reason: string;
+}): RunRecord {
+  return {
+    runId: input.runId,
+    adapter: input.adapter,
+    questionId: input.question.id,
+    category: input.question.category,
+    repeat: input.repeat,
+    question: input.question.text,
+    gold: input.question.gold,
+    answer: undefined,
+    submitted: false,
+    stopReason: `error: ${input.reason}`.slice(0, 300),
+    correct: false,
+    f1: 0,
+    evidenceRecall: null,
+    evidencePrecision: null,
+    toolCalls: 0,
+    failedCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    finalInputTokens: 0,
+    ms: 0,
+    calls: [],
+  };
+}
+
 function next(flag: string, value: string | undefined): string {
   if (value === undefined) throw new Error(`${flag} needs a value`);
   return value;
@@ -241,11 +313,21 @@ const HELP = `bun run bench [flags]
                          repository writes REST's. Run both; the gap is a result.
   --categories a,b       Restrict to these question categories.
   --out DIR              Where results.jsonl and report.md are written. (results)
+  --concurrency N        Agent runs in flight at once, within one adapter. (1)
+                         Wall time is ~99% model generation and every run is
+                         independent, so this is close to a linear speed-up —
+                         at the cost of the ms column and of whatever your
+                         provider's rate limit is. Ingest stays serial.
   --from FILE.jsonl      Report on a finished run instead of buying a new one.
                          Regenerates its .md, and with --publish writes the
                          site's summary. Needs the .meta.json beside it.
   --rescore              With --from: run the scorer again over the stored
                          transcripts. The transcripts are never modified.
+  --logs N               Add N log lines as ONE unpaginated tool result. (0)
+                         At any interesting size it does not fit in a context
+                         window: raw-context is refused rather than scored, and
+                         top-k finds a shrinking share of what an aggregate
+                         needs while SQL is indifferent to the row count.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -278,23 +360,23 @@ async function build(
 
   switch (name) {
     case 'ingot':
-    case 'ingot-recall-only':
+    case 'ingot-text-search-only':
       return new IngotAdapter({
         baseUrl: env.INGOT_URL ?? 'http://localhost:3002',
         account: env.INGOT_ACCOUNT ?? 'dev',
         apiKey: required('INGOT_API_KEY', env.INGOT_API_KEY),
         runId,
-        mode: name === 'ingot' ? 'full' : 'recall-only',
+        mode: name === 'ingot' ? 'full' : 'text-search-only',
         mapping,
       });
     case 'ingot-rest':
-    case 'ingot-rest-recall-only':
+    case 'ingot-rest-text-search-only':
       return new IngotRestAdapter({
         baseUrl: env.INGOT_URL ?? 'http://localhost:3002',
         account: env.INGOT_ACCOUNT ?? 'dev',
         apiKey: required('INGOT_API_KEY', env.INGOT_API_KEY),
         runId,
-        mode: name === 'ingot-rest' ? 'full' : 'recall-only',
+        mode: name === 'ingot-rest' ? 'full' : 'text-search-only',
         mapping,
       });
     case 'vector':
@@ -324,7 +406,7 @@ function required(name: string, value: string | undefined | null): string {
 async function main(options: Options): Promise<void> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
 
-  const world = buildWorld({ seed: options.seed });
+  const world = buildWorld({ seed: options.seed, logs: options.logs });
   const corpus = buildCorpus(world);
   const knownRefs = corpusRefs(corpus);
   const all = buildQuestions(world, { perTemplate: options.perTemplate });
@@ -359,6 +441,8 @@ async function main(options: Options): Promise<void> {
   // run would be a guard against nothing.
   const embedder = options.adapters.includes('vector') ? embedderFromEnv(process.env) : null;
   const warnings: string[] = [];
+  // Operator detail; see `notes` on ReportHeader.
+  const notes: string[] = [];
   if (embedder?.model === 'hash-bow-v1') {
     if (!options.allowHashEmbedder) {
       throw new Error(
@@ -391,6 +475,17 @@ async function main(options: Options): Promise<void> {
       'Run sent no reasoning settings. Not comparable with a run that did.',
     );
   }
+  if (options.concurrency > 1) {
+    // Accuracy, tokens and tool calls are unaffected — each agent run is
+    // independent and sees the identical corpus. Latency is not: every `ms` was
+    // measured while the provider was serving other runs from this same
+    // benchmark, so the column compares adapters within the run and says
+    // nothing against a run that had the API to itself.
+    notes.push(
+      `Run had ${options.concurrency} agent runs in flight. The ms column is comparable ` +
+        'within this report and not with a serial one; accuracy and tokens are unaffected.',
+    );
+  }
 
   const rows: RunRecord[] = [];
   await mkdir(options.out, { recursive: true });
@@ -407,60 +502,125 @@ async function main(options: Options): Promise<void> {
     repeats: options.repeats,
     perTemplate: options.perTemplate,
     maxToolCalls: options.maxToolCalls,
+    concurrency: options.concurrency,
     embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
     mapping: options.mapping,
+    logs: options.logs,
     provider: options.provider,
     thinking: options.thinking,
     warnings,
+    notes,
     adapters: options.adapters,
   };
   await writeMeta(jsonlPath, meta);
 
+  // Appends are chained rather than fired off in parallel. A row carries its
+  // whole transcript and runs to tens of kilobytes, well past the size at
+  // which `O_APPEND` is atomic, so two concurrent writers would interleave
+  // halfway through a line and leave a JSONL that will not parse — losing
+  // exactly the transcripts this append-as-you-go exists to protect.
+  let appends: Promise<void> = Promise.resolve();
+  const append = (row: RunRecord): Promise<void> => {
+    appends = appends.then(() =>
+      writeFile(jsonlPath, `${JSON.stringify(row)}\n`, { flag: 'a' }),
+    );
+    return appends;
+  };
+
   for (const name of options.adapters) {
-    const adapter = await build(name, options, model, runId);
-    console.log(`\n── ${adapter.name} ──`);
-    const ingestStarted = Date.now();
-    await adapter.ingest(corpus);
-    console.log(`ingested in ${((Date.now() - ingestStarted) / 1000).toFixed(1)}s`);
+    // An adapter that cannot be built or cannot ingest costs its own column
+    // and nothing else. A Hyperspell key that has expired, or an Ingot server
+    // that went away, should not take the five columns behind it with it —
+    // the report says which adapter is missing and why, and the rest of the
+    // table is still a table.
+    let adapter: MemoryAdapter;
+    try {
+      adapter = await build(name, options, model, runId);
+      console.log(`\n── ${adapter.name} ──`);
+      const ingestStarted = Date.now();
+      // Ingest stays serial whatever `--concurrency` says: writes go in corpus
+      // order, one page at a time, exactly as an agent would have produced them.
+      await adapter.ingest(corpus);
+      console.log(`ingested in ${((Date.now() - ingestStarted) / 1000).toFixed(1)}s`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.log(`\n── ${name} ── SKIPPED: ${reason}`);
+      notes.push(`Adapter \`${name}\` was skipped: ${reason}`);
+      continue;
+    }
+
+    // Whether this adapter reaches its memory through tools. The controls do
+    // not, so their evidence never passes through a tool call and the evidence
+    // columns are empty for them rather than zero. See `scoreRun`.
+    const retrieves = adapter.tools().length > 0;
+
+    // A control that cannot be built for a question is skipped, not scored
+    // zero. See `MemoryAdapter.supports`.
+    const work = questions
+      .filter((question) => !adapter.supports || adapter.supports(question))
+      .flatMap((question) =>
+        Array.from({ length: options.repeats }, (_, repeat) => ({ question, repeat })),
+      );
 
     try {
-      for (const question of questions) {
-        // A control that cannot be built for this question is skipped, not
-        // scored zero. See `MemoryAdapter.supports`.
-        if (adapter.supports && !adapter.supports(question)) continue;
-        for (let repeat = 0; repeat < options.repeats; repeat += 1) {
-          const run = await runAgent(model, adapter, question, config);
-          const score = scoreRun(question, run.answer, run.observedText, knownRefs);
-          const row: RunRecord = {
+      const done = await pool(work, options.concurrency, async ({ question, repeat }) => {
+        // One question's failure is one row, never the end of the run.
+        //
+        // A benchmark run is hundreds of network calls over tens of minutes,
+        // and something will time out. Letting that propagate abandons every
+        // question after it *and* every adapter after this one — throwing away
+        // work that has already been paid for because of one transient fetch.
+        // So the failure is recorded as its own outcome and the run carries on.
+        let run: Awaited<ReturnType<typeof runAgent>>;
+        try {
+          run = await runAgent(model, adapter, question, config);
+        } catch (error) {
+          const row = failedRow({
             runId,
             adapter: adapter.name,
-            questionId: question.id,
-            category: question.category,
+            question,
             repeat,
-            question: question.text,
-            gold: question.gold,
-            answer: run.answer,
-            submitted: run.submitted,
-            stopReason: run.stopReason,
-            correct: score.correct,
-            f1: score.f1,
-            evidenceRecall: score.evidenceRecall,
-            evidencePrecision: score.evidencePrecision,
-            toolCalls: run.calls.length,
-            failedCalls: run.calls.filter((call) => call.failed).length,
-            inputTokens: run.usage.inputTokens,
-            outputTokens: run.usage.outputTokens,
-            finalInputTokens: run.usage.finalInputTokens,
-            ms: run.ms,
-            calls: run.calls,
-          };
-          rows.push(row);
+            reason: error instanceof Error ? error.message : String(error),
+          });
           console.log(renderLine(row));
-          // Appended as it goes: a run that dies at question ninety should not
-          // throw away the eighty-nine that were paid for.
-          await writeFile(jsonlPath, `${JSON.stringify(row)}\n`, { flag: 'a' });
+          await append(row);
+          return row;
         }
-      }
+
+        const score = scoreRun(question, run.answer, run.observedText, knownRefs, retrieves);
+        const row: RunRecord = {
+          runId,
+          adapter: adapter.name,
+          questionId: question.id,
+          category: question.category,
+          repeat,
+          question: question.text,
+          gold: question.gold,
+          answer: run.answer,
+          submitted: run.submitted,
+          stopReason: run.stopReason,
+          correct: score.correct,
+          f1: score.f1,
+          evidenceRecall: score.evidenceRecall,
+          evidencePrecision: score.evidencePrecision,
+          toolCalls: run.calls.length,
+          failedCalls: run.calls.filter((call) => call.failed).length,
+          inputTokens: run.usage.inputTokens,
+          outputTokens: run.usage.outputTokens,
+          finalInputTokens: run.usage.finalInputTokens,
+          ms: run.ms,
+          calls: run.calls,
+        };
+        console.log(renderLine(row));
+        // Appended as it finishes: a run that dies at question ninety should
+        // not throw away the eighty-nine that were paid for.
+        await append(row);
+        return row;
+      });
+      // `pool` returns results in work order, so the report is identical at any
+      // concurrency. Only the order of lines inside the JSONL follows
+      // completion, and nothing reads it back in order.
+      rows.push(...done);
     } finally {
       await adapter.teardown();
     }
@@ -542,7 +702,16 @@ async function replay(options: Options): Promise<void> {
           'so these rows cannot be re-scored against it.',
       );
     }
-    const score = scoreRun(question, row.answer, observedTextOf(row), knownRefs);
+    // Re-scoring reads rows, not adapters, so which of them retrieve has to be
+    // named rather than asked. These two are the controls and always have been:
+    // they hold their evidence in the prompt and offer no tools at all.
+    const score = scoreRun(
+      question,
+      row.answer,
+      observedTextOf(row),
+      knownRefs,
+      !NO_TOOL_ADAPTERS.has(row.adapter),
+    );
     if (score.correct !== row.correct || score.f1 !== row.f1) changed += 1;
     return { ...row, ...score };
   });

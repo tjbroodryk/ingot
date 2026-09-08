@@ -86,10 +86,24 @@ export function scoreRun(
   answer: unknown,
   observedText: string,
   knownRefs: ReadonlySet<Ref>,
+  /**
+   * Whether this adapter reaches its memory through tools at all.
+   *
+   * `raw-context` and `oracle` do not: their evidence is placed in the prompt,
+   * so nothing ever comes back through a tool call and scanning the tool
+   * output finds nothing. Scoring that as 0% recall would report the two
+   * controls — one of which holds *every* record and the other exactly the
+   * right ones — as the worst retrieval in the table. They are not bad at
+   * retrieval; they are not doing retrieval, and the honest cell is empty.
+   *
+   * A retrieval adapter that made no calls is a different thing and still
+   * scores zero, because there the absence of evidence is the failure.
+   */
+  retrieves = true,
 ): Score {
   const { correct, f1 } = scoreAnswer(question, answer);
 
-  if (question.evidence === null) {
+  if (question.evidence === null || !retrieves) {
     return { correct, f1, evidenceRecall: null, evidencePrecision: null };
   }
 

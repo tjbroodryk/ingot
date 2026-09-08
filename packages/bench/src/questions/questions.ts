@@ -244,6 +244,50 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     }
   }
 
+  // ── the oversized result ─────────────────────────────────────────────────
+  // Only when logs were asked for. These are ordinary questions of the
+  // categories above — the difference is not the question, it is that the
+  // evidence arrived in one tool result that does not fit in a window.
+  if (world.logs.length > 0) {
+    const errorsByService = new Map<string, number>();
+    for (const line of world.logs) {
+      if (line.level !== 'error') continue;
+      errorsByService.set(line.service, (errorsByService.get(line.service) ?? 0) + 1);
+    }
+
+    for (const service of world.services.slice(0, limit)) {
+      const count = errorsByService.get(service.name) ?? 0;
+      if (count === 0) continue;
+      add(
+        'aggregate',
+        `How many log lines at level "error" did the ${service.name} service emit?`,
+        { kind: 'number', value: count },
+        null,
+      );
+    }
+
+    const quiet = world.services.filter((service) => !errorsByService.has(service.name));
+    if (quiet.length > 0 && quiet.length < world.services.length) {
+      add(
+        'absence',
+        'Which services logged no errors at all? Answer with their refs.',
+        { kind: 'set', values: quiet.map((service) => service.ref) },
+        quiet.map((service) => service.ref),
+      );
+    }
+
+    const slowest = [...world.logs].sort((a, b) => b.durationMs - a.durationMs);
+    const top = slowest.slice(0, 4);
+    if (top.length === 4 && new Set(top.map((line) => line.durationMs)).size === 4) {
+      add(
+        'ordering',
+        'List the refs of the 3 slowest log lines by duration, slowest first.',
+        { kind: 'list', values: slowest.slice(0, 3).map((line) => line.ref) },
+        slowest.slice(0, 3).map((line) => line.ref),
+      );
+    }
+  }
+
   const churn = new Map<string, number>();
   for (const pr of world.pullRequests) {
     for (const path of pr.files) {

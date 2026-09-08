@@ -109,11 +109,11 @@ describe('the controls', () => {
 describe('the ingot REST adapter', () => {
   test('offers a tool surface authored here, matched to the mode', () => {
     const full = new IngotRestAdapter({ ...options, mode: 'full' });
-    const ablated = new IngotRestAdapter({ ...options, mode: 'recall-only' });
+    const ablated = new IngotRestAdapter({ ...options, mode: 'text-search-only' });
 
     expect(full.name).toBe('ingot-rest');
     expect(full.tools().map((tool) => tool.name)).toEqual(['query', 'search']);
-    expect(ablated.name).toBe('ingot-rest-recall-only');
+    expect(ablated.name).toBe('ingot-rest-text-search-only');
     expect(ablated.tools().map((tool) => tool.name)).toEqual(['search']);
   });
 

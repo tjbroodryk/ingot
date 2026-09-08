@@ -75,7 +75,7 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
       'The read surface a real agent gets over MCP: the schema at connect time, SQL, and ranking by meaning.',
   },
   {
-    name: 'ingot-recall-only',
+    name: 'ingot-text-search-only',
     blurb:
       'The ablation, and the most important column. The same store, the same rows and the same vectors, reachable only through top-k semantic search.',
   },

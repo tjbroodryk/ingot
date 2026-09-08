@@ -6,20 +6,20 @@ import type { AdapterTool, MemoryAdapter } from './types.js';
  * The tools left in front of the model, per mode.
  *
  * `full` is the read surface a real agent gets: the schema, SQL, and ranking
- * by meaning. `recall-only` is the ablation — the same store, the same
+ * by meaning. `text-search-only` is the ablation — the same store, the same
  * embeddings, the same rows, reachable only through top-k semantic search.
  *
  * The ablation is the most important column in the table. Ingot contains a
  * vector index; if it beats a vector store, the interesting question is
  * whether that came from structure or merely from better chunking, and
- * `recall-only` is the only column that can answer it.
+ * `text-search-only` is the only column that can answer it.
  */
 const READ_TOOLS: Record<IngotMode, readonly string[]> = {
   full: ['describe', 'query', 'recall'],
-  'recall-only': ['recall'],
+  'text-search-only': ['recall'],
 };
 
-export type IngotMode = 'full' | 'recall-only';
+export type IngotMode = 'full' | 'text-search-only';
 
 export interface IngotOptions {
   /** e.g. `http://localhost:3002` — the service root, without `/api`. */
@@ -85,7 +85,7 @@ export class IngotAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotOptions) {
     this.mode = options.mode ?? 'full';
-    this.name = this.mode === 'full' ? 'ingot' : 'ingot-recall-only';
+    this.name = this.mode === 'full' ? 'ingot' : 'ingot-text-search-only';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
   }
@@ -182,7 +182,7 @@ export class IngotAdapter implements MemoryAdapter {
   }
 
   async systemNote(): Promise<string> {
-    if (this.mode === 'recall-only') {
+    if (this.mode === 'text-search-only') {
       return (
         'Your memory holds the stored records. The only way to reach it is `recall`, ' +
         'which returns the rows whose embedded column is closest in meaning to your query.\n\n' +

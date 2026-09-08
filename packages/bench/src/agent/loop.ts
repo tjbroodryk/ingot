@@ -50,6 +50,29 @@ export interface AgentRun {
   readonly usage: UsageTotals;
   readonly ms: number;
   readonly stopReason: string | null;
+  /** The provider's words, when the request never ran. */
+  readonly failure?: string;
+}
+
+/**
+ * Whether the provider refused because the prompt was too big.
+ *
+ * Matched on the message because the four providers spell it four ways and
+ * none of them gives it a stable code — OpenAI says `context_length_exceeded`,
+ * Anthropic talks about the maximum number of tokens, and Azure wraps both.
+ * A miss here costs an outcome label, not a wrong number: the run is recorded
+ * as a failure either way, and only the reason is less specific.
+ */
+function overflowed(error: unknown): boolean {
+  const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    text.includes('context length') ||
+    text.includes('context_length') ||
+    text.includes('context window') ||
+    text.includes('too many tokens') ||
+    text.includes('maximum context') ||
+    (text.includes('prompt') && text.includes('too long'))
+  );
 }
 
 export interface UsageTotals {
@@ -154,7 +177,9 @@ export async function runAgent(
 
   const note = await adapter.systemNote(question);
 
-  const result = await generateText({
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
     model,
     system: note ? `${SYSTEM}\n\n${note}` : SYSTEM,
     prompt: question.text,
@@ -168,9 +193,32 @@ export async function runAgent(
     // "ran out of calls" the same as "answered wrongly".
     prepareStep: () =>
       retrievalCalls >= config.maxToolCalls ? { activeTools: [SUBMIT] } : {},
-    ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
-    ...(config.maxTokens ? { maxOutputTokens: config.maxTokens } : {}),
-  });
+      ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
+      ...(config.maxTokens ? { maxOutputTokens: config.maxTokens } : {}),
+    });
+  } catch (error) {
+    // A provider that refuses the request is a result, not a crash.
+    //
+    // The case this exists for is a memory too large to put in a prompt:
+    // `raw-context` is handed the whole corpus and the request is rejected
+    // before inference. Letting that throw would abandon every question after
+    // it in the same adapter, and would report the most interesting outcome
+    // this benchmark can produce as a harness bug.
+    //
+    // It is recorded as its own outcome rather than as a wrong answer, because
+    // "there is no ceiling for a memory this size" and "the ceiling is 0%" are
+    // different findings and the report has to be able to tell them apart.
+    return {
+      answer: undefined,
+      submitted: false,
+      calls,
+      observedText: observed.join('\n'),
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, finalInputTokens: 0 },
+      ms: Date.now() - started,
+      stopReason: overflowed(error) ? 'context-overflow' : 'provider-error',
+      failure: error instanceof Error ? error.message : String(error),
+    };
+  }
 
   const steps = result.steps ?? [];
   const usage: UsageTotals = {

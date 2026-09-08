@@ -64,6 +64,74 @@
 }
 
 /*
+ * A percentage you can read without reading it.
+ *
+ * Six columns of bare numerals all look the same at a glance, which is the one
+ * thing a results table must not do — the reader's first question is "which of
+ * these is better", and answering it should not require comparing digits. So
+ * every cell carries a bar as long as its value, drawn behind the number.
+ *
+ * A bar rather than a colour scale on purpose. Shading the text's own
+ * background costs legibility at exactly the values worth reading, and a
+ * red-to-green ramp would assert a judgement the ± on these numbers does not
+ * support: 92% ±5% and 88% ±6% overlap, and painting one green and the other
+ * amber would invent a winner the run did not produce. Length is honest about
+ * magnitude and silent about significance.
+ */
+.bench-cell {
+  position: relative;
+  isolation: isolate;
+}
+
+.bench-fill {
+  position: absolute;
+  right: var(--space-4);
+  bottom: 6px;
+  height: 2px;
+  /* `--v` is the percentage, set inline per cell. */
+  width: calc(var(--v) * 1%);
+  max-width: calc(100% - var(--space-4));
+  background: var(--ink-70);
+  opacity: 0.45;
+  z-index: -1;
+}
+
+.bench-overall .bench-fill {
+  height: 3px;
+  opacity: 0.75;
+}
+
+.bench-num {
+  position: relative;
+}
+
+/* An empty cell is a question never asked. It must not read as a zero. */
+.bench-na {
+  color: var(--ink-70);
+  opacity: 0.5;
+}
+
+/*
+ * The controls, set apart.
+ *
+ * They are reference lines, not entrants, and a table that lists them flush
+ * with the memories invites the reading that `oracle` came fourth in a race it
+ * was not running.
+ */
+.bench-controls {
+  border-top: var(--rule);
+}
+
+.bench-group {
+  padding: 14px var(--space-4) 8px 0 !important;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--ink-70);
+  text-align: left !important;
+  white-space: normal !important;
+}
+
+/*
  * What produced the numbers, above the numbers.
  *
  * Deliberately not a footnote. A result whose seed, model and embedder are
@@ -92,11 +160,6 @@
 .bench-prov dd {
   margin: 0;
   font-size: 15px;
-}
-
-.bench-stamp {
-  padding-top: var(--space-4);
-  font-size: 14px;
 }
 
 /*

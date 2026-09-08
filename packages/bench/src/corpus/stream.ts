@@ -25,7 +25,8 @@ export type ToolName =
   | 'github.list_pull_requests'
   | 'ci.list_runs'
   | 'pagerduty.list_incidents'
-  | 'linear.search_issues';
+  | 'linear.search_issues'
+  | 'logs.search';
 
 /** Page sizes chosen to look like the APIs they imitate, not to be convenient. */
 const PAGE_SIZE: Record<ToolName, number> = {
@@ -35,6 +36,9 @@ const PAGE_SIZE: Record<ToolName, number> = {
   'ci.list_runs': 40,
   'pagerduty.list_incidents': 10,
   'linear.search_issues': 20,
+  // Not a page size. `logs.search` is the tool that does not paginate, which
+  // is the entire point of it — a result that arrives whole and does not fit.
+  'logs.search': Number.MAX_SAFE_INTEGER,
 };
 
 function* pages<T>(items: readonly T[], size: number): Generator<readonly T[]> {
@@ -139,6 +143,22 @@ export function buildCorpus(world: World): readonly ToolResult[] {
     resolved_at: incident.resolvedAt,
     summary: incident.summary,
   }));
+
+  // One result, however many lines. A real log search does not hand back
+  // pages of ten, and a fixture that paginated this would be modelling a
+  // kinder tool than the one that causes the problem.
+  if (world.logs.length > 0) {
+    paginate('logs.search', world.logs, { query: 'window:72h', paginated: false }, (line) => ({
+      ref: line.ref,
+      at: line.at,
+      level: line.level,
+      service: line.service,
+      route: line.route,
+      status: line.status,
+      duration_ms: line.durationMs,
+      message: line.message,
+    }));
+  }
 
   paginate('linear.search_issues', world.issues, { query: 'is:issue' }, (issue) => ({
     ref: issue.ref,
