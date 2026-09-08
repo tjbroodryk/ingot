@@ -156,31 +156,6 @@ export function BenchmarksPage(): ReactNode {
           </div>
         </section>
 
-        <section className="landblock" id="questions">
-          <div className="landhead">
-            <span className="label label-sm kicker">[ The questions ]</span>
-            <h2 className="landtitle">
-              Six kinds of
-              <br />
-              <span className="mark">asking</span>
-            </h2>
-          </div>
-
-          <dl className="bench-defs">
-            {CATEGORIES.map((category) => (
-              <div key={category.name}>
-                <dt>
-                  <code>{category.name}</code>
-                  {run?.categoryCounts[category.name] !== undefined ? (
-                    <span className="muted"> · {run.categoryCounts[category.name]} questions</span>
-                  ) : null}
-                </dt>
-                <dd>{category.blurb}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
         <section className="landblock" id="limits">
           <div className="landhead">
             <span className="label label-sm kicker">[ What this does not measure ]</span>
@@ -331,6 +306,47 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
 }
 
 /**
+ * A column header that carries its own definition.
+ *
+ * The categories are what the matrix means — "absence 0%" says nothing until
+ * you know absence is the class whose answer is defined by what is missing —
+ * and that belongs next to the number rather than in a section further down
+ * the page, which a reader has already scrolled past by the time they need it.
+ *
+ * CSS-only, because this site is a static export and a tooltip is not worth
+ * shipping a runtime for. `tabIndex` and `aria-describedby` are what keep it
+ * reachable without a mouse: the icon takes focus, and the description is
+ * announced rather than merely drawn.
+ */
+function CategoryHead({ category, end }: { category: string; end: boolean }): ReactNode {
+  const blurb = CATEGORIES.find((entry) => entry.name === category)?.blurb;
+  if (!blurb) return <>{category}</>;
+
+  const id = `bench-tip-${category}`;
+  return (
+    <span className="bench-th">
+      {category}
+      {/*
+        A button rather than a span with `tabindex`: this is a focusable
+        affordance, and the element that already means that gets keyboard
+        behaviour and the right role without being told.
+      */}
+      <button type="button" className="bench-info" aria-describedby={id}>
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="7.1" y="6.6" width="1.8" height="5" fill="currentColor" />
+          <rect x="7.1" y="3.8" width="1.8" height="1.8" fill="currentColor" />
+        </svg>
+        <span className="bench-sr">what {category} means</span>
+        <span className={end ? 'bench-tip bench-tip-end' : 'bench-tip'} role="tooltip" id={id}>
+          {blurb}
+        </span>
+      </button>
+    </span>
+  );
+}
+
+/**
  * Per-category accuracy as a heat matrix.
  *
  * A real table, because it is tabular data and a screen reader should get row
@@ -401,9 +417,15 @@ function HeatMatrix({
             <th scope="col">
               <span className="bench-sr">adapter</span>
             </th>
-            {categories.map((category) => (
+            {categories.map((category, index) => (
               <th scope="col" key={category}>
-                {category}
+                <CategoryHead
+                  category={category}
+                  // The last two open leftward. The scroll container clips at
+                  // its own edge, and a tooltip centred on the final column
+                  // would open into that clip.
+                  end={index >= categories.length - 2}
+                />
               </th>
             ))}
           </tr>

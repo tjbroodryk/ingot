@@ -136,7 +136,7 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
   {
     name: 'vector',
     blurb:
-      'Embed every record, rank by cosine, return top-k. The shape of every “just put it in a vector store” answer, given the same embedding model.',
+      'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. It is chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available, given deliberately. Same embedding model as Ingot, and brute-force exact cosine rather than an approximate index, so what it cannot do is a property of top-k retrieval and not of a weak baseline.',
   },
   {
     name: 'hyperspell',
