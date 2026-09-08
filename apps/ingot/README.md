@@ -642,9 +642,14 @@ Three things worth knowing before configuring it:
   refused, because a stored vector of the wrong width is dropped from every
   ranking rather than mixed in, which reads as "search got worse" and nothing
   else.
-- **The prompt is shared, the adapters are not.** It lives in
-  `summariser.port.ts` with the shape it produces, so switching provider
-  changes which model answers and not what it was asked.
+- **The prompt is shared, and so is the adapter.** Both live in
+  `summariser.port.ts` with the shape they produce, so switching provider
+  changes which model answers and not what it was asked. Receipts go through
+  the [AI SDK](https://ai-sdk.dev) — one `ModelSummariser` over a provider,
+  rather than one adapter per host — which is what lets the shape be a schema
+  the provider is held to instead of a sentence asking it nicely for JSON.
+  Embeddings do not: `embed` is two JSON endpoints and a declared width, and
+  the width is the thing a library would take away.
 
 The defaults are `local` on both: deterministic offline stand-ins, so the suite
 and a laptop need no network, no key and no bill. They are enough to exercise

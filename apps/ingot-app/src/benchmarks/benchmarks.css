@@ -1,0 +1,213 @@
+/*
+ * `/benchmarks`, and only the parts of it the landing page did not already
+ * have.
+ *
+ * This page is drawn in the landing page's idiom and imports that sheet, so
+ * the frame, the hero, the ruled bands and the three-up grids are all over
+ * there and are used here rather than restated. What is left is what a page of
+ * measurements needs and a page of argument does not: two result tables, the
+ * provenance block that has to sit beside them, a definition list, and the
+ * empty state the page wears until a run has been published into it.
+ *
+ * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
+ * is over there. Every value here resolves to a token.
+ */
+
+/*
+ * The bands' children reach the section's edges so their own rules meet it. A
+ * table has no rules to line up, so it brings the padding back — the same
+ * argument `.why-table` makes.
+ *
+ * It scrolls on its own rather than widening the page: this table gains a
+ * column per question category, and a reader on a narrow screen should lose
+ * the right-hand categories rather than the whole layout.
+ */
+.bench-scroll {
+  padding: 8px var(--space-8) 0;
+  overflow-x: auto;
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  /* Figures line up in a column only if the face gives them one width. */
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-table th,
+.bench-table td {
+  padding: 10px var(--space-4) 10px 0;
+  text-align: right;
+  border-bottom: var(--rule);
+  white-space: nowrap;
+}
+
+/* The adapter name and the header row's first cell: the axis, so it reads left. */
+.bench-table thead th:first-child,
+.bench-table tbody th {
+  text-align: left;
+  font-weight: 400;
+}
+
+.bench-table thead th {
+  color: var(--ink-70);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: var(--rule);
+}
+
+.bench-table tbody tr:last-child th,
+.bench-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/*
+ * What produced the numbers, above the numbers.
+ *
+ * Deliberately not a footnote. A result whose seed, model and embedder are
+ * somewhere else is a result a reader has to take on trust, and this page's
+ * whole claim is that they do not have to.
+ */
+.bench-prov {
+  padding: 8px var(--space-8) var(--space-4);
+}
+
+.bench-prov > dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-4) 0;
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+}
+
+.bench-prov dt {
+  color: var(--ink-70);
+  margin-bottom: 4px;
+}
+
+.bench-prov dd {
+  margin: 0;
+  font-size: 15px;
+}
+
+.bench-stamp {
+  padding-top: var(--space-4);
+  font-size: 14px;
+}
+
+/*
+ * A warning the run itself recorded — an offline embedder, reasoning switched
+ * off. It is rendered rather than filtered because a run carrying one is a run
+ * whose numbers mean something narrower, and the page that hid it would be
+ * publishing the number without the condition on it.
+ */
+.bench-warning {
+  margin: var(--space-4) 0 0;
+  padding: 12px var(--space-4);
+  border-left: 2px solid var(--ink-70);
+  background: var(--ink-08);
+  font-size: 14px;
+  color: var(--ink-70);
+}
+
+.bench-note {
+  padding: var(--space-4) var(--space-8) 56px;
+  font-size: 14px;
+  color: var(--ink-70);
+}
+
+/* Terms and what they mean: the categories, and the limits. */
+.bench-defs {
+  margin: 0;
+  padding: 8px var(--space-8) 56px;
+}
+
+.bench-defs > div {
+  padding: 18px 0;
+  border-top: var(--rule);
+}
+
+.bench-defs dt {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.bench-defs dd {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--ink-70);
+  font-size: 15px;
+}
+
+/*
+ * The page before there has been a run.
+ *
+ * It exists because the alternative is placeholder numbers, and a page about
+ * measurement that shipped invented figures would undo the only thing it is
+ * for.
+ */
+.bench-empty {
+  padding: var(--space-4) var(--space-8) 56px;
+  max-width: 68ch;
+}
+
+.bench-empty h3 {
+  margin: 0 0 var(--space-4);
+  font-size: 20px;
+}
+
+.bench-empty p {
+  color: var(--ink-70);
+}
+
+.bench-pre {
+  margin: var(--space-4) 0;
+  padding: 14px var(--space-4);
+  overflow-x: auto;
+  border: var(--rule);
+  background: var(--ink-08);
+  font-size: 14px;
+}
+
+.bench-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 22px var(--space-8);
+  border-top: var(--rule);
+  background: var(--ink-08);
+  font-size: 15px;
+  color: var(--ink-70);
+}
+
+.bench-strip p {
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* ══ narrower ═══════════════════════════════════════════════════════════
+   The bands' padding collapses in `landing.css` at these widths; what is left
+   here is the provenance grid, which has four columns and needs two steps. */
+@media (max-width: 900px) {
+  .bench-prov > dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .bench-scroll,
+  .bench-prov,
+  .bench-note,
+  .bench-defs,
+  .bench-empty,
+  .bench-strip {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}

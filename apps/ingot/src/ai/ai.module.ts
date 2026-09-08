@@ -9,11 +9,10 @@ import {
 import { EMBEDDER, type Embedder } from './embedder.port.js';
 import { ExtractiveSummariser } from './extractive-summariser.js';
 import { GcpEmbedder } from './gcp-embedder.js';
-import { GcpSummariser } from './gcp-summariser.js';
 import { GOOGLE_CREDENTIALS, GoogleCredentials } from './google-auth.js';
 import { HashEmbedder } from './hash-embedder.js';
+import { openAiSummariser, vertexSummariser } from './model-summariser.js';
 import { OpenAiEmbedder } from './openai-embedder.js';
-import { OpenAiSummariser } from './openai-summariser.js';
 import { AiProvider } from './providers.js';
 import { SUMMARISER, type Summariser } from './summariser.port.js';
 
@@ -82,8 +81,10 @@ const SUMMARISERS: {
   ) => Summariser;
 } = {
   [AiProvider.Local]: () => new ExtractiveSummariser(),
-  [AiProvider.OpenAi]: (settings) => new OpenAiSummariser(settings),
-  [AiProvider.Gcp]: (settings, google) => new GcpSummariser(settings, google),
+  [AiProvider.OpenAi]: (settings) => openAiSummariser(settings),
+  // No `GoogleCredentials`: the AI SDK's Vertex provider mints its own token,
+  // from the same library and the same scope. The embedder still takes one.
+  [AiProvider.Gcp]: (settings) => vertexSummariser(settings),
 };
 
 export function buildEmbedder(

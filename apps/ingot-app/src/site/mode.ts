@@ -106,6 +106,13 @@ export interface SiteRoutes {
    * a reader looking at it has already done the thing the page describes.
    */
   readonly deployment: string | null;
+  /**
+   * What an agent gets back out, measured. `null` in a dashboard build, for
+   * the reason `why` and `deployment` are — and for one more: the page renders
+   * from a results file that a run publishes into the repository, which is a
+   * property of this project rather than of anybody's deployment.
+   */
+  readonly benchmarks: string | null;
 }
 
 /**
@@ -130,6 +137,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
     dashboard: landing ? null : `${basePath}/dashboard/`,
     why: landing ? `${basePath}/why/` : null,
     deployment: landing ? `${basePath}/deployment/` : null,
+    benchmarks: landing ? `${basePath}/benchmarks/` : null,
   };
 }
 
@@ -140,6 +148,7 @@ export const DOCS_HREF = ROUTES.docs;
 export const DASHBOARD_HREF = ROUTES.dashboard;
 export const WHY_HREF = ROUTES.why;
 export const DEPLOYMENT_HREF = ROUTES.deployment;
+export const BENCHMARKS_HREF = ROUTES.benchmarks;
 
 /**
  * Where the source is, which on a self-hosted-only project is the sign-up

@@ -3,7 +3,22 @@ import { DependencyUnavailable } from '../shared/domain/index.js';
 import { upstream } from '../observability/index.js';
 
 /** Vertex takes the broad platform scope; there is no narrower one for it. */
-const SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+export const SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+
+/**
+ * What to do about a Vertex credential that is missing or unprivileged.
+ *
+ * Exported because the summariser lets the AI SDK mint its own token and so
+ * never sees the errors below — it meets the same two failures as a 401 or a
+ * 403 instead, and this is the half of those messages that is advice rather
+ * than narration. One string, so the two paths cannot drift into telling an
+ * operator two different things about one credential.
+ */
+export const VERTEX_CREDENTIAL_ADVICE =
+  'This service authenticates with Application Default Credentials — under Kubernetes that ' +
+  "is the workload identity bound to the pod's service account, otherwise " +
+  'GOOGLE_APPLICATION_CREDENTIALS pointing at a key file. The service account needs ' +
+  'roles/aiplatform.user on the project in INGOT_GCP_PROJECT.';
 
 /**
  * Bearer tokens for Vertex AI, from whatever credential this process has.

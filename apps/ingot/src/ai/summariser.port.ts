@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * A stored tool result, described well enough to find it again.
  *
@@ -18,6 +20,29 @@ export interface Receipt {
   readonly summary: string;
   readonly searchTerm: string;
 }
+
+/**
+ * The same two fields, as a thing a provider can be *made* to produce.
+ *
+ * This is the reason the adapters went through the AI SDK. Asking for JSON in
+ * a system prompt and hoping is what `extractJson` below exists to survive;
+ * handing a schema down means OpenAI constrains decoding against it and Vertex
+ * gets a `responseSchema`, so the shape is the provider's problem rather than
+ * ours. The descriptions ride along into that schema, which is a second place
+ * the model is told what the field is for and costs nothing to say twice.
+ *
+ * Widths are not declared here. A model that overruns is clamped by
+ * `receiptFrom` either way, and a `max()` in the schema turns a long sentence
+ * into a refusal — a failed receipt rather than a slightly trimmed one.
+ */
+export const RECEIPT_SCHEMA = z.object({
+  summary: z
+    .string()
+    .describe('Two or three sentences on what this result is and which fields carry the values.'),
+  searchTerm: z
+    .string()
+    .describe('The question a future caller would ask to find this. At most twelve words.'),
+});
 
 /** What the model is shown. Enough to describe the data, never the whole tier. */
 export interface ReceiptRequest {
@@ -71,8 +96,6 @@ export const RECEIPT_INSTRUCTION = [
   'You are indexing a tool result so that an agent can find it again in a',
   'later session that remembers nothing about this one.',
   '',
-  'Reply with JSON only, exactly: {"summary": "...", "searchTerm": "..."}',
-  '',
   '- summary: two or three sentences on what this result is and which fields',
   '  carry the useful values. Name concrete identifiers that appear in it.',
   '- searchTerm: one short phrase, at most twelve words, written as the',
@@ -94,46 +117,45 @@ export function receiptPrompt(request: ReceiptRequest): string {
 }
 
 /**
- * Reads a model's answer, whatever it wrapped it in.
+ * Finds the object in a model's answer, whatever it wrapped it in.
  *
- * Shared because every provider gets this wrong the same way: a fenced code
- * block around otherwise perfect JSON, or a sentence of preamble before it.
- * Refusing those would make the feature fail for a reason the caller can
- * neither see nor fix, so the fence is stripped and the first object is taken.
+ * A schema is sent now, so most providers return bare JSON and this does
+ * nothing. It is still here for the case the OpenAI adapter exists to serve:
+ * `OPENAI_BASE_URL` pointing at a gateway that accepts `response_format` and
+ * quietly ignores it. Every one of those gets it wrong the same two ways — a
+ * fenced code block around otherwise perfect JSON, or a sentence of preamble
+ * before it — and refusing them would make the feature fail for a reason the
+ * caller can neither see nor fix.
  *
- * A response that is genuinely not JSON throws, and the job is retried — a
- * model that returns prose once usually does not the second time.
+ * Returns the text unchanged when there is no object in it, rather than
+ * throwing. This runs as a language-model middleware, where the whole call is
+ * already inside the SDK's own parse-and-validate; a throw from in here would
+ * replace "the model answered with prose" — which is what happened — with a
+ * stack from a transform, which is not.
  */
-export function parseReceipt(raw: string): Receipt {
+export function extractJson(raw: string): string {
   const fenced = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '');
   const start = fenced.indexOf('{');
   const end = fenced.lastIndexOf('}');
-  if (start === -1 || end <= start) {
-    throw new Error(`the model answered with no JSON object: ${preview(raw)}`);
-  }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(fenced.slice(start, end + 1));
-  } catch {
-    throw new Error(`the model answered with malformed JSON: ${preview(raw)}`);
-  }
+  return start === -1 || end <= start ? fenced : fenced.slice(start, end + 1);
+}
 
-  if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error(`the model answered with ${typeof parsed}, not an object`);
-  }
-
-  const { summary, searchTerm } = parsed as { summary?: unknown; searchTerm?: unknown };
-  if (typeof summary !== 'string' || typeof searchTerm !== 'string') {
-    throw new Error('the model answered without both "summary" and "searchTerm" as strings');
-  }
-
+/**
+ * The validated object, clamped to what the columns hold.
+ *
+ * Validation is the SDK's now — this is only the half that was never the
+ * model's business. A provider is entitled to write four paragraphs when it
+ * was asked for three sentences, and a stored summary that widened a column
+ * because one model was verbose is a migration, not a summary.
+ */
+export function receiptFrom(answer: z.infer<typeof RECEIPT_SCHEMA>): Receipt {
   return {
-    summary: clamp(summary, MAX_SUMMARY_CHARS),
-    searchTerm: clamp(searchTerm, MAX_SEARCH_TERM_CHARS),
+    summary: clamp(answer.summary, MAX_SUMMARY_CHARS),
+    searchTerm: clamp(answer.searchTerm, MAX_SEARCH_TERM_CHARS),
   };
 }
 
@@ -143,6 +165,7 @@ export function clamp(value: string, max: number): string {
   return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
 }
 
-function preview(raw: string): string {
+/** Enough of what a model said to recognise it in a log line, on one line. */
+export function preview(raw: string): string {
   return clamp(raw.replace(/\s+/g, ' '), 120);
 }
