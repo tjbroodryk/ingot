@@ -425,7 +425,7 @@ function HeatMatrix({
               `border-collapse: separate` only cells paint borders, so a rule
               on the group would simply not appear.
             */}
-            <tr className="bench-matrix-gap" aria-hidden="true">
+            <tr className="bench-matrix-gap">
               <td colSpan={categories.length + 1} />
             </tr>
             {controls.map((adapter) => (
