@@ -4,10 +4,14 @@
 #   ghcr.io/<owner>/<repo>/app          ← apps/ingot-app/Dockerfile  (the static site)
 #   ghcr.io/<owner>/<repo>/charts/ingot ← charts/ingot               (the Helm chart)
 #
-# A pull request builds both images and renders the chart, and pushes none of
-# the three — so anything that stopped working fails on the branch that broke it
-# rather than on the merge. `main` pushes the images. Only a `v*` tag publishes
-# the chart.
+# Both images are published for linux/amd64 and linux/arm64, as manifest lists —
+# one tag that resolves to whichever of the two the puller is. See the `build`
+# and `manifest` jobs for why that is four jobs and not one `platforms:` line.
+#
+# A pull request builds both images on both architectures and renders the chart,
+# and pushes none of the three — so anything that stopped working fails on the
+# branch that broke it rather than on the merge. `main` pushes the images. Only a
+# `v*` tag publishes the chart.
 #
 # The chart is a job here rather than a workflow of its own, and the `needs:`
 # line is the whole reason. A chart's default image tag is its own `appVersion`,
@@ -34,8 +38,21 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # ── the images, one job per (image, architecture) ───────────────────────────
+  # Four jobs rather than two, because the alternative is one `platforms:
+  # linux/amd64,linux/arm64` line on an amd64 runner, and everything after the
+  # comma would then be emulated. Neither Dockerfile is a cheap build under
+  # QEMU: between them they run `bun install` twice, `tsc`, `next build` under
+  # Turbopack, and a DuckDB that fetches and links two native extensions. An
+  # arm64 leg of that costs tens of minutes of emulation on every push.
+  #
+  # This repository is public, so `ubuntu-24.04-arm` is free and native. Each
+  # job builds its own architecture on its own hardware and pushes the result
+  # *by digest* — an unnamed, untagged blob in the registry. The `manifest` job
+  # below is what turns a pair of those into one tag.
   build:
-    runs-on: ubuntu-24.04
+    name: ${{ matrix.image.name }} · ${{ matrix.platform.arch }}
+    runs-on: ${{ matrix.platform.runner }}
     permissions:
       # `packages: write` is the whole of the registry credential: GITHUB_TOKEN
       # is already scoped to this repository's packages, so there is no PAT to
@@ -45,10 +62,12 @@ jobs:
 
     strategy:
       # One image failing must not cancel the other's push — a half-published
-      # pair is worse to reason about than one that plainly failed.
+      # pair is worse to reason about than one that plainly failed. The same
+      # goes across architectures: `manifest` needs both legs, and a leg that
+      # was cancelled tells you nothing about whether it would have built.
       fail-fast: false
       matrix:
-        include:
+        image:
           - name: server
             dockerfile: apps/ingot/Dockerfile
             title: ingot-server
@@ -57,6 +76,13 @@ jobs:
             dockerfile: apps/ingot-app/Dockerfile
             title: ingot-app
             description: Ingot — the dashboard and API reference
+        platform:
+          - id: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - id: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v4
@@ -74,10 +100,125 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Labels only. The tags belong to the manifest list, which is a thing
+      # this job does not build — so they are computed once more, from the same
+      # configuration, in `manifest` below. These labels are per-architecture
+      # and go into each image's own config, which is where they were before.
+      - name: Labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image.name }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.title }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          # The repository root, because both Dockerfiles consume workspace
+          # packages and `turbo prune` runs inside the build.
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          platforms: ${{ matrix.platform.id }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # `push-by-digest` uploads the image under its digest and no tag,
+          # which is what lets two runners push halves of the same tag without
+          # either of them briefly *being* that tag. `name-canonical` is what
+          # stamps the repository into the image so the digest is addressable
+          # as `…/server@sha256:…` afterwards.
+          #
+          # A pull request pushes nothing and has no packages scope to push
+          # with, so it builds to the cache and throws the result away; the
+          # point on that event is that the build still works, on both
+          # architectures.
+          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0}/{1}/{2},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, github.repository, matrix.image.name) }}
+          # The site is a static export, so the address of the API is inlined at
+          # build time rather than read at run time — which makes it a property
+          # of the image. Set the repository variable `INGOT_PUBLIC_API_URL` to
+          # the API's public address; without it the image is built against
+          # localhost and is only good for a local `docker run`.
+          build-args: |
+            NEXT_PUBLIC_INGOT_URL=${{ vars.INGOT_PUBLIC_API_URL || 'http://localhost:3002' }}
+          # Scoped per image *and* architecture. Sharing a scope across the two
+          # would be two builders overwriting each other's cache with layers the
+          # other cannot use — worse than no cache. Four scopes is more pressure
+          # on the 10 GB the Actions cache allows a repository, and the eviction
+          # that follows costs a rebuild rather than a wrong image. `mode=max`
+          # keeps the intermediate stages: the dependency layers are the
+          # expensive ones and they are the ones a source-only change reuses.
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          # Both produce an extra manifest that GHCR's package page renders as
+          # an `unknown/unknown` row beside the real image. Set them to `false`
+          # if that is more confusing than the attestations are worth. Off on a
+          # pull request, where there is nothing published for them to attest to
+          # and `cacheonly` has nowhere to write them.
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+
+      # The digest is the only thing that crosses between jobs — the image
+      # itself is already in the registry, unnamed. An empty file per digest,
+      # because an artifact is a set of files and the names are the payload.
+      - name: Export the digest
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/digests"
+          digest='${{ steps.build.outputs.digest }}'
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload the digest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── the manifest list ──────────────────────────────────────────────────────
+  # What makes `…/server:1.2.3` one name that resolves to two images. Nothing is
+  # rebuilt here: `imagetools create` writes an index over digests that are
+  # already in the registry, so this is a metadata push and takes seconds.
+  #
+  # Skipped on a pull request, where the digests it merges were never pushed.
+  manifest:
+    name: manifest · ${{ matrix.name }}
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [server, app]
+
+    steps:
+      - name: Collect the digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.name }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # `latest=auto` in the default flavour is what confines `:latest` to a
       # non-prerelease semver tag. It is deliberately not applied to `main`:
       # `:latest` should mean the newest release, not the newest commit.
-      - name: Tags and labels
+      - name: Tags
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -88,48 +229,44 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-          labels: |
-            org.opencontainers.image.title=${{ matrix.title }}
-            org.opencontainers.image.description=${{ matrix.description }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          # The repository root, because both Dockerfiles consume workspace
-          # packages and `turbo prune` runs inside the build.
-          context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # The site is a static export, so the address of the API is inlined at
-          # build time rather than read at run time — which makes it a property
-          # of the image. Set the repository variable `INGOT_PUBLIC_API_URL` to
-          # the API's public address; without it the image is built against
-          # localhost and is only good for a local `docker run`.
-          build-args: |
-            NEXT_PUBLIC_INGOT_URL=${{ vars.INGOT_PUBLIC_API_URL || 'http://localhost:3002' }}
-          # Scoped per image, so the two do not evict each other from the 10 GB
-          # the Actions cache allows a repository. `mode=max` keeps the
-          # intermediate stages — the dependency layers are the expensive ones
-          # and they are the ones a source-only change should reuse.
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-          # Both produce an extra manifest that GHCR's package page renders as
-          # an `unknown/unknown` row beside the real image. Set them to `false`
-          # if that is more confusing than the attestations are worth.
-          provenance: true
-          sbom: true
+      # Every tag is created in the one call, so a tag never exists pointing at
+      # half the architectures. The digests are the filenames the build jobs
+      # left behind; `imagetools` reads each one out of the registry and copies
+      # its manifests — the image and, since attestations are on, the provenance
+      # and SBOM that reference it — into a single index.
+      - name: Create the manifest list
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      # Prints the platforms of what was just published, which is the assertion
+      # this whole shape exists for: two rows, `linux/amd64` and `linux/arm64`.
+      - name: Inspect
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}:${{ steps.meta.outputs.version }}"
 
   # ── the chart ──────────────────────────────────────────────────────────────
   # Rendered on everything, published only from a `v*` tag.
   #
-  # `needs: build` waits for both images, and a matrix job that failed is not a
-  # `needs` that succeeded — so a half-published pair cannot be followed by a
-  # chart claiming the version is out.
+  # `needs` waits for every image on every architecture *and* for the manifest
+  # lists that name them, and a matrix job that failed is not a `needs` that
+  # succeeded — so a half-published pair, or a pair with no tag pointing at it,
+  # cannot be followed by a chart claiming the version is out.
+  #
+  # The condition is what a plain `needs` cannot express: `manifest` is skipped
+  # on a pull request, and a skipped dependency skips its dependents. The chart
+  # is rendered on pull requests on purpose, so it has to survive that — while
+  # still refusing to run after anything that actually failed.
   chart:
-    needs: build
+    needs: [build, manifest]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
