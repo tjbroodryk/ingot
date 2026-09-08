@@ -8,6 +8,8 @@ import { HyperspellAdapter } from '../adapters/hyperspell.js';
 import { IngotAdapter } from '../adapters/ingot.js';
 import { IngotRestAdapter } from '../adapters/ingot-rest.js';
 import { authoredMapping, type MappingSource } from '../adapters/ingot-mapping.js';
+import { PineconeAdapter } from '../adapters/pinecone.js';
+import { TurbopufferAdapter } from '../adapters/turbopuffer.js';
 import type { MemoryAdapter } from '../adapters/types.js';
 import { VectorAdapter } from '../adapters/vector.js';
 import { buildCorpus, corpusRefs } from '../corpus/stream.js';
@@ -24,7 +26,7 @@ import { scoreRun } from '../score/score.js';
 import { renderLine, renderReport, type RunRecord } from './report.js';
 import { publishable } from './publish.js';
 import { pool } from './pool.js';
-import { observedTextOf, readRun, writeMeta, type RunMeta } from './store.js';
+import { observedTextOf, readRuns, writeMeta, type RunMeta } from './store.js';
 
 /**
  * `ingot-mcp` and `ingot-rest` are the same store reached through two interfaces:
@@ -41,11 +43,47 @@ const ADAPTERS = [
   'ingot-rest',
   'ingot-rest-text-search-only',
   'vector',
+  'pinecone',
+  'turbopuffer',
   'hyperspell',
   'raw-context',
   'oracle',
 ] as const;
 type AdapterName = (typeof ADAPTERS)[number];
+
+/**
+ * The rows that rank the same vectors with a different index.
+ *
+ * `vector` is brute-force cosine in process; `pinecone` and `turbopuffer` are
+ * the two hosted vector databases, handed the identical embeddings, chunking
+ * and tool surface. They exist to answer the objection that `vector` is a
+ * strawman — if a production ANN index cannot beat forty lines of cosine over
+ * the same embeddings, then what the top-k rows cannot do is a property of
+ * top-k retrieval rather than of this repository's baseline. Expect them to
+ * land at or a little below `vector`, which is exact where they approximate;
+ * a *large* gap in either direction is a bug in the adapter, not a finding.
+ */
+const LOCAL_EMBEDDING_ADAPTERS: ReadonlySet<AdapterName> = new Set([
+  'vector',
+  'pinecone',
+  'turbopuffer',
+]);
+
+/**
+ * Names this tool used to answer to.
+ *
+ * Renaming a column is right when the old name misleads — `ingot` beside
+ * `ingot-rest` read as the product beside a variant, and `recall-only` was
+ * read as "SQL only" by people who had just been told otherwise. But a rename
+ * that breaks the command somebody has in their shell history is a rename that
+ * charges them for the improvement, so the old spelling still works and says
+ * what it is now called.
+ */
+const ALIASES: Readonly<Record<string, AdapterName>> = {
+  ingot: 'ingot-mcp',
+  'ingot-recall-only': 'ingot-mcp-text-search-only',
+  'ingot-rest-recall-only': 'ingot-rest-text-search-only',
+};
 
 const PROVIDERS: readonly Provider[] = ['anthropic', 'foundry-claude', 'foundry-gpt'];
 
@@ -149,6 +187,11 @@ function parse(argv: readonly string[]): Options {
           .split(',')
           .map((name) => name.trim())
           .map((name) => {
+            const renamed = ALIASES[name];
+            if (renamed) {
+              console.log(`note: "${name}" is now "${renamed}"`);
+              return renamed;
+            }
             if (!ADAPTERS.includes(name as AdapterName)) {
               throw new Error(`unknown adapter "${name}"; known: ${ADAPTERS.join(', ')}`);
             }
@@ -318,9 +361,14 @@ const HELP = `bun run bench [flags]
                          independent, so this is close to a linear speed-up —
                          at the cost of the ms column and of whatever your
                          provider's rate limit is. Ingest stays serial.
-  --from FILE.jsonl      Report on a finished run instead of buying a new one.
-                         Regenerates its .md, and with --publish writes the
-                         site's summary. Needs the .meta.json beside it.
+  --from A.jsonl,B.jsonl Report on finished runs instead of buying new ones.
+                         Regenerates the .md, and with --publish writes the
+                         site's summary. Needs the .meta.json beside each.
+                         More than one splices their columns into one table:
+                         every setting that could move a number has to match,
+                         no column may come from two files, and the result is
+                         written to --out as its own run, stamped with a
+                         warning saying which run each column came from.
   --rescore              With --from: run the scorer again over the stored
                          transcripts. The transcripts are never modified.
   --logs N               Add N log lines as ONE unpaginated tool result. (0)
@@ -345,6 +393,12 @@ Environment:
   INGOT_ACCOUNT          (dev)
   INGOT_API_KEY          The key the server was started with.
   HYPERSPELL_API_KEY     Only needed for --adapters hyperspell.
+  PINECONE_API_KEY       Only for --adapters pinecone. The index named by
+  PINECONE_INDEX         PINECONE_INDEX (ingot-bench) is created if missing,
+  PINECONE_CLOUD         serverless, at the width BENCH_EMBEDDER produces.
+  PINECONE_REGION        (aws / us-east-1)
+  TURBOPUFFER_API_KEY    Only for --adapters turbopuffer. The namespace is
+  TURBOPUFFER_REGION     created by the first write. (aws-us-east-1)
 `;
 
 async function build(
@@ -380,9 +434,32 @@ async function build(
         mapping,
       });
     case 'vector':
-      // The only adapter that embeds locally. Ingot's vectors are the
-      // server's, so a run without `vector` in it needs no embedder at all.
+      // These three embed here rather than server-side. Ingot's vectors are
+      // the server's, so a run without one of them in it needs no embedder.
       return new VectorAdapter(embedderFromEnv(env));
+    case 'pinecone':
+      return new PineconeAdapter(
+        {
+          apiKey: required('PINECONE_API_KEY', env.PINECONE_API_KEY),
+          index: env.PINECONE_INDEX ?? 'ingot-bench',
+          // us-east-1 on AWS for both hosted stores, so the `ms` column is not
+          // quietly reporting which region somebody's namespace ended up in.
+          cloud: env.PINECONE_CLOUD ?? 'aws',
+          region: env.PINECONE_REGION ?? 'us-east-1',
+          runId,
+        },
+        embedderFromEnv(env),
+      );
+    case 'turbopuffer':
+      return new TurbopufferAdapter(
+        {
+          apiKey: required('TURBOPUFFER_API_KEY', env.TURBOPUFFER_API_KEY),
+          region: env.TURBOPUFFER_REGION ?? 'aws-us-east-1',
+          ...(env.TURBOPUFFER_URL ? { baseUrl: env.TURBOPUFFER_URL } : {}),
+          runId,
+        },
+        embedderFromEnv(env),
+      );
     case 'hyperspell':
       return new HyperspellAdapter({
         apiKey: required('HYPERSPELL_API_KEY', env.HYPERSPELL_API_KEY),
@@ -436,10 +513,11 @@ async function main(options: Options): Promise<void> {
     return;
   }
 
-  // Only the `vector` adapter embeds locally, so only a run containing it can
-  // be spoiled by the offline stand-in. Demanding the flag for an Ingot-only
-  // run would be a guard against nothing.
-  const embedder = options.adapters.includes('vector') ? embedderFromEnv(process.env) : null;
+  // Only the locally-embedding adapters can be spoiled by the offline
+  // stand-in. Demanding the flag for an Ingot-only run, whose vectors are the
+  // server's, would be a guard against nothing.
+  const embedsLocally = options.adapters.some((name) => LOCAL_EMBEDDING_ADAPTERS.has(name));
+  const embedder = embedsLocally ? embedderFromEnv(process.env) : null;
   const warnings: string[] = [];
   // Operator detail; see `notes` on ReportHeader.
   const notes: string[] = [];
@@ -453,8 +531,12 @@ async function main(options: Options): Promise<void> {
       );
     }
     warnings.push(
-      'Run used the offline hash embedder for the `vector` adapter. ' +
-        'These numbers say nothing about semantic search.',
+      'Run used the offline hash embedder for ' +
+        options.adapters
+          .filter((name) => LOCAL_EMBEDDING_ADAPTERS.has(name))
+          .map((name) => `\`${name}\``)
+          .join(', ') +
+        '. These numbers say nothing about semantic search.',
     );
   }
 
@@ -669,8 +751,24 @@ async function emit(
  * it moved a number for a good reason.
  */
 async function replay(options: Options): Promise<void> {
-  const jsonlPath = required('--from', options.from);
-  const { meta, rows } = await readRun(jsonlPath);
+  const paths = required('--from', options.from)
+    .split(',')
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+  const { meta, rows } = await readRuns(paths);
+
+  // A merge is written out before anything is rendered from it, so what was
+  // published is one file somebody can `--from` again. A table that exists
+  // only as an argument list is a table nobody can reproduce — and the
+  // constituent runs are left exactly as they were, reports included.
+  let jsonlPath = paths[0] as string;
+  if (paths.length > 1) {
+    jsonlPath = join(options.out, `${meta.runId}.jsonl`);
+    await mkdir(options.out, { recursive: true });
+    await writeFile(jsonlPath, rows.map((row) => `${JSON.stringify(row)}\n`).join(''));
+    await writeMeta(jsonlPath, meta);
+    console.log(`merged ${paths.length} runs into ${jsonlPath}`);
+  }
 
   if (!options.rescore) {
     console.log(`${rows.length} rows from ${jsonlPath}, scored as they were bought`);

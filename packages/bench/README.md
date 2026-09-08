@@ -7,7 +7,8 @@ cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,oracle,raw-context
 bun run bench --adapters ingot,ingot-mcp-text-search-only,vector,hyperspell,raw-context,oracle
-bun run bench --adapters ingot,ingot-rest   # the same store, two interfaces
+bun run bench --adapters ingot,ingot-rest        # the same store, two interfaces
+bun run bench --adapters vector,pinecone,turbopuffer   # the same vectors, three indexes
 ```
 
 `--dry-run` is the place to start. It prints every question and every gold
@@ -34,8 +35,9 @@ There is a second way to win that has nothing to do with the data model.
 
 Over MCP, Ingot's tool names, descriptions and schema summary are written by
 the server — by the people shipping the product, who have every reason to write
-them well. `vector` and `hyperspell` get descriptions hand-written in this
-repository. So some share of any Ingot win is that it ships better prompt copy,
+them well. `vector`, `pinecone`, `turbopuffer` and `hyperspell` get one
+description hand-written in this repository, shared between them. So some share
+of any Ingot win is that it ships better prompt copy,
 and no single column can tell you how big that share is.
 
 `ingot-rest` is that share, isolated. It is the same server and the same
@@ -61,6 +63,49 @@ check whether we wrote them well or badly.
 
 `ingot-rest-text-search-only` is the same ablation as `ingot-mcp-text-search-only`, for the
 same reason.
+
+### Is the vector baseline a strawman?
+
+The obvious objection to `vector` is that it is ninety lines in this
+repository, written by the people whose product it is there to lose to. So the
+two hosted vector databases most likely to be on the other side of the argument
+are columns too:
+
+| | |
+| --- | --- |
+| `vector` | Brute-force cosine, in process. Exact. |
+| `pinecone` | A hosted ANN index, the category's default answer. |
+| `turbopuffer` | A hosted index built on object storage. |
+
+All three are handed the **identical vectors** — the same embedding model, the
+same record-level chunking, the same text — and reached through the **identical
+`search` tool**, written once in `src/adapters/semantic-search.ts` and imported
+by all of them along with `hyperspell`. A test asserts that they are
+byte-identical, because four hand-written copies of a tool description are four
+chances for one column to quietly acquire better prompt copy than the others
+and have it show up in the accuracy column wearing retrieval's clothes.
+
+That leaves exactly one difference between the three: how the nearest vectors
+are found. Which means the expected result is that they land within noise of
+each other, `vector` a shade ahead because it is exact where the other two
+approximate — and that is the point of running them. If a hosted vector
+database cannot beat brute-force cosine over the same embeddings, then what the
+top-k rows cannot do is a property of top-k retrieval rather than of a baseline
+chosen to be weak. A *large* gap in either direction is a bug in an adapter,
+not a finding.
+
+Two configuration choices are worth stating, because both could be argued the
+other way and both were made against these columns' interest:
+
+- **Neither store's own embedding model is used.** Pinecone's integrated
+  inference would embed with `llama-text-embed-v2` and turbopuffer's with its
+  own default, and either row would then differ from the rest of the table in
+  two ways at once. One embedder across the whole table is the rule; see
+  [fairness](#fairness).
+- **turbopuffer's full-text index is off.** It will do BM25 alongside vectors
+  if the schema asks for it, and switching it on would make that row a hybrid
+  search while the other two stay dense-only. Hybrid retrieval is a real
+  question and it deserves its own column, not a silent edge in this one.
 
 ## What is measured
 
@@ -150,6 +195,21 @@ Everything below is a rule the harness enforces, not an aspiration.
 - **`k` up to 50.** The vector adapters may return fifty records per call, so
   what they cannot do is a property of top-k retrieval rather than of a
   stingy default.
+- **One search surface, shared by every top-k row.** `vector`, `pinecone`,
+  `turbopuffer` and `hyperspell` import the same system note and the same tool
+  from `src/adapters/semantic-search.ts`, and a test asserts they are
+  identical. Only where the vectors live and how they are ranked differs. See
+  [is the vector baseline a strawman?](#is-the-vector-baseline-a-strawman)
+- **A hosted store is never asked to embed.** Pinecone and turbopuffer both
+  offer server-side embedding; using it would put a second embedding model in
+  the table and break the rule above.
+- **Each run gets its own namespace.** Pinecone and turbopuffer are written to
+  a namespace named for the run, so a shared account cannot leak one run's
+  corpus into another's results — and because that namespace holds this run's
+  vectors and nothing else, it is dropped on the way out. Hyperspell's store is
+  account-wide with no such boundary, so that adapter filters instead of
+  deleting; issuing bulk deletes against somebody's account is the worse
+  failure mode.
 - **Ingot's schema summary is passed through.** The MCP server hands it over at
   connect time and it costs no tool call. Withholding it to make the columns
   look more alike would benchmark a version of Ingot nobody ships.
@@ -229,7 +289,7 @@ part of `bun run test` at the repository root, and spends real money.
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
 --adapters a,b,c       ingot, ingot-mcp-text-search-only, ingot-rest, ingot-rest-text-search-only,
-                       vector, hyperspell, raw-context, oracle
+                       vector, pinecone, turbopuffer, hyperspell, raw-context, oracle
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
 --max-tool-calls N     Retrieval budget per question, identical for every adapter. (12)
@@ -240,7 +300,8 @@ part of `bun run test` at the repository root, and spends real money.
                        Adaptive thinking on Claude, reasoningEffort on GPT.
 --no-thinking          Send no reasoning settings at all.
 --publish FILE         Also write the site's summary JSON here.
---from FILE.jsonl      Report on a finished run instead of buying a new one.
+--from A.jsonl,B.jsonl Report on finished runs instead of buying new ones.
+                       More than one splices their columns into one table.
 --rescore              With --from: run the scorer again over the transcripts.
 --mapping MODE         authored | agent
 --categories a,b       Restrict to these question categories.
@@ -260,6 +321,10 @@ part of `bun run test` at the repository root, and spends real money.
 | `INGOT_ACCOUNT` | `dev` |
 | `INGOT_API_KEY` | The key the server was started with |
 | `HYPERSPELL_API_KEY` | Only for `--adapters hyperspell` |
+| `PINECONE_API_KEY` | Only for `--adapters pinecone` |
+| `PINECONE_INDEX`, `PINECONE_CLOUD`, `PINECONE_REGION` | `ingot-bench`, `aws`, `us-east-1`. The index is created, serverless, at whatever width `BENCH_EMBEDDER` produces, and an existing one of the wrong width or metric is refused rather than silently used |
+| `TURBOPUFFER_API_KEY` | Only for `--adapters turbopuffer` |
+| `TURBOPUFFER_REGION` | `aws-us-east-1` — it is part of the hostname, and a namespace lives in one region. The default matches Pinecone's so the `ms` column is not reporting geography |
 
 The Ingot adapters need a running server (`bun run db:up && bun run dev`).
 `ingot-mcp` and `ingot-mcp-text-search-only` reach it over MCP, because the tool names, the
@@ -268,11 +333,46 @@ agent gets; `ingot-rest` and `ingot-rest-text-search-only` reach the same store 
 `/add` and `/query` with tools authored here. See [the interface
 question](#the-interface-question) for why both are in the table.
 
+`pinecone` and `turbopuffer` need nothing running and nothing set up beyond a
+key: each run creates its own namespace, and drops it on the way out. Pinecone
+additionally creates the index itself the first time, at whatever width the
+configured embedder produces.
+
+### Adding a column without re-buying the table
+
+A new adapter arrives and the nine columns beside it have not changed. Buying
+them again is hours and real money for numbers nobody expects to move, so
+`--from` takes more than one run and splices them:
+
+```bash
+bun run bench --adapters pinecone,turbopuffer --concurrency 5
+bun run bench --from results/OLD.jsonl,results/NEW.jsonl \
+  --publish ../../apps/ingot-app/src/benchmarks/results.json
+```
+
+This is the easiest way to publish something that looks like a comparison and
+is not, so the merge refuses rather than concatenates:
+
+- **Every setting that could move a number has to match** — seed, per-template,
+  repeats, tool-call budget, model, provider, effort, thinking, mapping,
+  embedder, logs. A mismatch names the field and both values and stops.
+  `concurrency` is exempt: it moves only the `ms` column, which is not
+  published, and a note records it when the runs disagree.
+- **No column may come from two files.** Which of the two a reader should see
+  is not a thing the harness can decide.
+- **The table says it was spliced.** The merged run carries a warning naming
+  which run each column came from, and warnings are the half of the provenance
+  the site puts in front of every reader. Everything that decides a number was
+  held equal, but the runs were bought at different times, and that is the
+  reader's to weigh rather than ours to omit.
+- **The merge is written out as its own run**, so what was published is one
+  file that can be `--from`-ed again. The constituent runs are untouched.
+
 ### How long it takes, and what to do about it
 
-A default full run is 25 questions × 3 repeats × 8 adapters — around 580 agent
-runs. Measured over real transcripts, one run averages 30 seconds, so serial
-that is about five hours.
+A full run is 25 questions × 3 repeats × 10 adapters — around 730 agent runs.
+Measured over real transcripts, one run averages 30 seconds, so serial that is
+about six hours.
 
 Almost none of it is retrieval:
 
@@ -290,7 +390,7 @@ So `--concurrency N` runs N questions in flight within an adapter, and the
 speed-up is close to linear:
 
 ```bash
-bun run bench --concurrency 8    # ~5 hours becomes ~40 minutes
+bun run bench --concurrency 8    # ~6 hours becomes ~45 minutes
 ```
 
 It defaults to 1, because it costs two things worth deciding on rather than

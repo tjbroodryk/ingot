@@ -1,9 +1,13 @@
 import { flattenRecords, type CorpusRecord } from '../corpus/records.js';
 import type { ToolResult } from '../corpus/stream.js';
 import { pool } from '../run/pool.js';
-import { schema, type AdapterTool, type MemoryAdapter } from './types.js';
-
-const MAX_K = 50;
+import {
+  clampK,
+  renderHits,
+  SEMANTIC_SEARCH_NOTE,
+  SEMANTIC_SEARCH_TOOL,
+} from './semantic-search.js';
+import type { AdapterTool, MemoryAdapter } from './types.js';
 
 interface AddResponse {
   readonly resource_id: string;
@@ -115,50 +119,23 @@ export class HyperspellAdapter implements MemoryAdapter {
   }
 
   async systemNote(): Promise<string> {
-    return (
-      'Your memory is a semantic index over the stored records. ' +
-      'The only way to reach it is `search`, which returns the records whose ' +
-      'text is closest in meaning to your query.'
-    );
+    return SEMANTIC_SEARCH_NOTE;
   }
 
   tools(): readonly AdapterTool[] {
-    return [
-      {
-        name: 'search',
-        description:
-          'Search the stored records by meaning. Returns the k records closest to your query, ' +
-          'best first, with a similarity score.',
-        input_schema: schema(
-          {
-            query: { type: 'string', description: 'What you are looking for, in plain language' },
-            k: {
-              type: 'integer',
-              minimum: 1,
-              maximum: MAX_K,
-              description: `How many records to return. Default 10, maximum ${MAX_K}.`,
-            },
-          },
-          ['query'],
-        ),
-      },
-    ];
+    return [SEMANTIC_SEARCH_TOOL];
   }
 
   async call(name: string, input: Record<string, unknown>): Promise<string> {
     if (name !== 'search') throw new Error(`hyperspell: no tool named ${name}`);
 
-    const k = Math.min(Number(input.k ?? 10) || 10, MAX_K);
-    const body = await this.query(String(input.query ?? ''), k);
-    const documents = body.documents ?? [];
-    if (documents.length === 0) return 'No records.';
-
-    return documents
-      .map((document, position) => {
-        const score = typeof document.score === 'number' ? ` score=${document.score.toFixed(4)}` : '';
-        return `#${position + 1}${score}\n${render(document)}`;
-      })
-      .join('\n\n');
+    const body = await this.query(String(input.query ?? ''), clampK(input.k));
+    return renderHits(
+      (body.documents ?? []).map((document) => ({
+        score: typeof document.score === 'number' ? document.score : null,
+        text: render(document),
+      })),
+    );
   }
 
   private query(query: string, k: number): Promise<QueryResponse> {

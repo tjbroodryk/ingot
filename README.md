@@ -51,9 +51,10 @@ Each app has its own README and it is the longer answer:
 [the server](apps/ingot/README.md), [the site](apps/ingot-app/README.md).
 
 `packages/bench` measures what an agent gets back out of a memory, and what it
-costs — Ingot against a vector baseline, against Hyperspell, and against its
-own embedding path with SQL taken away. It needs API keys and spends money, so
-it is deliberately not part of `bun run test`:
+costs — Ingot against a local vector baseline, against Pinecone, turbopuffer
+and Hyperspell, and against its own embedding path with SQL taken away. It
+needs API keys and spends money, so it is deliberately not part of
+`bun run test`:
 [the methodology](packages/bench/README.md).
 
 ## The shape
