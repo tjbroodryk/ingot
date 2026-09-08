@@ -121,12 +121,16 @@ describe('merging finished runs', () => {
     name: string,
     meta: Partial<RunMeta>,
     adapters: readonly string[],
+    // Which questions each of those adapters answered in this file. One by
+    // default, because most of these tests are about columns; a top-up run is
+    // the same columns over different questions.
+    questions: readonly string[] = ['q-001'],
   ): Promise<string> => {
     const jsonl = join(dir, `${name}.jsonl`);
-    await writeFile(
-      jsonl,
-      adapters.map((adapter) => `${JSON.stringify({ ...ROW, adapter })}\n`).join(''),
+    const rows = adapters.flatMap((adapter) =>
+      questions.map((questionId) => JSON.stringify({ ...ROW, adapter, questionId })),
     );
+    await writeFile(jsonl, `${rows.join('\n')}\n`);
     await writeMeta(jsonl, { ...META, runId: name, adapters, ...meta });
     return jsonl;
   };
@@ -193,12 +197,54 @@ describe('merging finished runs', () => {
     expect(readRuns([base, hashed])).rejects.toThrow(/embedder="hash-bow-v1"/);
   });
 
-  test('refuses a column that is in both files', async () => {
+  test('refuses a column that answers the same question in both files', async () => {
     const dir = await scratch();
     const base = await write(dir, 'base', {}, ['vector', 'oracle']);
     const again = await write(dir, 'again', {}, ['vector']);
 
-    expect(readRuns([base, again])).rejects.toThrow(/`vector` has rows in both/);
+    expect(readRuns([base, again])).rejects.toThrow(/`vector` answers q-001 in both/);
+  });
+
+  /**
+   * The top-up: the same columns, the questions they had not been asked.
+   *
+   * This is the merge that a column-wide rule would have refused, and it is
+   * the one the question set growing makes necessary. Accuracy is a mean over
+   * rows, so a mean over two disjoint halves is the mean over the whole — the
+   * table is what one sitting would have produced, and the only thing that
+   * differs is when the rows were bought.
+   */
+  test('joins the same columns over questions neither file duplicates', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector', 'oracle'], ['q-001', 'q-002']);
+    const topUp = await write(dir, 'top-up', {}, ['vector', 'oracle'], ['q-003']);
+
+    const merged = await readRuns([base, topUp]);
+    expect(merged.rows).toHaveLength(6);
+    expect(new Set(merged.rows.map((row) => row.questionId))).toEqual(
+      new Set(['q-001', 'q-002', 'q-003']),
+    );
+
+    // And the reader is told, because a column finished across two sittings is
+    // not the same claim as a column bought in one.
+    const [warning] = merged.meta.warnings;
+    expect(warning).toContain('`vector`, `oracle` from base on 2 questions');
+    // Named once. The second run's columns are the same nine (here two), and
+    // repeating them buries which questions came from where.
+    expect(warning).toContain('the same columns from top-up on 1 question');
+    expect(warning).toContain('finished across more than one sitting');
+  });
+
+  test('says nothing about sittings when the runs split by column instead', async () => {
+    const dir = await scratch();
+    const base = await write(dir, 'base', {}, ['vector'], ['q-001', 'q-002']);
+    const extra = await write(dir, 'extra', {}, ['pinecone'], ['q-001', 'q-002']);
+
+    const merged = await readRuns([base, extra]);
+
+    const [warning] = merged.meta.warnings;
+    expect(warning).not.toContain('sitting');
+    expect(warning).toContain('`vector` from base;');
   });
 
   test('carries every input run’s own warnings through, once', async () => {

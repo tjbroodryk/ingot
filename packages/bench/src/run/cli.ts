@@ -8,6 +8,7 @@ import { HyperspellAdapter } from '../adapters/hyperspell.js';
 import { IngotAdapter } from '../adapters/ingot.js';
 import { IngotRestAdapter } from '../adapters/ingot-rest.js';
 import { authoredMapping, type MappingSource } from '../adapters/ingot-mapping.js';
+import { LEGACY_NAMES } from '../adapters/names.js';
 import { PineconeAdapter } from '../adapters/pinecone.js';
 import { TurbopufferAdapter } from '../adapters/turbopuffer.js';
 import type { MemoryAdapter } from '../adapters/types.js';
@@ -26,7 +27,7 @@ import { scoreRun } from '../score/score.js';
 import { renderLine, renderReport, type RunRecord } from './report.js';
 import { publishable } from './publish.js';
 import { pool } from './pool.js';
-import { observedTextOf, readRuns, writeMeta, type RunMeta } from './store.js';
+import { observedTextOf, readRun, readRuns, writeMeta, type RunMeta } from './store.js';
 
 /**
  * `ingot-mcp` and `ingot-rest` are the same store reached through two interfaces:
@@ -39,9 +40,9 @@ import { observedTextOf, readRuns, writeMeta, type RunMeta } from './store.js';
  */
 const ADAPTERS = [
   'ingot-mcp',
-  'ingot-mcp-text-search-only',
+  'control-same-store-top-k',
   'ingot-rest',
-  'ingot-rest-text-search-only',
+  'control-same-store-top-k-rest',
   'vector',
   'pinecone',
   'turbopuffer',
@@ -73,17 +74,17 @@ const LOCAL_EMBEDDING_ADAPTERS: ReadonlySet<AdapterName> = new Set([
  * Names this tool used to answer to.
  *
  * Renaming a column is right when the old name misleads — `ingot` beside
- * `ingot-rest` read as the product beside a variant, and `recall-only` was
- * read as "SQL only" by people who had just been told otherwise. But a rename
- * that breaks the command somebody has in their shell history is a rename that
- * charges them for the improvement, so the old spelling still works and says
- * what it is now called.
+ * `ingot-rest` read as the product beside a variant, `recall-only` was read as
+ * "SQL only" by people who had just been told otherwise, and
+ * `ingot-mcp-text-search-only` read as an admission rather than as the control
+ * a sceptic should demand. But a rename that breaks the command somebody has
+ * in their shell history is a rename that charges them for the improvement, so
+ * every old spelling still works and says what it is now called.
+ *
+ * The table is shared with `store.ts`, which resolves the same names where
+ * they are stored rather than typed. See `../adapters/names.ts`.
  */
-const ALIASES: Readonly<Record<string, AdapterName>> = {
-  ingot: 'ingot-mcp',
-  'ingot-recall-only': 'ingot-mcp-text-search-only',
-  'ingot-rest-recall-only': 'ingot-rest-text-search-only',
-};
+const ALIASES = LEGACY_NAMES as Readonly<Record<string, AdapterName>>;
 
 const PROVIDERS: readonly Provider[] = ['anthropic', 'foundry-claude', 'foundry-gpt'];
 
@@ -133,6 +134,15 @@ interface Options {
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
   from: string | null;
+  /**
+   * A finished run's JSONL whose questions this run should skip.
+   *
+   * The top-up: the generator gained a template, and the eight new questions
+   * are the only ones worth paying for. What comes back merges with the run it
+   * names — `--from old.jsonl,new.jsonl` — into the table a single sitting
+   * would have produced.
+   */
+  questionsNotIn: string | null;
   /** With `--from`: run the scorer again over the stored transcripts. */
   rescore: boolean;
 }
@@ -140,7 +150,7 @@ interface Options {
 function parse(argv: readonly string[]): Options {
   const options: Options = {
     seed: 1,
-    adapters: ['ingot-mcp', 'ingot-mcp-text-search-only', 'vector', 'raw-context', 'oracle'],
+    adapters: ['ingot-mcp', 'control-same-store-top-k', 'vector', 'raw-context', 'oracle'],
     repeats: 3,
     perTemplate: 3,
     maxToolCalls: 12,
@@ -165,6 +175,7 @@ function parse(argv: readonly string[]): Options {
     // purpose rather than inherit from a default.
     concurrency: 1,
     from: null,
+    questionsNotIn: null,
     rescore: false,
   };
 
@@ -264,6 +275,10 @@ function parse(argv: readonly string[]): Options {
         options.from = next(flag, value);
         at += 1;
         break;
+      case '--questions-not-in':
+        options.questionsNotIn = next(flag, value);
+        at += 1;
+        break;
       case '--rescore':
         options.rescore = true;
         break;
@@ -361,6 +376,12 @@ const HELP = `bun run bench [flags]
                          independent, so this is close to a linear speed-up —
                          at the cost of the ms column and of whatever your
                          provider's rate limit is. Ingest stays serial.
+  --questions-not-in F   Ask only the questions F does not already answer, for
+                         when the generator gained a template and the table is
+                         short by however many it produced. Refuses if F's seed,
+                         --per-template or --logs differ, since question ids
+                         would then name different questions. Merge the result
+                         back with --from F,<this run>.
   --from A.jsonl,B.jsonl Report on finished runs instead of buying new ones.
                          Regenerates the .md, and with --publish writes the
                          site's summary. Needs the .meta.json beside each.
@@ -414,7 +435,7 @@ async function build(
 
   switch (name) {
     case 'ingot-mcp':
-    case 'ingot-mcp-text-search-only':
+    case 'control-same-store-top-k':
       return new IngotAdapter({
         baseUrl: env.INGOT_URL ?? 'http://localhost:3002',
         account: env.INGOT_ACCOUNT ?? 'dev',
@@ -424,7 +445,7 @@ async function build(
         mapping,
       });
     case 'ingot-rest':
-    case 'ingot-rest-text-search-only':
+    case 'control-same-store-top-k-rest':
       return new IngotRestAdapter({
         baseUrl: env.INGOT_URL ?? 'http://localhost:3002',
         account: env.INGOT_ACCOUNT ?? 'dev',
@@ -480,6 +501,48 @@ function required(name: string, value: string | undefined | null): string {
   return value;
 }
 
+/**
+ * The questions a finished run has not already answered.
+ *
+ * The case this exists for: a template is added to the generator, and the
+ * table already published is short by however many questions it produced.
+ * Re-buying the whole set is hours and real money for numbers that will not
+ * move, so this buys the difference and `--from old,new` splices the two into
+ * the table one sitting would have produced.
+ *
+ * The settings check is the load-bearing part. Question ids are positional —
+ * `q-026` is whatever the twenty-sixth question happened to be — so they only
+ * name the same question across two runs if the world and the generator were
+ * the same. A seed that differs makes the subtraction quietly meaningless
+ * rather than wrong-looking, which is the worst way for it to fail.
+ */
+async function onlyMissingFrom(
+  questions: readonly Question[],
+  options: Options,
+): Promise<readonly Question[]> {
+  const path = options.questionsNotIn as string;
+  const { meta, rows } = await readRun(path);
+
+  const defining: readonly (keyof Options & keyof RunMeta)[] = ['seed', 'perTemplate', 'logs'];
+  for (const key of defining) {
+    if (meta[key] === options[key]) continue;
+    throw new Error(
+      `${path} was run with ${key}=${JSON.stringify(meta[key])} and this one has ` +
+        `${JSON.stringify(options[key])}. Those are different question sets, so the ids in it ` +
+        'name different questions and subtracting them would compare nothing. Match the ' +
+        'setting, or run the whole set.',
+    );
+  }
+
+  const answered = new Set(rows.map((row) => row.questionId));
+  const missing = questions.filter((question) => !answered.has(question.id));
+  console.log(
+    `top-up: ${answered.size} question(s) already answered in ${meta.runId}, ` +
+      `${missing.length} left to buy`,
+  );
+  return missing;
+}
+
 async function main(options: Options): Promise<void> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
 
@@ -487,14 +550,27 @@ async function main(options: Options): Promise<void> {
   const corpus = buildCorpus(world);
   const knownRefs = corpusRefs(corpus);
   const all = buildQuestions(world, { perTemplate: options.perTemplate });
-  const questions = options.categories
+  const byCategory = options.categories
     ? all.filter((question) => options.categories?.includes(question.category))
     : all;
+  const questions = options.questionsNotIn
+    ? await onlyMissingFrom(byCategory, options)
+    : byCategory;
 
   console.log(
     `corpus: ${corpus.length} tool results, ${knownRefs.size} records\n` +
       `questions: ${questions.length} — ${JSON.stringify(categoryCounts(questions))}`,
   );
+
+  if (questions.length === 0) {
+    console.log(
+      options.questionsNotIn
+        ? `Nothing to buy: ${options.questionsNotIn} already answers every question this run ` +
+            'would ask. Report on it with --from.'
+        : 'No questions match those filters, so there is nothing to run.',
+    );
+    return;
+  }
 
   if (options.dryRun) {
     for (const question of questions) {
@@ -555,6 +631,17 @@ async function main(options: Options): Promise<void> {
   if (!options.thinking) {
     warnings.push(
       'Run sent no reasoning settings. Not comparable with a run that did.',
+    );
+  }
+  if (options.questionsNotIn) {
+    // A warning rather than a note: this run's accuracy is over a handful of
+    // questions chosen because they were missing, which is not a sample of the
+    // set and reads nothing like one. Worded to stay true after the merge
+    // inherits it, since every warning here outlives the run that wrote it.
+    warnings.push(
+      `Bought as a top-up: this run asked only the ${questions.length} question(s) that ` +
+        `${options.questionsNotIn} had not already answered. On its own that is a slice of the ` +
+        'question set rather than a sample of it.',
     );
   }
   if (options.concurrency > 1) {

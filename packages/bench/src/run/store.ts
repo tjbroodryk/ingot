@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { canonicalAdapter } from '../adapters/names.js';
 import type { ReportHeader, RunRecord } from './report.js';
 
 /**
@@ -63,10 +64,21 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
   const rows = text
     .split('\n')
     .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as RunRecord);
+    .map((line) => JSON.parse(line) as RunRecord)
+    // A run carries the name its columns were bought under, for ever. A column
+    // renamed since then is still the same column — same store, same tools,
+    // same questions — and a table that showed it twice under two spellings
+    // would be reporting a difference that does not exist. The transcript on
+    // disk is left exactly as it was written: it is the record of what ran,
+    // not a document to be brought up to date.
+    .map((row) => ({ ...row, adapter: canonicalAdapter(row.adapter) }));
 
   if (rows.length === 0) throw new Error(`${jsonlPath} has no rows in it`);
-  return { meta, rows };
+  // The sidecar names the columns the run was asked for, including any it never
+  // reached, so it needs the same treatment as the rows or a merge would report
+  // a column under one name and list it under another.
+  const adapters = meta.adapters.map(canonicalAdapter);
+  return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
 }
 
 /**
@@ -143,26 +155,76 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
     }
   }
 
+  /*
+   * The cell, not the column, is what may not come from two files.
+   *
+   * A column-wide rule is the obvious reading of "no run may contradict
+   * another", and it is too strong by exactly one useful case: a question set
+   * that grew. When a template is added to the generator, buying the eight new
+   * questions for the columns already in the table is the same arithmetic as
+   * having bought them in the first sitting — accuracy is a mean over rows, and
+   * a mean over two disjoint halves is the mean over the whole. What must never
+   * happen is two files holding an answer to the *same* question by the same
+   * adapter, because nothing here can decide which one the reader should see.
+   *
+   * So the key is (adapter, question). Repeats within one file are the point of
+   * repeats; the same pair across two files is the ambiguity worth refusing.
+   */
   const from = new Map<string, string>();
+  const columnsOf = new Map<string, Set<string>>();
+  const questionsOf = new Map<string, Set<string>>();
   for (const run of runs) {
     for (const row of run.rows) {
-      const already = from.get(row.adapter);
+      const cell = `${row.adapter} ${row.questionId}`;
+      const already = from.get(cell);
       if (already && already !== run.meta.runId) {
         throw new Error(
-          `\`${row.adapter}\` has rows in both ${already} and ${run.meta.runId}. Which of the ` +
-            'two the table should show is not something this can decide for you; pass only the ' +
-            'file holding the column you meant.',
+          `\`${row.adapter}\` answers ${row.questionId} in both ${already} and ` +
+            `${run.meta.runId}. Which of the two the table should show is not something this ` +
+            'can decide for you; pass only the file holding the rows you meant.',
         );
       }
-      from.set(row.adapter, run.meta.runId);
+      from.set(cell, run.meta.runId);
+
+      const columns = columnsOf.get(run.meta.runId) ?? new Set<string>();
+      columns.add(row.adapter);
+      columnsOf.set(run.meta.runId, columns);
+
+      const asked = questionsOf.get(run.meta.runId) ?? new Set<string>();
+      asked.add(row.questionId);
+      questionsOf.set(run.meta.runId, asked);
     }
   }
 
-  const contributed = runs.map((run) => {
-    const columns = [...from]
-      .filter(([, runId]) => runId === run.meta.runId)
-      .map(([adapter]) => `\`${adapter}\``);
-    return `${columns.join(', ')} from ${run.meta.runId}`;
+  // Whether any column was completed across more than one sitting, which
+  // decides how the provenance has to read: "these columns came from there" is
+  // the wrong sentence for a table where one column's questions came from two
+  // files, and the reader is owed the true one.
+  const toppedUp = runs.some((run) =>
+    runs.some(
+      (other) =>
+        other.meta.runId !== run.meta.runId &&
+        [...(columnsOf.get(run.meta.runId) ?? [])].some((adapter) =>
+          columnsOf.get(other.meta.runId)?.has(adapter),
+        ),
+    ),
+  );
+
+  const columnsIn = (runId: string): readonly string[] => [...(columnsOf.get(runId) ?? [])];
+  const leading = columnsIn(base.meta.runId).join(' ');
+
+  const contributed = runs.map((run, index) => {
+    const columns = columnsIn(run.meta.runId);
+    const asked = questionsOf.get(run.meta.runId)?.size ?? 0;
+    const scope = toppedUp ? ` on ${asked} question${asked === 1 ? '' : 's'}` : '';
+    // A top-up is the same nine columns twice, and naming all of them again
+    // buries the one thing that sentence has to say — which questions came
+    // from where — under a repeated list.
+    const named =
+      index > 0 && columns.join(' ') === leading
+        ? 'the same columns'
+        : columns.map((adapter) => `\`${adapter}\``).join(', ');
+    return `${named} from ${run.meta.runId}${scope}`;
   });
 
   const runId = `combined-seed${base.meta.seed}-${stamp()}`;
@@ -171,7 +233,12 @@ export async function readRuns(paths: readonly string[]): Promise<StoredRun> {
     `This table was assembled from ${runs.length} runs with identical settings — same seed, ` +
       `model, provider, effort, budget and repeats. ${contributed.join('; ')}. Everything ` +
       'that decides a number was held equal, but the runs were bought at different times, ' +
-      'so a column is only as comparable as the provider was stable between them.',
+      'so a column is only as comparable as the provider was stable between them.' +
+      (toppedUp
+        ? ' A column here was finished across more than one sitting: the question set grew, ' +
+          'the questions it had not been asked were bought later, and its accuracy averages ' +
+          'both together.'
+        : ''),
   );
 
   const notes = new Set(runs.flatMap((run) => run.meta.notes));

@@ -6,7 +6,7 @@ What an agent can get back out, and what it costs to get it.
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,oracle,raw-context
-bun run bench --adapters ingot,ingot-mcp-text-search-only,vector,hyperspell,raw-context,oracle
+bun run bench --adapters ingot,control-same-store-top-k,vector,hyperspell,raw-context,oracle
 bun run bench --adapters ingot,ingot-rest        # the same store, two interfaces
 bun run bench --adapters vector,pinecone,turbopuffer   # the same vectors, three indexes
 ```
@@ -23,10 +23,10 @@ embeddings". It is **whether typed rows and SQL, on top of the same
 embeddings, retrieve better than the embeddings alone** — and, separately, what
 each answer costs in context.
 
-That is why `ingot-mcp-text-search-only` exists and why it is the most important column
+That is why `control-same-store-top-k` exists and why it is the most important column
 in the table. It is the same store, the same rows and the same vectors, reached
 only through top-k semantic search. If Ingot beats a vector store but
-`ingot-mcp-text-search-only` beats it by the same margin, the win came from chunking,
+`control-same-store-top-k` beats it by the same margin, the win came from chunking,
 not from structure, and the honest conclusion is a smaller one.
 
 ### The interface question
@@ -61,7 +61,7 @@ table with only `ingot-rest` in it just moves the thumb to the other side of the
 scale, since then *we* are the ones writing Ingot's descriptions and nobody can
 check whether we wrote them well or badly.
 
-`ingot-rest-text-search-only` is the same ablation as `ingot-mcp-text-search-only`, for the
+`control-same-store-top-k-rest` is the same ablation as `control-same-store-top-k`, for the
 same reason.
 
 ### Is the vector baseline a strawman?
@@ -149,11 +149,27 @@ per category and the mix is always visible:
 | Category | Example | Why it is here |
 | --- | --- | --- |
 | `aggregate` | how many PRs touched `src/auth/` | A statistic over the whole corpus, not a lookup |
-| `absence` | which services have no owner | There is no text to be similar to |
+| `absence` | which services have no owner, which have no incident | There is no text to be similar to |
 | `ordering` | the three longest CI runs | Requires a total order, not a neighbourhood |
-| `join` | PRs by X that had a failing run | Two record types, one predicate |
+| `join` | open PRs touching a file owned by the `infra` team | Two or three tool results, joined on an undeclared key |
 | `semantic` | which incident was caused by … | The paraphrase shares no distinctive term with the write-up |
 | `multi-hop` | which team owns the service with the most incidents | Two hops and an argmax |
+
+`join` is where the corpus being *tool results* rather than documents starts to
+bite. The easy half of the category is a predicate over one payload. The other
+half is not: the team that owns a service is in `catalog.list_services`, the
+path-to-service mapping is in `catalog.list_files`, and the change itself is in
+`github.list_pull_requests` — three results, arriving at different times,
+sharing nothing but a bare string in a field that nobody declared as a key. No
+single record is similar to the question, because the record that would answer
+it outright does not exist. Either retrieval brings back two disjoint sets and
+the model joins them, or the store joins them before the model sees anything.
+
+The same argument makes the `absence` category's anti-join — which services
+have had no incidents — different in kind from its ownerless services. A null
+`owner` is *stated* in the payload. "No incident" is stated nowhere: it is a
+property of two results held together, and there is nothing for a
+nearest-neighbour search to rank.
 
 The `semantic` category is the one designed to be *hard for Ingot* and easy for
 a vector store, and it is worth understanding how. Each incident is written up
@@ -268,9 +284,32 @@ number readable.
 - **`oracle`** places exactly the answer-bearing records in the prompt and
   nothing else. A gap between `oracle` and a real adapter is retrieval; a gap
   between `oracle` and 100% is the model's reasoning. Separating those two is
-  the only reason a percentage means anything.
+  the only reason a percentage means anything — with the caveat below, which
+  is a real one.
 
 Without them, a table of percentages has no scale.
+
+### Where the oracle stops being a ceiling
+
+It is given the records that *constitute* the answer, and never the records
+that establish **why** they are the answer. Those are the same set for "which
+incidents on `auth` were sev1 or sev2" — the incident record carries both the
+service and the severity, so the prompt contains its own proof. They are not
+the same set for "which pull requests had a failing CI run": the answer is
+pull requests, the proof is CI runs, and the oracle is handed the former
+without the latter. Asked to assert something the prompt cannot support, the
+model does the defensible thing and answers nothing.
+
+So on questions whose predicate spans two record types — most of the `join`
+category, all of the cross-tool ones — the oracle is working with strictly
+less than a retrieval column can fetch for itself, and its row can fall below
+theirs. When it does, that is a limit of this control and not a demonstration
+that querying beats perfect retrieval. Reading it the flattering way would be
+the easiest mistake on the page to make.
+
+Fixing it means changing what the oracle is given: the predicate's records as
+well as the answer's. That is a different control, and it costs a re-buy of
+the column, so it is a decision rather than a patch.
 
 `oracle` is a ceiling only for the questions whose answer *is* a set of
 records. A question answered with a statistic has no record-level evidence to
@@ -288,7 +327,7 @@ part of `bun run test` at the repository root, and spends real money.
 
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
---adapters a,b,c       ingot, ingot-mcp-text-search-only, ingot-rest, ingot-rest-text-search-only,
+--adapters a,b,c       ingot, control-same-store-top-k, ingot-rest, control-same-store-top-k-rest,
                        vector, pinecone, turbopuffer, hyperspell, raw-context, oracle
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
@@ -330,9 +369,9 @@ part of `bun run test` at the repository root, and spends real money.
 | `TURBOPUFFER_REGION` | `aws-us-east-1` — it is part of the hostname, and a namespace lives in one region. The default matches Pinecone's so the `ms` column is not reporting geography |
 
 The Ingot adapters need a running server (`bun run db:up && bun run dev`).
-`ingot-mcp` and `ingot-mcp-text-search-only` reach it over MCP, because the tool names, the
+`ingot-mcp` and `control-same-store-top-k` reach it over MCP, because the tool names, the
 descriptions and the schema handed over at connect time are part of what an
-agent gets; `ingot-rest` and `ingot-rest-text-search-only` reach the same store over
+agent gets; `ingot-rest` and `control-same-store-top-k-rest` reach the same store over
 `/add` and `/query` with tools authored here. See [the interface
 question](#the-interface-question) for why both are in the table.
 
@@ -361,8 +400,10 @@ is not, so the merge refuses rather than concatenates:
   embedder, logs. A mismatch names the field and both values and stops.
   `concurrency` is exempt: it moves only the `ms` column, which is not
   published, and a note records it when the runs disagree.
-- **No column may come from two files.** Which of the two a reader should see
-  is not a thing the harness can decide.
+- **No column may answer the same question in two files.** Which of the two a
+  reader should see is not a thing the harness can decide. The rule is on the
+  cell rather than the column, because the same column over *different*
+  questions is the top-up below.
 - **The table says it was spliced.** The merged run carries a warning naming
   which run each column came from, and warnings are the half of the provenance
   the site puts in front of every reader. Everything that decides a number was
@@ -370,6 +411,43 @@ is not, so the merge refuses rather than concatenates:
   reader's to weigh rather than ours to omit.
 - **The merge is written out as its own run**, so what was published is one
   file that can be `--from`-ed again. The constituent runs are untouched.
+
+### Adding questions without re-buying the table
+
+The other direction, and the commoner one: a template is added to the
+generator, and the published table is short by however many questions it
+produced. `--questions-not-in` buys the difference.
+
+```bash
+bun run bench --adapters ingot-mcp,vector,… --concurrency 5 \
+  --questions-not-in results/OLD.jsonl
+bun run bench --from results/OLD.jsonl,results/NEW.jsonl \
+  --publish ../../apps/ingot-app/src/benchmarks/results.json
+```
+
+The arithmetic is why this is allowed rather than a fudge: accuracy is a mean
+over rows, so a mean over two disjoint halves of the question set is the mean
+over the whole. The merged table is the one a single sitting would have
+produced — check it if you like, by splitting a finished run in two on
+`questionId` and merging it back, which reproduces the original report to the
+decimal.
+
+Two guards make it safe:
+
+- **The question-defining settings have to match.** Question ids are positional
+  — `q-026` is whatever the twenty-sixth question happened to be — so they only
+  name the same question when `--seed`, `--per-template` and `--logs` agree.
+  They are checked before anything is bought, because the failure otherwise is
+  silent rather than loud.
+- **The top-up says what it is.** The partial run carries a warning that it
+  asked only the questions the older run had not, and the merged table adds
+  that a column was finished across more than one sitting. Numbers over a
+  handful of questions chosen because they were missing are a slice of the set,
+  not a sample of it.
+
+Appending templates to the *end* of the generator matters for the same reason:
+inserting one renumbers every question after it, and ids that have silently
+changed meaning make both this and `--rescore` wrong rather than refused.
 
 ### How long it takes, and what to do about it
 
@@ -416,7 +494,7 @@ tokens a question, and dropping it cuts wall time close to proportionally —
 fine while iterating, but the report stamps the effort because runs at
 different efforts are not comparable.
 
-Worth noticing in those numbers: `ingot-mcp-text-search-only` averaged 5,238 output
+Worth noticing in those numbers: `control-same-store-top-k` averaged 5,238 output
 tokens against `ingot-mcp`'s 2,452, and took twice as long. That is not overhead.
 Take away SQL and the model thinks twice as hard to compensate, which is a
 result rather than a cost.

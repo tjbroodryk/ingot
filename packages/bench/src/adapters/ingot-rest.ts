@@ -135,7 +135,7 @@ export class IngotRestAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotRestOptions) {
     this.mode = options.mode ?? 'full';
-    this.name = this.mode === 'full' ? 'ingot-rest' : 'ingot-rest-text-search-only';
+    this.name = this.mode === 'full' ? 'ingot-rest' : 'control-same-store-top-k-rest';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
   }

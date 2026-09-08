@@ -195,7 +195,7 @@ describe('the ingot REST adapter', () => {
 
     expect(full.name).toBe('ingot-rest');
     expect(full.tools().map((tool) => tool.name)).toEqual(['query', 'search']);
-    expect(ablated.name).toBe('ingot-rest-text-search-only');
+    expect(ablated.name).toBe('control-same-store-top-k-rest');
     expect(ablated.tools().map((tool) => tool.name)).toEqual(['search']);
   });
 
