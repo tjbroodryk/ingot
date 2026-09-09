@@ -4,7 +4,7 @@ import { type Block, BlockKind, Boundary, type ChunkingStrategy } from './format
 import { FORMATS } from './formats/index.js';
 import type { MediaType } from './media-type.js';
 
-/** One chunk, ready to become a row in `ingot_chunks`. */
+/** One chunk, ready to become a row in `ingot_file_chunks`. */
 export interface Chunk {
   readonly ordinal: number;
   readonly text: string;
@@ -37,7 +37,7 @@ const KINDS: Record<BlockKind, ChunkKind> = {
 const CHARS_PER_TOKEN = 4;
 
 /**
- * Splits a parsed document into rows for `ingot_chunks`.
+ * Splits a parsed document into rows for `ingot_file_chunks`.
  *
  * One algorithm over a strategy, in three passes that each do one thing:
  *

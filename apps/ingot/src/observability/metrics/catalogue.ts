@@ -235,7 +235,7 @@ export const Metrics = {
   }),
   ChunksWritten: defineCounter({
     name: 'ingot_chunks_written_total',
-    help: 'Chunks written into ingot_chunks, by the format they came out of.',
+    help: 'Chunks written into ingot_file_chunks, by the format they came out of.',
     labels: ['media_type'],
   }),
 

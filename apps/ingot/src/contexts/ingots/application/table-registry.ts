@@ -27,7 +27,7 @@ import {
  * So the loser re-reads and gets on with it. Two agents writing to the same
  * table at the same moment is the *normal* case for a memory server — and for
  * a document server it is the normal case twice over, since every upload
- * touches `ingot_files` and `ingot_chunks`. Answering one of them with a
+ * touches `ingot_files` and `ingot_file_chunks`. Answering one of them with a
  * conflict would make every caller implement a retry loop for something that
  * should simply work.
  */

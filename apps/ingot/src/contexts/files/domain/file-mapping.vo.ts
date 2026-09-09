@@ -74,7 +74,7 @@ export class FileMapping {
 
   static parse(extraction: FileExtraction, source: { tabular: boolean }): FileMapping {
     // The caller's own table, so `SqlName.table` and not `systemTable`: an
-    // extraction may not write into `ingot_files` or `ingot_chunks` any more
+    // extraction may not write into `ingot_files` or `ingot_file_chunks` any more
     // than an `/add` may write into `ingot_receipts`.
     const table = SqlName.table(extraction.table);
 

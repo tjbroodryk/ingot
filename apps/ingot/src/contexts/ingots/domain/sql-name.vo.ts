@@ -38,7 +38,7 @@ export const RESERVED_TABLES: readonly string[] = [
   'ingot_receipts',
   'ingot_embeddings',
   'ingot_files',
-  'ingot_chunks',
+  'ingot_file_chunks',
 ];
 
 export const ROW_ID = '_row_id';

@@ -77,7 +77,7 @@ An LSM tree, and everything else follows from it.
 `/file` is the second way in and it joins the first one immediately: a document
 is parsed into chunks and, if you asked, into typed rows — and both go through
 the same overlay, the same embedding queue and the same roll-up as a tool
-result. There is no document store. `ingot_files` and `ingot_chunks` are
+result. There is no document store. `ingot_files` and `ingot_file_chunks` are
 ordinary tables in your memory, which is what lets one SQL statement filter on a
 number pulled out of a PDF and rank on the meaning of the paragraph beside it.
 

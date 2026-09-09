@@ -72,7 +72,7 @@ describe('storing a document', () => {
       expect(accepted.status).toBe(FileStatus.Pending);
       expect(accepted.fileId).toStartWith('file_');
       expect(accepted.query).toContain('ingot_files');
-      expect(accepted.chunksQuery).toContain('ingot_chunks');
+      expect(accepted.chunksQuery).toContain('ingot_file_chunks');
 
       // Nothing exists yet — not an empty table, no table at all, because a
       // table here is declared by the write that fills it. That is the honest
@@ -149,7 +149,7 @@ describe('storing a document', () => {
 
       const chunks = await world.sql(
         ingot,
-        'SELECT ordinal, section, kind, text FROM ingot_chunks ORDER BY ordinal',
+        'SELECT ordinal, section, kind, text FROM ingot_file_chunks ORDER BY ordinal',
       );
 
       expect(chunks.length).toBeGreaterThan(2);
@@ -210,7 +210,7 @@ describe('storing a document', () => {
 
       const ranked = await world.query(ingot, {
         text: 'how much notice is required',
-        table: 'ingot_chunks',
+        table: 'ingot_file_chunks',
         column: 'text',
         limit: 1,
       });
@@ -230,9 +230,9 @@ describe('storing a document', () => {
       });
       await world.parseAll();
 
-      const before = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_chunks');
-      await world.compact(ingot, 'ingot_chunks');
-      const after = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_chunks');
+      const before = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_file_chunks');
+      await world.compact(ingot, 'ingot_file_chunks');
+      const after = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_file_chunks');
 
       expect(after).toEqual(before);
     });
@@ -313,7 +313,7 @@ describe('storing a document', () => {
         ingot,
         `SELECT f.filename, i.invoice_no, i.amount
          FROM invoices i
-         JOIN ingot_chunks c ON c.text LIKE '%' || i.invoice_no || '%'
+         JOIN ingot_file_chunks c ON c.text LIKE '%' || i.invoice_no || '%'
          JOIN ingot_files f ON f.file_id = c.file_id
          WHERE i.amount > 10000
          ORDER BY i.amount DESC`,
@@ -332,7 +332,7 @@ describe('storing a document', () => {
       });
       await world.parseAll();
 
-      const chunks = await world.sql(ingot, 'SELECT kind, text FROM ingot_chunks');
+      const chunks = await world.sql(ingot, 'SELECT kind, text FROM ingot_file_chunks');
 
       // Worse than extracting it — a `WHERE amount > 10000` beats any
       // similarity search over the same data — and much better than an upload
@@ -364,7 +364,7 @@ describe('storing a document', () => {
 
       const chunks = await world.sql(
         ingot,
-        'SELECT ordinal, page, kind, text FROM ingot_chunks ORDER BY ordinal',
+        'SELECT ordinal, page, kind, text FROM ingot_file_chunks ORDER BY ordinal',
       );
       expect(chunks.map((row) => row.page)).toEqual([1, 2]);
       expect(String(chunks[1]?.text)).toContain('roll back');
@@ -384,7 +384,7 @@ describe('storing a document', () => {
 
       const chunks = await world.sql(
         ingot,
-        'SELECT ordinal, page, kind, section, text FROM ingot_chunks ORDER BY ordinal',
+        'SELECT ordinal, page, kind, section, text FROM ingot_file_chunks ORDER BY ordinal',
       );
 
       expect(chunks).toHaveLength(2);
@@ -407,7 +407,7 @@ describe('storing a document', () => {
 
       // All three would fit in one chunk many times over. They are still three,
       // because a slide is a unit somebody authored.
-      const chunks = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_chunks');
+      const chunks = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_file_chunks');
       expect(Number(chunks[0]?.n)).toBe(3);
     });
 

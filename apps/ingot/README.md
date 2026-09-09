@@ -183,7 +183,7 @@ curl -sX POST $A/$ING/file -H "authorization: Bearer $KEY" \
   "fileId": "file_e0c60d05…",
   "status": "pending",
   "query": "SELECT … FROM \"ingot_files\" WHERE \"file_id\" = 'file_e0c60d05…'",
-  "chunksQuery": "SELECT … FROM \"ingot_chunks\" WHERE \"file_id\" = 'file_e0c60d05…'",
+  "chunksQuery": "SELECT … FROM \"ingot_file_chunks\" WHERE \"file_id\" = 'file_e0c60d05…'",
 }
 ```
 
@@ -205,7 +205,7 @@ rows are append-only.
 
 ### Two more ordinary tables
 
-`ingot_files` is a row per document; `ingot_chunks` is a row per chunk, keyed on
+`ingot_files` is a row per document; `ingot_file_chunks` is a row per chunk, keyed on
 `(file_id, ordinal)`. Both are **ordinary tables in your memory**, which is the
 same argument `ingot_receipts` makes and the reason this feature is small: they
 get the overlay, the embedding sweeper, the roll-up into Parquet, tombstones,
@@ -295,7 +295,7 @@ column.
 
 ```sql
 SELECT f.filename, c.page, c.text
-FROM ingot_chunks c
+FROM ingot_file_chunks c
   JOIN ingot_files f USING (file_id)
   JOIN contracts   k USING (file_id)
 WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
@@ -313,8 +313,8 @@ width.
 
 ```sql
 WITH hit AS (SELECT file_id, ordinal, array_cosine_similarity(text_vec,$q) s
-             FROM ingot_chunks ORDER BY s DESC LIMIT 5)
-SELECT c.* FROM ingot_chunks c JOIN hit USING (file_id)
+             FROM ingot_file_chunks ORDER BY s DESC LIMIT 5)
+SELECT c.* FROM ingot_file_chunks c JOIN hit USING (file_id)
 WHERE abs(c.ordinal - hit.ordinal) <= 1
 ```
 

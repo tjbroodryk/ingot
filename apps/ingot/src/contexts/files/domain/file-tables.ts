@@ -20,7 +20,7 @@ import { ident, literal } from '../../../engine/sql.js';
  * an extracted fact is a row, the join between them is ordinary SQL:
  *
  * ```sql
- * SELECT c.text FROM ingot_chunks c JOIN contracts k USING (file_id)
+ * SELECT c.text FROM ingot_file_chunks c JOIN contracts k USING (file_id)
  * WHERE k.notice_days < 30
  * ORDER BY array_cosine_similarity(c.text_vec, $q) DESC
  * ```
@@ -33,7 +33,19 @@ import { ident, literal } from '../../../engine/sql.js';
  * caller's mapping can write here. `SqlName.systemTable` is the one way in.
  */
 export const FILES_TABLE = 'ingot_files';
-export const CHUNKS_TABLE = 'ingot_chunks';
+
+/**
+ * Named for what it holds rather than for the shorter word.
+ *
+ * `ingot_chunks` read as though a memory had one kind of chunk in it. These are
+ * chunks *of a file*, they only ever arrive through `/file`, and every row joins
+ * back to `ingot_files` — so the name says so and the pair reads together.
+ *
+ * The `ingot_` prefix is not decoration: `SqlName.table` refuses it, which is
+ * the whole of what stops a caller's `/add` mapping writing here. A bare
+ * `file_chunks` would be a name anybody could claim.
+ */
+export const CHUNKS_TABLE = 'ingot_file_chunks';
 
 // ── ingot_files ───────────────────────────────────────────────────────────
 
@@ -74,7 +86,7 @@ export const FILE_SUMMARY = 'summary';
  */
 export const FILE_EMBEDDED: readonly string[] = [FILE_TITLE, FILE_SUMMARY];
 
-// ── ingot_chunks ──────────────────────────────────────────────────────────
+// ── ingot_file_chunks ──────────────────────────────────────────────────────────
 
 /** Which document. Half the key, and the join to `ingot_files`. */
 export const CHUNK_FILE_ID = FILE_ID;

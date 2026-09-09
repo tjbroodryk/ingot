@@ -425,10 +425,10 @@ describe('an extraction mapping', () => {
 
   it('refuses an extraction that would write into a table this service owns', () => {
     // The same protection `/add` gets: `SqlName.table` refuses the prefix, and
-    // that asymmetry is what keeps `ingot_chunks` ours.
+    // that asymmetry is what keeps `ingot_file_chunks` ours.
     expect(() =>
       FileMapping.parse(
-        { table: 'ingot_chunks', columns: { a: { from: '$.a', type: ColumnType.Varchar } } },
+        { table: 'ingot_file_chunks', columns: { a: { from: '$.a', type: ColumnType.Varchar } } },
         tabular,
       ),
     ).toThrow(/keeps/);
