@@ -99,6 +99,18 @@ export interface ReportHeader {
    */
   readonly logs: number;
   /**
+   * Whether the corpus was rendered with schema drift. False for the ordinary
+   * corpus, and false on any run bought before the flag existed.
+   *
+   * Provenance rather than trivia, for the same reason `logs` is: the two are
+   * different experiments over the same questions. A drifted run asks what
+   * survives a payload shape that changes underneath the agent, and reading
+   * its numbers as though they came from the ordinary corpus would understate
+   * every column in the table — the Ingot ones most of all, which is the
+   * direction that makes forgetting to say so a comfortable mistake.
+   */
+  readonly drift: boolean;
+  /**
    * Operational facts about how the run was executed, kept out of the
    * published summary.
    *
@@ -132,7 +144,11 @@ export function renderReport(
       `${header.repeats} run(s) per question · ${header.perTemplate} per template · ` +
       `budget ${header.maxToolCalls} tool calls · ` +
       `${header.concurrency === 1 ? 'serial' : `${header.concurrency} in flight`} · ` +
-      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\``,
+      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\`` +
+      // Only when it is on. A `drift off` on every ordinary report would be a
+      // word every reader learns to skip, and the whole value of the stamp is
+      // that it is noticed on the one run where it matters.
+      (header.drift ? ' · **corpus drift on**' : ''),
   );
   lines.push('');
 
@@ -236,4 +252,166 @@ export function renderLine(row: RunRecord): string {
     `recall=${recall} calls=${String(row.toolCalls).padStart(2)} ` +
     `ctx=${String(row.finalInputTokens).padStart(6)}`
   );
+}
+
+/** One side of a comparison: a finished run, and the rows behind it. */
+export interface Side {
+  readonly meta: ReportHeader;
+  readonly rows: readonly RunRecord[];
+}
+
+/**
+ * Two runs that differ in one setting, as one table.
+ *
+ * The report above answers "which adapter is better". This one answers "what
+ * did that change cost each of them", which is a different question and cannot
+ * be read off two tables side by side without the reader doing the subtraction
+ * — for eight adapters across six categories, on means over different row
+ * counts.
+ *
+ * It is deliberately not a merge. `readRuns` refuses to put columns from runs
+ * that disagree about a setting into one table, and that refusal is right: as
+ * *columns* they would be a comparison of retrieval that is nothing of the
+ * kind. The same two runs as a *delta* are exactly what the disagreement is
+ * for. So this reads both sides separately and never lets their rows mix.
+ */
+export function renderComparison(
+  left: Side,
+  right: Side,
+  axis: { readonly field: string; readonly left: unknown; readonly right: unknown },
+  categories: readonly Category[],
+): string {
+  const lines: string[] = [];
+  const label = (value: unknown): string => `\`${axis.field}=${JSON.stringify(value)}\``;
+
+  /*
+   * Only the cells both sides actually hold.
+   *
+   * Two runs of "the same" set can still differ in what they asked — a column
+   * skipped when a server went away, a category filter, a top-up that grew one
+   * side. Subtracting a mean over 33 questions from a mean over 25 produces a
+   * delta attributable to the question mix rather than to the setting under
+   * test, and nothing in the output would show it. So the intersection is
+   * taken per adapter, on (question, repeat), and what got dropped is said out
+   * loud rather than quietly excluded.
+   */
+  const key = (row: RunRecord): string => `${row.questionId} ${row.repeat}`;
+  const adapters = [...new Set(left.rows.map((row) => row.adapter))]
+    .filter((name) => right.rows.some((row) => row.adapter === name))
+    .sort();
+
+  const paired = new Map<string, { left: RunRecord[]; right: RunRecord[] }>();
+  let dropped = 0;
+  for (const adapter of adapters) {
+    const mine = left.rows.filter((row) => row.adapter === adapter);
+    const theirs = right.rows.filter((row) => row.adapter === adapter);
+    const common = new Set(mine.map(key).filter((k) => theirs.some((row) => key(row) === k)));
+    dropped += mine.length + theirs.length - 2 * common.size;
+    paired.set(adapter, {
+      left: mine.filter((row) => common.has(key(row))),
+      right: theirs.filter((row) => common.has(key(row))),
+    });
+  }
+
+  lines.push(`# Ingot retrieval benchmark — ${label(axis.left)} vs ${label(axis.right)}`);
+  lines.push('');
+  lines.push(
+    `${left.meta.runId} to ${right.meta.runId} · seed \`${left.meta.seed}\` · ` +
+      `provider \`${left.meta.provider}\` · model \`${left.meta.model}\` · ` +
+      `effort \`${left.meta.effort}\` · ${left.meta.repeats} run(s) per question · ` +
+      `budget ${left.meta.maxToolCalls} tool calls`,
+  );
+  lines.push('');
+  lines.push(
+    `> Every setting except \`${axis.field}\` is identical across these two runs, and only the ` +
+      'cells both of them hold are counted. The arrow is the change; the number in parentheses ' +
+      'is the difference in percentage points.',
+  );
+  lines.push('');
+
+  // Named rather than silently absent: a column that ran on one side and not
+  // the other is the most likely thing to be misread as "unaffected".
+  const only = (a: Side, b: Side): readonly string[] =>
+    [...new Set(a.rows.map((row) => row.adapter))]
+      .filter((name) => !b.rows.some((row) => row.adapter === name))
+      .sort();
+  const leftOnly = only(left, right);
+  const rightOnly = only(right, left);
+  if (leftOnly.length > 0 || rightOnly.length > 0) {
+    lines.push(
+      `> **Not compared:** ${[
+        ...leftOnly.map((name) => `\`${name}\` (only in ${left.meta.runId})`),
+        ...rightOnly.map((name) => `\`${name}\` (only in ${right.meta.runId})`),
+      ].join(', ')}. A column present on one side only has no delta, and showing it beside ones ` +
+        'that do would read as a column the change did not touch.',
+    );
+    lines.push('');
+  }
+  if (dropped > 0) {
+    lines.push(
+      `> **${dropped} row(s) excluded** because only one side held them. The table is over the ` +
+        'questions and repeats both runs answered, so every delta in it is like for like.',
+    );
+    lines.push('');
+  }
+
+  const delta = (before: number, after: number): string => {
+    const points = Math.round((after - before) * 100);
+    return points === 0 ? '0' : `${points > 0 ? '+' : '-'}${Math.abs(points)}`;
+  };
+  const shift = (rows: { left: readonly RunRecord[]; right: readonly RunRecord[] }): string => {
+    if (rows.left.length === 0 || rows.right.length === 0) return '—';
+    const before = summarise(rows.left).accuracy;
+    const after = summarise(rows.right).accuracy;
+    return `${percent(before)} to ${percent(after)} (${delta(before, after)})`;
+  };
+
+  lines.push('## Accuracy by category');
+  lines.push('');
+  lines.push(`| adapter | overall | ${categories.join(' | ')} |`);
+  lines.push(`| --- | --- | ${categories.map(() => '---').join(' | ')} |`);
+  for (const adapter of adapters) {
+    const both = paired.get(adapter) as { left: RunRecord[]; right: RunRecord[] };
+    const cells = categories.map((category) =>
+      shift({
+        left: both.left.filter((row) => row.category === category),
+        right: both.right.filter((row) => row.category === category),
+      }),
+    );
+    lines.push(`| ${adapter} | ${shift(both)} | ${cells.join(' | ')} |`);
+  }
+  lines.push('');
+
+  lines.push('## Retrieval and cost');
+  lines.push('');
+  lines.push('| adapter | set F1 | evidence recall | tool calls | context tokens |');
+  lines.push('| --- | --- | --- | --- | --- |');
+  for (const adapter of adapters) {
+    const both = paired.get(adapter) as { left: RunRecord[]; right: RunRecord[] };
+    const before = summarise(both.left);
+    const after = summarise(both.right);
+    const recall =
+      before.evidenceRecall === null || after.evidenceRecall === null
+        ? '—'
+        : `${percent(before.evidenceRecall)} to ${percent(after.evidenceRecall)} ` +
+          `(${delta(before.evidenceRecall, after.evidenceRecall)})`;
+    lines.push(
+      `| ${adapter} | ${before.f1.toFixed(2)} to ${after.f1.toFixed(2)} | ${recall} | ` +
+        `${before.toolCalls.toFixed(1)} to ${after.toolCalls.toFixed(1)} | ` +
+        `${Math.round(before.finalInputTokens).toLocaleString()} to ` +
+        `${Math.round(after.finalInputTokens).toLocaleString()} |`,
+    );
+  }
+  lines.push('');
+  lines.push(
+    '_Set F1, tool calls and context tokens are shown before and after without a delta: they ' +
+      'are not percentages, and a "points" figure beside them would invite reading them as one._',
+  );
+  lines.push('');
+
+  for (const warning of [...left.meta.warnings, ...right.meta.warnings]) {
+    lines.push(`> **${warning}**`);
+  }
+
+  return lines.join('\n');
 }
