@@ -60,9 +60,9 @@ export function LandingPage(): ReactNode {
           </div>
 
           <h1 className="hero-title">
-            Queryable memory for
+            Own your agent&rsquo;s memory &mdash;
             <br />
-            <span className="mark">agent tool results</span>
+            <span className="mark">query what you cast in</span>
           </h1>
 
           {/* Also `layout.tsx`'s `description` — see the constant. */}

@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   // somebody's dev server.
   ...(SITE_URL ? { alternates: { canonical: './' } } : {}),
   title: {
-    default: 'Ingot — queryable memory for agent tool results',
+    default: 'Ingot — own your agent’s memory, query what you cast in',
     template: '%s · Ingot',
   },
   // The landing page's own lede. It is a constant over there rather than a
