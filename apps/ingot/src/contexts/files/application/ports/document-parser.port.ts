@@ -83,6 +83,20 @@ export interface ParsedDocument {
  * be a caller choosing where this service opens a connection — the thing a
  * webhook endpoint gets a whole boundary written for it to prevent.
  */
+/**
+ * What a parser is given.
+ *
+ * `filename` is for error messages and never for a decision — the media type
+ * was already settled at `/file`, from the declared type and the bytes
+ * together, and re-deriving it from an extension here would be a second answer
+ * to a question that already has one.
+ */
+export interface ParseInput {
+  readonly content: Buffer;
+  readonly mediaType: MediaType;
+  readonly filename: string;
+}
+
 export interface DocumentParser {
   /** For the line at boot that says which parser this deployment got. */
   readonly name: string;
@@ -90,11 +104,7 @@ export interface DocumentParser {
   /** The media types this parser reads. Anything else is refused at `/file`. */
   readonly handles: ReadonlySet<MediaType>;
 
-  parse(input: {
-    content: Buffer;
-    mediaType: MediaType;
-    filename: string;
-  }): Promise<ParsedDocument>;
+  parse(input: ParseInput): Promise<ParsedDocument>;
 }
 
 export const DOCUMENT_PARSER = Symbol('DocumentParser');

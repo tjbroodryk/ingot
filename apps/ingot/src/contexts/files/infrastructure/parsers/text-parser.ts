@@ -3,6 +3,7 @@ import {
   BlockKind,
   type DocumentParser,
   type ParsedDocument,
+  type ParseInput,
 } from '../../application/ports/document-parser.port.js';
 import { MediaType } from '../../domain/media-type.js';
 import { parseDelimited, renderRows } from './delimited.js';
@@ -34,7 +35,7 @@ export class TextParser implements DocumentParser {
     MediaType.Csv,
   ]);
 
-  async parse(input: { content: Buffer; mediaType: MediaType }): Promise<ParsedDocument> {
+  async parse(input: ParseInput): Promise<ParsedDocument> {
     // A BOM survives `toString('utf8')` as U+FEFF and then shows up as an
     // invisible first character of the first heading, which is the kind of
     // thing that makes one document's chunks silently rank differently.

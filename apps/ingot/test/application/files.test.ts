@@ -3,7 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { ColumnType, FileStatus } from '@ingot/shared/ingot-v1';
 import { BackgroundKind } from '../../src/contexts/records/application/background.js';
 import { closeDatabase } from '../support/database.js';
+import { compressible, pptx, zipOf } from '../support/office.js';
+import { pdf } from '../support/pdf.js';
 import { type World, makeWorld } from '../support/world.js';
+
+/** Written out once: the media type is forty characters of boilerplate. */
+const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 const HANDBOOK = `# Acme Engineering Handbook
 
@@ -294,17 +299,128 @@ describe('storing a document', () => {
     });
   });
 
+  describe('the binary formats', () => {
+    it('turns a PDF into one chunk per page, numbered', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'guide.pdf',
+        mediaType: 'application/pdf',
+        content: pdf([
+          ['Deployment Guide', 'Rollout is progressive.'],
+          ['Rollback Procedure', 'Any engineer may roll back.'],
+        ]),
+      });
+      await world.parseAll();
+
+      const [file] = await world.sql(
+        ingot,
+        "SELECT status, pages, chunk_count FROM ingot_files WHERE media_type = 'application/pdf'",
+      );
+      expect(file).toMatchObject({ status: FileStatus.Ready, pages: 2, chunk_count: 2 });
+
+      const chunks = await world.sql(
+        ingot,
+        'SELECT ordinal, page, kind, text FROM ingot_chunks ORDER BY ordinal',
+      );
+      expect(chunks.map((row) => row.page)).toEqual([1, 2]);
+      expect(String(chunks[1]?.text)).toContain('roll back');
+    });
+
+    it('turns a deck into one chunk per slide, with the title as its heading', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'deck.pptx',
+        mediaType: PPTX,
+        content: pptx([
+          { title: 'Q3 revenue', body: ['Up 4% year on year'], notes: 'The price rise landed' },
+          { title: 'Next quarter', body: ['Flat, we think'] },
+        ]),
+      });
+      await world.parseAll();
+
+      const chunks = await world.sql(
+        ingot,
+        'SELECT ordinal, page, kind, section, text FROM ingot_chunks ORDER BY ordinal',
+      );
+
+      expect(chunks).toHaveLength(2);
+      expect(chunks.map((row) => row.kind)).toEqual(['slide', 'slide']);
+      expect(chunks[0]?.section).toBe('Q3 revenue');
+      // The title is in the embedded text, which is what makes "Up 4%" findable
+      // by anyone searching for revenue.
+      expect(String(chunks[0]?.text)).toContain('Q3 revenue');
+      expect(String(chunks[0]?.text)).toContain('The price rise landed');
+    });
+
+    it('never merges two slides, however little is on them', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'tiny.pptx',
+        mediaType: PPTX,
+        content: pptx([{ title: 'One' }, { title: 'Two' }, { title: 'Three' }]),
+      });
+      await world.parseAll();
+
+      // All three would fit in one chunk many times over. They are still three,
+      // because a slide is a unit somebody authored.
+      const chunks = await world.sql(ingot, 'SELECT count(*) AS n FROM ingot_chunks');
+      expect(Number(chunks[0]?.n)).toBe(3);
+    });
+
+    /**
+     * A deck is mostly images, and none of them are text.
+     *
+     * Naming the parts wanted means a real thirteen-slide deck inflated 26 of
+     * its 113 members and touched none of its 3.9 MB of media. That is a bigger
+     * saving than any limit, and it is also what keeps a malicious image out of
+     * a decompressor entirely.
+     */
+    it('refuses an archive that claims to expand absurdly, before inflating it', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'bomb.pptx',
+        mediaType: PPTX,
+        content: compressible(8, 1024 * 1024),
+      });
+      await world.parseAll();
+
+      const [file] = await world.sql(
+        ingot,
+        "SELECT status, error FROM ingot_files WHERE filename = 'bomb.pptx'",
+      );
+      expect(file?.status).toBe(FileStatus.Failed);
+      expect(String(file?.error)).toMatch(/expand|refused/i);
+    });
+
+    it('refuses a .docx sent as a presentation, since both are zips', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'notes.pptx',
+        mediaType: PPTX,
+        content: zipOf({ 'word/document.xml': '<w:document/>' }),
+      });
+      await world.parseAll();
+
+      const [file] = await world.sql(
+        ingot,
+        "SELECT status, error FROM ingot_files WHERE filename = 'notes.pptx'",
+      );
+      expect(file?.status).toBe(FileStatus.Failed);
+      expect(String(file?.error)).toMatch(/no slides/);
+    });
+  });
+
   describe('refusing what it cannot store', () => {
-    it('refuses a format this build has no parser for, before storing anything', async () => {
+    it('refuses a format no parser in this build reads, before storing anything', async () => {
       const ingot = await world.ingot();
 
       await expect(
         world.file(ingot, {
-          filename: 'report.pdf',
-          mediaType: 'application/pdf',
-          content: '%PDF-1.7\nnot really\n',
+          filename: 'sheet.xlsx',
+          mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: zipOf({ 'xl/workbook.xml': '<workbook/>' }),
         }),
-      ).rejects.toThrow(/cannot read application\/pdf/);
+      ).rejects.toThrow(/cannot read/);
     });
 
     it('refuses bytes that disagree with the type declared for them', async () => {

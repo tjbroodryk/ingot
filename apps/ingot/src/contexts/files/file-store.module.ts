@@ -5,6 +5,9 @@ import { FileWorker } from './application/file-worker.js';
 import { FILE_QUEUE } from './application/ports/file-queue.port.js';
 import { DOCUMENT_PARSER, type DocumentParser } from './application/ports/document-parser.port.js';
 import { PgFileQueue } from './infrastructure/postgres/pg-file-queue.js';
+import { PdfParser } from './infrastructure/parsers/pdf-parser.js';
+import { PptxParser } from './infrastructure/parsers/pptx-parser.js';
+import { RoutingParser } from './infrastructure/parsers/routing-parser.js';
 import { TextParser } from './infrastructure/parsers/text-parser.js';
 
 /**
@@ -41,25 +44,25 @@ import { TextParser } from './infrastructure/parsers/text-parser.js';
     },
     {
       /**
-       * Which parser this deployment got, said out loud at boot.
+       * What this build reads, said out loud at boot.
        *
-       * One implementation today, and the selector it will need is deliberately
-       * not built ahead of it: `INGOT_PARSER` belongs here the moment there is
-       * a second parser to choose, and an enum with one member would be
-       * ceremony around a decision nobody can make yet.
+       * A composite rather than a selector, and there is deliberately no
+       * `INGOT_PARSER` to go with it: these are not alternatives the way
+       * `local` and `openai` are alternatives for an embedder — they are
+       * disjoint capabilities, and a deployment wants every one it has. What
+       * this service reads is a property of the build, not a choice.
        *
-       * The line at boot is not ceremony, though. `TextParser` reads four
-       * formats completely and refuses the other four at the door rather than
-       * failing on them later, and somebody who uploads a PDF and gets a
-       * refusal should be able to find out why from the logs of the service
-       * that refused it.
+       * The line at boot earns its place. Anything outside the union is refused
+       * at `/file` rather than accepted and abandoned in a sweeper, so somebody
+       * who uploads a `.docx` and gets a refusal should be able to find out
+       * from the logs of the service that refused it exactly what it does read.
        */
       provide: DOCUMENT_PARSER,
       useFactory: (): DocumentParser => {
-        const parser = new TextParser();
+        const parser = new RoutingParser([new TextParser(), new PdfParser(), new PptxParser()]);
         Logger.log(
-          `Parsing with "${parser.name}": ${[...parser.handles].join(', ')}. ` +
-            'Anything else is refused at /file rather than accepted and abandoned.',
+          `Reading ${parser.describe()}. Anything else is refused at /file rather than ` +
+            'accepted and abandoned.',
           'Files',
         );
         return parser;

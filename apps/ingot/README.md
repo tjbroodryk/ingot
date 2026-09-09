@@ -237,6 +237,13 @@ format actually gives you, and fall back exactly one level at a time.**
 | `.csv` `.xlsx` | not chunked as prose           | It already has rows. See below.                                     |
 | `.txt`         | paragraph → sentence → window  | Nothing to exploit. The fallback, never the default.                |
 
+A slide's title becomes its heading, so `carryHeadings` puts it at the top of
+what gets embedded — a body reading "Up 4% year on year" ranks against nothing
+anybody would type, and with "Q3 revenue" attached it ranks against the question
+being asked. Speaker notes join their slide for the same reason: they are
+usually the sentence the slide is missing, they live in a different part of the
+archive, and nothing else would ever bring the two together.
+
 Carrying the heading path into the embedded text is the single highest-value
 line in `chunker.ts`. A chunk reading "…within thirty days of written notice"
 ranks against "what is the termination notice period" only if "4.2 Notice"
@@ -322,12 +329,53 @@ are built from an id this service generated. Multer's limit is the absolute
 ceiling on what is buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a
 deployment chose.
 
-**Only the text formats are parsed today** — `text/plain`, `text/markdown`,
-`text/html`, `text/csv`. PDF and the three OOXML zips have names in the wire
-contract and no parser behind them, so an upload of one is **refused at the
-door** naming what this build reads, rather than accepted and abandoned in a
-sweeper. `DocumentParser.handles` is what makes that honest, and adding a parser
-is what removes the refusal.
+Three parsers, behind one port, chosen by media type rather than by an operator
+— they are disjoint capabilities rather than alternatives, which is why there is
+no `INGOT_PARSER` to set:
+
+| parser | reads                                                |
+| ------ | ---------------------------------------------------- |
+| `text` | `text/plain`, `text/markdown`, `text/html`, `text/csv` |
+| `pdf`  | `application/pdf`                                    |
+| `pptx` | `.pptx`                                              |
+
+**`.docx` and `.xlsx` have names in the wire contract and no parser behind
+them**, so an upload of one is **refused at the door** naming what this build
+reads, rather than accepted and abandoned in a sweeper. `DocumentParser.handles`
+is the union that makes that honest, and adding a parser is what removes the
+refusal. Both are the zip machinery `pptx` already has, so neither is far off.
+
+**A zip from an untrusted upload is the most dangerous thing here**, and
+`office-zip.ts` is where that is taken seriously. A forty-kilobyte archive can
+honestly declare that it expands to eight gigabytes, and a decompressor that
+believes it takes the pod down with every query in flight on it. So the limits
+are read out of the archive's own central directory **before anything is
+inflated** — entry count, per-part size, total declared size, and above all the
+expansion ratio, which is what actually separates `42.zip` at a million from a
+real deck at one. Only the parts asked for are decompressed at all: a real
+thirteen-slide deck inflated 26 of its 113 members and touched none of its 3.9
+MB of media.
+
+`pdfjs` is a full PDF implementation and a PDF is a format with a scripting
+engine, so the parser switches off `isEvalSupported`, font loading, streaming
+and auto-fetch — and **deliberately does not configure `cMapUrl` or
+`standardFontDataUrl` at all**, since those are the two options that make it
+fetch. The defence there is not configuring them rather than configuring them
+safely. Extraction needs the characters, not the glyphs.
+
+Two format details worth knowing, both found by running this against real files
+rather than by reading about them:
+
+- **Slide parts sort numerically, not lexically.** A real deck came back
+  `slide1, slide10, slide11, …, slide2`, and a lexical sort would have numbered
+  thirteen slides in an order nobody's deck is in — invisibly, since every chunk
+  would still look well-formed.
+- **`notesSlide7.xml` is not the notes for `slide7.xml`.** Notes parts are
+  numbered in creation order, so a deck where only slides 2 and 4 have notes has
+  `notesSlide1` and `notesSlide2`. The mapping is in
+  `ppt/slides/_rels/slideN.xml.rels`, and guessing instead staples one slide's
+  speaker notes onto another — which is then embedded and returned as though
+  somebody said it about the wrong slide.
 
 Two things are worth writing down before anyone relies on this at volume:
 
