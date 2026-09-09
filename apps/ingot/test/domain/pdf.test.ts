@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { BlockKind } from '../../src/contexts/files/application/ports/document-parser.port.js';
+import { BlockKind } from '../../src/contexts/files/domain/format.js';
 import { MediaType } from '../../src/contexts/files/domain/media-type.js';
-import { PdfParser } from '../../src/contexts/files/infrastructure/parsers/pdf-parser.js';
+import { pdfHandler } from '../../src/contexts/files/domain/formats/pdf.js';
 import { notReallyAPdf, pdf } from '../support/pdf.js';
 
-const parser = new PdfParser();
 const read = (content: Buffer, filename = 'report.pdf') =>
-  parser.parse({ content, filename, mediaType: MediaType.Pdf });
+  pdfHandler.parse({ content, filename, mediaType: MediaType.Pdf });
 
 describe('reading a PDF', () => {
   it('makes one block per page, and says which page each came from', async () => {

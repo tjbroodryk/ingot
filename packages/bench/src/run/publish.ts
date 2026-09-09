@@ -86,6 +86,18 @@ export interface PublishedRun {
    * heading.
    */
   readonly logs: number;
+  /**
+   * Whether the corpus was rendered with schema drift. False is the ordinary
+   * run, and the only kind published before this existed.
+   *
+   * Published for the same reason `logs` is, and with more at stake: it is the
+   * run where a field is renamed underneath the agent and a unit changes with
+   * it, so every column falls and the Ingot ones fall furthest. A page that
+   * showed those numbers without saying so would be understating this
+   * project's own product, which is the one direction a missing stamp is easy
+   * to leave missing.
+   */
+  readonly drift: boolean;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -140,9 +152,14 @@ interface Page {
  * this is the identical array of payloads every adapter ingested, down to the
  * bytes. Replaying an old run with `--from` therefore republishes the corpus
  * it was actually asked about.
+ *
+ * Which is why `drift` is a parameter and not a default: the sample payload
+ * this puts on the page comes out of the corpus itself, so a drifted run
+ * republished without it would show the reader a tidy `owner` field that the
+ * run being reported never saw past its first few records.
  */
-export function corpusShape(seed: number, logs: number): PublishedCorpus {
-  const corpus = buildCorpus(buildWorld({ seed, logs }));
+export function corpusShape(seed: number, logs: number, drift = false): PublishedCorpus {
+  const corpus = buildCorpus(buildWorld({ seed, logs }), { drift });
 
   // Grouped in the order the tools first appear, which is the order an agent
   // met them: a table sorted by size would put the shape of the corpus second
@@ -249,11 +266,12 @@ export function publishable(
       embedder: header.embedder,
       mapping: header.mapping,
       logs: header.logs,
+      drift: header.drift ?? false,
       questions: questionIds.size,
       categoryCounts,
       warnings: header.warnings,
     },
-    corpus: corpusShape(header.seed, header.logs),
+    corpus: corpusShape(header.seed, header.logs, header.drift ?? false),
     // Only the categories this run actually asked about, so the page never
     // renders a column with nothing under it.
     categories: categories.filter((category) => categoryCounts[category] !== undefined),

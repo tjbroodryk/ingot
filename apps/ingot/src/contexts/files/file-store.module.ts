@@ -3,12 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { FILE_SETTINGS, type FileSettings, fileSettings } from './application/file-settings.js';
 import { FileWorker } from './application/file-worker.js';
 import { FILE_QUEUE } from './application/ports/file-queue.port.js';
-import { DOCUMENT_PARSER, type DocumentParser } from './application/ports/document-parser.port.js';
+import { assertConsistent, describeFormats } from './domain/formats/index.js';
 import { PgFileQueue } from './infrastructure/postgres/pg-file-queue.js';
-import { PdfParser } from './infrastructure/parsers/pdf-parser.js';
-import { PptxParser } from './infrastructure/parsers/pptx-parser.js';
-import { RoutingParser } from './infrastructure/parsers/routing-parser.js';
-import { TextParser } from './infrastructure/parsers/text-parser.js';
 
 /**
  * The document queue, the parser, and the worker that drains one into the other.
@@ -33,7 +29,24 @@ import { TextParser } from './infrastructure/parsers/text-parser.js';
       provide: FILE_SETTINGS,
       inject: [ConfigService],
       useFactory: (config: ConfigService): FileSettings => {
+        /*
+         * The registry, checked against itself before anything uses it.
+         *
+         * Two mistakes are possible when adding a format and neither is a type
+         * error: filing a handler under a key that is not its own `mediaType`,
+         * and two formats claiming one extension. The first parses documents as
+         * the wrong thing; the second makes an extension resolve to whichever
+         * handler was enumerated first. Both become a service that refuses to
+         * boot rather than one that quietly misreads uploads.
+         */
+        assertConsistent();
+
         const settings = fileSettings((key) => config.get<string>(key));
+        Logger.log(
+          `Reading ${describeFormats()}. Anything else is refused at /file rather than ` +
+            'accepted and abandoned.',
+          'Files',
+        );
         Logger.log(
           `Accepting uploads to ${(settings.maxUploadBytes / (1024 * 1024)).toFixed(0)} MiB, ` +
             `chunked at ~${settings.chunkTokens} tokens with ${settings.overlapTokens} of overlap`,
@@ -42,34 +55,11 @@ import { TextParser } from './infrastructure/parsers/text-parser.js';
         return settings;
       },
     },
-    {
-      /**
-       * What this build reads, said out loud at boot.
-       *
-       * A composite rather than a selector, and there is deliberately no
-       * `INGOT_PARSER` to go with it: these are not alternatives the way
-       * `local` and `openai` are alternatives for an embedder — they are
-       * disjoint capabilities, and a deployment wants every one it has. What
-       * this service reads is a property of the build, not a choice.
-       *
-       * The line at boot earns its place. Anything outside the union is refused
-       * at `/file` rather than accepted and abandoned in a sweeper, so somebody
-       * who uploads a `.docx` and gets a refusal should be able to find out
-       * from the logs of the service that refused it exactly what it does read.
-       */
-      provide: DOCUMENT_PARSER,
-      useFactory: (): DocumentParser => {
-        const parser = new RoutingParser([new TextParser(), new PdfParser(), new PptxParser()]);
-        Logger.log(
-          `Reading ${parser.describe()}. Anything else is refused at /file rather than ` +
-            'accepted and abandoned.',
-          'Files',
-        );
-        return parser;
-      },
-    },
     FileWorker,
   ],
-  exports: [FILE_QUEUE, FILE_SETTINGS, DOCUMENT_PARSER, FileWorker],
+  // No parser among them: `FORMATS` is a plain module, not a provider. It has
+  // no configuration to read and no dependency to inject, so putting it behind
+  // a token would have been a container lookup standing in for an import.
+  exports: [FILE_QUEUE, FILE_SETTINGS, FileWorker],
 })
 export class FileStoreModule {}

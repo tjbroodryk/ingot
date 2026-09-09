@@ -99,6 +99,18 @@ export interface ReportHeader {
    */
   readonly logs: number;
   /**
+   * Whether the corpus was rendered with schema drift. False for the ordinary
+   * corpus, and false on any run bought before the flag existed.
+   *
+   * Provenance rather than trivia, for the same reason `logs` is: the two are
+   * different experiments over the same questions. A drifted run asks what
+   * survives a payload shape that changes underneath the agent, and reading
+   * its numbers as though they came from the ordinary corpus would understate
+   * every column in the table — the Ingot ones most of all, which is the
+   * direction that makes forgetting to say so a comfortable mistake.
+   */
+  readonly drift: boolean;
+  /**
    * Operational facts about how the run was executed, kept out of the
    * published summary.
    *
@@ -132,7 +144,11 @@ export function renderReport(
       `${header.repeats} run(s) per question · ${header.perTemplate} per template · ` +
       `budget ${header.maxToolCalls} tool calls · ` +
       `${header.concurrency === 1 ? 'serial' : `${header.concurrency} in flight`} · ` +
-      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\``,
+      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\`` +
+      // Only when it is on. A `drift off` on every ordinary report would be a
+      // word every reader learns to skip, and the whole value of the stamp is
+      // that it is noticed on the one run where it matters.
+      (header.drift ? ' · **corpus drift on**' : ''),
   );
   lines.push('');
 

@@ -411,16 +411,19 @@ describe('storing a document', () => {
   });
 
   describe('refusing what it cannot store', () => {
-    it('refuses a format no parser in this build reads, before storing anything', async () => {
+    it('refuses a format the registry has no handler for, before storing anything', async () => {
       const ingot = await world.ingot();
 
+      // `MediaType` is exactly what `FORMATS` covers — a name with no handler
+      // does not compile — so an unsupported type is refused by the same check
+      // that refuses a nonsense one, naming what does work.
       await expect(
         world.file(ingot, {
           filename: 'sheet.xlsx',
           mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           content: zipOf({ 'xl/workbook.xml': '<workbook/>' }),
         }),
-      ).rejects.toThrow(/cannot read/);
+      ).rejects.toThrow(/must be one of/);
     });
 
     it('refuses bytes that disagree with the type declared for them', async () => {

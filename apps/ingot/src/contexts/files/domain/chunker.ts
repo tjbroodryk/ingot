@@ -1,7 +1,8 @@
 import { encode } from 'gpt-tokenizer/encoding/o200k_base';
 import { ChunkKind } from '@ingot/shared/ingot-v1';
-import { type Block, BlockKind } from '../application/ports/document-parser.port.js';
-import { MediaType } from './media-type.js';
+import { type Block, BlockKind, Boundary, type ChunkingStrategy } from './format.js';
+import { FORMATS } from './formats/index.js';
+import type { MediaType } from './media-type.js';
 
 /** One chunk, ready to become a row in `ingot_chunks`. */
 export interface Chunk {
@@ -12,95 +13,6 @@ export interface Chunk {
   readonly kind: ChunkKind;
   readonly tokens: number;
 }
-
-/**
- * What forces a new chunk, whatever the budget says.
- *
- * This is the entire difference between the formats, and collapsing it to one
- * enum is the point of the file. The alternative — a splitter per format — was
- * four implementations of "pack text up to a budget" with four opportunities to
- * get the overlap arithmetic subtly different, wrapped around one line each of
- * actual format knowledge.
- */
-export enum Boundary {
-  /** Only the budget. For text with no structure to respect. */
-  Budget = 'budget',
-  /** A page or a slide. Never merged across, because a page is a place. */
-  Page = 'page',
-  /** A heading. Merged freely underneath one, never across two. */
-  Heading = 'heading',
-}
-
-/**
- * How one format is split.
- *
- * The rule underneath all of them, and the one thing to remember here:
- * **split on the strongest boundary the format actually gives you, and fall
- * back exactly one level at a time.** A deck has slides, so a slide is a chunk.
- * A Word document has a heading hierarchy that is explicit and reliable, so a
- * section is a chunk. A PDF has pages that are real and headings that are
- * guessed from font runs, so it splits on pages and does not pretend to know
- * its own structure. A `.txt` file has nothing, so it gets the token window —
- * which is the fallback, and never the default.
- */
-export interface Strategy {
-  readonly boundary: Boundary;
-  /**
-   * Whether a chunk may repeat the tail of the one before it.
-   *
-   * Overlap exists for exactly one failure: the sentence that answers the
-   * question landing across a split, so that neither side ranks for it. That
-   * failure only happens at a boundary **we** drew. A slide does not bleed into
-   * the next slide and a section does not continue into the one after it, so
-   * repeating across those is duplication that buys nothing and costs an
-   * embedding — which is why this is false wherever the boundary is authored.
-   */
-  readonly overlap: boolean;
-  /**
-   * Whether the heading path is prepended to the text that gets embedded.
-   *
-   * On where the format's headings are real. A chunk reading "…within thirty
-   * days of written notice" ranks against "what is the termination notice
-   * period" only if "4.2 Notice" travels with it — the words that make the
-   * passage findable are in the heading, and the heading is in a different
-   * block. Off for PDFs, where a heading is a guess from a font size and a
-   * wrong one poisons the embedding rather than merely failing to help.
-   */
-  readonly carryHeadings: boolean;
-}
-
-/**
- * Keyed on the media type, so a format added without a strategy fails to
- * compile rather than falling through to the token window at runtime.
- *
- * **A caller cannot choose one of these**, and that is deliberate. Which
- * boundary a document is split on is a property of what the document *is*, and
- * letting somebody pick a fixed window for a slide deck is a footgun with no
- * upside — there is no case where cutting a deck every 512 tokens beats cutting
- * it every slide. What a caller can set is the budget and the overlap, because
- * those are a function of their embedder and their context window, and this
- * service knows neither.
- */
-export const STRATEGIES: Record<MediaType, Strategy> = {
-  // A slide is already an authored unit: one slide, one chunk, always.
-  [MediaType.Pptx]: { boundary: Boundary.Page, overlap: false, carryHeadings: true },
-
-  // The heading hierarchy is explicit and trustworthy in all three.
-  [MediaType.Docx]: { boundary: Boundary.Heading, overlap: true, carryHeadings: true },
-  [MediaType.Markdown]: { boundary: Boundary.Heading, overlap: true, carryHeadings: true },
-  [MediaType.Html]: { boundary: Boundary.Heading, overlap: true, carryHeadings: true },
-
-  // Pages are real; headings are inferred from font runs and often wrong.
-  [MediaType.Pdf]: { boundary: Boundary.Page, overlap: true, carryHeadings: false },
-
-  // A row group. Not prose, and the fallback for a spreadsheet nobody wrote an
-  // extraction for — see `renderRows` in the parser for what goes in the text.
-  [MediaType.Csv]: { boundary: Boundary.Budget, overlap: false, carryHeadings: false },
-  [MediaType.Xlsx]: { boundary: Boundary.Budget, overlap: false, carryHeadings: false },
-
-  // Nothing to exploit. The token window is what is left, not what was wanted.
-  [MediaType.Text]: { boundary: Boundary.Budget, overlap: true, carryHeadings: false },
-};
 
 /** What a chunk's `kind` column gets, from what the parser said the block was. */
 const KINDS: Record<BlockKind, ChunkKind> = {
@@ -139,8 +51,8 @@ const CHARS_PER_TOKEN = 4;
  *    group boundary is one the document drew.
  *
  * Nothing here knows what a PDF is. That is the point: the format knowledge is
- * in `STRATEGIES` and in whichever parser produced the blocks, and this is the
- * part that would otherwise have been written four times.
+ * on the handler — its `chunking` strategy, and the blocks its `parse` produced
+ * — and this is the part that would otherwise have been written once per format.
  */
 export function chunk(input: {
   blocks: readonly Block[];
@@ -148,7 +60,7 @@ export function chunk(input: {
   chunkTokens: number;
   overlapTokens: number;
 }): readonly Chunk[] {
-  const strategy = STRATEGIES[input.mediaType];
+  const strategy = FORMATS[input.mediaType].chunking;
   const budget = input.chunkTokens * CHARS_PER_TOKEN;
   const overlap = strategy.overlap ? input.overlapTokens * CHARS_PER_TOKEN : 0;
 
@@ -189,7 +101,7 @@ export function chunk(input: {
  * table lifted whole, a fenced code block. A budget-driven strategy has no
  * structural boundaries of its own and still honours those.
  */
-function groupsOf(blocks: readonly Block[], strategy: Strategy): Block[][] {
+function groupsOf(blocks: readonly Block[], strategy: ChunkingStrategy): Block[][] {
   const groups: Block[][] = [];
   let current: Block[] = [];
 
@@ -206,7 +118,7 @@ function groupsOf(blocks: readonly Block[], strategy: Strategy): Block[][] {
   return groups;
 }
 
-function breaks(previous: Block, next: Block, strategy: Strategy): boolean {
+function breaks(previous: Block, next: Block, strategy: ChunkingStrategy): boolean {
   if (previous.hard || next.hard) return true;
 
   switch (strategy.boundary) {
@@ -227,7 +139,7 @@ function breaks(previous: Block, next: Block, strategy: Strategy): boolean {
  * already there. Only a block that will not fit *on its own* is broken into,
  * and then on the strongest separator it has left.
  */
-function packed(group: readonly Block[], budget: number, strategy: Strategy): string[] {
+function packed(group: readonly Block[], budget: number, strategy: ChunkingStrategy): string[] {
   const bodies: string[] = [];
   let current = '';
 

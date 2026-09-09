@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { FileMapping } from '../../src/contexts/files/domain/file-mapping.vo.js';
-import { ByteShape, MediaType, isTabular, mediaTypeOf, shapeOf } from '../../src/contexts/files/domain/media-type.js';
-import { parseDelimited, renderRows } from '../../src/contexts/files/infrastructure/parsers/delimited.js';
+import { ByteShape } from '../../src/contexts/files/domain/format.js';
+import { MediaType } from '../../src/contexts/files/domain/media-type.js';
+import { isTabular, mediaTypeOf, shapeOf } from '../../src/contexts/files/domain/formats/detect.js';
+import { parseDelimited, renderRows } from '../../src/contexts/files/domain/formats/delimited.js';
 
 /**
  * `/file` is the one endpoint that takes opaque bytes from anyone holding a
@@ -48,14 +50,23 @@ describe('deciding what an upload is', () => {
    */
   it('cannot tell the OOXML formats apart from bytes, and does not try', () => {
     const zip = head('PK\x03\x04rest of the archive');
-    expect(shapeOf(zip)).toBe(ByteShape.Zip);
 
-    expect(mediaTypeOf({ declared: MediaType.Docx, filename: 'a.docx', head: zip })).toBe(
-      MediaType.Docx,
-    );
+    // The shape is as far as the bytes go: every OOXML format, and a jar, look
+    // exactly like this. Which one it is comes from the declared type.
+    expect(shapeOf(zip)).toBe(ByteShape.Zip);
     expect(mediaTypeOf({ declared: MediaType.Pptx, filename: 'a.pptx', head: zip })).toBe(
       MediaType.Pptx,
     );
+
+    // A zip declared as something this build has no handler for is refused by
+    // name, since `MediaType` is now exactly what `FORMATS` covers.
+    expect(() =>
+      mediaTypeOf({
+        declared: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        filename: 'a.docx',
+        head: zip,
+      }),
+    ).toThrow(/must be one of/);
   });
 
   it('falls back to the extension when a client will not commit to a type', () => {
@@ -85,10 +96,12 @@ describe('deciding what an upload is', () => {
   });
 
   it('knows which formats already have rows of their own', () => {
+    // Read off the handler rather than a second table, which is what stops
+    // "is this tabular" and "how is this parsed" ever disagreeing.
     expect(isTabular(MediaType.Csv)).toBe(true);
-    expect(isTabular(MediaType.Xlsx)).toBe(true);
     expect(isTabular(MediaType.Pdf)).toBe(false);
     expect(isTabular(MediaType.Markdown)).toBe(false);
+    expect(isTabular(MediaType.Pptx)).toBe(false);
   });
 });
 

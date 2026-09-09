@@ -13,7 +13,7 @@ import { Metrics, Outcome } from '../../../../observability/index.js';
 import { IngotAccess } from '../../../ingots/application/ingot-access.js';
 import { OBJECT_STORE, type ObjectStore, Keys } from '../../../../storage/object-store.port.js';
 import { FileMapping } from '../../domain/file-mapping.vo.js';
-import { SNIFF_BYTES, isTabular, mediaTypeOf } from '../../domain/media-type.js';
+import { SNIFF_BYTES, isTabular, mediaTypeOf } from '../../domain/formats/detect.js';
 import { queryForChunks, queryForFile } from '../../domain/file-tables.js';
 import { FILE_QUEUE, type FileQueue } from '../ports/file-queue.port.js';
 import {
@@ -23,7 +23,6 @@ import {
   MIN_CHUNK_TOKENS,
 } from '../file-settings.js';
 import { BackgroundWork } from '../../../records/application/background.js';
-import { DOCUMENT_PARSER, type DocumentParser } from '../ports/document-parser.port.js';
 
 /** The bytes and their envelope, as a multipart part delivered them. */
 export interface UploadedBytes {
@@ -78,7 +77,6 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     private readonly access: IngotAccess,
     @Inject(FILE_QUEUE) private readonly queue: FileQueue,
     @Inject(OBJECT_STORE) private readonly objects: ObjectStore,
-    @Inject(DOCUMENT_PARSER) private readonly parser: DocumentParser,
     @Inject(FILE_SETTINGS) private readonly settings: FileSettings,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
@@ -130,24 +128,22 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     });
 
     /*
-     * A format this deployment's parser does not read is refused here, not later.
+     * There is no "can this build read it" check here any more, and its absence
+     * is the point of the registry.
      *
-     * `MediaType` is what the *product* understands and `handles` is what this
-     * build can actually do, and the two are allowed to differ — that is how a
-     * parser can be added without the wire contract moving. What must not
-     * happen is the gap being discovered by a sweeper: accepting a PDF into a
-     * deployment with no PDF parser stores the bytes, queues the work, burns
-     * four attempts and writes a failed row, when the honest answer was
-     * available before a single byte was stored.
+     * There used to be one: `MediaType` named formats the product understood and
+     * a parser's `handles` said which of those it could actually read, so the
+     * two could drift and a gap between them had to be caught at runtime — or
+     * else discovered by a sweeper, four attempts into a document that was never
+     * going to parse.
+     *
+     * `FORMATS` is a `Record<MediaType, FormatHandler>`, so that gap cannot
+     * exist: every name has a handler or the build does not compile.
+     * `mediaTypeOf` above already refused anything outside the enum, which means
+     * by this line the format is known to be readable.
      */
-    if (!this.parser.handles.has(mediaType)) {
-      throw new InvariantViolation(
-        `This deployment cannot read ${mediaType}. Its parser ("${this.parser.name}") reads ` +
-          `${[...this.parser.handles].join(', ')}.`,
-      );
-    }
 
-    // Parsed before anything is stored, for the reason above: a caller who
+    // Parsed before anything is stored: a caller who
     // wrote a mapping this service cannot honour should be told now rather
     // than handed a file id whose parse fails in a sweeper.
     const mapping = body.extract

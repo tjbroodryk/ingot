@@ -4,15 +4,12 @@ import { Dispatcher } from '../../../shared/application/index.js';
 import { OBJECT_STORE, type ObjectStore } from '../../../storage/object-store.port.js';
 import type { Drained } from '../../records/application/drained.js';
 import { chunk } from '../domain/chunker.js';
-import { isTabular } from '../domain/media-type.js';
+import { PARSE_TIMEOUT_MS } from '../domain/format.js';
+import { isTabular } from '../domain/formats/detect.js';
+import { handlerFor } from '../domain/formats/index.js';
 import { ClaimFile, MAX_FILE_ATTEMPTS } from './commands/claim-file.command.js';
 import { FailFile, type ReadDocument, WriteFile } from './commands/write-file.command.js';
 import { FILE_SETTINGS, type FileSettings } from './file-settings.js';
-import {
-  DOCUMENT_PARSER,
-  type DocumentParser,
-  PARSE_TIMEOUT_MS,
-} from './ports/document-parser.port.js';
 import type { PendingFile } from './ports/file-queue.port.js';
 
 /**
@@ -59,7 +56,6 @@ export class FileWorker {
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(OBJECT_STORE) private readonly objects: ObjectStore,
-    @Inject(DOCUMENT_PARSER) private readonly parser: DocumentParser,
     @Inject(FILE_SETTINGS) private readonly settings: FileSettings,
   ) {}
 
@@ -133,7 +129,13 @@ export class FileWorker {
     const content = await this.objects.fetch(job.objectKey);
 
     const parsed = await withDeadline(
-      this.parser.parse({ content, mediaType: job.mediaType, filename: job.filename }),
+      // The registry is a total function over the media type, so there is no
+      // "which parser handles this" step and no way for the answer to be none.
+      handlerFor(job.mediaType).parse({
+        content,
+        mediaType: job.mediaType,
+        filename: job.filename,
+      }),
       PARSE_TIMEOUT_MS,
       `Parsing "${job.filename}" took longer than ${PARSE_TIMEOUT_MS / 1000}s`,
     );

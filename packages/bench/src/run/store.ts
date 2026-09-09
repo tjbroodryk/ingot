@@ -78,7 +78,14 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
   // reached, so it needs the same treatment as the rows or a merge would report
   // a column under one name and list it under another.
   const adapters = meta.adapters.map(canonicalAdapter);
-  return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
+  // A sidecar written before `--drift` existed has no `drift` key, and every
+  // run that produced one was over the ordinary corpus. Defaulting it here
+  // rather than leaving it `undefined` is what lets those runs still merge
+  // with new ones: `MUST_MATCH` compares with `===`, and `undefined !== false`
+  // would refuse exactly the splice — a new column beside a table already
+  // bought — that the merge exists to allow.
+  const drift = meta.drift ?? false;
+  return { meta: { ...meta, adapters, drift }, rows: rows as readonly RunRecord[] };
 }
 
 /**
@@ -86,7 +93,7 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
  * one table.
  *
  * Everything that could move a number: the corpus and questions (`seed`,
- * `perTemplate`, `logs`), the agent (`model`, `provider`, `effort`,
+ * `perTemplate`, `logs`, `drift`), the agent (`model`, `provider`, `effort`,
  * `thinking`, `maxToolCalls`), the vectors (`embedder`), who wrote the
  * mappings, and `repeats` — because the ± in the report is a function of how
  * many runs are behind each cell, and a column bought once beside columns
@@ -108,6 +115,7 @@ const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'mapping',
   'embedder',
   'logs',
+  'drift',
 ];
 
 /**

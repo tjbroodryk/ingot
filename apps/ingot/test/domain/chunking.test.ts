@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { ChunkKind } from '@ingot/shared/ingot-v1';
-import {
-  type Block,
-  BlockKind,
-} from '../../src/contexts/files/application/ports/document-parser.port.js';
-import { Boundary, STRATEGIES, chunk } from '../../src/contexts/files/domain/chunker.js';
+import { type Block, BlockKind, Boundary } from '../../src/contexts/files/domain/format.js';
+import { chunk } from '../../src/contexts/files/domain/chunker.js';
+import { FORMATS } from '../../src/contexts/files/domain/formats/index.js';
 import { MediaType } from '../../src/contexts/files/domain/media-type.js';
 
 /**
@@ -60,7 +58,7 @@ describe('chunking', () => {
       const chunks = cut(slides, MediaType.Pptx, 512, 128);
 
       expect(chunks[1]?.text).not.toContain('first slide');
-      expect(STRATEGIES[MediaType.Pptx].overlap).toBe(false);
+      expect(FORMATS[MediaType.Pptx].chunking.overlap).toBe(false);
     });
   });
 
@@ -103,8 +101,8 @@ describe('chunking', () => {
     it('keeps the heading out of a PDF, where headings are guessed', () => {
       // Inferred from font runs rather than declared, so a wrong one poisons
       // the embedding instead of merely failing to help it.
-      expect(STRATEGIES[MediaType.Pdf].carryHeadings).toBe(false);
-      expect(STRATEGIES[MediaType.Pdf].boundary).toBe(Boundary.Page);
+      expect(FORMATS[MediaType.Pdf].chunking.carryHeadings).toBe(false);
+      expect(FORMATS[MediaType.Pdf].chunking.boundary).toBe(Boundary.Page);
 
       const chunks = cut(
         [block('Body text.', { headings: ['Probably A Heading'], page: 1 })],
@@ -154,10 +152,10 @@ describe('chunking', () => {
 
   describe('the token window, which is the fallback and never the default', () => {
     it('is what plain text gets, and only plain text among the prose formats', () => {
-      expect(STRATEGIES[MediaType.Text].boundary).toBe(Boundary.Budget);
-      expect(STRATEGIES[MediaType.Markdown].boundary).toBe(Boundary.Heading);
-      expect(STRATEGIES[MediaType.Pdf].boundary).toBe(Boundary.Page);
-      expect(STRATEGIES[MediaType.Pptx].boundary).toBe(Boundary.Page);
+      expect(FORMATS[MediaType.Text].chunking.boundary).toBe(Boundary.Budget);
+      expect(FORMATS[MediaType.Markdown].chunking.boundary).toBe(Boundary.Heading);
+      expect(FORMATS[MediaType.Pdf].chunking.boundary).toBe(Boundary.Page);
+      expect(FORMATS[MediaType.Pptx].chunking.boundary).toBe(Boundary.Page);
     });
 
     it('breaks an oversized block on paragraphs before it breaks it anywhere else', () => {
@@ -256,7 +254,7 @@ describe('chunking', () => {
       expect(chunks[0]?.kind).toBe(ChunkKind.Table);
       // No overlap: repeating half a record into the next chunk is duplication
       // that ranks against nothing.
-      expect(STRATEGIES[MediaType.Csv].overlap).toBe(false);
+      expect(FORMATS[MediaType.Csv].chunking.overlap).toBe(false);
     });
   });
 });

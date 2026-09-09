@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { BlockKind } from '../../src/contexts/files/application/ports/document-parser.port.js';
+import { BlockKind } from '../../src/contexts/files/domain/format.js';
 import { MediaType } from '../../src/contexts/files/domain/media-type.js';
-import { PptxParser } from '../../src/contexts/files/infrastructure/parsers/pptx-parser.js';
-import { byNumber } from '../../src/contexts/files/infrastructure/parsers/office-zip.js';
+import { pptxHandler } from '../../src/contexts/files/domain/formats/pptx.js';
+import { byNumber } from '../../src/contexts/files/domain/formats/office-zip.js';
 import { compressible, pptx, pptxWithoutRels, zipOf } from '../support/office.js';
 
-const parser = new PptxParser();
 const read = (content: Buffer) =>
-  parser.parse({ content, filename: 'deck.pptx', mediaType: MediaType.Pptx });
+  pptxHandler.parse({ content, filename: 'deck.pptx', mediaType: MediaType.Pptx });
 
 describe('reading a PowerPoint deck', () => {
   it('makes exactly one block per slide, marked so nothing may merge them', async () => {

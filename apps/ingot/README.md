@@ -329,21 +329,41 @@ are built from an id this service generated. Multer's limit is the absolute
 ceiling on what is buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a
 deployment chose.
 
-Three parsers, behind one port, chosen by media type rather than by an operator
-— they are disjoint capabilities rather than alternatives, which is why there is
-no `INGOT_PARSER` to set:
+### The registry
 
-| parser | reads                                                |
-| ------ | ---------------------------------------------------- |
-| `text` | `text/plain`, `text/markdown`, `text/html`, `text/csv` |
-| `pdf`  | `application/pdf`                                    |
-| `pptx` | `.pptx`                                              |
+Everything this service knows about a format is one object implementing
+`FormatHandler`, and `FORMATS` is a `Record<MediaType, FormatHandler>`:
 
-**`.docx` and `.xlsx` have names in the wire contract and no parser behind
-them**, so an upload of one is **refused at the door** naming what this build
-reads, rather than accepted and abandoned in a sweeper. `DocumentParser.handles`
-is the union that makes that honest, and adding a parser is what removes the
-refusal. Both are the zip machinery `pptx` already has, so neither is far off.
+```ts
+export interface FormatHandler {
+  readonly mediaType: MediaType;        // restated, so it can be checked against the key
+  readonly extensions: readonly string[];
+  readonly shape: ByteShape;            // checked against the declared type
+  readonly tabular: boolean;            // already has rows? then extraction needs no model
+  readonly chunking: ChunkingStrategy;  // boundary, overlap, carryHeadings
+  parse(input: ParseInput): Promise<ParsedDocument>;
+}
+```
+
+That replaced four places a format used to be described: a `FORMATS` table for
+signatures and extensions, a `STRATEGIES` table for chunking, a `handles` set on
+whichever parser class claimed it, and that parser's own `switch`. Adding one
+meant finding all four, and only some failed to compile if you missed one.
+
+Keying on the enum makes the exhaustiveness the compiler's — **a media type
+without a handler does not build** — so `MediaType` is now exactly what this
+service reads, and `.docx`/`.xlsx` are simply absent rather than named with
+nothing behind them. Adding either is one enum member and one file next to
+`pptx.ts`, using the same zip machinery.
+
+Two mistakes remain that types cannot catch: a handler filed under a key that is
+not its own `mediaType`, and two formats claiming one extension. `assertConsistent`
+checks both at boot, so either is a service that refuses to start rather than one
+that quietly misreads uploads.
+
+**A handler fetches nothing** — no remote images, no external entities, nothing a
+document claims lives elsewhere. That is the interface's rule, not a per-parser
+promise.
 
 **A zip from an untrusted upload is the most dangerous thing here**, and
 `office-zip.ts` is where that is taken seriously. A forty-kilobyte archive can

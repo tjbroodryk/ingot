@@ -25,6 +25,7 @@ const HEADER: ReportHeader = {
   mapping: 'authored',
   notes: [],
   logs: 0,
+  drift: false,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],

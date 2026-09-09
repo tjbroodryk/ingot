@@ -19,7 +19,7 @@ import {
 } from '../../../records/application/ports/overlay-store.port.js';
 import type { Chunk } from '../../domain/chunker.js';
 import { FileMapping } from '../../domain/file-mapping.vo.js';
-import { isTabular } from '../../domain/media-type.js';
+import { isTabular } from '../../domain/formats/detect.js';
 import {
   CHUNKS_TABLE,
   CHUNK_FILE_ID,
