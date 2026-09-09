@@ -9,6 +9,7 @@ import type { Drained } from '../../src/contexts/records/application/drained.js'
 import type { EmbedWorker } from '../../src/contexts/records/application/embed-worker.js';
 import type { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
 import type { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
+import type { FileWorker } from '../../src/contexts/files/application/file-worker.js';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
@@ -167,6 +168,7 @@ describe('waking the background', () => {
     [BackgroundKind.Embeddings]: 2,
     [BackgroundKind.Receipts]: 1,
     [BackgroundKind.Deliveries]: 1,
+    [BackgroundKind.Files]: 1,
   };
 
   function workFrom(embed: { drain(): Promise<Drained> }): BackgroundWork {
@@ -179,6 +181,7 @@ describe('waking the background', () => {
       embed as unknown as EmbedWorker,
       idle as unknown as ReceiptWorker,
       idle as unknown as DeliveryWorker,
+      idle as unknown as FileWorker,
       // Pinned, so this describes the mechanism rather than today's numbers.
       // A test that read `CONCURRENCY` would pass whatever it was changed to,
       // which is a test that asserts nothing.

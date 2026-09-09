@@ -6,6 +6,7 @@ import { ReceiptsSweeper } from './receipts.sweeper.js';
 import { EmbeddingsSweeper } from './embeddings.sweeper.js';
 import { ExclusiveWork } from './exclusive.js';
 import { ExpirySweeper } from './expiry.sweeper.js';
+import { FilesSweeper } from './files.sweeper.js';
 import { SweptKind } from './kinds.js';
 import { RollUpSweeper } from './roll-up.sweeper.js';
 import { Scheduler, TICKERS, type Ticker } from './scheduler.js';
@@ -29,6 +30,7 @@ export const SWEEPERS: Record<SweptKind, Type<Ticker>> = {
   [SweptKind.Receipts]: ReceiptsSweeper,
   [SweptKind.Deliveries]: DeliveriesSweeper,
   [SweptKind.Expiry]: ExpirySweeper,
+  [SweptKind.Files]: FilesSweeper,
 };
 
 @Module({

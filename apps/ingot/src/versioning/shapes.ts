@@ -38,4 +38,15 @@ export enum WireShape {
 
   DeleteBody = 'DeleteBody',
   DeleteResult = 'DeleteResult',
+
+  /**
+   * `/file` takes multipart, so only the response is a versioned shape.
+   *
+   * `FileBody` travels as JSON inside a form field, which no interceptor sees
+   * and no transform could reach — so it is deliberately absent here rather
+   * than listed and quietly unversioned. That is a real limitation of taking
+   * bytes, and the place it will bite is a future release that wants to rename
+   * a field in an extraction mapping.
+   */
+  FileResult = 'FileResult',
 }

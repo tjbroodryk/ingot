@@ -8,6 +8,8 @@ import type {
   AddResult,
   ConfigureIngotBody,
   ConfigureTableBody,
+  FileBody,
+  FileResult,
   IngotConfig,
   IngotInfo,
   QueryBody,
@@ -15,6 +17,10 @@ import type {
   TableConfig,
 } from '@ingot/shared/ingot-v1';
 import { AccountsModule } from '../../src/contexts/accounts/accounts.module.js';
+import { AcceptFile } from '../../src/contexts/files/application/commands/accept-file.command.js';
+import { FileWorker } from '../../src/contexts/files/application/file-worker.js';
+import { FileStoreModule } from '../../src/contexts/files/file-store.module.js';
+import { FilesModule } from '../../src/contexts/files/files.module.js';
 import { CreateAccount } from '../../src/contexts/accounts/application/commands/create-account.command.js';
 import { ConfigureIngot } from '../../src/contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../../src/contexts/ingots/application/commands/configure-table.command.js';
@@ -81,6 +87,21 @@ export interface World {
 
   ingot(name?: string): Promise<string>;
   add(ingotId: string, body: AddBody): Promise<AddResult>;
+  /**
+   * Uploads a document, exactly as the controller would.
+   *
+   * The bytes and the JSON half are given separately because that is what a
+   * multipart part actually delivers — going through `AcceptFile` rather than
+   * through HTTP keeps the suite off a socket while still exercising every
+   * check that matters, since the controller does nothing but decode the form.
+   */
+  file(
+    ingotId: string,
+    upload: { filename: string; mediaType?: string; content: string | Buffer },
+    body?: FileBody,
+  ): Promise<FileResult>;
+  /** Reads the documents in the queue, which the sweeper would do on a tick. */
+  parseAll(): Promise<number>;
   query(ingotId: string, body: QueryBody): Promise<QueryResult>;
   /** A SQL query, for the common case of asserting on the rows it returns. */
   sql(ingotId: string, statement: string): Promise<QueryResult['rows']>;
@@ -163,6 +184,10 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       AccountsModule,
       IngotsModule,
       RecordsModule,
+      // Both halves: the global one binds the queue, the parser and the worker,
+      // and the other binds the command `world.file` dispatches.
+      FileStoreModule,
+      FilesModule,
       QueryModule,
     ],
   });
@@ -171,6 +196,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
     wakeEmbeddings: () => wakes.push(BackgroundKind.Embeddings),
     wakeReceipts: () => wakes.push(BackgroundKind.Receipts),
     wakeDeliveries: () => wakes.push(BackgroundKind.Deliveries),
+    wakeFiles: () => wakes.push(BackgroundKind.Files),
     settled: async () => undefined,
   } as unknown as BackgroundWork);
 
@@ -206,6 +232,39 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
     async add(ingotId, body) {
       return dispatcher.send(new AddRecords(ingotId, created.account.id, body));
+    },
+
+    async file(ingotId, upload, body = {}) {
+      return dispatcher.send(
+        new AcceptFile(
+          ingotId,
+          created.account.id,
+          {
+            filename: upload.filename,
+            mediaType: upload.mediaType,
+            content:
+              typeof upload.content === 'string' ? Buffer.from(upload.content) : upload.content,
+          },
+          body,
+        ),
+      );
+    },
+
+    // The worker directly, never through the dispatcher, for the reason the
+    // other three are: it is three transactions with a parse in the middle,
+    // and dispatching it would put all three back inside the transaction the
+    // split exists to avoid.
+    async parseAll() {
+      let total = 0;
+      // Bounded rather than `for(;;)`: a document that keeps failing stays in
+      // the queue until it runs out of attempts, and an unbounded loop over one
+      // would hang the suite instead of failing it.
+      for (let pass = 0; pass < 100; pass++) {
+        const found = await app.get(FileWorker, { strict: false }).next();
+        if (!found) return total;
+        total += 1;
+      }
+      return total;
     },
 
     async query(ingotId, body) {

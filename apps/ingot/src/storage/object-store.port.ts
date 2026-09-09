@@ -34,6 +34,38 @@ export interface ObjectStore {
   /** Opens a write of one object. Nothing is published until `commit`. */
   beginWrite(key: string): Promise<PendingWrite>;
 
+  /**
+   * Writes one object from bytes already in hand.
+   *
+   * **The exception to the rule at the top of this file, and it is worth being
+   * clear about why it is not a violation of it.** That rule is about the
+   * *Parquet read path*: DuckDB opens those files far better than we would, so
+   * handing it a string to open beats fetching a buffer first. It says nothing
+   * about objects DuckDB is never going to see.
+   *
+   * An uploaded document is exactly that. It arrives as bytes over HTTP, it is
+   * read by a parser in this process, and no query ever touches it — so there
+   * is no engine to defer to and `beginWrite`'s two-phase dance would be
+   * ceremony around a single `write`. `PendingWrite` exists so that a store
+   * staging locally can tell "DuckDB finished" from "DuckDB threw halfway
+   * through"; with the whole payload in memory there is no halfway.
+   */
+  put(key: string, body: Buffer): Promise<void>;
+
+  /**
+   * Reads one object back, whole.
+   *
+   * For documents, and for the same reason `put` exists. A parser needs the
+   * bytes in this process; there is nothing to push a projection down into.
+   * Never used on the Parquet path, where `uri` is the answer.
+   *
+   * Throws rather than returning null when the object is gone: a queued parse
+   * whose object has vanished is a real failure that should be recorded on the
+   * document, not an empty buffer that parses to nothing and looks like a file
+   * with no content in it.
+   */
+  fetch(key: string): Promise<Buffer>;
+
   stat(key: string): Promise<{ bytes: number } | null>;
 
   remove(keys: readonly string[]): Promise<void>;
@@ -99,4 +131,25 @@ export const Keys = {
   /** Vectors live beside the data, keyed by `_row_id`, never inside it. */
   vectors: (accountId: string, ingotId: string, table: string, generation: number): string =>
     `${Keys.ingot(accountId, ingotId)}/vectors/${table}/gen-${String(generation).padStart(6, '0')}/part-0000.parquet`,
+
+  /**
+   * An uploaded document, as it arrived.
+   *
+   * Under the memory's own prefix, so destroying a memory takes its documents
+   * with it through the `removePrefix` that already removes the Parquet — one
+   * deletion path rather than two that can disagree about what was covered.
+   *
+   * **The name is the file id and never the filename.** A caller-supplied name
+   * reaching a path is a write anywhere the process can reach, and no amount of
+   * sanitising is as good as not doing it: the id is ours, it is generated, and
+   * the filename lives in a column where it can be any bytes at all.
+   *
+   * No extension either. What the object *is* was decided at upload from the
+   * declared type and the bytes together, and it is recorded in `file_queue`
+   * and in `ingot_files`. A second copy of that claim in the key would be a
+   * second thing to trust, and the one thing that must never happen here is a
+   * decoder being chosen by a string a caller supplied.
+   */
+  file: (accountId: string, ingotId: string, fileId: string): string =>
+    `${Keys.ingot(accountId, ingotId)}/files/${fileId}`,
 };

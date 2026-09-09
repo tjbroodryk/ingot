@@ -34,7 +34,12 @@ export const RESERVED_TABLE_PREFIX = 'ingot_';
  * owns what goes in them; this is only what to say when somebody picks a name
  * that collides.
  */
-export const RESERVED_TABLES: readonly string[] = ['ingot_receipts', 'ingot_embeddings'];
+export const RESERVED_TABLES: readonly string[] = [
+  'ingot_receipts',
+  'ingot_embeddings',
+  'ingot_files',
+  'ingot_chunks',
+];
 
 export const ROW_ID = '_row_id';
 export const INGESTED_AT = '_ingested_at';

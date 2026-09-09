@@ -63,14 +63,23 @@ An LSM tree, and everything else follows from it.
 
 ```
         /add ──────────────►  overlay        (Postgres, queryable instantly)
-                                 │
+                                 ▲
+       /file ─► parse ───────────┘  │
+                                    │
                           roll-up sweeper    (every 5 minutes)
-                                 ▼
+                                    ▼
        /query ◄── DuckDB ──►  base tier      (Parquet, in a bucket)
-                    ▲            │
-                    └────────────┘
+                    ▲               │
+                    └───────────────┘
                   a query unions both
 ```
+
+`/file` is the second way in and it joins the first one immediately: a document
+is parsed into chunks and, if you asked, into typed rows — and both go through
+the same overlay, the same embedding queue and the same roll-up as a tool
+result. There is no document store. `ingot_files` and `ingot_chunks` are
+ordinary tables in your memory, which is what lets one SQL statement filter on a
+number pulled out of a PDF and rank on the meaning of the paragraph beside it.
 
 Writes land in Postgres and are queryable the instant they are accepted. A
 sweeper folds them into Parquet on a schedule, and the same question gets the

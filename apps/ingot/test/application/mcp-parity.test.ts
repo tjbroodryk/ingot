@@ -54,6 +54,12 @@ describe('the MCP surface', () => {
     CreateAccount: 'Sign-up needs no key, and MCP is only reachable with one.',
     MintKey: 'Minting credentials from inside a model’s tool loop is not a thing to make easy.',
     RevokeKey: 'Same as minting: credential management stays on the HTTP surface.',
+    AcceptFile:
+      'MCP is JSON and an upload is bytes. Base64 inside a tool call would be a third more ' +
+      'of a payload whose whole problem is its size, and it would put a document through a ' +
+      'model’s context on the way to storing it — which is the cost /file exists to avoid. ' +
+      'Nothing is lost to a model: ingot_files and ingot_chunks are ordinary tables, so ' +
+      '`query` and `recall` already reach every document anybody has uploaded.',
   };
 
   it('covers every operation the HTTP API exposes', async () => {

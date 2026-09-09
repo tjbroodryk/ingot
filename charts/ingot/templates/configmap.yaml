@@ -90,6 +90,15 @@ data:
   INGOT_EMBEDDINGS_CONCURRENCY: {{ .Values.config.background.embeddings | quote }}
   INGOT_RECEIPTS_CONCURRENCY: {{ .Values.config.background.receipts | quote }}
   INGOT_DELIVERIES_CONCURRENCY: {{ .Values.config.background.deliveries | quote }}
+  INGOT_FILES_CONCURRENCY: {{ .Values.config.background.files | quote }}
+
+  # ── documents ───────────────────────────────────────────────────────────
+  # The ceiling on one upload, and how it is split. The ceiling is heap rather
+  # than policy: the bytes are held whole to be parsed, so this times
+  # `background.files` times two passes is memory this pod needs.
+  INGOT_MAX_UPLOAD_BYTES: {{ .Values.config.files.maxUploadBytes | quote }}
+  INGOT_CHUNK_TOKENS: {{ .Values.config.files.chunkTokens | quote }}
+  INGOT_CHUNK_OVERLAP_TOKENS: {{ .Values.config.files.overlapTokens | quote }}
 
   # ── delivering receipts ─────────────────────────────────────────────────
   # The broker URL is not here: it carries credentials, so it lives in the

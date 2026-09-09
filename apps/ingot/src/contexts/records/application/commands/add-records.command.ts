@@ -4,7 +4,6 @@ import { type AddBody, type AddResult, ReceiptKind } from '@ingot/shared/ingot-v
 import {
   CLOCK,
   type Clock,
-  ConflictingState,
   InvariantViolation,
   newIdValue,
 } from '../../../../shared/domain/index.js';
@@ -22,6 +21,7 @@ import {
   type IngotTableRepository,
 } from '../../../ingots/domain/index.js';
 import { IngotAccess } from '../../../ingots/application/ingot-access.js';
+import { TableRegistry } from '../../../ingots/application/table-registry.js';
 import { sizeOf } from '../../domain/payload-size.js';
 import { RowMapping } from '../../domain/row-mapping.vo.js';
 import { ReceiptBuilder } from '../receipt-builder.js';
@@ -56,6 +56,7 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
   constructor(
     private readonly access: IngotAccess,
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
+    private readonly registry: TableRegistry,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
@@ -69,45 +70,6 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     } catch (error) {
       Metrics.RowsIngested.inc({ outcome: Outcome.Error }, 0);
       throw error;
-    }
-  }
-
-  /**
-   * The table this write goes into, creating it if nobody has yet.
-   *
-   * Two concurrent writes to a new table both find nothing and both create it.
-   * Because a table's id is derived from `(ingot, name)` they collide on the
-   * primary key rather than on a unique index, which makes the loser an
-   * ordinary version miss instead of a raw constraint violation — no exception,
-   * a live transaction, and a table now sitting there to be re-read.
-   *
-   * So the loser re-reads and carries on. Two agents writing to the same table
-   * at the same moment is the *normal* case for a memory server, and answering
-   * one of them with a 409 would make every caller implement a retry loop for
-   * something that should simply work.
-   */
-  private async resolveTable(ingotId: string, mapping: RowMapping, now: Date): Promise<IngotTable> {
-    const existing = await this.tables.findByName(ingotId, mapping.table);
-    if (existing) return existing;
-
-    const declared = IngotTable.declare({
-      ingotId,
-      name: mapping.table,
-      columns: mapping.columns,
-      key: mapping.key,
-      raw: mapping.raw,
-      now,
-    });
-
-    try {
-      await this.tables.save(declared);
-      return declared;
-    } catch (error) {
-      if (!(error instanceof ConflictingState)) throw error;
-
-      const winner = await this.tables.findByName(ingotId, mapping.table);
-      if (!winner) throw error; // Lost the race to something that then vanished.
-      return winner;
     }
   }
 
@@ -128,7 +90,16 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     // fills it is a schema that drifts from it.
     // Unconditional, and safe either way: a table this call just declared
     // already has exactly these columns and this key, so both are no-ops on it.
-    const table = await this.resolveTable(ingot.id.value, mapping, now);
+    const table = await this.registry.ensure(ingot.id.value, mapping.table, () =>
+      IngotTable.declare({
+        ingotId: ingot.id.value,
+        name: mapping.table,
+        columns: mapping.columns,
+        key: mapping.key,
+        raw: mapping.raw,
+        now,
+      }),
+    );
     table.assertKeyUnchanged(mapping.key);
     const columnsAdded = table.accommodate(mapping.columns);
 

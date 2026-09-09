@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { FileWorker } from '../../files/application/file-worker.js';
 import { DeliveryWorker } from './delivery-worker.js';
 import type { Drained } from './drained.js';
 import { EmbedWorker } from './embed-worker.js';
@@ -24,6 +25,13 @@ export enum BackgroundKind {
    * becomes findable a model call later.
    */
   Deliveries = 'deliveries',
+  /**
+   * Documents accepted by `/file` and not yet read.
+   *
+   * Woken by the upload itself, like embeddings and receipts: the bytes are
+   * stored and the row is committed, so there is work the instant it returns.
+   */
+  Files = 'files',
 }
 
 /**
@@ -55,6 +63,17 @@ export const CONCURRENCY: Record<BackgroundKind, number> = {
   [BackgroundKind.Embeddings]: 2,
   [BackgroundKind.Receipts]: 2,
   [BackgroundKind.Deliveries]: 6,
+  /**
+   * The lowest of the four, and it is bounded by something different.
+   *
+   * The other three are rate limits on somebody else's service. This one is a
+   * limit on **our own heap**: a parse holds the whole document in memory —
+   * a zip is read from its central directory and a PDF from its trailer, so
+   * neither streams — and each pass may hold up to `INGOT_MAX_UPLOAD_BYTES`.
+   * Two drains of two passes at 32 MiB is a number an operator can multiply by
+   * their replica count and size a pod against; six would not be.
+   */
+  [BackgroundKind.Files]: 2,
 };
 
 /**
@@ -113,6 +132,16 @@ export class BackgroundWork {
     private readonly receipts: ReceiptWorker,
     private readonly deliveries: DeliveryWorker,
     /**
+     * From `FileStoreModule`, which is global.
+     *
+     * That module is global for the reason `OverlayModule` is — to break a
+     * cycle that is real rather than accidental. `/file` wakes this class, and
+     * this class drains that worker, so one of the two directions has to reach
+     * across without an import. Binding the queue and the worker that drains it
+     * as kernel infrastructure is the same answer the overlay stores got.
+     */
+    private readonly files: FileWorker,
+    /**
      * `CONCURRENCY` in the service, and whatever a test pins. Injected rather
      * than read from the constant directly, so a test can describe the
      * mechanism without asserting on today's numbers.
@@ -139,6 +168,11 @@ export class BackgroundWork {
    */
   wakeDeliveries(): void {
     this.wake(BackgroundKind.Deliveries, () => this.deliveries.drain());
+  }
+
+  /** Reads the documents `/file` has just accepted. */
+  wakeFiles(): void {
+    this.wake(BackgroundKind.Files, () => this.files.drain());
   }
 
   /**

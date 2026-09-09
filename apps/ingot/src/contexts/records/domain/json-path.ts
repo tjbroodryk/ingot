@@ -7,6 +7,14 @@ import { InvariantViolation } from '../../../shared/domain/index.js';
  * what lets rows fanned out of an array still carry a field from their parent.
  * `[*]` selects an array to fan out and is only legal in the `rows` selector.
  *
+ * `$["Invoice #"]` is the way to a key the dotted form cannot spell. That form
+ * arrived with `/file`, and a spreadsheet is why: `Invoice #`, `Total (USD)`
+ * and `Ship Date` are what real header rows say, and every one of them is a key
+ * a caller has no choice about — it is in the file they were sent. Widening the
+ * dotted grammar to admit them would have made `$.a.b` ambiguous about where a
+ * key ends, so the quoted subscript is the escape hatch instead, and it is the
+ * one JSONPath itself uses.
+ *
  * Not JSONPath, and not evaluated by DuckDB. Full JSONPath brings filters and
  * expressions — an evaluator, in other words — for something that only ever
  * needs to walk a decoded object. And handing the path to DuckDB would make it
@@ -43,6 +51,20 @@ export function parsePath(raw: string, field: string, allowEach = false): Parsed
       continue;
     }
     if (rest.startsWith('[')) {
+      // A quoted key first, because `["0"]` is a key and `[0]` is an index and
+      // the two must not collapse into each other: a JSON object may perfectly
+      // well have `"0"` as a field name, and an array never has `"0"` as one.
+      const quoted = /^\[(["'])((?:\\.|(?!\1)[^\\])*)\1\]/.exec(rest);
+      if (quoted) {
+        const key = (quoted[2] ?? '').replace(/\\(.)/g, '$1');
+        if (key.length === 0) {
+          throw new InvariantViolation(`${field} has an empty quoted key near "${rest}"`);
+        }
+        segments.push({ kind: 'key', key });
+        rest = rest.slice(quoted[0].length);
+        continue;
+      }
+
       const match = /^\[(\*|\d+)\]/.exec(rest);
       if (!match?.[1]) throw new InvariantViolation(`${field} has a bad subscript near "${rest}"`);
       if (match[1] === '*') {

@@ -115,6 +115,28 @@ export class GcsObjectStore implements ObjectStore {
     };
   }
 
+  /**
+   * Bytes straight at the object, with no staging directory in the way.
+   *
+   * The round trip through disk that `beginWrite` does exists because DuckDB
+   * cannot write to GCS with a service account and has to be given a local
+   * path. Nothing about that applies here: the client library authenticates
+   * with the same credential the rest of this adapter uses, and we are holding
+   * the bytes already.
+   */
+  async put(key: string, body: Buffer): Promise<void> {
+    await upstream('gcs', 'save_object', () =>
+      this.storage.bucket(this.settings.bucket).file(key).save(body, { resumable: false }),
+    );
+  }
+
+  async fetch(key: string): Promise<Buffer> {
+    return upstream('gcs', 'download_object', async () => {
+      const [body] = await this.storage.bucket(this.settings.bucket).file(key).download();
+      return body;
+    });
+  }
+
   async stat(key: string): Promise<{ bytes: number } | null> {
     return upstream('gcs', 'get_metadata', async () => {
       try {

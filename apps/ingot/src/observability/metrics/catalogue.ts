@@ -180,6 +180,65 @@ export const Metrics = {
     buckets: Buckets.Upstream,
   }),
 
+  // ── files ────────────────────────────────────────────────────────────────
+  /**
+   * Uploads `/file` took in, and the ones it refused at the door.
+   *
+   * The error half is worth watching on its own here in a way it is not for
+   * `/add`. This endpoint refuses things a caller cannot see coming — a media
+   * type the deployment does not parse, bytes that disagree with the type
+   * declared for them, a document past the size cap — and a client integrating
+   * against it will find all three at once. A step in the error rate is usually
+   * somebody wiring up an uploader, not an attack.
+   */
+  FilesAccepted: defineCounter({
+    name: 'ingot_files_accepted_total',
+    help: 'Documents accepted by /file, and documents refused before being stored.',
+    labels: ['outcome'],
+  }),
+  FilesPending: defineGauge({
+    name: 'ingot_files_pending',
+    help:
+      'Documents accepted and not yet parsed into chunks. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  /**
+   * Documents that ran out of attempts.
+   *
+   * Apart from `pending` for the reason the receipt gauges are apart: a backlog
+   * clears on its own and this does not. It should sit at zero; anything else
+   * is a caller holding two queries — the document and its chunks — that will
+   * both stay empty for good, and a row in `ingot_files` saying why that
+   * nobody has read.
+   */
+  FilesAbandoned: defineGauge({
+    name: 'ingot_files_abandoned',
+    help:
+      'Documents that failed to parse often enough that they are no longer retried. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  /**
+   * The whole of one document's journey, labelled by what it was.
+   *
+   * `media_type` is a label because the distribution is genuinely bimodal and
+   * an unlabelled histogram hides it: a Markdown file is milliseconds and a
+   * three-hundred-page PDF is tens of seconds, so one series over both has a
+   * p99 that describes neither.
+   */
+  FileDuration: defineHistogram({
+    name: 'ingot_file_duration_seconds',
+    help: 'Time to turn one document into chunks — fetch, parse, chunk, extract and write.',
+    labels: ['media_type', 'outcome'],
+    buckets: Buckets.Upstream,
+  }),
+  ChunksWritten: defineCounter({
+    name: 'ingot_chunks_written_total',
+    help: 'Chunks written into ingot_chunks, by the format they came out of.',
+    labels: ['media_type'],
+  }),
+
   // ── delivery ─────────────────────────────────────────────────────────────
   DeliveriesPending: defineGauge({
     name: 'ingot_deliveries_pending',
@@ -267,6 +326,10 @@ export const DEPLOYMENT_WIDE: readonly string[] = [
   'ingot_receipts_abandoned',
   'ingot_deliveries_pending',
   'ingot_deliveries_abandoned',
+  // Both read out of `file_queue` at scrape time, so every replica answers
+  // with the same number — the depth of a queue they all share.
+  'ingot_files_pending',
+  'ingot_files_abandoned',
 ];
 
 /**

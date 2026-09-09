@@ -19,4 +19,6 @@ export enum SweptKind {
   Deliveries = 'deliveries',
   /** Memories past the retention their creator asked for. */
   Expiry = 'expiry',
+  /** Documents accepted by `/file` and not yet turned into chunks. */
+  Files = 'files',
 }

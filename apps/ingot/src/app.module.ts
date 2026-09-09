@@ -5,6 +5,8 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module.js';
 import type { AuthSettings } from './auth/auth-settings.js';
 import { AccountsModule } from './contexts/accounts/accounts.module.js';
+import { FileStoreModule } from './contexts/files/file-store.module.js';
+import { FilesModule } from './contexts/files/files.module.js';
 import { AccountScopeGuard } from './contexts/accounts/interface/account-scope.guard.js';
 import { AuthenticationGuard } from './contexts/accounts/interface/authentication.guard.js';
 import { IngotsModule } from './contexts/ingots/ingots.module.js';
@@ -74,6 +76,10 @@ export class AppModule {
         // cannot honour at the moment somebody configures it.
         DeliveryModule,
         OverlayModule,
+        // With the kernel and global, for the reason `OverlayModule` is: `/file`
+        // wakes `BackgroundWork` and `BackgroundWork` drains the file worker, so
+        // one of those two directions has to reach across without an import.
+        FileStoreModule,
         HealthModule,
 
         AccountsModule,
@@ -83,6 +89,9 @@ export class AppModule {
         AuthModule.forRoot(auth),
         IngotsModule,
         RecordsModule,
+        // After `RecordsModule`, which it imports for `BackgroundWork` so that
+        // an upload can wake the parse it just queued.
+        FilesModule,
         QueryModule,
         McpModule,
 

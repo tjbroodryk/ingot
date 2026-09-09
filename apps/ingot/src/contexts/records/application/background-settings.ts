@@ -12,6 +12,7 @@ export const CONCURRENCY_KEYS: Record<BackgroundKind, string> = {
   [BackgroundKind.Embeddings]: 'INGOT_EMBEDDINGS_CONCURRENCY',
   [BackgroundKind.Receipts]: 'INGOT_RECEIPTS_CONCURRENCY',
   [BackgroundKind.Deliveries]: 'INGOT_DELIVERIES_CONCURRENCY',
+  [BackgroundKind.Files]: 'INGOT_FILES_CONCURRENCY',
 };
 
 /**

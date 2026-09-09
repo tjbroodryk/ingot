@@ -271,10 +271,40 @@ config:
   # the caller nominated: sixty concurrent ones are sixty different endpoints
   # rather than sixty calls at one provider, and one slow receiver must not hold
   # up everybody else's.
+  # `files` is the odd one out and is bounded by something different. The other
+  # three limit calls at somebody else's service; this one limits **your own
+  # pod's memory**. A parse holds the whole document in RAM — a zip is read from
+  # its central directory and a PDF from its trailer, so neither streams — and
+  # each drain makes two passes. So `files × 2 × files.maxUploadBytes` is heap
+  # this pod has to have on top of everything else it is doing, which is why it
+  # is the lowest number here and why raising it wants `resources` raised with
+  # it. `ingot_files_pending` says whether it is keeping up.
   background:
     embeddings: 2
     receipts: 2
     deliveries: 6
+    files: 2
+
+  # ── documents ────────────────────────────────────────────────────────────
+  # `/file` turns a PDF, a deck or a spreadsheet into two ordinary tables in the
+  # memory. Nothing here is required.
+  #
+  # `maxUploadBytes` is a memory decision, not a policy one. The bytes are held
+  # whole to be parsed — a zip is read from its central directory and a PDF from
+  # its trailer, and neither streams — so raising it means raising `resources`
+  # to match, and it draws on the same heap `queryMemoryLimit` does.
+  #
+  # The chunking numbers are a *budget*, not a strategy. Which boundary a
+  # document is split on is decided by what it is — one slide is one chunk, one
+  # Word section is one chunk, one PDF page is one chunk — and is deliberately
+  # not configurable, because there is no case where cutting a deck every 512
+  # tokens beats cutting it every slide. How much text belongs in one embedding
+  # is a function of your embedder's window and your context budget, so it is
+  # yours. Both can also be set per upload.
+  files:
+    maxUploadBytes: 33554432
+    chunkTokens: 512
+    overlapTokens: 64
 
   # ── delivering receipts ──────────────────────────────────────────────────
   # A receipt is collected by polling by default: /add hands back a SELECT and

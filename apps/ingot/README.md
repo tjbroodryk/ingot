@@ -66,6 +66,7 @@ named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 | `POST /:account/create`                 | Cast an ingot. `retainFor` sets a retention.                         |
 | `GET /:account/ingots`                  | List them.                                                           |
 | `POST /:account/:ingot/add`             | Store a tool result.                                                 |
+| `POST /:account/:ingot/file`            | Store a document. Multipart. Chunks and rows follow.                 |
 | `POST /:account/:ingot/query`           | DuckDB SQL, plain language, or both.                                 |
 | `GET /:account/:ingot/info`             | The information schema, settings included.                           |
 | `POST /:account/:ingot/config`          | Set where receipts are delivered. A patch; returns the whole config. |
@@ -165,6 +166,183 @@ introduce columns — added _optional_, since the Parquet already written lacks
 them — but may not change an existing column's type, and may not change the
 key. Both are a 409 naming what moved, and the way out is
 `DELETE …/tables/:table`.
+
+## Documents
+
+`/file` is `/add` with three things in front of it: **bytes → structure →
+JSON**. Everything after that already existed, and that is the whole design —
+one write path, and no read paths at all.
+
+```bash
+curl -sX POST $A/$ING/file -H "authorization: Bearer $KEY" \
+  -F 'file=@handbook.md;type=text/markdown'
+```
+
+```jsonc
+{
+  "fileId": "file_e0c60d05…",
+  "status": "pending",
+  "query": "SELECT … FROM \"ingot_files\" WHERE \"file_id\" = 'file_e0c60d05…'",
+  "chunksQuery": "SELECT … FROM \"ingot_chunks\" WHERE \"file_id\" = 'file_e0c60d05…'",
+}
+```
+
+**It cannot be synchronous.** Parsing a two-hundred-page PDF is seconds to
+minutes, `Dispatcher.send` wraps every command in a transaction, and the pool
+holds ten connections — so a handler that parsed would hold a tenth of the pool
+for the length of a document and starve the queries this service exists to
+answer, while presenting as a database problem. So it is the same three-step
+split the receipt, embedding and delivery workers use, for the fourth time:
+claim, parse with no connection held, write. What comes back is a promissory
+note, which is what `receipt: "summary"` already hands back and for the same
+reason.
+
+The bytes go to the object store beside the Parquet. A fifty-megabyte deck in a
+`jsonb` column is exactly the failure `INGOT_STORAGE` refuses to boot without a
+decision about — and keeping the original is what will make re-chunking
+possible, since every chunking decision is baked into rows at write time and
+rows are append-only.
+
+### Two more ordinary tables
+
+`ingot_files` is a row per document; `ingot_chunks` is a row per chunk, keyed on
+`(file_id, ordinal)`. Both are **ordinary tables in your memory**, which is the
+same argument `ingot_receipts` makes and the reason this feature is small: they
+get the overlay, the embedding sweeper, the roll-up into Parquet, tombstones,
+`/query` over both tiers and deletion with the memory, none of it written a
+second time.
+
+A row in `ingot_files` only ever holds a terminal status — `ready` or `failed`.
+Rows are append-only, so a status that moved through `pending` and `parsing`
+would mean tombstoning and re-appending a row twice per upload for two states
+nobody can act on. While a document is in flight there is no row; `/file` says
+`pending` in its own response because that is the only honest thing it can say.
+What is in flight is `ingot_files_pending` and `ingot_files_abandoned` instead,
+kept apart because they mean opposite things.
+
+An abandoned document still gets a row, which is the one place this improves on
+a receipt: `status` is `failed`, `error` says what happened, and nobody has to
+guess whether their upload is slow or dead.
+
+### Chunking, which is per format
+
+The rule, and it is the whole of it: **split on the strongest boundary the
+format actually gives you, and fall back exactly one level at a time.**
+
+| format         | boundary                       |                                                                     |
+| -------------- | ------------------------------ | ------------------------------------------------------------------- |
+| `.pptx`        | one slide, always              | A slide is an authored unit. Never split one, never merge two.      |
+| `.docx` `.md` `.html` | the heading hierarchy   | Explicit and reliable, and the path is carried into the text.       |
+| `.pdf`         | the page, then the paragraph   | Pages are real; headings are guessed from font runs and often wrong.|
+| `.csv` `.xlsx` | not chunked as prose           | It already has rows. See below.                                     |
+| `.txt`         | paragraph → sentence → window  | Nothing to exploit. The fallback, never the default.                |
+
+Carrying the heading path into the embedded text is the single highest-value
+line in `chunker.ts`. A chunk reading "…within thirty days of written notice"
+ranks against "what is the termination notice period" only if "4.2 Notice"
+travels with it — the body is the answer and the heading is the question's
+vocabulary, and they are in different blocks.
+
+**Which boundary is not a caller's choice**, because there is no case where
+cutting a deck every 512 tokens beats cutting it every slide. `chunkTokens` and
+`overlapTokens` are, per upload or per deployment, because those are a function
+of your embedder and your context budget. Overlap is applied only where the
+boundary was ours — a slide does not bleed into the next slide.
+
+### Pulling typed rows out
+
+```jsonc
+// a spreadsheet: real field names, so paths resolve and NO MODEL IS CALLED
+{ "extract": {
+    "table": "invoices",
+    "rows": "$[*]",
+    "key": ["invoice_no"],
+    "columns": {
+      "invoice_no": { "from": "$[\"Invoice #\"]", "type": "VARCHAR" },
+      "amount":     { "from": "$.Amount",         "type": "INTEGER" }
+}}}
+```
+
+This goes through **`RowMapping` — the same mapping `/add` uses** — so it is the
+same paths, the same declared types, the same coercion and the same schema
+evolution. Reimplementing any of that would be a second projection with its own
+opinions, and the two would drift. `$["Invoice #"]` is the quoted-key form the
+path grammar gained here, because `Invoice #` and `Total (USD)` are what real
+header rows say and a caller has no choice about them.
+
+Prose has no field names to path into, so its columns carry `describe` and a
+model fills them against a schema it is held to — the same trick
+`RECEIPT_SCHEMA` plays. **That rung is not built yet**: a prose extraction
+parses and chunks and its extracted table stays empty, with a line in the log
+saying so. Mixing the two forms is refused rather than resolved, because a
+mapping half paths and half descriptions is one whose author has not decided
+what they uploaded.
+
+Everything refusable is refused **at upload**, while the caller is still holding
+the response — the media type, the size, every path in the mapping, the
+chunking knobs. That is the `/add` rule and it matters more here, because the
+work happens minutes later in a sweeper with nowhere to complain to but a
+column.
+
+### What it is for
+
+```sql
+SELECT f.filename, c.page, c.text
+FROM ingot_chunks c
+  JOIN ingot_files f USING (file_id)
+  JOIN contracts   k USING (file_id)
+WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
+ORDER BY array_cosine_similarity(c.text_vec, $q) DESC
+LIMIT 10
+```
+
+A structured filter no vector store can express, ranked by a similarity no
+warehouse can compute, over both tiers, in one round trip. Nothing was written
+to make that work — it works because all three are tables.
+
+Neighbour expansion needs no API surface either, which is why `/query` gained no
+`window` parameter: `ordinal` makes it a self-join, and the caller picks the
+width.
+
+```sql
+WITH hit AS (SELECT file_id, ordinal, array_cosine_similarity(text_vec,$q) s
+             FROM ingot_chunks ORDER BY s DESC LIMIT 5)
+SELECT c.* FROM ingot_chunks c JOIN hit USING (file_id)
+WHERE abs(c.ordinal - hit.ordinal) <= 1
+```
+
+### The boundary, and two things that are not built
+
+`/file` takes opaque bytes from anyone holding a key and hands them to a
+decoder, so it is a boundary like `/query` is. The declared media type and the
+sniffed bytes must **agree** — a declared type alone is a caller choosing which
+decoder runs, and four sniffed bytes cannot tell a `.docx` from a `.pptx`
+because every OOXML file is a zip. A filename never reaches a path: object keys
+are built from an id this service generated. Multer's limit is the absolute
+ceiling on what is buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a
+deployment chose.
+
+**Only the text formats are parsed today** — `text/plain`, `text/markdown`,
+`text/html`, `text/csv`. PDF and the three OOXML zips have names in the wire
+contract and no parser behind them, so an upload of one is **refused at the
+door** naming what this build reads, rather than accepted and abandoned in a
+sweeper. `DocumentParser.handles` is what makes that honest, and adding a parser
+is what removes the refusal.
+
+Two things are worth writing down before anyone relies on this at volume:
+
+- **One request can now queue a hundred thousand embeddings.** The backlog used
+  to be fed by tool results a few rows at a time. `INGOT_EMBEDDINGS_CONCURRENCY`
+  times the replica count is currently the only thing between a document dump
+  and an unbounded bill, and the HPA scales on CPU — so a bulk upload adds pods
+  and multiplies the fan-out exactly when it is worst. A per-memory in-flight
+  bound is the obvious next thing.
+- **A chunks table is the first table here that will realistically hit the
+  no-index ceiling.** Brute-force cosine stops being a good trade somewhere in
+  the low millions of rows per table; tool results reach that slowly and
+  documents reach it in a few thousand files. Nothing above is wrong, but the
+  persisted index tier stops being "the obvious next thing" and becomes a dated
+  dependency the moment this is used in earnest.
 
 ## Receipts
 

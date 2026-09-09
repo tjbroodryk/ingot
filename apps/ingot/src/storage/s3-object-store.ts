@@ -1,7 +1,9 @@
 import {
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { Injectable } from '@nestjs/common';
@@ -90,6 +92,29 @@ export class S3ObjectStore implements ObjectStore {
         await this.remove([key]).catch(() => {});
       },
     };
+  }
+
+  async put(key: string, body: Buffer): Promise<void> {
+    await upstream('s3', 'put_object', () =>
+      this.client.send(
+        new PutObjectCommand({ Bucket: this.settings.bucket, Key: key, Body: body }),
+      ),
+    );
+  }
+
+  async fetch(key: string): Promise<Buffer> {
+    return upstream('s3', 'get_object', async () => {
+      const object = await this.client.send(
+        new GetObjectCommand({ Bucket: this.settings.bucket, Key: key }),
+      );
+      if (!object.Body) throw new Error(`Object "${key}" came back with no body`);
+
+      // `transformToByteArray` rather than streaming into the parser, because
+      // every decoder here wants a whole buffer: a zip is read from its central
+      // directory at the end, and a PDF from its trailer. The size cap at
+      // upload is what makes holding one in memory a bounded decision.
+      return Buffer.from(await object.Body.transformToByteArray());
+    });
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {
