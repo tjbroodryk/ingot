@@ -60,9 +60,9 @@ export function LandingPage(): ReactNode {
           </div>
 
           <h1 className="hero-title">
-            Memory your
+            Queryable memory for
             <br />
-            <span className="mark">model can query</span>
+            <span className="mark">agent tool results</span>
           </h1>
 
           {/* Also `layout.tsx`'s `description` — see the constant. */}
@@ -114,8 +114,8 @@ export function LandingPage(): ReactNode {
               read it back
             </h2>
             <p>
-              Three calls is the whole loop. That is genuinely it — everything else you might want,
-              like keys, retention, schema or MCP, hangs off the same bearer token.
+              Three calls is the whole loop. Everything else you might want — keys, retention,
+              schema, MCP — hangs off the same bearer token.
             </p>
           </div>
 
@@ -135,9 +135,9 @@ export function LandingPage(): ReactNode {
           <div className="landhead landhead-tight">
             <span className="label label-sm kicker">[ What you get ]</span>
             <h2 className="landtitle">
-              Everything an agent
+              Built for tool results,
               <br />
-              needs to remember
+              not chat transcripts
             </h2>
           </div>
 

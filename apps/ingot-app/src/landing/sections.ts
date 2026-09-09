@@ -80,7 +80,7 @@ export const FEATURES: readonly Feature[] = [
   {
     kicker: 'Search',
     title: 'Keyword, semantic, hybrid',
-    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT. That is RAG retrieval, with nothing running beside it.',
+    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT. Search and retrieval, without a separate system to run.',
   },
   {
     kicker: 'Keys',
