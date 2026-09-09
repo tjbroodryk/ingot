@@ -25,17 +25,18 @@ export const DEPLOYMENT_DESCRIPTION =
 
 /** The paragraph under the title. Backticks render as code. */
 export const DEPLOYMENT_LEDE =
-  'Ingot is one process that needs a Postgres and somewhere to put Parquet, ' +
-  'and every way of running it below is those two in a different dialect. ' +
-  'Everything under them is a choice you are allowed to decline, and the ' +
-  'things that are not on the list at all — a broker, a scheduler, a vector ' +
-  'database — are missing on purpose rather than by omission.';
+  'Ingot is one process that needs a Postgres and somewhere to put Parquet. ' +
+  'Every way of running it below is those same two things in a different ' +
+  'dialect, and everything under them is a choice you are allowed to decline. ' +
+  'If you are wondering where the broker, the scheduler and the vector ' +
+  'database went — we did not forget them, we just did not want to make you ' +
+  'run them.';
 
 /** The paragraph under "Pick a place". */
 export const BRING_IT_UP_LEDE =
-  'Each of these answers the same four questions in the same order — what ' +
+  'Each of these answers the same four questions in the same order: what ' +
   'you need, what to run, how you know it worked, and the one thing that ' +
-  'catches people. What they need is the two sections after them.';
+  'catches people out. The two sections after them cover what they need.';
 
 /** One of the three cells under the page head. Backticks render as code. */
 export interface Summary {
@@ -53,7 +54,7 @@ export const SUMMARY: readonly Summary[] = [
   {
     kicker: 'Required',
     title: 'A Postgres',
-    body: 'The catalogue, the overlay and the queues — and the coordination, which is the part that is easy to miss.',
+    body: 'The catalogue, the overlay and the queues — plus the coordination, which is the part that is easy to miss.',
     sample: `DATABASE_URL=
   postgres://ingot:ingot
   @localhost:5432/ingot`,
@@ -70,7 +71,7 @@ INGOT_S3_ENDPOINT=
   {
     kicker: 'Not required',
     title: 'Anything else',
-    body: 'No broker, no scheduler, no vector database, no query cluster. What would have been each of those is described below.',
+    body: 'No broker, no scheduler, no vector database, no query cluster. What stands in for each of those is described below.',
     sample: `2 containers
 1 process`,
   },
@@ -364,7 +365,7 @@ export const NOT_NEEDED: readonly Absence[] = [
   },
   {
     title: 'A scheduler, or a durable-execution engine',
-    body: 'The sweeps run inside the service. The timer is a loop that books the next turn when the last one finishes — a delay between finishes, not a rate that can overlap itself — the retry is an exponential backoff, and one-replica-at-a-time is a Postgres advisory lock. What is given up is a per-step journal: a tick that dies half way starts again from the top, which costs a wasted pass and never a wrong answer, because the queue row is the truth and work that already committed is not claimed twice.',
+    body: 'The sweeps run inside the service. The timer is a loop that books the next turn when the last one finishes — a delay between finishes, not a rate that can overlap itself — the retry is an exponential backoff, and one-replica-at-a-time is a Postgres advisory lock. What you give up is a per-step journal: a tick that dies half way starts again from the top. That costs a wasted pass and never a wrong answer, because the queue row is the truth and work that already committed is not claimed twice.',
   },
   {
     title: 'A vector database',
@@ -372,7 +373,7 @@ export const NOT_NEEDED: readonly Absence[] = [
   },
   {
     title: 'A query cluster',
-    body: 'DuckDB is a library in the process, not a server: a query materialises the tables it names into an in-memory session bounded by `INGOT_QUERY_MEMORY_LIMIT` and `INGOT_MAX_TABLE_ROWS`. The one thing it wants from a deployment is `INGOT_DUCKDB_EXTENSION_DIR` pointed at a directory baked into the image, so a cold container’s first query is not fetching `httpfs` from the internet — which on a closed network is a first query that fails.',
+    body: 'DuckDB is a library in the process, not a server: a query materialises the tables it names into an in-memory session bounded by `INGOT_QUERY_MEMORY_LIMIT` and `INGOT_MAX_TABLE_ROWS`. The one thing it wants from a deployment is `INGOT_DUCKDB_EXTENSION_DIR` pointed at a directory baked into the image, so a cold container’s first query is not off fetching `httpfs` from the internet. On a closed network, that is a first query that just fails.',
   },
 ];
 

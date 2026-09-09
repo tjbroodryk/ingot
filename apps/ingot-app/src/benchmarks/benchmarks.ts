@@ -158,9 +158,10 @@ export const BENCHMARKS_DESCRIPTION =
   'path with SQL taken away.';
 
 export const BENCHMARKS_LEDE =
-  'Ingot contains a vector index. So the question is not whether structure beats ' +
-  'embeddings — it is whether typed rows and SQL on top of the same embeddings ' +
-  'retrieve better than the embeddings alone, and what each answer costs in context.';
+  'Ingot contains a vector index, so we are not going to pretend this is ' +
+  'structure versus embeddings. The question we actually wanted answered is ' +
+  'narrower: do typed rows and SQL on top of the same embeddings retrieve ' +
+  'better than those embeddings alone, and what does each answer cost in context?';
 
 /** What each adapter is, in the order the table shows them. */
 const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }[] = [
@@ -172,12 +173,12 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'ingot-rest',
     blurb:
-      'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot-mcp` is how much of the result is the surface rather than the data model.',
+      'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot-mcp` tells you how much of the result is the surface and how much is the data model.',
   },
   {
     name: 'control-same-store-top-k',
     blurb:
-      'The control, and the most important column on this page — the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: the same rows, the same vectors, the same server, reachable only through top-k semantic search. Whatever separates it from `ingot-mcp` is what SQL over typed rows is worth, and nothing else.',
+      'The control, and the most important column on this page. It is the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot-mcp` is what SQL over typed rows is worth, and nothing else.',
   },
   {
     name: 'control-same-store-top-k-rest',
@@ -187,17 +188,17 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'vector',
     blurb:
-      'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. It is chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available, given deliberately. Same embedding model as Ingot, and brute-force exact cosine rather than an approximate index, so what it cannot do is a property of top-k retrieval and not of a weak baseline.',
+      'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. Chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available, given deliberately. Same embedding model as Ingot, and brute-force exact cosine rather than an approximate index. What it cannot do is a property of top-k retrieval, not of a baseline built to lose.',
   },
   {
     name: 'pinecone',
     blurb:
-      'The hosted vector database, given the identical embeddings, chunking and search tool as `vector`. It is here to answer the objection that a baseline written in this repository is a strawman: if a production ANN index cannot beat brute-force cosine over the same vectors, what the top-k rows cannot do belongs to top-k retrieval and not to the baseline. Pinecone’s own embedding models are deliberately not used — one embedder across the table is the rule.',
+      'The hosted vector database, given the identical embeddings, chunking and search tool as `vector`. It is here to answer the obvious objection that a baseline written in this repository is a strawman: if a production ANN index cannot beat brute-force cosine over the same vectors, then what the top-k rows cannot do belongs to top-k retrieval and not to the baseline. Pinecone’s own embedding models are deliberately not used — one embedder across the whole table is the rule.',
   },
   {
     name: 'turbopuffer',
     blurb:
-      'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only, and hybrid retrieval deserves its own column rather than a silent edge in this one.',
+      'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only, and hybrid retrieval deserves a column of its own rather than a silent edge in this one.',
   },
   {
     name: 'hyperspell',
@@ -381,13 +382,13 @@ export const SOURCE_BLURBS: readonly {
     tool: 'catalog.list_services',
     shape: 'One small JSON page',
     blurb:
-      'A service catalogue, arriving whole. It is the only place ownership is recorded, and two of the services record it as `null` — present and empty rather than absent, so the absence questions are hard rather than unanswerable.',
+      'A service catalogue, arriving whole. It is the only place ownership is recorded, and two of the services record it as `null` — present and empty, not missing. That makes the absence questions hard without making them unanswerable.',
   },
   {
     tool: 'catalog.list_files',
     shape: 'JSON pages of 40',
     blurb:
-      'A repository listing: path, service, size. Nothing an embedding can distinguish — every record reads almost exactly like every other one, which is what makes a top-k over them a coin flip.',
+      'A repository listing: path, service, size. Nothing an embedding can tell apart — every record reads almost exactly like every other one, so a top-k over them is close to a coin flip.',
   },
   {
     tool: 'github.list_pull_requests',
@@ -499,7 +500,7 @@ export const LIMITS: readonly { readonly title: string; readonly body: string }[
   {
     title: 'The questions are generated, not collected',
     body:
-      'A seeded generator builds a world; the corpus is that world rendered as the paginated tool results an agent would have received; the gold answers are computed from the world objects directly. That is what makes hundreds of questions affordable and every run reproducible from a seed — and it is also why this is a benchmark of a shape of workload rather than of anyone’s production traffic.',
+      'A seeded generator builds a world; the corpus is that world rendered as the paginated tool results an agent would have received; the gold answers are computed from the world objects directly. That is what makes hundreds of questions affordable and every run reproducible from a seed. It is also why this is a benchmark of a shape of workload, and not of anyone’s production traffic.',
   },
   {
     title: 'Evidence recall is not defined for every question',
@@ -514,17 +515,17 @@ export const LIMITS: readonly { readonly title: string; readonly body: string }[
   {
     title: 'Write cost is not scored',
     body:
-      'Ingot asks for a column mapping up front; a vector store does not. Ingestion is timed but that asymmetry is real and this page does not put a number on it.',
+      'Ingot asks for a column mapping up front and a vector store does not. Ingestion is timed, but that asymmetry is real and this page does not put a number on it.',
   },
   {
     title: 'There is one ceiling, and it has a size limit',
     body:
-      '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only while the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here and would not for a memory a thousand times larger.',
+      '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only for as long as the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here. It would not for a memory a thousand times larger.',
   },
   {
     title: 'The generator moves faster than the runs',
     body:
-      'Question templates are added to the harness as the workload it models gets better understood; a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away — but a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
+      'Question templates get added to the harness as the workload it models gets better understood, so a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away. But a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
   },
   {
     title: 'One corpus, one size',

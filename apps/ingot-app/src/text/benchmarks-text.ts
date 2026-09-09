@@ -49,25 +49,25 @@ function renderBenchmarks(): string {
     ...corpus(),
 
     heading(2, 'What is compared'),
-    'One agent loop serves every column, with the same model, the same tool-call budget and the same answer channel. Only the retrieval tools differ, so a gap between two columns has one possible cause.',
+    'One agent loop serves every column, with the same model, the same tool-call budget and the same answer channel. Only the retrieval tools differ, so a gap between two columns has exactly one possible cause.',
     table(
       ['Adapter', 'What it is'],
       ADAPTERS.map((adapter) => [`\`${adapter.name}\``, adapter.blurb]),
     ),
 
     heading(2, 'The questions'),
-    'The split by category is what the benchmark is for. The claim under test is that SQL over typed rows, on top of ranking by meaning, recalls more of the answer than similarity search alone — and each category is a place that claim can fail. `aggregate`, `absence`, `ordering` and `join` are where structure should tell; `semantic` is where embeddings should. A single number would average them together.',
+    'The split by category is the whole point of the benchmark. The claim under test is that SQL over typed rows, on top of ranking by meaning, recalls more of the answer than similarity search alone. Each category is somewhere that claim can fail. `aggregate`, `absence`, `ordering` and `join` are where structure should tell; `semantic` is where embeddings should. Report one number and you have averaged all of that away.',
     table(
       ['Category', 'What it asks'],
       CATEGORIES.map((category) => [`\`${category.name}\``, category.blurb]),
     ),
 
     heading(2, 'What this does not measure'),
-    'A benchmark published by the thing it measures has one obligation above the rest: say plainly where it is weak.',
+    'We are publishing a benchmark of our own software, which you should discount accordingly. The least we can do is say plainly where it is weak, so here is everything we know is wrong with it.',
     ...LIMITS.flatMap((limit) => [heading(3, limit.title), limit.body]),
 
     heading(2, 'Check it'),
-    'Each part of this is a single file. A reader who wants to know whether the questions were shaped to flatter anybody should read the generator rather than take this page’s word for it.',
+    'This is worth exactly as much as your ability to go and check it, so every part of it is one file. If you want to know whether we shaped the questions to flatter ourselves, read the generator — do not take our word for it.',
     table(
       ['Question', 'Where'],
       SOURCES.map((source) => [source.question, `[\`${source.path}\`](${sourceHref(source.path)})`]),
@@ -134,7 +134,6 @@ function results(): readonly string[] {
       heading(2, 'Results'),
       'No run has been published yet. The harness is in `packages/bench`; the method below is what it does, and this section fills in when a run is published into it:',
       fence('bun run bench --publish ../../apps/ingot-app/src/benchmarks/results.json'),
-      'Nothing on this page is written by hand, so there are no numbers until there has been a run to produce them.',
     ];
   }
 

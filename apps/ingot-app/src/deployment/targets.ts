@@ -68,7 +68,7 @@ export const RUN_TARGETS: readonly RunTarget[] = [
     kicker: 'A checkout',
     title: 'On your machine',
     summary:
-      'Bun runs the service; Compose runs the two things it talks to. This is also what the test suite runs against, so what comes up on your machine is what the assertions are made about.',
+      'Bun runs the service, Compose runs the two things it talks to. This is also what the test suite runs against, so what comes up on your machine is what the assertions are made about.',
     needs: [
       'Bun 1.2, and a Docker to hold the two containers',
       'Nothing bought — the embedder and the summariser default to offline stand-ins',
@@ -88,7 +88,7 @@ curl -X POST http://localhost:3002/api/v1/accounts \\
 
 201 Created · the key is shown exactly once`,
     catches:
-      'The `cp` is the step people skip. `DATABASE_URL` is the one setting with no default — Ingot refuses to start without a database rather than inventing an address for one — and the message names the variable, not a connection error.',
+      'The `cp` is the step people skip. `DATABASE_URL` is the one setting with no default: Ingot refuses to start without a database rather than inventing an address for one, and the message names the variable rather than throwing a connection error at you.',
     // Every `more` on this list points into the repository rather than at
     // another page of this site, and that is on purpose now that `/deployment`
     // renders these rows itself: a link from a row to the page the row is on
@@ -101,7 +101,7 @@ curl -X POST http://localhost:3002/api/v1/accounts \\
     kicker: 'Two images',
     title: 'As a container',
     summary:
-      'The server is one image on ghcr.io, published on every push to `main` and on every `v*` tag. It wants a database, somewhere for the Parquet, and one writable mount — none of which is Kubernetes-specific.',
+      'The server is one image on ghcr.io, published on every push to `main` and on every `v*` tag. It wants a database, somewhere for the Parquet, and one writable mount. None of that is Kubernetes-specific.',
     needs: [
       'A Postgres you brought, reachable from the container',
       'A bucket, or a volume, and `INGOT_STORAGE` naming which',
@@ -126,7 +126,7 @@ curl http://localhost:3002/api/health
 
 200 OK`,
     catches:
-      'The site is a second image, and it is a static export — so the address of the API was inlined by `next build` rather than read at run time, and no environment variable can move it. The published one talks to `http://localhost:3002`; anywhere else is a rebuild with `--build-arg NEXT_PUBLIC_INGOT_URL`.',
+      'The site is a second image, and it is a static export. The address of the API got inlined by `next build` rather than read at run time, so no environment variable will move it. The published one talks to `http://localhost:3002`; anywhere else means a rebuild with `--build-arg NEXT_PUBLIC_INGOT_URL`.',
     more: { label: 'Both images, and what is in them', href: `${REPO_URL}#images` },
   },
   {
@@ -135,7 +135,7 @@ curl http://localhost:3002/api/health
     kicker: 'A Helm chart',
     title: 'On Kubernetes',
     summary:
-      'One chart holds the server, the site, and a migration that runs as a `pre-install,pre-upgrade` hook — so the schema is current before a single new pod starts, and a failed migration fails the release rather than a rollout. Autoscaling is on and safe: every sweep takes a Postgres advisory lock, so ten replicas are ten servers and one sweeper.',
+      'One chart holds the server, the site, and a migration that runs as a `pre-install,pre-upgrade` hook. So the schema is current before a single new pod starts, and a failed migration fails the release rather than a rollout. Autoscaling is on and safe: every sweep takes a Postgres advisory lock, so ten replicas are ten servers and one sweeper.',
     needs: [
       'A cluster, and Helm 3 — the chart is an OCI artifact, so there is no `helm repo add`',
       'A Postgres and a bucket. The chart brings neither, on purpose',
@@ -156,7 +156,7 @@ helm install ingot oci://ghcr.io/tjbroodryk/ingot/charts/ingot \\
 kubectl -n ingot port-forward svc/ingot-server 3002:3002
 curl http://localhost:3002/api/health`,
     catches:
-      'The same baked-in address, one layer up. A dashboard that loads and reaches nothing is an image built against the wrong host — not a value you missed in `values.yaml`, because there is no value in the chart that can change it.',
+      'The same baked-in address, one layer up. A dashboard that loads and then reaches nothing is an image built against the wrong host. It is not a value you missed in `values.yaml` — there is no value in the chart that can change it.',
     more: {
       label: 'The chart, and what it will not guess',
       href: `${REPO_URL}/blob/main/charts/ingot/README.md`,
@@ -175,6 +175,6 @@ curl http://localhost:3002/api/health`,
 export const ELSEWHERE = {
   kicker: 'Somewhere else',
   title: 'The list is short because the requirements are',
-  body: 'One process, a Postgres, and somewhere to put Parquet. Anything that runs a container runs this, and a new target is those same four answers in a different dialect — so if you have brought one up somewhere this list does not name, that recipe is a pull request rather than a feature request.',
+  body: 'One process, a Postgres, and somewhere to put Parquet. Anything that runs a container runs this, and a new target is those same four answers in a different dialect. So if you have brought one up somewhere this list does not name, that recipe is a pull request rather than a feature request.',
   cta: { label: 'Add one', href: `${REPO_URL}/blob/main/apps/ingot-app/src/deployment/targets.ts` },
 } as const;

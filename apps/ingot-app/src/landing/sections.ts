@@ -32,19 +32,19 @@ export const STEPS: readonly Step[] = [
   {
     n: '01',
     title: 'Cast a memory',
-    body: 'One POST names an ingot and sets how long it lives — 30m for a session, 4w for a project. Keep the id it hands back.',
+    body: 'One POST. Name it, say how long it lives — 30m for a session, 4w for a project — and keep the id it hands back.',
     route: 'POST /:account/create',
   },
   {
     n: '02',
     title: 'Store tool results',
-    body: 'Map JSON paths onto typed columns, fan an array into rows, set identity for upserts, opt into a receipt an agent can be handed or pushed.',
+    body: 'Map JSON paths onto typed columns and fan an array into rows. Set a key if you want upserts. Ask for a receipt and you get something small enough to hand back to the agent.',
     route: 'POST /:account/:ingot/add',
   },
   {
     n: '03',
     title: 'Query or recall',
-    body: 'Exactly one SELECT against sandboxed DuckDB — the overlay unioned with Parquet — or ask for it in words.',
+    body: 'One SELECT, against a sandboxed DuckDB that unions the fresh rows with the Parquet. Or skip the SQL and ask in words.',
     route: 'POST /:account/:ingot/query',
   },
 ];
@@ -60,12 +60,12 @@ export const FEATURES: readonly Feature[] = [
   {
     kicker: 'Typed',
     title: 'Columns, not blobs',
-    body: 'JSON paths map onto real types, so a model can filter and aggregate instead of re-reading text.',
+    body: 'JSON paths map onto real types, so a model can filter and count instead of re-reading the same text every turn.',
   },
   {
     kicker: 'Schema first',
     title: '/info costs nothing',
-    body: 'Answered straight out of Postgres — no bucket read, no DuckDB session. Cheap enough to call every turn.',
+    body: 'Answered straight out of Postgres. No bucket read, no DuckDB session — cheap enough to call every turn.',
   },
   {
     kicker: 'Sandboxed',
@@ -75,22 +75,22 @@ export const FEATURES: readonly Feature[] = [
   {
     kicker: 'Retention',
     title: '30m to 4w, per memory',
-    body: 'Scratch memory for a session, durable memory for a project. Set it once, when the memory is cast.',
+    body: 'Scratch memory for a session, durable memory for a project. You set it once, when you cast the memory.',
   },
   {
     kicker: 'Search',
     title: 'Keyword, semantic, hybrid',
-    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT — RAG retrieval with no vector store beside it.',
+    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT. That is RAG retrieval, with nothing running beside it.',
   },
   {
     kicker: 'Keys',
     title: 'One bearer token',
-    body: 'Mint and revoke labelled keys. A secret is returned exactly once — MCP included, which has no separate auth path.',
+    body: 'Mint and revoke labelled keys. You see a secret exactly once. MCP uses the same one, so there is no second auth path to wire up.',
   },
   {
     kicker: 'Delivery',
     title: 'Poll it, or be told',
-    body: 'A receipt hands back the SELECT that finds it. Point a memory at a webhook or a queue and each one is pushed as it lands, from an outbox that survives a restart.',
+    body: 'A receipt hands back the SELECT that finds your rows. Or point the memory at a webhook or a queue and each one gets pushed as it lands, out of an outbox that survives a restart.',
   },
 ];
 
@@ -104,7 +104,7 @@ export const FEATURES: readonly Feature[] = [
  * this is the pitch, so it is the one that gets edited.
  */
 export const LEDE =
-  'Durable, typed memory for LLM agents. Store a tool result, read it back as SQL, by keyword or by meaning — RAG retrieval with no vector database to run beside it.';
+  'Your agent calls a tool, gets four hundred rows back, and pays for them on every turn until the window trims and they are gone for good. Ingot keeps them as real tables instead, so the model can read them back with SQL, by keyword or by meaning — next turn, or next week. No vector database running beside it.';
 
 /** The row under the hero. What the thing already speaks, rather than logos. */
 export const SPEAKS: readonly string[] = [
@@ -302,7 +302,7 @@ export const HARNESS: readonly WireNode[] = [
   {
     actor: '02 · Your tool -> Ingot',
     title: 'Sends the result to the memory',
-    body: 'One POST, before you return. The tool-call id rides along as externalId, which is what lets you ask for this receipt back by something that means anything to you.',
+    body: 'One POST, before you return. Send the tool-call id along as externalId and you can ask for this receipt back later by a name that means something to you.',
     wire: 'POST /:ingot/add',
   },
   {
@@ -314,14 +314,14 @@ export const HARNESS: readonly WireNode[] = [
   {
     actor: '04 · Model -> Ingot',
     title: 'Reads back what it needs',
-    body: 'Narrowed over typed columns, in this step or in a session next week: twenty rows out of four hundred, chosen by the model rather than by whoever wrote the tool.',
+    body: 'Narrowed over typed columns, in this step or in a session next week. Twenty rows out of four hundred, picked by the model — not by whoever wrote the tool six months ago.',
     wire: 'POST /:ingot/query',
   },
 ];
 
 /** The strip under the wire: what the loop closing actually buys. */
 export const HARNESS_RETURN =
-  'The rows outlive the turn. A receipt hands back SQL rather than an id, so it still finds them from a context window that never saw them stored.';
+  'The rows outlive the turn. A receipt hands back SQL rather than an id, so it still finds them from a context window that never saw them go in.';
 
 /**
  * The tool, as the AI SDK wants it written.
@@ -436,19 +436,19 @@ export const SDK_NOTES: readonly SdkNote[] = [
   {
     kicker: 'Stream',
     title: 'The write is not a model call',
-    body: '/add returns as soon as the rows land; the précis is written behind it and the receipt says pending. A tool-result part is never blocked on a second model finishing its sentence.',
+    body: '/add returns the moment the rows land. The summary is written behind it and the receipt says pending, so your tool result is never sitting there waiting on a second model to finish a sentence.',
     hint: 'receipt.status: pending',
   },
   {
     kicker: 'Loop',
     title: 'Give it something to run SQL with',
-    body: 'A receipt hands back a SELECT, which is worth having only if the model can execute one. Wrap /query as a second tool, or point it at the MCP server and write neither.',
+    body: 'A receipt hands back a SELECT, which is only worth having if the model can run one. Wrap /query as a second tool, or point it at the MCP server and write neither.',
     hint: 'stopWhen: stepCountIs(8)',
   },
   {
     kicker: 'Your UI',
     title: 'The browser can still have the rows',
-    body: 'Nothing bound for the interface has to pass through the context window. Return the full result from execute and hand the model the receipt from toModelOutput — one streams, the other is read.',
+    body: 'Nothing headed for the interface has to go through the context window. Return the full result from execute and hand the model the receipt from toModelOutput. One gets streamed, the other gets read.',
     hint: 'toModelOutput()',
   },
 ];

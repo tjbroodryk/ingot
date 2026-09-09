@@ -29,7 +29,7 @@ export const WHY_DESCRIPTION =
  * first — and two copies drift on the edit that only remembers one.
  */
 export const WHY_LEDE =
-  'A vector store answers one question: what is this like? The questions an agent actually has are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask those, so a memory’s job is to hold tool results as tables and then get out of the way.';
+  'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think a memory’s job is to hold tool results as tables and then get out of the way.';
 
 /* ── 01 · what happens to a tool result today ────────────────────────────── */
 
@@ -53,26 +53,26 @@ export const LOSSES: readonly Loss[] = [
   {
     kicker: 'Kept',
     title: 'It stays in the window',
-    body: 'Four hundred objects, read once and paid for on every turn after — until the window is trimmed, and then it is as though the call never happened.',
+    body: 'Four hundred objects, read once and paid for on every turn after that. Until the window gets trimmed, and then it is as if the call never happened at all.',
     cost: 'about 48,000 tokens',
   },
   {
     kicker: 'Summarised',
     title: 'A model writes a paragraph about it',
-    body: 'The prose survives and the numbers do not. Nothing downstream can filter it, sort it or count it, and the rows it was made from have already been discarded.',
+    body: 'The prose survives, the numbers do not. Nothing downstream can filter it, sort it or count it, and the rows it was written from are already gone.',
     cost: 'lossy, and final',
   },
   {
     kicker: 'Embedded',
     title: 'It is chunked into a vector store',
-    body: 'Now exactly one question may be asked of it, and it is asked by example: what is this like? Not how many, not which of these also, not in what order.',
+    body: 'Now there is one question you can ask of it, and you have to ask it by example: what is this like? Not how many. Not which of these also. Not in what order.',
     cost: 'top-k, and no more',
   },
 ];
 
 /** The strip under the three, which is the claim they add up to. */
 export const LOSS_CLAIM =
-  'All three are lossy in the same direction. What is thrown away is the structure — the fact that this was four hundred rows of six typed fields, and that a question could have been asked of them.';
+  'All three lose the same thing, which is the structure. The fact that this was four hundred rows of six typed fields, and that you could have asked a real question of them.';
 
 /* ── 02 · why SQL ────────────────────────────────────────────────────────── */
 
@@ -178,19 +178,19 @@ export const SQL_NOTES: readonly SqlNote[] = [
   {
     kicker: 'Scope',
     title: 'Every table of the memory is in scope',
-    body: 'A statement is offered each table its ingot holds, and the engine narrows to the ones it actually names. Three tools that never heard of each other are three tables in one FROM clause.',
+    body: 'A statement gets offered every table its ingot holds, and the engine narrows to the ones it actually names. Three tools that have never heard of each other are three tables in one FROM clause.',
     source: 'sessions.all(tables)',
   },
   {
     kicker: 'Sandbox',
     title: 'The worst case is a slow SELECT',
-    body: 'One statement, and it must be a read. No ATTACH, no COPY, no second statement, no writes — with a row cap and a timeout on the one thing that does run.',
+    body: 'One statement, and it has to be a read. No ATTACH, no COPY, no second statement, no writes. The one thing that does run has a row cap and a timeout on it.',
     source: 'assertStartsAsSelect()',
   },
   {
     kicker: 'Schema',
     title: 'It is told what is there first',
-    body: 'Tables, columns and types come out of Postgres with no bucket read behind them, so asking is cheap enough to do every turn. Over MCP they arrive as the server’s instructions, before the first tool call.',
+    body: 'Tables, columns and types come out of Postgres with no bucket read behind them, so asking is cheap enough to do every turn. Over MCP they arrive as the server’s instructions, before the model has spent a single tool call.',
     source: 'GET /:ingot/info',
   },
 ];
@@ -248,12 +248,12 @@ export const GRAINS: readonly Grain[] = [
   {
     retention: 'retainFor: "30m"',
     title: 'Per chat',
-    body: 'A scratch memory for one conversation. The tool results of this session, joinable to each other and to nothing else, gone half an hour after the last one lands without anybody running a cleanup.',
+    body: 'A scratch memory for one conversation. This session’s tool results, joinable to each other and to nothing else, gone half an hour after the last one lands. Nobody has to run a cleanup.',
   },
   {
     retention: 'retainFor: "12h"',
     title: 'Per run',
-    body: 'One agent run, one batch, one incident. Long enough that a retry an hour later reads what the first attempt wrote, and short enough that a failed run is not something to tidy up.',
+    body: 'One agent run, one batch, one incident. Long enough that a retry an hour later reads what the first attempt wrote, and short enough that a failed run is not something you have to go and tidy up.',
   },
   {
     retention: 'retainFor: "4w"',
@@ -263,7 +263,7 @@ export const GRAINS: readonly Grain[] = [
   {
     retention: 'no retainFor',
     title: 'Per user, per tenant, per agent',
-    body: 'Kept until something deletes it, which is the right answer for a memory whose lifetime is somebody’s account rather than a clock. Expiry is opt-in because it is not reversible.',
+    body: 'Kept until something deletes it. That is the right answer when the lifetime is somebody’s account rather than a clock — and expiry is opt-in precisely because you cannot undo it.',
   },
 ];
 
@@ -276,7 +276,7 @@ export const GRAINS: readonly Grain[] = [
  * spans two.
  */
 export const GRAIN_LIMIT =
-  'A statement sees the tables of one memory, and there is no query across two. That is the one decision worth making deliberately — **the grain you pick is the grain you can join across** — and casting a memory is one POST, so it is a decision you are allowed to change your mind about.';
+  'A statement sees the tables of one memory, and there is no query across two. So this is the one decision worth making deliberately: **the grain you pick is the grain you can join across**. Casting a memory is one POST, though, so it is also a decision you are allowed to change your mind about.';
 
 /** How the memories themselves are managed, at the account scope. */
 export const GRAIN_CHIPS: readonly string[] = [
@@ -310,7 +310,7 @@ export const TIERS: readonly Tier[] = [
   {
     n: '01',
     title: 'The overlay',
-    body: 'Rows land in Postgres and are queryable in the same second, beside the manifest that says where the folded ones went. This is the only tier a write touches.',
+    body: 'Rows land in Postgres and are queryable the same second, next to the manifest that says where the folded ones went. This is the only tier a write ever touches.',
     note: 'queryable on arrival',
   },
   {
@@ -322,7 +322,7 @@ export const TIERS: readonly Tier[] = [
   {
     n: '03',
     title: 'The engine',
-    body: 'DuckDB is a library inside the process, never a server. A query builds an in-memory session from the manifest, runs one statement against it and throws it away.',
+    body: 'DuckDB is a library inside the process, never a server. A query builds an in-memory session from the manifest, runs one statement against it, and throws the whole thing away.',
     note: 'nothing stays warm',
   },
 ];
@@ -349,11 +349,11 @@ export const COSTS: readonly Cost[] = [
   },
   {
     item: 'A Postgres',
-    body: 'The catalogue, the rows written since the last roll-up, and the queues. Almost certainly one you were already running for something else.',
+    body: 'The catalogue, the rows written since the last roll-up, and the queues. Almost certainly a Postgres you were already running for something else.',
   },
   {
     item: 'CPU, while a query runs',
-    body: 'A DuckDB session is built from the manifest, used once and dropped. Between two queries a memory is consuming nothing that could be scaled up.',
+    body: 'A DuckDB session is built from the manifest, used once, and dropped. Between two queries a memory is consuming nothing you could scale up even if you wanted to.',
   },
   {
     item: 'Nothing per vector',
