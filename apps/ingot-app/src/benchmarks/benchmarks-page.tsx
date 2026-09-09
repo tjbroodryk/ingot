@@ -14,7 +14,7 @@
 import { useState, type ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
+import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // The landing page's layout, used rather than restated, the way `/why` uses
 // it: this page is the same shape of document — a hero and ruled bands.
 import '../landing/landing.css';
@@ -37,8 +37,12 @@ import {
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
+  TRANSCRIPTS_FILE,
+  type AdapterTranscript,
   type PublishedAdapter,
   type PublishedTable,
+  type PublishedTranscripts,
+  type TranscriptQuestion,
 } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
@@ -164,6 +168,17 @@ export function BenchmarksPage(): ReactNode {
             </div>
           ) : null}
 
+          {/*
+           * What the selected corpus is, said where the reader selects it.
+           *
+           * The corpus section below carries the same distinction in more
+           * detail, and that is too far down to help: by the time a reader
+           * reaches it they have already read a table and formed a view of
+           * what the numbers mean. A switch that silently changes every figure
+           * on the page owes an explanation next to itself.
+           */}
+          {run ? <CorpusMeaning run={run} /> : null}
+
           {run ? (
             <>
               <Tiles table={table} />
@@ -178,6 +193,7 @@ export function BenchmarksPage(): ReactNode {
                 are computed only over questions whose answer is a set of records — see the limits
                 below. Context tokens is what the model had to read to answer.
               </p>
+              <Transcripts table={table} />
             </>
           ) : (
             <div className="bench-empty">
@@ -320,6 +336,88 @@ export function BenchmarksPage(): ReactNode {
 
       <SiteFooter />
     </>
+  );
+}
+
+/** The four shape changes `--drift` makes, in the order the corpus makes them. */
+const DRIFTS: readonly [string, string][] = [
+  ['a field renamed', '`owner` becomes `owner_team` partway through the services'],
+  ['a unit changed with the name', '`duration_sec` becomes `duration_ms`, values converted'],
+  ['a type changed', '`assignee` is a string, then `{id, name}`'],
+  ['a key arriving late', 'files gain `service_ref` only after the change'],
+];
+
+/**
+ * What the selected corpus is, and what reading its numbers commits you to.
+ *
+ * Both branches are written, not just the drifted one. A caveat that appears
+ * only when the numbers are worse is an excuse, and the one-shape-per-tool
+ * assumption is the more consequential of the two — it is the case this
+ * project is most flattered by, and it goes unstated everywhere else.
+ */
+function CorpusMeaning({ run }: { run: NonNullable<PublishedTable['run']> }): ReactNode {
+  if (!run.drift) {
+    return (
+      <div className="bench-corpus-meaning">
+        <p>
+          <Prose
+            text={
+              'Every payload here keeps one shape from its first page to its last, and every ' +
+              'page carries byte-identical keys to every other. That is the friendliest ' +
+              'assumption on this page — a corpus that never changes shape is a table ' +
+              'already — and it is the case this project is most flattered by. The drifted ' +
+              'corpus is the same world with that assumption taken away.'
+            }
+          />
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bench-corpus-meaning">
+      <p>
+        <Prose
+          text={
+            'The same world as the ordinary corpus, written down the way a provider actually ' +
+            'writes things down. Two fifths of the way through each listing the shape moves ' +
+            'underneath the agent:'
+          }
+        />
+      </p>
+      <dl className="bench-drifts">
+        {DRIFTS.map(([what, how]) => (
+          <div key={what}>
+            <dt className="label label-sm">{what}</dt>
+            <dd>
+              <Prose text={how} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p>
+        <Prose
+          text={
+            'Nothing is lost. Every record still appears exactly once, so every question is ' +
+            'still answerable — by an adapter that notices. What drift costs is the ' +
+            'commitment: `remember` has to fix a column name and a column type before it has ' +
+            'seen the last page, while a vector index commits to nothing and embeds whatever ' +
+            'bytes arrive. So the expected result is that the Ingot columns fall, the dense ' +
+            'columns stay roughly flat, and the gap this benchmark exists to show gets ' +
+            'smaller. That is the point: a benchmark only ever run over the corpus its own ' +
+            'authors designed is not yet evidence.'
+          }
+        />
+      </p>
+      <p className="bench-corpus-meaning-rule">
+        <Prose
+          text={
+            'These numbers are not comparable with the ordinary corpus, and the harness will ' +
+            'not let you pretend otherwise. Read them beside it, never instead of it.'
+          }
+        />
+      </p>
+    </div>
   );
 }
 
@@ -509,20 +607,18 @@ function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
           <Prose
             text={
               run.drift
-                ? 'This run was bought with `--drift`: partway through each listing a field ' +
-                  'is renamed, a unit changes with the name, a string becomes an object and a ' +
-                  'foreign key arrives late. Every ' +
-                  'record is still present exactly once, so every question above is still ' +
-                  'answerable — but not by anything that fixed its schema on the first page, ' +
-                  'which is the cost Ingot pays and a vector index does not. These numbers ' +
-                  'are not comparable with a run over the ordinary corpus.'
+                ? 'The payloads above are the drifted ones — the samples move shape partway ' +
+                  'through exactly as the listings do, which is why `assignee` reads as an ' +
+                  'object in one and a string in another. Every record is still present ' +
+                  'exactly once, so every question above is still answerable, but not by ' +
+                  'anything that fixed its schema on the first page. What that costs each ' +
+                  'column is the table at the top of this page.'
                 : 'Every payload above also keeps one shape from first page to last, which is ' +
                   'the friendliest assumption on this page: real tools rename fields, change ' +
-                  'units, return an object where a string used to be, and hand back a ' +
-                  'return an object where a string used to be. `--drift` is the run ' +
-                  'that does all of that, and it is the one where committing to a column ' +
+                  'units, and return an object where a string used to be. `--drift` is the ' +
+                  'run that does all of that, and it is the one where committing to a column ' +
                   'mapping before the last page has a price — so it costs Ingot more than it ' +
-                  'costs a vector index. No such run is published here yet.'
+                  'costs a vector index. Switch the corpus at the top of this page to read it.'
             }
           />
         </p>
@@ -860,4 +956,217 @@ function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): Rea
       </table>
     </div>
   );
+}
+
+/**
+ * What each column actually did, one question at a time.
+ *
+ * The section the whole change exists for. Every number above is a mean over
+ * transcripts, and a mean asks to be trusted where a transcript can be checked:
+ * one screen showing the same store answered two ways, one of them silently
+ * wrong, is worth more than a percentage. So this lets a reader open a question
+ * and read the SQL each column wrote, the searches it ran, the rows that came
+ * back and the answer it gave.
+ *
+ * The transcripts are not imported — they are tens of megabytes and would sit
+ * in the bundle for a section most readers never open — so they are fetched,
+ * and only when a reader asks. Nothing is fetched on load; the button below is
+ * the fetch. With no published run there is no table and this renders nothing:
+ * the empty state is method-only, and a control that loads data that will never
+ * arrive is worse than no control.
+ */
+function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [data, setData] = useState<PublishedTranscripts | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+
+  // No run, no transcripts: degrade to nothing rather than to a dead control.
+  if (!table) return null;
+
+  const load = async (): Promise<void> => {
+    if (state === 'loading' || state === 'ready') return;
+    setState('loading');
+    try {
+      // Through BASE_PATH, so the fetch resolves when the site is served from a
+      // subdirectory (GitHub Pages puts a project site under `/<repo>/`). A
+      // root-relative path would 404 there and nowhere a developer would see it.
+      const response = await fetch(`${BASE_PATH}/${TRANSCRIPTS_FILE}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      setData((await response.json()) as PublishedTranscripts);
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  };
+
+  // The sidecar carries every corpus; which one the reader is looking at is the
+  // selected table's label. A run published before transcripts existed, or one
+  // whose sidecar entry has not caught up, simply has no match — said plainly
+  // rather than spun.
+  const forThis = data?.tables.find((one) => one.label === table.label) ?? null;
+
+  return (
+    <div className="bench-transcripts">
+      <div className="bench-rule label label-sm">
+        <span>What each column did</span>
+        <span className="bench-rule-line" aria-hidden="true" />
+        <span>One question at a time</span>
+      </div>
+
+      {state === 'idle' ? (
+        <div className="bench-transcripts-prompt">
+          <p>
+            Every number above is a mean over transcripts, and a transcript can be checked where a
+            mean has to be trusted. Load them to see what each column actually did to answer a
+            question — the SQL it wrote or the searches it ran, the rows that came back, and the
+            answer it gave.
+          </p>
+          <button className="btn-outline" type="button" onClick={() => void load()}>
+            Show the transcripts
+          </button>
+        </div>
+      ) : null}
+
+      {state === 'loading' ? <p className="bench-note">Loading the transcripts…</p> : null}
+
+      {state === 'error' ? (
+        <p className="bench-note">
+          The transcripts could not be loaded. They are a separate file published beside the
+          numbers, and a run from before transcript publishing has none to show.
+        </p>
+      ) : null}
+
+      {state === 'ready' && !forThis ? (
+        <p className="bench-note">No transcripts have been published for this corpus yet.</p>
+      ) : null}
+
+      {forThis ? (
+        <ol className="bench-qs">
+          {forThis.questions.map((question) => (
+            <QuestionTranscript
+              key={question.id}
+              question={question}
+              open={open === question.id}
+              onToggle={() => setOpen(open === question.id ? null : question.id)}
+            />
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+/** One question, expandable to what every column did with it. */
+function QuestionTranscript({
+  question,
+  open,
+  onToggle,
+}: {
+  question: TranscriptQuestion;
+  open: boolean;
+  onToggle: () => void;
+}): ReactNode {
+  return (
+    <li className="bench-q">
+      <button className="bench-q-head" type="button" aria-expanded={open} onClick={onToggle}>
+        <code className="bench-q-id">{question.id}</code>
+        <span className="bench-q-cat label label-sm">{question.category}</span>
+        <span className="bench-q-text">{question.question}</span>
+        <span className="bench-q-gold label label-sm">gold: {summariseAnswer(question.gold)}</span>
+      </button>
+      {open ? (
+        <div className="bench-q-body">
+          {question.adapters.map((adapter) => (
+            <AdapterRun key={adapter.adapter} run={adapter} />
+          ))}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** One column's transcript for one question: the calls, then the answer. */
+function AdapterRun({ run }: { run: AdapterTranscript }): ReactNode {
+  return (
+    <div className="bench-run">
+      <div className="bench-run-head">
+        <code className="bench-run-name">{run.adapter}</code>
+        <span
+          className={run.correct ? 'bench-run-mark bench-run-ok' : 'bench-run-mark bench-run-no'}
+          aria-hidden="true"
+        >
+          {run.correct ? '✓' : '✗'}
+        </span>
+        <span className="bench-sr">{run.correct ? 'correct' : 'wrong'}</span>
+        <span className="bench-run-answer">
+          answered <strong>{summariseAnswer(run.answer)}</strong>
+        </span>
+      </div>
+      {run.calls.length === 0 ? (
+        <p className="bench-run-empty">No tool calls — it answered from the prompt.</p>
+      ) : (
+        <ol className="bench-calls">
+          {run.calls.map((call, index) => (
+            <li
+              className={call.failed ? 'bench-call bench-call-failed' : 'bench-call'}
+              // biome-ignore lint/suspicious/noArrayIndexKey: the transcript is ordered and immutable — position in the call list is the identity of a call, and nothing is inserted, removed or reordered.
+              key={index}
+            >
+              <div className="bench-call-head label label-sm">
+                <code>{call.name}</code>
+                {call.failed ? <span className="bench-call-tag">failed</span> : null}
+              </div>
+              <pre className="bench-call-io">
+                <code>{formatInput(call.input)}</code>
+              </pre>
+              <pre className="bench-call-io bench-call-out">
+                <code>{call.output}</code>
+              </pre>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A gold or an answer as a short line.
+ *
+ * Gold is `{ kind, value | values }` and an answer is whatever the model
+ * submitted — usually the same shape, sometimes not. Both are rendered by the
+ * same reader-facing rule so a question's gold and a column's answer can be
+ * compared at a glance, which is the whole reason they sit on the same row.
+ */
+function summariseAnswer(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.length === 0 ? '∅' : value.map(String).join(', ');
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.values)) {
+    return record.values.length === 0 ? '∅' : (record.values as unknown[]).map(String).join(', ');
+  }
+  if ('value' in record) return String(record.value);
+  return JSON.stringify(value);
+}
+
+/**
+ * A tool input as the reader would say it out loud.
+ *
+ * A lone string argument — the SQL, the search query — is the whole call and
+ * reads best unadorned; anything with more than one field keeps its keys so a
+ * `k` or a `limit` beside the query is not lost. Verbatim either way: this is
+ * the half of the transcript the harness publishes uncapped.
+ */
+function formatInput(input: Record<string, unknown>): string {
+  const keys = Object.keys(input);
+  const only = keys[0];
+  if (keys.length === 1 && only !== undefined && typeof input[only] === 'string') {
+    return input[only] as string;
+  }
+  return JSON.stringify(input, null, 2);
 }
