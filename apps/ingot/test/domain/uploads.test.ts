@@ -69,6 +69,117 @@ describe('deciding what an upload is', () => {
     ).toThrow(/must be one of/);
   });
 
+  describe('the caller’s own mediaType', () => {
+    it('is believed over the header and the filename', () => {
+      // The case it exists for: a client that sends octet-stream for everything
+      // and a document with no useful name — a stream, a generated id, a proxy
+      // that flattened the type on the way through.
+      expect(
+        mediaTypeOf({
+          override: 'text/csv',
+          declared: 'application/octet-stream',
+          filename: 'a3f9c1',
+          head: head('a,b\n1,2'),
+        }),
+      ).toBe(MediaType.Csv);
+
+      // And the case where a name lies: a `.txt` export that is really CSV
+      // parses as prose until somebody says otherwise.
+      expect(
+        mediaTypeOf({
+          override: 'text/csv',
+          declared: 'text/plain',
+          filename: 'export.txt',
+          head: head('a,b\n1,2'),
+        }),
+      ).toBe(MediaType.Csv);
+    });
+
+    /**
+     * The property that makes the override safe to offer at all.
+     *
+     * It changes which of the three sources is believed and nothing about the
+     * check. A caller who could name a decoder for arbitrary bytes would be
+     * exactly what the agreement rule exists to prevent — so an override that
+     * disagrees with the content is refused like any other claim.
+     */
+    it('cannot talk this service into pointing a decoder at the wrong bytes', () => {
+      expect(() =>
+        mediaTypeOf({
+          override: MediaType.Pptx,
+          declared: 'text/plain',
+          filename: 'notes.txt',
+          head: head('%PDF-1.7 actually a pdf'),
+        }),
+      ).toThrow(/bytes are a PDF/);
+
+      expect(() =>
+        mediaTypeOf({
+          override: 'text/markdown',
+          declared: 'application/pdf',
+          filename: 'a.pdf',
+          head: head('%PDF-1.7'),
+        }),
+      ).toThrow(/bytes are a PDF/);
+    });
+
+    it('is held to the same closed set the header is', () => {
+      // A stronger signal about *which* format, never permission to name one
+      // this service has no handler for.
+      expect(() =>
+        mediaTypeOf({
+          override: 'application/x-msdownload',
+          declared: 'text/plain',
+          filename: 'a.txt',
+          head: head('hello'),
+        }),
+      ).toThrow(/mediaType must be one of/);
+    });
+
+    it('says which of the three sources it believed, when they disagree', () => {
+      // A caller who set all three has no way to debug a refusal otherwise.
+      expect(() =>
+        mediaTypeOf({
+          override: 'text/csv',
+          declared: 'application/pdf',
+          filename: 'a.pdf',
+          head: head('%PDF-1.7'),
+        }),
+      ).toThrow(/according to the "mediaType" you sent/);
+
+      expect(() =>
+        mediaTypeOf({ declared: 'application/pdf', filename: 'a.pdf', head: head('plain text') }),
+      ).toThrow(/according to the upload’s Content-Type/);
+
+      expect(() =>
+        mediaTypeOf({
+          declared: 'application/octet-stream',
+          filename: 'a.pdf',
+          head: head('plain text'),
+        }),
+      ).toThrow(/according to the filename extension/);
+    });
+
+    it('ignores a blank one rather than treating it as a claim', () => {
+      for (const override of ['', '   ', undefined]) {
+        expect(
+          mediaTypeOf({ override, declared: 'text/markdown', filename: 'a.md', head: head('# x') }),
+        ).toBe(MediaType.Markdown);
+      }
+    });
+
+    it('reads parameters off it, as it does off the header', () => {
+      expect(
+        mediaTypeOf({
+          override: 'text/csv; charset=utf-8',
+          declared: 'application/octet-stream',
+          filename: 'x',
+          head: head('a,b'),
+        }),
+      ).toBe(MediaType.Csv);
+    });
+  });
+
   it('falls back to the extension when a client will not commit to a type', () => {
     for (const declared of ['application/octet-stream', '', undefined]) {
       expect(mediaTypeOf({ declared, filename: 'notes.md', head: head('# x') })).toBe(

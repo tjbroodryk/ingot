@@ -122,6 +122,9 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     // is a caller choosing which decoder runs; four sniffed bytes alone cannot
     // tell a .docx from a .pptx, because every OOXML file is a zip.
     const mediaType = mediaTypeOf({
+      // The caller's own word for it, which beats both the part header and the
+      // filename — and is still checked against the bytes like either of them.
+      override: body.mediaType,
       declared: upload.mediaType,
       filename,
       head: upload.content.subarray(0, SNIFF_BYTES),

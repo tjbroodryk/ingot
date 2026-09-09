@@ -697,6 +697,25 @@ export interface FileExtraction {
 export interface FileBody {
   /** The caller's own handle for this document — a job id, a ticket. */
   readonly externalId?: string;
+  /**
+   * What this document is, when the upload itself cannot say.
+   *
+   * The type is otherwise taken from the part's `Content-Type`, or from the
+   * filename when that is `application/octet-stream` — which is what a great
+   * many HTTP clients send for everything. Neither works for a document that
+   * arrives as a stream, or under a generated name, or from a proxy that
+   * flattened the type on the way through. This is the way to say it outright.
+   *
+   * It is also how to correct a file whose name lies: a `.txt` export that is
+   * really CSV parses as prose until somebody says otherwise.
+   *
+   * **It overrides what the upload declares, never what the bytes say.** The
+   * type is still checked against the content, and a mismatch is still refused —
+   * this changes which of the three sources is believed, not whether the claim
+   * is checked. A caller who could name a decoder for arbitrary bytes would be
+   * the thing that check exists to prevent.
+   */
+  readonly mediaType?: string;
   /** Typed rows to pull out of it, into a table of your own. */
   readonly extract?: FileExtraction;
   /**

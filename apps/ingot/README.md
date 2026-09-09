@@ -321,13 +321,35 @@ WHERE abs(c.ordinal - hit.ordinal) <= 1
 ### The boundary, and two things that are not built
 
 `/file` takes opaque bytes from anyone holding a key and hands them to a
-decoder, so it is a boundary like `/query` is. The declared media type and the
-sniffed bytes must **agree** — a declared type alone is a caller choosing which
-decoder runs, and four sniffed bytes cannot tell a `.docx` from a `.pptx`
-because every OOXML file is a zip. A filename never reaches a path: object keys
-are built from an id this service generated. Multer's limit is the absolute
-ceiling on what is buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a
-deployment chose.
+decoder, so it is a boundary like `/query` is. The claimed media type and the
+sniffed bytes must **agree** — a claim alone is a caller choosing which decoder
+runs, and four sniffed bytes cannot tell a `.docx` from a `.pptx` because every
+OOXML file is a zip. A filename never reaches a path: object keys are built from
+an id this service generated. Multer's limit is the absolute ceiling on what is
+buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a deployment chose.
+
+A claim comes from one of three places, tried in order of how deliberate they
+are:
+
+```jsonc
+// the body part, when the upload itself cannot say what it is
+{ "mediaType": "text/csv" }
+```
+
+1. **`mediaType` in the body** — for a document that arrives as a stream, under
+   a generated name, or from a proxy that flattened the type on the way through.
+   Also how to correct a name that lies: a `.txt` export that is really CSV
+   parses as prose until somebody says otherwise.
+2. **The part's `Content-Type`** — what the client said.
+3. **The filename extension** — reached only when the header says
+   `application/octet-stream`, which is what a great many clients send.
+
+**The override changes which source is believed and nothing about the check.**
+It is held to the same closed set, and a claim the bytes disagree with is refused
+whichever of the three it came from — a caller who could name a decoder for
+arbitrary bytes is precisely what the agreement rule exists to prevent. A refusal
+says which source it believed, since a caller who set all three has no other way
+to tell.
 
 ### The registry
 

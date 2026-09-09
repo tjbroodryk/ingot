@@ -78,6 +78,46 @@ describe('storing a document', () => {
       );
     });
 
+    /**
+     * The upload that could not otherwise say what it is.
+     *
+     * A client that sends `application/octet-stream` for everything and a
+     * document under a generated name — a stream, a temp file, something out of
+     * a proxy — has no way to be understood. `mediaType` is how the caller says
+     * it outright, and it is checked against the bytes like any other claim.
+     */
+    it('takes the type from the body when the upload cannot say', async () => {
+      const ingot = await world.ingot();
+      await world.file(
+        ingot,
+        { filename: 'a3f9c1', mediaType: 'application/octet-stream', content: INVOICES },
+        { mediaType: 'text/csv' },
+      );
+      await world.parseAll();
+
+      const [file] = await world.sql(
+        ingot,
+        "SELECT media_type, status, chunk_count FROM ingot_files WHERE filename = 'a3f9c1'",
+      );
+
+      expect(file).toMatchObject({ media_type: 'text/csv', status: FileStatus.Ready });
+      expect(Number(file?.chunk_count)).toBeGreaterThan(0);
+    });
+
+    it('refuses an override the bytes disagree with, like any other claim', async () => {
+      const ingot = await world.ingot();
+
+      // The override decides which of the three sources is believed. It does
+      // not decide whether the claim is checked.
+      await expect(
+        world.file(
+          ingot,
+          { filename: 'notes.txt', mediaType: 'text/plain', content: HANDBOOK },
+          { mediaType: PPTX },
+        ),
+      ).rejects.toThrow(/bytes are text/);
+    });
+
     it('wakes the parser rather than leaving it for the next tick', async () => {
       const ingot = await world.ingot();
       await world.file(ingot, { filename: 'a.txt', mediaType: 'text/plain', content: 'hello' });
