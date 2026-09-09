@@ -201,9 +201,9 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">on the page</span>
             </h2>
             <p>
-              A benchmark published by the thing it measures has one obligation above all the
-              others: say plainly where it is weak. These are the ones worth knowing before you read
-              anything above.
+              We are publishing a benchmark of our own software, which you should discount
+              accordingly. The least we can do is say plainly where it is weak, so here is
+              everything we know is wrong with it — worth reading before you trust anything above.
             </p>
           </div>
 
@@ -234,9 +234,10 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">one file away</span>
             </h2>
             <p>
-              A benchmark published by the thing it measures is worth exactly as much as your
-              ability to go and check it. Every part of this one is a single file, linked by the
-              question it answers.
+              This is worth exactly as much as your ability to go and check it, so every part of it
+              is one file, linked below by the question it answers. If you want to know whether we
+              shaped the questions to flatter ourselves, read the generator — do not take our word
+              for it.
             </p>
           </div>
 

@@ -104,7 +104,7 @@ export const FEATURES: readonly Feature[] = [
  * this is the pitch, so it is the one that gets edited.
  */
 export const LEDE =
-  'Durable, typed memory for LLM agents. Store a tool result, read it back as SQL, by keyword or by meaning — RAG retrieval with no vector database to run beside it.';
+  'Your agent calls a tool, gets four hundred rows back, and pays for them on every turn until the window trims and they are gone for good. Ingot keeps them as real tables instead, so the model can read them back with SQL, by keyword or by meaning — next turn, or next week. No vector database running beside it.';
 
 /** The row under the hero. What the thing already speaks, rather than logos. */
 export const SPEAKS: readonly string[] = [

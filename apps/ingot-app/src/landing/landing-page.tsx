@@ -114,8 +114,8 @@ export function LandingPage(): ReactNode {
               read it back
             </h2>
             <p>
-              Three calls is the whole loop. Everything else — keys, retention, schema, MCP — hangs
-              off the same bearer token.
+              Three calls is the whole loop. That is genuinely it — everything else you might want,
+              like keys, retention, schema or MCP, hangs off the same bearer token.
             </p>
           </div>
 
@@ -180,9 +180,9 @@ export function LandingPage(): ReactNode {
               <span className="mark">the receipt</span>
             </h2>
             <p>
-              A tool result doesn&rsquo;t have to go into the context window to be useful later. One
-              POST puts it in the memory. What comes back is small enough to be the tool&rsquo;s own
-              output, and it carries the SQL that finds the rows again.
+              The instinct is that a tool result has to go into the context window to be useful
+              later. It doesn&rsquo;t. One POST puts it in the memory, and what comes back is small
+              enough to be the tool&rsquo;s own output — carrying the SQL that finds the rows again.
             </p>
             <a className="target-more landhead-more" href="#ai-sdk">
               The same thing as a file you can type ↓
@@ -233,9 +233,10 @@ export function LandingPage(): ReactNode {
               <span className="mark">one execute</span>
             </h2>
             <p>
-              <code>execute</code> already returns whatever the model is going to read. Have it
-              return the receipt instead of the rows, and the rest of the harness — the stream, the
-              parts, the steps — never finds out anything changed.
+              There is no adapter here, and no middleware. <code>execute</code> already returns
+              whatever the model is going to read, so have it return the receipt instead of the rows
+              — and the rest of your harness, the stream and the parts and the steps, never finds
+              out anything changed.
             </p>
           </div>
 
@@ -288,10 +289,10 @@ export function LandingPage(): ReactNode {
               expensive parts.
             </h3>
             <p>
-              <code>embed</code> belongs to the table. You set it once when the column is declared
-              and it applies to every write after that. <code>receipt</code> is per call, because it
-              costs a model call every time. A loop storing ten thousand tool results should never
-              end up paying for either by accident.
+              We split these two on purpose. <code>embed</code> belongs to the table: set it once
+              when the column is declared and it applies to every write after that.{' '}
+              <code>receipt</code> is per call, because it costs a model call every time. A loop
+              storing ten thousand tool results should never end up paying for either by accident.
             </p>
             <p>
               A receipt comes back <code>pending</code>, with the SELECT that will answer it. The
@@ -328,10 +329,11 @@ export function LandingPage(): ReactNode {
               meaning, match BM25 and filter on real columns at the same time.
             </p>
             <p>
-              That is normally three pieces of infrastructure — a vector store, a metadata index,
-              and a filtering hop between them. Here it is one POST against the memory you were
-              already writing to. Neither half is on by default: you declare embeddings per column
-              and the keyword index per table, so a memory holding no prose pays for neither.
+              That is normally three pieces of infrastructure: a vector store, a metadata index, and
+              a filtering hop between them. We did not want to run any of those, so here it is one
+              POST against the memory you were already writing to. Neither half is on by default —
+              you declare embeddings per column and the keyword index per table, so a memory holding
+              no prose pays for neither.
             </p>
             <div className="chips">
               <span className="chip chip-accent">one SELECT</span>
@@ -475,8 +477,9 @@ export function LandingPage(): ReactNode {
           <span className="label label-sm kicker">[ Self-hosted, for now ]</span>
           <h2>Bring it up. Sign up against your own address.</h2>
           <p>
-            There is no hosted Ingot yet. It is a NestJS service, a Postgres and a bucket. However
-            you choose to run those three, sign-up is the same open POST, and the secret still comes
+            There is no hosted Ingot yet, and we would rather say that at the top than let you find
+            out three scrolls down. It is a NestJS service, a Postgres and a bucket. However you
+            choose to run those three, sign-up is the same open POST, and the secret still comes
             back exactly once.
           </p>
 

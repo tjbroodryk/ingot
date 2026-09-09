@@ -29,7 +29,7 @@ export const WHY_DESCRIPTION =
  * first — and two copies drift on the edit that only remembers one.
  */
 export const WHY_LEDE =
-  'A vector store answers one question: what is this like? The questions an agent actually has are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask those, so a memory’s job is to hold tool results as tables and then get out of the way.';
+  'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think a memory’s job is to hold tool results as tables and then get out of the way.';
 
 /* ── 01 · what happens to a tool result today ────────────────────────────── */
 

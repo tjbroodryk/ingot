@@ -27,9 +27,10 @@ export const DEPLOYMENT_DESCRIPTION =
 export const DEPLOYMENT_LEDE =
   'Ingot is one process that needs a Postgres and somewhere to put Parquet. ' +
   'Every way of running it below is those same two things in a different ' +
-  'dialect. Everything under them is a choice you are allowed to decline — ' +
-  'and the things missing from the list entirely, like a broker, a scheduler ' +
-  'or a vector database, are missing on purpose rather than by oversight.';
+  'dialect, and everything under them is a choice you are allowed to decline. ' +
+  'If you are wondering where the broker, the scheduler and the vector ' +
+  'database went — we did not forget them, we just did not want to make you ' +
+  'run them.';
 
 /** The paragraph under "Pick a place". */
 export const BRING_IT_UP_LEDE =

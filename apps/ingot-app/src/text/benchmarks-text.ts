@@ -63,11 +63,11 @@ function renderBenchmarks(): string {
     ),
 
     heading(2, 'What this does not measure'),
-    'A benchmark published by the thing it measures has one obligation above all the others: say plainly where it is weak.',
+    'We are publishing a benchmark of our own software, which you should discount accordingly. The least we can do is say plainly where it is weak, so here is everything we know is wrong with it.',
     ...LIMITS.flatMap((limit) => [heading(3, limit.title), limit.body]),
 
     heading(2, 'Check it'),
-    'Each part of this is a single file. If you want to know whether the questions were shaped to flatter anybody, read the generator rather than taking this page’s word for it.',
+    'This is worth exactly as much as your ability to go and check it, so every part of it is one file. If you want to know whether we shaped the questions to flatter ourselves, read the generator — do not take our word for it.',
     table(
       ['Question', 'Where'],
       SOURCES.map((source) => [source.question, `[\`${source.path}\`](${sourceHref(source.path)})`]),

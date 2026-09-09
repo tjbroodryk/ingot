@@ -158,9 +158,10 @@ export const BENCHMARKS_DESCRIPTION =
   'path with SQL taken away.';
 
 export const BENCHMARKS_LEDE =
-  'Ingot contains a vector index. So the question is not whether structure beats ' +
-  'embeddings — it is whether typed rows and SQL on top of the same embeddings ' +
-  'retrieve better than the embeddings alone, and what each answer costs in context.';
+  'Ingot contains a vector index, so we are not going to pretend this is ' +
+  'structure versus embeddings. The question we actually wanted answered is ' +
+  'narrower: do typed rows and SQL on top of the same embeddings retrieve ' +
+  'better than those embeddings alone, and what does each answer cost in context?';
 
 /** What each adapter is, in the order the table shows them. */
 const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }[] = [

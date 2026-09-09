@@ -120,8 +120,9 @@ export function WhyPage(): ReactNode {
               <span className="mark">a tool result</span>
             </h2>
             <p>
-              A tool returns four hundred rows of structured JSON. By the next turn one of these
-              three things has happened to it, and you cannot query any of them.
+              You have watched this happen. A tool returns four hundred rows of structured JSON, and
+              by the next turn one of these three things has happened to it. You cannot query any of
+              them.
             </p>
           </div>
 
@@ -158,9 +159,10 @@ export function WhyPage(): ReactNode {
             <p>
               It is the most written-down query language there is, and a model is fluent in it in a
               way it will never be fluent in your retrieval API. It also fails loudly, which is the
-              part people undersell: a SELECT either returns rows or it errors with a reason, and a
-              model that got it wrong can narrow it and try again. A ranking always returns
-              something. Being wrong looks exactly like being right.
+              part we care about most: a SELECT either returns rows or it errors with a reason, and
+              a model that got it wrong can narrow it and try again. A ranking always returns
+              something. Being wrong looks exactly like being right — and that is a horrible
+              property in a system you are trying to learn to trust.
             </p>
           </div>
 
@@ -210,8 +212,8 @@ export function WhyPage(): ReactNode {
               A column.
             </h3>
             <p>
-              None of this is an argument against embeddings. It is an argument about where they
-              belong. A vector is a column sitting beside the row it was made from, and{' '}
+              We use embeddings. None of this is an argument against them — it is an argument about
+              where they belong. A vector is a column sitting beside the row it was made from, and{' '}
               <code>array_cosine_similarity(body_vec, $q)</code> is an expression in a SELECT list
               like any other.
             </p>
@@ -390,7 +392,8 @@ export function WhyPage(): ReactNode {
           <p>
             The join is the query handler, the five minutes is a sweeper, the sandbox is two hundred
             lines of guard, and the bucket layout is one object. Nothing on this page is a position
-            the code does not already hold.
+            the code does not already hold — so if you think we have got one of them wrong, the
+            place to say so is the repository.
           </p>
 
           <div className="cta-actions">

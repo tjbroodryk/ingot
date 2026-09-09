@@ -48,7 +48,7 @@ function renderWhy(): string {
     WHY_LEDE,
 
     heading(2, 'Three ways to lose a tool result'),
-    'A tool returns four hundred rows of structured JSON. By the next turn one of these three things has happened to it, and you cannot query any of them.',
+    'You have watched this happen. A tool returns four hundred rows of structured JSON, and by the next turn one of these three things has happened to it. You cannot query any of them.',
     table(
       ['What happens to it', 'What it costs'],
       LOSSES.map((loss) => [`**${loss.title}.** ${loss.body}`, loss.cost]),
@@ -56,13 +56,13 @@ function renderWhy(): string {
     LOSS_CLAIM,
 
     heading(2, 'Why SQL'),
-    'SQL is the most written-down query language there is, and a model is fluent in it in a way it will never be fluent in your retrieval API. It also fails loudly, which is the part people undersell: a SELECT either returns rows or it errors with a reason, and a model that got it wrong can narrow it and try again. A ranking always returns something. Being wrong looks exactly like being right.',
+    'SQL is the most written-down query language there is, and a model is fluent in it in a way it will never be fluent in your retrieval API. It also fails loudly, which is the part we care about most: a SELECT either returns rows or it errors with a reason, and a model that got it wrong can narrow it and try again. A ranking always returns something. Being wrong looks exactly like being right — and that is a horrible property in a system you are trying to learn to trust.',
     fence(THREE_TOOLS),
     fence(THE_JOIN),
     bullets(SQL_NOTES.map((note) => `**${note.title}** (\`${note.source}\`): ${note.body}`)),
 
     heading(2, 'Where the embeddings went'),
-    'None of this is an argument against embeddings. It is an argument about where they belong. A vector is a column sitting beside the row it was made from, and `array_cosine_similarity(body_vec, $q)` is an expression in a SELECT list like any other. So meaning becomes one predicate in a statement that also joins two tables, filters on a real date, and counts. The setup with a vector store bolted on the side cannot write that statement at all: the vectors are over there, the columns are over here, and the only thing that ever crosses between them is a list of ids.',
+    'We use embeddings. None of this is an argument against them — it is an argument about where they belong. A vector is a column sitting beside the row it was made from, and `array_cosine_similarity(body_vec, $q)` is an expression in a SELECT list like any other. So meaning becomes one predicate in a statement that also joins two tables, filters on a real date, and counts. The setup with a vector store bolted on the side cannot write that statement at all: the vectors are over there, the columns are over here, and the only thing that ever crosses between them is a list of ids.',
     fence(VECTOR_COLUMN),
 
     heading(2, 'One memory per whatever you say'),
