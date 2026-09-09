@@ -221,6 +221,84 @@ describe('storing a document', () => {
       expect(ranked.columns).not.toContain('text_vec');
     });
 
+    /**
+     * The one table in this service with keyword search on by default.
+     *
+     * Everywhere else it is off, because an index is built in the query session
+     * over the whole table. Here prose is guaranteed, and the index is built
+     * only when a query mentions `fts_main_…` — so the default costs nothing to
+     * anyone who never searches, and saves everyone else a configuration call
+     * they would have had to find out about.
+     */
+    it('searches chunks by keyword with no configuration', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'runbook.md',
+        mediaType: 'text/markdown',
+        content:
+          '# Runbook\n\nThe collector fails with ECONNREFUSED when the broker is down.\n\n' +
+          '## Codes\n\nA 500 is ours. A 404 is the caller’s.\n',
+      });
+      await world.parseAll();
+
+      const hits = await world.sql(
+        ingot,
+        `SELECT ordinal FROM ingot_file_chunks
+         WHERE fts_main_ingot_file_chunks.match_bm25(_row_id, 'ECONNREFUSED') IS NOT NULL`,
+      );
+
+      // Semantic search finds what a chunk means; this is for when the thing
+      // wanted is the chunk containing a specific token.
+      expect(hits).toHaveLength(1);
+    });
+
+    /**
+     * DuckDB's default `ignore` is `(\.|[^a-z])+`, which discards digits and
+     * indexes `500` and `404` identically. Documents are full of numbers that
+     * are the most searched thing in them.
+     */
+    it('keeps digits searchable, which DuckDB’s default would discard', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'codes.md',
+        mediaType: 'text/markdown',
+        content: '# A\n\nA 500 is ours.\n\n# B\n\nA 404 is the caller’s.\n',
+      });
+      await world.parseAll();
+
+      const find = (term: string) =>
+        world.sql(
+          ingot,
+          `SELECT ordinal FROM ingot_file_chunks
+           WHERE fts_main_ingot_file_chunks.match_bm25(_row_id, '${term}') IS NOT NULL`,
+        );
+
+      // Two chunks, one number each. Under the default tokeniser both terms
+      // would match both chunks, or neither.
+      expect(await find('500')).toHaveLength(1);
+      expect(await find('404')).toHaveLength(1);
+      expect((await find('500'))[0]?.ordinal).not.toBe((await find('404'))[0]?.ordinal);
+    });
+
+    it('leaves the default off for tables that are not guaranteed prose', async () => {
+      const ingot = await world.ingot();
+      await world.file(ingot, {
+        filename: 'a.md',
+        mediaType: 'text/markdown',
+        content: '# T\n\nBody.\n',
+      });
+      await world.parseAll();
+
+      const info = await world.info(ingot);
+      const setting = (name: string) =>
+        info.tables.find((table) => table.name === name)?.config.fts.enabled;
+
+      expect(setting('ingot_file_chunks')).toBe(true);
+      // One row per document, and its prose columns are embedded rather than
+      // indexed. Keyword search over a filename is a LIKE.
+      expect(setting('ingot_files')).toBe(false);
+    });
+
     it('survives a roll-up into Parquet, like any other table', async () => {
       const ingot = await world.ingot();
       await world.file(ingot, {

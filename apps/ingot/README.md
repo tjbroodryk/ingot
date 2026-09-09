@@ -307,6 +307,23 @@ A structured filter no vector store can express, ranked by a similarity no
 warehouse can compute, over both tiers, in one round trip. Nothing was written
 to make that work — it works because all three are tables.
 
+**Keyword search over chunks is on out of the box**, which no other table gets —
+`ingot_file_chunks` is the only one where prose is guaranteed, and the index is
+built only when a query actually mentions `fts_main_ingot_file_chunks`, so
+nobody else pays for it. Semantic search finds what a chunk *means*; this is for
+when the thing wanted is the chunk containing `ECONNREFUSED`.
+
+```sql
+SELECT page, section, fts_main_ingot_file_chunks.match_bm25(_row_id, 'ECONNREFUSED') AS score
+FROM ingot_file_chunks WHERE score IS NOT NULL ORDER BY score DESC
+```
+
+Its `ignore` is `[^a-z0-9]+` rather than DuckDB's default, which discards digits
+and would index `error 500` and `error 404` identically — wrong for almost
+anything a document contains, where invoice numbers, section numbers, versions
+and error codes are frequently the most searched thing in the file. Only `text`
+is indexed; `file_id` and `kind` would add tokens nobody searches for.
+
 Neighbour expansion needs no API surface either, which is why `/query` gained no
 `window` parameter: `ordinal` makes it a self-join, and the caller picks the
 width.
@@ -750,10 +767,12 @@ reports what every table is set to, defaults included.
 
 Four things worth knowing:
 
-- **Off by default.** The index is built inside the session, over the whole
-  table, on the query that searches it. Building one for every table of every
-  memory would put that cost on queries that store no prose at all, so a caller
-  asks for it once.
+- **Off by default, with one exception.** The index is built inside the session,
+  over the whole table, on the query that searches it. Building one for every
+  table of every memory would put that cost on queries that store no prose at
+  all, so a caller asks for it once. `ingot_file_chunks` is the exception and is
+  on out of the box: it is the only table where prose is *guaranteed*, and by
+  the next rule a query that does not search still pays nothing.
 - **Only for a query that searches.** `match_bm25` is a macro in the index's
   own schema, so a query using it must contain the text `fts_main_<table>`. No
   mention, no index built — an ordinary SELECT and a roll-up pay nothing.

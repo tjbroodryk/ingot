@@ -166,7 +166,7 @@ export function declareFilesTable(ingotId: string, now: Date): IngotTable {
  * into every query.
  */
 export function declareChunksTable(ingotId: string, now: Date): IngotTable {
-  return IngotTable.declare({
+  const table = IngotTable.declare({
     ingotId,
     name: CHUNKS_TABLE,
     system: true,
@@ -183,7 +183,52 @@ export function declareChunksTable(ingotId: string, now: Date): IngotTable {
       ColumnSpec.of({ name: CHUNK_SECTION, type: ColumnType.Varchar, required: false }),
     ],
   });
+
+  table.configure(CHUNK_FTS);
+  return table;
 }
+
+/**
+ * The one table in this service that gets keyword search turned on for it.
+ *
+ * The rule everywhere else is off-by-default, and the reason is real: an index
+ * is built inside the query session over the whole table, so switching it on
+ * for every table would put that cost on memories storing no prose at all.
+ *
+ * Two things make this the exception. It is the only table where prose is
+ * *guaranteed* — a chunk is text or it is nothing — and the index is built only
+ * when a query actually mentions `fts_main_ingot_file_chunks`
+ * (`duckdb-engine.ts`), so a query that does not search pays nothing. The
+ * default costs the people who never keyword-search exactly zero, and saves
+ * everyone else a configuration call they would have had to discover.
+ *
+ * Semantic search finds what a chunk *means*; this is for when the thing wanted
+ * is the chunk containing `ECONNREFUSED`, and a document corpus is full of
+ * those.
+ */
+const CHUNK_FTS = {
+  fts: {
+    enabled: true,
+    /**
+     * Digits kept, where DuckDB's default `(\.|[^a-z])+` throws them away.
+     *
+     * That default indexes `error 500` and `error 404` identically, which is
+     * wrong for almost everything a document contains: invoice numbers, section
+     * numbers, version strings, error codes, dates. They are frequently the
+     * most searched thing in the file.
+     */
+    ignore: '[^a-z0-9]+',
+    /**
+     * Only the text, where an empty list would mean every VARCHAR column.
+     *
+     * The others are `file_id`, `kind` and `section`. Indexing an opaque id and
+     * a four-value enum adds tokens nobody will ever search for and grows the
+     * index for every query that does. `section` is already inside `text` for
+     * the formats that carry headings, and null for the ones that do not.
+     */
+    columns: [CHUNK_TEXT],
+  },
+} as const;
 
 /** The SELECT that reports on one document. Empty until the work finishes. */
 export function queryForFile(fileId: string): string {
