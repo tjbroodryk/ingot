@@ -3,6 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { ColumnType, FileStatus } from '@ingot/shared/ingot-v1';
 import { BackgroundKind } from '../../src/contexts/records/application/background.js';
 import { closeDatabase } from '../support/database.js';
+import {
+  FILE_QUEUE,
+  type FileQueue,
+} from '../../src/contexts/files/application/ports/file-queue.port.js';
 import { compressible, pptx, zipOf } from '../support/office.js';
 import { pdf } from '../support/pdf.js';
 import { type World, makeWorld } from '../support/world.js';
@@ -448,6 +452,48 @@ describe('storing a document', () => {
       expect(file?.status).toBe(FileStatus.Failed);
       expect(String(file?.error)).toMatch(/no slides/);
     });
+  });
+
+  /**
+   * Destroying a memory has to destroy everything keyed on it, and the queue is
+   * the piece that leaks quietly if it is forgotten.
+   *
+   * Nothing else ever visits a `file_queue` row, so an omission here has no
+   * later moment at which it shows up. And the row is not innocuous: it holds
+   * the filename, the sha256, the caller's extraction mapping, and a
+   * `last_error` that quotes the value which failed to coerce — a fragment of
+   * the document itself. This was genuinely broken until somebody asked what
+   * gets stored.
+   */
+  it('destroys queued uploads along with the memory', async () => {
+    // `abandoned(0)` is every row in the queue: attempts are never negative, so
+    // a threshold of zero counts the whole thing. It is deployment-wide, and one
+    // world is shared across this file — so the assertion is on the delta rather
+    // than on zero, which would be asserting about the other tests.
+    const queue = world.app.get<FileQueue>(FILE_QUEUE, { strict: false });
+    await world.parseAll();
+    const before = await queue.abandoned(0);
+
+    const ingot = await world.ingot();
+    // One that will fail, so it stays in the queue with an error on it rather
+    // than leaving on success.
+    await world.file(
+      ingot,
+      { filename: 'invoices.csv', mediaType: 'text/csv', content: INVOICES },
+      {
+        extract: {
+          table: 'broken',
+          rows: '$[*]',
+          columns: { n: { from: '$.Vendor', type: ColumnType.Integer } },
+        },
+      },
+    );
+    await world.parseAll();
+    expect(await queue.abandoned(0)).toBe(before + 1);
+
+    await world.destroy(ingot);
+
+    expect(await queue.abandoned(0)).toBe(before);
   });
 
   describe('refusing what it cannot store', () => {

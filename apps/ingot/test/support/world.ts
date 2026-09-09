@@ -25,6 +25,7 @@ import { CreateAccount } from '../../src/contexts/accounts/application/commands/
 import { ConfigureIngot } from '../../src/contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../../src/contexts/ingots/application/commands/configure-table.command.js';
 import { CreateIngot } from '../../src/contexts/ingots/application/commands/create-ingot.command.js';
+import { DeleteIngot } from '../../src/contexts/ingots/application/commands/delete-ingot.command.js';
 import { GetIngotInfo } from '../../src/contexts/ingots/application/queries/get-ingot-info.query.js';
 import { IngotsModule } from '../../src/contexts/ingots/ingots.module.js';
 import { QueryModule } from '../../src/contexts/query/query.module.js';
@@ -102,6 +103,8 @@ export interface World {
   ): Promise<FileResult>;
   /** Reads the documents in the queue, which the sweeper would do on a tick. */
   parseAll(): Promise<number>;
+  /** Destroys a memory, the way `DELETE /:account/:ingot` does. */
+  destroy(ingotId: string): Promise<void>;
   query(ingotId: string, body: QueryBody): Promise<QueryResult>;
   /** A SQL query, for the common case of asserting on the rows it returns. */
   sql(ingotId: string, statement: string): Promise<QueryResult['rows']>;
@@ -284,6 +287,10 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
     async configure(ingotId, table, body) {
       return dispatcher.send(new ConfigureTable(ingotId, created.account.id, table, body));
+    },
+
+    async destroy(ingotId) {
+      await dispatcher.send(new DeleteIngot(ingotId, created.account.id));
     },
 
     async configureIngot(ingotId, body) {
