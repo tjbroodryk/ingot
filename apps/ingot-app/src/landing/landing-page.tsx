@@ -180,9 +180,9 @@ export function LandingPage(): ReactNode {
               <span className="mark">the receipt</span>
             </h2>
             <p>
-              A tool result does not have to enter the context window to be useful later. One POST
-              puts it in the memory; what comes back is small enough to be the tool&rsquo;s own
-              output, and carries the SQL that finds the rows again.
+              A tool result doesn&rsquo;t have to go into the context window to be useful later. One
+              POST puts it in the memory. What comes back is small enough to be the tool&rsquo;s own
+              output, and it carries the SQL that finds the rows again.
             </p>
             <a className="target-more landhead-more" href="#ai-sdk">
               The same thing as a file you can type ↓
@@ -234,8 +234,8 @@ export function LandingPage(): ReactNode {
             </h2>
             <p>
               <code>execute</code> already returns whatever the model is going to read. Have it
-              return the receipt rather than the rows, and the rest of the harness — the stream, the
-              parts, the steps — does not find out anything changed.
+              return the receipt instead of the rows, and the rest of the harness — the stream, the
+              parts, the steps — never finds out anything changed.
             </p>
           </div>
 
@@ -288,15 +288,16 @@ export function LandingPage(): ReactNode {
               expensive parts.
             </h3>
             <p>
-              <code>embed</code> belongs to the table — set once when the column is declared, and
-              applied to every write after it. <code>receipt</code> is per call, because it is a
-              model call every time: a loop storing ten thousand tool results should pay for neither
-              by accident.
+              <code>embed</code> belongs to the table. You set it once when the column is declared
+              and it applies to every write after that. <code>receipt</code> is per call, because it
+              costs a model call every time. A loop storing ten thousand tool results should never
+              end up paying for either by accident.
             </p>
             <p>
-              A receipt comes back <code>pending</code> with the SELECT that will answer it: a model
-              is a network away, and the rows are queryable the instant <code>/add</code> returns.
-              Point the memory at a webhook or a queue and you are told instead of asking.
+              A receipt comes back <code>pending</code>, with the SELECT that will answer it. The
+              model writing the summary is a network away; your rows are queryable the instant{' '}
+              <code>/add</code> returns. Point the memory at a webhook or a queue and you get told
+              instead of having to ask.
             </p>
             <div className="chips">
               <span className="chip chip-accent">embed per column</span>
@@ -321,16 +322,16 @@ export function LandingPage(): ReactNode {
               between them read as a single token rather than as two clauses.
             */}
             <p>
-              <code>text</code> alone embeds the question and ranks a table by cosine similarity, so
-              rows come back carrying a <code>score</code>. SQL on its own is exact. Given both, the
-              embedding binds as <code>$q</code> and one SELECT can rank by meaning, match BM25 and
-              filter on real columns at the same time.
+              <code>text</code> on its own embeds the question and ranks a table by cosine
+              similarity, so rows come back carrying a <code>score</code>. SQL on its own is exact.
+              Send both and the embedding binds as <code>$q</code>, so one SELECT can rank by
+              meaning, match BM25 and filter on real columns at the same time.
             </p>
             <p>
-              That is what a vector store, a metadata index and a filtering hop are usually
-              assembled to do, and here it is one POST against the memory you already write to.
-              Neither half is on by default: embeddings are declared per column and the keyword
-              index per table, so a memory holding no prose pays for neither.
+              That is normally three pieces of infrastructure — a vector store, a metadata index,
+              and a filtering hop between them. Here it is one POST against the memory you were
+              already writing to. Neither half is on by default: you declare embeddings per column
+              and the keyword index per table, so a memory holding no prose pays for neither.
             </p>
             <div className="chips">
               <span className="chip chip-accent">one SELECT</span>
@@ -371,7 +372,8 @@ export function LandingPage(): ReactNode {
             <p>
               MCP over streamable HTTP, stateless, behind the same bearer key and the same guards.
               The schema is handed over as the server&rsquo;s instructions at{' '}
-              <code>initialize</code> — so writing SQL costs no tool call.
+              <code>initialize</code>, so getting to the point where the model can write SQL costs
+              no tool call at all.
             </p>
             <div className="tools">
               {MCP_TOOLS.map((row) => (
@@ -410,9 +412,9 @@ export function LandingPage(): ReactNode {
               <span className="mark">the same shape</span>
             </h2>
             <p>
-              Every target below answers the same four questions in the same order — what you need,
-              what to run, how you know it worked, and the one thing that catches people. There is
-              no fifth question, and none of them is left out.
+              Every target below answers the same four questions in the same order: what you need,
+              what to run, how you know it worked, and the one thing that catches people out. No
+              target skips one.
             </p>
 
             {/*
@@ -473,9 +475,9 @@ export function LandingPage(): ReactNode {
           <span className="label label-sm kicker">[ Self-hosted, for now ]</span>
           <h2>Bring it up. Sign up against your own address.</h2>
           <p>
-            There is no hosted Ingot yet. It is a NestJS service, a Postgres and a bucket — and
-            however you choose to run those three, sign-up is the same open POST, and the secret
-            still comes back exactly once.
+            There is no hosted Ingot yet. It is a NestJS service, a Postgres and a bucket. However
+            you choose to run those three, sign-up is the same open POST, and the secret still comes
+            back exactly once.
           </p>
 
           <div className="cta-actions">

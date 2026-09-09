@@ -121,7 +121,7 @@ export function WhyPage(): ReactNode {
             </h2>
             <p>
               A tool returns four hundred rows of structured JSON. By the next turn one of these
-              three has happened to it, and none of the three can be queried.
+              three things has happened to it, and you cannot query any of them.
             </p>
           </div>
 
@@ -157,10 +157,10 @@ export function WhyPage(): ReactNode {
             </h2>
             <p>
               It is the most written-down query language there is, and a model is fluent in it in a
-              way it is not fluent in anybody&rsquo;s retrieval API. It is also the only one that
-              fails loudly — a SELECT returns rows or it errors with a reason, and a model that got
-              it wrong can narrow it and run it again. A ranking always returns something, and
-              being wrong looks exactly like being right.
+              way it will never be fluent in your retrieval API. It also fails loudly, which is the
+              part people undersell: a SELECT either returns rows or it errors with a reason, and a
+              model that got it wrong can narrow it and try again. A ranking always returns
+              something. Being wrong looks exactly like being right.
             </p>
           </div>
 
@@ -210,16 +210,16 @@ export function WhyPage(): ReactNode {
               A column.
             </h3>
             <p>
-              None of this is an argument against embeddings — it is an argument about where they
-              belong. A vector is a column beside the row it was made from, and{' '}
+              None of this is an argument against embeddings. It is an argument about where they
+              belong. A vector is a column sitting beside the row it was made from, and{' '}
               <code>array_cosine_similarity(body_vec, $q)</code> is an expression in a SELECT list
               like any other.
             </p>
             <p>
-              So meaning becomes one predicate in a statement that also joins two tables, filters
-              on a real date and counts. The arrangement with a vector store beside it cannot write
+              So meaning becomes one predicate in a statement that also joins two tables, filters on
+              a real date, and counts. The setup with a vector store bolted on the side cannot write
               that statement at all: the vectors are over there, the columns are over here, and the
-              only thing that crosses between them is a list of ids.
+              only thing that ever crosses between them is a list of ids.
             </p>
             <div className="chips">
               <span className="chip chip-accent">one SELECT</span>
@@ -254,8 +254,8 @@ export function WhyPage(): ReactNode {
             </h2>
             <p>
               Ingot has no opinion about what a memory is for. Casting one is a POST with a name and
-              a retention, so the boundary can be the boundary your system already has — a chat, a
-              run, a project, a tenant.
+              a retention, so the boundary can just be the boundary your system already has — a
+              chat, a run, a project, a tenant.
             </p>
           </div>
 
@@ -303,8 +303,8 @@ export function WhyPage(): ReactNode {
               <span className="mark">to keep it all</span>
             </h2>
             <p>
-              An LSM tree and nothing more exotic. Nothing in it is resident: there is no index to
-              keep warm, no cluster sized to the corpus, and nothing that bills per vector.
+              An LSM tree, and nothing more exotic than that. None of it is resident: no index to
+              keep warm, no cluster sized to the corpus, and nothing that bills you per vector.
             </p>
           </div>
 
@@ -364,15 +364,15 @@ export function WhyPage(): ReactNode {
             </h3>
             <p>
               There is no hosted Ingot, and on this page that is the point rather than the caveat.
-              The Postgres is yours and the bucket is yours, and what is in the bucket is Parquet —
-              not an index, not a proprietary segment file, and not something that needs this
-              service running to be read.
+              The Postgres is yours, the bucket is yours, and what sits in the bucket is Parquet.
+              Not an index. Not a proprietary segment file. Not something that needs this service
+              running before you can read it.
             </p>
             <p>
-              So there is no export, because there is no second format to export from. A table&rsquo;s
-              current generation is one file, and anything that reads Parquet reads it: DuckDB on
-              your laptop, pandas, Spark, whatever you already pay for. If Ingot stops, the memory
-              does not.
+              Which means there is no export step, because there is no second format to export from.
+              A table&rsquo;s current generation is one file, and anything that reads Parquet reads
+              it — DuckDB on your laptop, pandas, Spark, whatever you already pay for. If Ingot
+              stops, the memory does not.
             </p>
             <div className="chips">
               {OWNERSHIP_CHIPS.map((chip) => (
@@ -388,8 +388,8 @@ export function WhyPage(): ReactNode {
           <span className="label label-sm kicker">[ The argument is a repository ]</span>
           <h2>Every claim above is a file you can go and disagree with</h2>
           <p>
-            The join is the query handler, the five minutes is a sweeper, the sandbox is two
-            hundred lines of guard, and the bucket layout is one object. Nothing here is a position
+            The join is the query handler, the five minutes is a sweeper, the sandbox is two hundred
+            lines of guard, and the bucket layout is one object. Nothing on this page is a position
             the code does not already hold.
           </p>
 

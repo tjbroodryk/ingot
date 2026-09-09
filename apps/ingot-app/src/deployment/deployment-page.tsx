@@ -150,8 +150,8 @@ export function DeploymentPage(): ReactNode {
             <h2>Bring one up before you believe any of this</h2>
             <p>
               The compose file is the same one the test suite runs against, so what comes up on your
-              machine is what the assertions are made about — whichever of the three you end up
-              deploying.
+              machine is what the assertions are made about. That holds whichever of the three you
+              end up deploying.
             </p>
             <div className="cta-actions">
               <a className="cta-primary" href="#run-local">

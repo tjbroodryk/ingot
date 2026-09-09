@@ -107,12 +107,12 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">per category</span>
             </h2>
             <p>
-              The split by category is what the benchmark is for. The claim under test is that SQL
-              over typed rows, on top of ranking by meaning, recalls more of the answer than
-              similarity search alone — and each category is a place that claim can fail.
+              The split by category is the whole point of the benchmark. The claim under test is
+              that SQL over typed rows, on top of ranking by meaning, recalls more of the answer
+              than similarity search alone. Each category is somewhere that claim can fail.
               Aggregates, absence, ordering and joins are where structure should tell; the semantic
-              questions are where embeddings should. A table that reported one number would average
-              them together.
+              questions are where embeddings should. Report one number and you have averaged all of
+              that away.
             </p>
           </div>
 
@@ -144,8 +144,8 @@ export function BenchmarksPage(): ReactNode {
                 </code>
               </pre>
               <p>
-                Nothing is written here by hand, so there are no numbers to show until there has
-                been a run to produce them.
+                Nothing on this page is written by hand, so there is nothing to show until a run has
+                produced it.
               </p>
             </div>
           )}
@@ -180,9 +180,9 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">one agent</span>
             </h2>
             <p>
-              One agent loop serves every column, with the same model, the same tool-call budget
-              and the same answer channel. Only the retrieval tools differ, so a gap between two
-              columns has one possible cause.
+              One agent loop serves every column, with the same model, the same tool-call budget and
+              the same answer channel. Only the retrieval tools differ, so a gap between two columns
+              has exactly one possible cause.
             </p>
           </div>
 
@@ -205,8 +205,8 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">on the page</span>
             </h2>
             <p>
-              A benchmark published by the thing it measures has one obligation above the rest:
-              say plainly where it is weak. These are the ones worth knowing before reading
+              A benchmark published by the thing it measures has one obligation above all the
+              others: say plainly where it is weak. These are the ones worth knowing before you read
               anything above.
             </p>
           </div>
@@ -238,9 +238,9 @@ export function BenchmarksPage(): ReactNode {
               <span className="mark">one file away</span>
             </h2>
             <p>
-              A benchmark published by the thing it measures is worth what a reader’s ability to
-              go and look is worth. Each part of this one is a single file, linked by the question
-              it answers.
+              A benchmark published by the thing it measures is worth exactly as much as your
+              ability to go and check it. Every part of this one is a single file, linked by the
+              question it answers.
             </p>
           </div>
 
