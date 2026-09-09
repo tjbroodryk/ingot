@@ -109,6 +109,61 @@ export const BENCHMARK = results as PublishedBenchmark;
 export const TABLES: readonly PublishedTable[] = BENCHMARK.tables ?? [];
 
 /**
+ * The transcripts, fetched at runtime rather than imported.
+ *
+ * `results.json` above is imported and therefore bundled; the transcripts are
+ * the expensive half — every returned row of every tool call — and importing
+ * them would put tens of megabytes into the landing page's JS for a section
+ * most readers never open. So they are a static file the page fetches only when
+ * a reader asks to see what an adapter did. `packages/bench` writes it into
+ * `public/` alongside `results.json`, in the same per-table, merge-safe shape,
+ * mirrored here as the read contract — the producer is
+ * `packages/bench/src/run/publish.ts`.
+ */
+export interface PublishedTranscripts {
+  readonly schema: number;
+  readonly generatedAt: string | null;
+  readonly tables: readonly TranscriptTable[];
+}
+
+/** One corpus's transcripts, keyed by the same label as its {@link PublishedTable}. */
+export interface TranscriptTable {
+  readonly label: string;
+  readonly questions: readonly TranscriptQuestion[];
+}
+
+export interface TranscriptQuestion {
+  readonly id: string;
+  readonly question: string;
+  readonly category: string;
+  /** The gold answer, so a reader can check each column against it in place. */
+  readonly gold: unknown;
+  readonly adapters: readonly AdapterTranscript[];
+}
+
+export interface AdapterTranscript {
+  readonly adapter: string;
+  readonly answer: unknown;
+  readonly correct: boolean;
+  readonly calls: readonly PublishedCall[];
+}
+
+export interface PublishedCall {
+  readonly name: string;
+  /** The tool input, verbatim: the SQL, the search query, the arguments. */
+  readonly input: Record<string, unknown>;
+  /** What the tool returned, capped by the harness with the truncation marked. */
+  readonly output: string;
+  readonly failed: boolean;
+}
+
+/**
+ * The sidecar's name under `public/`. Fetched through `BASE_PATH`, never
+ * imported — the whole reason it is a separate file.
+ */
+export const TRANSCRIPTS_FILE = 'benchmark-transcripts.json';
+
+/**
  * The control, which is a reference point rather than an entrant.
  *
  * `oracle` was the other one. It placed exactly the answer-bearing records in

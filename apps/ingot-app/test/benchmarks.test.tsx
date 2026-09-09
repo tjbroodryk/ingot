@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
@@ -10,7 +12,9 @@ import {
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
+  TRANSCRIPTS_FILE,
   type PublishedBenchmark,
+  type PublishedTranscripts,
 } from '../src/benchmarks/benchmarks';
 import { BenchmarksPage } from '../src/benchmarks/benchmarks-page';
 import { sourceHref } from '../src/site/mode';
@@ -106,8 +110,67 @@ describe('the published results file', () => {
   });
 });
 
+/**
+ * The transcript sidecar, the other file `packages/bench` writes for this page.
+ *
+ * Fetched at runtime rather than imported, so a shape change here fails nothing
+ * at build and renders an empty section in the browser instead — exactly the
+ * silent failure the summary's own contract test exists to catch, one file
+ * over. The load-bearing invariant is that it never carries a corpus the
+ * summary does not: a transcript table whose label no summary shares is
+ * unreachable, since the page joins the two files on that label.
+ */
+describe('the transcript sidecar on disk', () => {
+  const path = join(import.meta.dir, '..', 'public', TRANSCRIPTS_FILE);
+  const file = JSON.parse(readFileSync(path, 'utf8')) as PublishedTranscripts;
+
+  it('is the shape the page fetches', () => {
+    expect(file.schema).toBe(1);
+    expect(Array.isArray(file.tables)).toBe(true);
+    // Tables and `generatedAt` arrive together, the same as the summary: a file
+    // with tables and no date, or a date and none, is a half-written publish.
+    expect(file.tables.length === 0).toBe(file.generatedAt === null);
+  });
+
+  it('carries transcripts only for corpora the summary shows', () => {
+    const summarised = new Set(TABLES.map((table) => table.label));
+    for (const table of file.tables) {
+      // A transcript table the page can never reach — no summary joins to it —
+      // is an orphan a re-publish left behind, which is the failure the sidecar
+      // merges per label to prevent.
+      expect(summarised.has(table.label)).toBe(true);
+    }
+  });
+
+  it('caps every output and keeps every input', () => {
+    for (const table of file.tables) {
+      for (const question of table.questions) {
+        for (const adapter of question.adapters) {
+          for (const call of adapter.calls) {
+            expect(typeof call.input).toBe('object');
+            // The output is a string and, when clipped, says so — the marker is
+            // what keeps a truncation from reading as a tool that returned little.
+            expect(typeof call.output).toBe('string');
+            if (call.output.includes('… ') && call.output.includes(' more character')) {
+              expect(call.output).toMatch(/… \d+ more characters?$/);
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
 describe('the benchmarks page', () => {
   const markup = renderToStaticMarkup(<BenchmarksPage />);
+
+  it('offers the transcripts once there are numbers, and nothing before', () => {
+    // The control is inside the results block and lives on a click — a fetch on
+    // load would be the page pulling megabytes for a section most readers never
+    // open, and a control on the empty page would load data that never arrives.
+    if (HAS_RESULTS) expect(markup).toContain('Show the transcripts');
+    else expect(markup).not.toContain('Show the transcripts');
+  });
 
   it('explains every adapter and every category', () => {
     for (const adapter of ADAPTERS) {

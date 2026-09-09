@@ -14,7 +14,7 @@
 import { useState, type ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
+import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // The landing page's layout, used rather than restated, the way `/why` uses
 // it: this page is the same shape of document — a hero and ruled bands.
 import '../landing/landing.css';
@@ -37,8 +37,12 @@ import {
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
+  TRANSCRIPTS_FILE,
+  type AdapterTranscript,
   type PublishedAdapter,
   type PublishedTable,
+  type PublishedTranscripts,
+  type TranscriptQuestion,
 } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
@@ -178,6 +182,7 @@ export function BenchmarksPage(): ReactNode {
                 are computed only over questions whose answer is a set of records — see the limits
                 below. Context tokens is what the model had to read to answer.
               </p>
+              <Transcripts table={table} />
             </>
           ) : (
             <div className="bench-empty">
@@ -860,4 +865,217 @@ function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): Rea
       </table>
     </div>
   );
+}
+
+/**
+ * What each column actually did, one question at a time.
+ *
+ * The section the whole change exists for. Every number above is a mean over
+ * transcripts, and a mean asks to be trusted where a transcript can be checked:
+ * one screen showing the same store answered two ways, one of them silently
+ * wrong, is worth more than a percentage. So this lets a reader open a question
+ * and read the SQL each column wrote, the searches it ran, the rows that came
+ * back and the answer it gave.
+ *
+ * The transcripts are not imported — they are tens of megabytes and would sit
+ * in the bundle for a section most readers never open — so they are fetched,
+ * and only when a reader asks. Nothing is fetched on load; the button below is
+ * the fetch. With no published run there is no table and this renders nothing:
+ * the empty state is method-only, and a control that loads data that will never
+ * arrive is worse than no control.
+ */
+function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [data, setData] = useState<PublishedTranscripts | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+
+  // No run, no transcripts: degrade to nothing rather than to a dead control.
+  if (!table) return null;
+
+  const load = async (): Promise<void> => {
+    if (state === 'loading' || state === 'ready') return;
+    setState('loading');
+    try {
+      // Through BASE_PATH, so the fetch resolves when the site is served from a
+      // subdirectory (GitHub Pages puts a project site under `/<repo>/`). A
+      // root-relative path would 404 there and nowhere a developer would see it.
+      const response = await fetch(`${BASE_PATH}/${TRANSCRIPTS_FILE}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      setData((await response.json()) as PublishedTranscripts);
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  };
+
+  // The sidecar carries every corpus; which one the reader is looking at is the
+  // selected table's label. A run published before transcripts existed, or one
+  // whose sidecar entry has not caught up, simply has no match — said plainly
+  // rather than spun.
+  const forThis = data?.tables.find((one) => one.label === table.label) ?? null;
+
+  return (
+    <div className="bench-transcripts">
+      <div className="bench-rule label label-sm">
+        <span>What each column did</span>
+        <span className="bench-rule-line" aria-hidden="true" />
+        <span>One question at a time</span>
+      </div>
+
+      {state === 'idle' ? (
+        <div className="bench-transcripts-prompt">
+          <p>
+            Every number above is a mean over transcripts, and a transcript can be checked where a
+            mean has to be trusted. Load them to see what each column actually did to answer a
+            question — the SQL it wrote or the searches it ran, the rows that came back, and the
+            answer it gave.
+          </p>
+          <button className="btn-outline" type="button" onClick={() => void load()}>
+            Show the transcripts
+          </button>
+        </div>
+      ) : null}
+
+      {state === 'loading' ? <p className="bench-note">Loading the transcripts…</p> : null}
+
+      {state === 'error' ? (
+        <p className="bench-note">
+          The transcripts could not be loaded. They are a separate file published beside the
+          numbers, and a run from before transcript publishing has none to show.
+        </p>
+      ) : null}
+
+      {state === 'ready' && !forThis ? (
+        <p className="bench-note">No transcripts have been published for this corpus yet.</p>
+      ) : null}
+
+      {forThis ? (
+        <ol className="bench-qs">
+          {forThis.questions.map((question) => (
+            <QuestionTranscript
+              key={question.id}
+              question={question}
+              open={open === question.id}
+              onToggle={() => setOpen(open === question.id ? null : question.id)}
+            />
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+/** One question, expandable to what every column did with it. */
+function QuestionTranscript({
+  question,
+  open,
+  onToggle,
+}: {
+  question: TranscriptQuestion;
+  open: boolean;
+  onToggle: () => void;
+}): ReactNode {
+  return (
+    <li className="bench-q">
+      <button className="bench-q-head" type="button" aria-expanded={open} onClick={onToggle}>
+        <code className="bench-q-id">{question.id}</code>
+        <span className="bench-q-cat label label-sm">{question.category}</span>
+        <span className="bench-q-text">{question.question}</span>
+        <span className="bench-q-gold label label-sm">gold: {summariseAnswer(question.gold)}</span>
+      </button>
+      {open ? (
+        <div className="bench-q-body">
+          {question.adapters.map((adapter) => (
+            <AdapterRun key={adapter.adapter} run={adapter} />
+          ))}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** One column's transcript for one question: the calls, then the answer. */
+function AdapterRun({ run }: { run: AdapterTranscript }): ReactNode {
+  return (
+    <div className="bench-run">
+      <div className="bench-run-head">
+        <code className="bench-run-name">{run.adapter}</code>
+        <span
+          className={run.correct ? 'bench-run-mark bench-run-ok' : 'bench-run-mark bench-run-no'}
+          aria-hidden="true"
+        >
+          {run.correct ? '✓' : '✗'}
+        </span>
+        <span className="bench-sr">{run.correct ? 'correct' : 'wrong'}</span>
+        <span className="bench-run-answer">
+          answered <strong>{summariseAnswer(run.answer)}</strong>
+        </span>
+      </div>
+      {run.calls.length === 0 ? (
+        <p className="bench-run-empty">No tool calls — it answered from the prompt.</p>
+      ) : (
+        <ol className="bench-calls">
+          {run.calls.map((call, index) => (
+            <li
+              className={call.failed ? 'bench-call bench-call-failed' : 'bench-call'}
+              // biome-ignore lint/suspicious/noArrayIndexKey: the transcript is ordered and immutable — position in the call list is the identity of a call, and nothing is inserted, removed or reordered.
+              key={index}
+            >
+              <div className="bench-call-head label label-sm">
+                <code>{call.name}</code>
+                {call.failed ? <span className="bench-call-tag">failed</span> : null}
+              </div>
+              <pre className="bench-call-io">
+                <code>{formatInput(call.input)}</code>
+              </pre>
+              <pre className="bench-call-io bench-call-out">
+                <code>{call.output}</code>
+              </pre>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A gold or an answer as a short line.
+ *
+ * Gold is `{ kind, value | values }` and an answer is whatever the model
+ * submitted — usually the same shape, sometimes not. Both are rendered by the
+ * same reader-facing rule so a question's gold and a column's answer can be
+ * compared at a glance, which is the whole reason they sit on the same row.
+ */
+function summariseAnswer(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.length === 0 ? '∅' : value.map(String).join(', ');
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.values)) {
+    return record.values.length === 0 ? '∅' : (record.values as unknown[]).map(String).join(', ');
+  }
+  if ('value' in record) return String(record.value);
+  return JSON.stringify(value);
+}
+
+/**
+ * A tool input as the reader would say it out loud.
+ *
+ * A lone string argument — the SQL, the search query — is the whole call and
+ * reads best unadorned; anything with more than one field keeps its keys so a
+ * `k` or a `limit` beside the query is not lost. Verbatim either way: this is
+ * the half of the transcript the harness publishes uncapped.
+ */
+function formatInput(input: Record<string, unknown>): string {
+  const keys = Object.keys(input);
+  const only = keys[0];
+  if (keys.length === 1 && only !== undefined && typeof input[only] === 'string') {
+    return input[only] as string;
+  }
+  return JSON.stringify(input, null, 2);
 }
