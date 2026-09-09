@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import type { RunRecord } from '../src/run/report.js';
 import {
+  comparisonAxis,
   metaPathFor,
   observedTextOf,
   readRun,
@@ -34,6 +35,7 @@ const META: RunMeta = {
   mapping: 'authored',
   notes: [],
   logs: 0,
+  drift: false,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -303,5 +305,53 @@ describe('merging finished runs', () => {
     // detail rather than a reason to block a table.
     const merged = await readRuns([base, extra]);
     expect(merged.meta.notes.join(' ')).toContain('different concurrency');
+  });
+});
+
+/**
+ * The axis of a comparison, which is the merge's opposite.
+ *
+ * `readRuns` refuses when a setting disagrees, because as columns in one table
+ * those runs are not a comparison of retrieval. `comparisonAxis` is the case
+ * where the disagreement is the whole question — so it refuses the two
+ * situations a merge is fine with, and the reasons are worth pinning: no
+ * difference means there is nothing to measure, and two differences mean the
+ * number belongs to neither change.
+ */
+describe('the axis two runs are compared across', () => {
+  const meta = (extra: Partial<RunMeta>): RunMeta => ({ ...META, ...extra });
+
+  test('names the one setting that differs', () => {
+    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', drift: true }));
+    expect(axis).toEqual({ field: 'drift', left: false, right: true });
+  });
+
+  test('works for any setting, not only drift', () => {
+    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', mapping: 'agent' }));
+    expect(axis.field).toBe('mapping');
+  });
+
+  test('refuses two runs that agree about everything', () => {
+    expect(() => comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b' }))).toThrow(
+      /nothing to compare them across/,
+    );
+  });
+
+  test('refuses two changes at once', () => {
+    expect(() =>
+      comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', drift: true, mapping: 'agent' })),
+    ).toThrow(/differ in 2 settings/);
+  });
+
+  /**
+   * `concurrency` is exempt from the merge's must-match list because it moves
+   * only the `ms` column. It has to be exempt here for the same reason, or two
+   * runs that differ only in how fast they were bought would render as a
+   * comparison of nothing.
+   */
+  test('ignores concurrency, which moves no published number', () => {
+    expect(() =>
+      comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', concurrency: 8 })),
+    ).toThrow(/nothing to compare them across/);
   });
 });

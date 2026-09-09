@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { buildModel, reasoningOptions, type Provider } from '../agent/model.js';
@@ -24,10 +24,22 @@ import {
   type Question,
 } from '../questions/questions.js';
 import { scoreRun } from '../score/score.js';
-import { renderLine, renderReport, type RunRecord } from './report.js';
-import { publishable } from './publish.js';
+import { renderComparison, renderLine, renderReport, type RunRecord } from './report.js';
+import {
+  NO_RESULTS,
+  publishable,
+  withTable,
+  type PublishedBenchmark,
+} from './publish.js';
 import { pool } from './pool.js';
-import { observedTextOf, readRun, readRuns, writeMeta, type RunMeta } from './store.js';
+import {
+  comparisonAxis,
+  observedTextOf,
+  readRun,
+  readRuns,
+  writeMeta,
+  type RunMeta,
+} from './store.js';
 
 /**
  * `ingot-mcp` and `ingot-rest` are the same store reached through two interfaces:
@@ -129,6 +141,14 @@ interface Options {
   publish: string | null;
   /** Log lines in one unpaginated tool result. 0 leaves the corpus as it was. */
   logs: number;
+  /**
+   * Render the corpus with a payload shape that changes underneath the agent.
+   *
+   * The world, the questions and every gold answer are untouched — this is a
+   * property of how the world is written down, not of what is true in it. See
+   * `CorpusOptions.drift`.
+   */
+  drift: boolean;
   /** How many agent runs to have in flight at once, within one adapter. */
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
@@ -146,6 +166,14 @@ interface Options {
   questionsNotIn: string | null;
   /** With `--from`: run the scorer again over the stored transcripts. */
   rescore: boolean;
+  /**
+   * With `--from`: the run to compare against, rather than to merge with.
+   *
+   * The opposite operation to `--from A,B`. That splices columns bought under
+   * identical conditions; this takes the same columns under one changed
+   * setting and reports the difference. See `comparisonAxis`.
+   */
+  against: string | null;
 }
 
 function parse(argv: readonly string[]): Options {
@@ -171,6 +199,7 @@ function parse(argv: readonly string[]): Options {
     thinking: true,
     publish: null,
     logs: 0,
+    drift: false,
     // One by default. Concurrency makes a run faster and its latency column
     // meaningless, and that is a trade the person running it should make on
     // purpose rather than inherit from a default.
@@ -179,6 +208,7 @@ function parse(argv: readonly string[]): Options {
     adaptersGiven: false,
     questionsNotIn: null,
     rescore: false,
+    against: null,
   };
 
   for (let at = 0; at < argv.length; at += 1) {
@@ -268,6 +298,9 @@ function parse(argv: readonly string[]): Options {
         options.logs = Number(next(flag, value));
         at += 1;
         break;
+      case '--drift':
+        options.drift = true;
+        break;
       case '--concurrency': {
         const concurrency = Number(next(flag, value));
         if (!Number.isInteger(concurrency) || concurrency < 1) {
@@ -287,6 +320,10 @@ function parse(argv: readonly string[]): Options {
         break;
       case '--rescore':
         options.rescore = true;
+        break;
+      case '--against':
+        options.against = next(flag, value);
+        at += 1;
         break;
       case '--allow-hash-embedder':
         options.allowHashEmbedder = true;
@@ -401,11 +438,30 @@ const HELP = `bun run bench [flags]
                          warning saying which run each column came from.
   --rescore              With --from: run the scorer again over the stored
                          transcripts. The transcripts are never modified.
+  --against B.jsonl      With --from A.jsonl: report the difference between the
+                         two runs instead of either of them. The opposite of a
+                         merge — --from A,B splices columns bought under
+                         identical settings; this takes the same columns under
+                         exactly one changed setting (--drift, --mapping,
+                         --logs, --model...) and renders what the change cost
+                         each of them. Refuses if none or more than one setting
+                         differs, and counts only the cells both runs hold.
   --logs N               Add N log lines as ONE unpaginated tool result. (0)
                          At any interesting size it does not fit in a context
                          window: raw-context is refused rather than scored, and
                          top-k finds a shrinking share of what an aggregate
                          needs while SQL is indifferent to the row count.
+  --drift                Render the corpus with a payload shape that changes
+                         underneath the agent: a field renamed, a unit changed
+                         with the name, a string that becomes an object, and a
+                         foreign key that arrives late. The world and every gold answer are
+                         untouched and no record is lost, so every question
+                         stays answerable — by an adapter that notices. The
+                         ordinary corpus is one shape per tool, which is the
+                         case this project is most flattered by; this is the
+                         one where committing to a column mapping before the
+                         last page has a cost. Not comparable with a run
+                         without it.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -541,6 +597,21 @@ async function onlyMissingFrom(
     );
   }
 
+  // Drift gets its own check because it fails differently. It does not move a
+  // question id — the world and the generator are untouched, so `q-026` is the
+  // same question either way — which is exactly why it needs saying: the
+  // subtraction would look right, the merge afterwards would be a table whose
+  // columns were answered over two different corpora, and nothing in the ids
+  // would give it away.
+  if ((meta.drift ?? false) !== options.drift) {
+    throw new Error(
+      `${path} was run with drift=${meta.drift ?? false} and this one has ${options.drift}. ` +
+        'The questions are the same but the corpus is not, so topping one up from the other ' +
+        'would produce a table half of which was answered over a corpus the other half never ' +
+        'saw. Match the setting, or run the whole set.',
+    );
+  }
+
   const answered = new Set(rows.map((row) => row.questionId));
   const missing = questions.filter((question) => !answered.has(question.id));
   console.log(
@@ -554,7 +625,7 @@ async function main(options: Options): Promise<void> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
 
   const world = buildWorld({ seed: options.seed, logs: options.logs });
-  const corpus = buildCorpus(world);
+  const corpus = buildCorpus(world, { drift: options.drift });
   const knownRefs = corpusRefs(corpus);
   const all = buildQuestions(world, { perTemplate: options.perTemplate });
   const byCategory = options.categories
@@ -633,6 +704,19 @@ async function main(options: Options): Promise<void> {
       'Run sent no reasoning settings. Not comparable with a run that did.',
     );
   }
+  // A warning rather than a note, because it changes what every number in the
+  // table means. A drifted run and an ordinary one are two experiments, and a
+  // reader who takes the first for the second is reading a corpus built to be
+  // hostile as though it were the corpus an agent would ordinarily see.
+  if (options.drift) {
+    warnings.push(
+      'Corpus was rendered with schema drift: a field renamed, a unit changed with it, a ' +
+        'string that becomes an object, and a foreign key that arrives late. Every world ' +
+        'record is still present exactly once, so every question ' +
+        'remains answerable — but not by an adapter that fixed its schema on the first page. ' +
+        'These numbers are not comparable with a run over the ordinary corpus.',
+    );
+  }
   if (options.questionsNotIn) {
     // A warning rather than a note: this run's accuracy is over a handful of
     // questions chosen because they were missing, which is not a sample of the
@@ -675,6 +759,7 @@ async function main(options: Options): Promise<void> {
     embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
     mapping: options.mapping,
     logs: options.logs,
+    drift: options.drift,
     provider: options.provider,
     thinking: options.thinking,
     warnings,
@@ -716,6 +801,26 @@ async function main(options: Options): Promise<void> {
       console.log(`\n── ${name} ── SKIPPED: ${reason}`);
       notes.push(`Adapter \`${name}\` was skipped: ${reason}`);
       continue;
+    }
+
+    /*
+     * Payloads the store would not hold, named before any number is read.
+     *
+     * A warning rather than a note, because it changes what the column means:
+     * these rows are not in the memory, so the questions they would have
+     * answered are answered wrong, and the accuracy below is the accuracy of a
+     * store that is missing part of the corpus. That is the finding under
+     * `--drift` rather than a defect in the run — but a reader who does not
+     * know it happened will read the column as a retrieval result.
+     */
+    const refused = adapter.refusals?.() ?? [];
+    if (refused.length > 0) {
+      console.log(`${refused.length} payload(s) refused by ${name}; first: ${refused[0]}`);
+      warnings.push(
+        `\`${name}\` could not store ${refused.length} of ${corpus.length} payloads: the store ` +
+          'refused them and the run went on without those rows. Its numbers below are a memory ' +
+          `missing part of the corpus. The first refusal said: ${refused[0]}`,
+      );
     }
 
     // Whether this adapter reaches its memory through tools. The controls do
@@ -819,11 +924,39 @@ async function emit(
   console.log(`\nrows: ${jsonlPath}\nreport: ${reportPath}`);
 
   if (publish) {
+    /*
+     * A publish adds a table rather than replacing the file.
+     *
+     * The site shows one run per corpus the questions were asked over, and the
+     * ordinary and drifted runs are bought hours apart. Overwriting would mean
+     * the second publish silently deleted the first — the expensive one, the
+     * one the rest of the page's prose is about — and the only symptom would
+     * be a tab that used to be there. A run whose label matches one already in
+     * the file replaces it, because that is a re-publish of the same
+     * experiment. See `withTable`.
+     *
+     * A file that cannot be read or cannot be parsed is treated as absent
+     * rather than fatal: the first publish into a fresh checkout is exactly
+     * that case, and so is a file left half-written by an interrupted one.
+     */
+    let existing = NO_RESULTS;
+    try {
+      const parsed = JSON.parse(await readFile(publish, 'utf8')) as PublishedBenchmark;
+      if (parsed.schema === 2 && Array.isArray(parsed.tables)) existing = parsed;
+      else console.log(`note: ${publish} is not a schema-2 file; starting a new one`);
+    } catch {
+      // No file yet, or an unreadable one. Either way there is nothing to keep.
+    }
+
+    const merged = withTable(existing, publishable(meta, rows, CATEGORIES));
     // Pretty-printed and newline-terminated because it is a tracked file that
     // people will read in a diff: a one-line JSON blob makes every run look
     // like a total rewrite.
-    await writeFile(publish, `${JSON.stringify(publishable(meta, rows, CATEGORIES), null, 2)}\n`);
-    console.log(`published: ${publish}`);
+    await writeFile(publish, `${JSON.stringify(merged, null, 2)}\n`);
+    console.log(
+      `published: ${publish} — ${merged.tables.length} table(s): ` +
+        merged.tables.map((table) => table.label).join(', '),
+    );
   }
 }
 
@@ -847,6 +980,25 @@ async function replay(options: Options): Promise<void> {
   // rows on disk keep every column they were bought with.
   const keep = options.adaptersGiven ? new Set<string>(options.adapters) : undefined;
   const { meta, rows } = await readRuns(paths, keep);
+
+  // A comparison is a different output from a different pair of inputs, so it
+  // takes the whole path rather than decorating the report below. Nothing is
+  // written: both runs already exist on disk with their own reports, and this
+  // is a reading of them rather than a third run.
+  if (options.against) {
+    const other = await readRuns(
+      options.against
+        .split(',')
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0),
+      keep,
+    );
+    const axis = comparisonAxis(meta, other.meta);
+    console.log(
+      `\n${renderComparison({ meta, rows }, { meta: other.meta, rows: other.rows }, axis, CATEGORIES)}`,
+    );
+    return;
+  }
 
   // A merge is written out before anything is rendered from it, so what was
   // published is one file somebody can `--from` again. A table that exists
@@ -872,8 +1024,14 @@ async function replay(options: Options): Promise<void> {
   // longer generated means the generator has moved underneath these rows, and
   // scoring them against a question they were never asked is worse than
   // refusing.
-  const world = buildWorld({ seed: meta.seed });
-  const knownRefs = corpusRefs(buildCorpus(world));
+  // `logs` and `drift` come off the sidecar rather than off this invocation:
+  // re-scoring has to rebuild the corpus the run was bought over, not the one
+  // whatever flags happen to be on the command line would produce. (Drift
+  // preserves every ref, so it cannot move `knownRefs` — it is passed because
+  // reconstructing a run's corpus from part of its provenance is the habit
+  // that eventually gets one of these wrong. `logs` genuinely does move it.)
+  const world = buildWorld({ seed: meta.seed, logs: meta.logs });
+  const knownRefs = corpusRefs(buildCorpus(world, { drift: meta.drift }));
   const questions = new Map(
     buildQuestions(world, { perTemplate: meta.perTemplate }).map((question) => [
       question.id,

@@ -81,6 +81,8 @@ export class IngotAdapter implements MemoryAdapter {
   private instructions = '';
   private tables = new Set<string>();
   private embeddedTable: string | null = null;
+  /** Payloads `remember` would not hold. See `MemoryAdapter.refusals`. */
+  private readonly refused: string[] = [];
   private available: AdapterTool[] = [];
 
   constructor(private readonly options: IngotOptions) {
@@ -124,12 +126,27 @@ export class IngotAdapter implements MemoryAdapter {
       const embedded = Object.entries(mapping.columns).find(([, column]) => column.embed);
       if (embedded && !this.embeddedTable) this.embeddedTable = mapping.table;
 
-      expectOk(
-        await client.callTool({
-          name: 'remember',
-          arguments: { ...mapping, result: result.result },
-        }),
-        `remember into ${mapping.table}`,
+      // A payload the store will not hold costs its rows, not the column. The
+      // same rule as the REST adapter's, and for the same reason — see the
+      // long note there, and `MemoryAdapter.refusals`.
+      try {
+        expectOk(
+          await client.callTool({
+            name: 'remember',
+            arguments: { ...mapping, result: result.result },
+          }),
+          `remember into ${mapping.table}`,
+        );
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.refused.push(`${result.tool} ${result.id}: ${reason}`);
+      }
+    }
+
+    if (this.refused.length === corpus.length) {
+      throw new Error(
+        `every one of the ${corpus.length} payloads was refused; the first said: ` +
+          `${this.refused[0] ?? ''}`,
       );
     }
 
@@ -224,6 +241,10 @@ export class IngotAdapter implements MemoryAdapter {
     // through preserves that, and a run where the model recovers from its own
     // bad SQL is a run that reflects how the product behaves.
     return textOf(reply);
+  }
+
+  refusals(): readonly string[] {
+    return this.refused;
   }
 
   async teardown(): Promise<void> {

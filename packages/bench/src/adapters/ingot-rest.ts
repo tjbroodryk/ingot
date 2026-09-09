@@ -132,6 +132,8 @@ export class IngotRestAdapter implements MemoryAdapter {
   private note = '';
   private tables = new Set<string>();
   private embedded: { table: string; column: string } | null = null;
+  /** Payloads `/add` would not hold. See `MemoryAdapter.refusals`. */
+  private readonly refused: string[] = [];
 
   constructor(private readonly options: IngotRestOptions) {
     this.mode = options.mode ?? 'full';
@@ -162,7 +164,38 @@ export class IngotRestAdapter implements MemoryAdapter {
       if (embedded && !this.embedded) {
         this.embedded = { table: mapping.table, column: embedded[0] };
       }
-      await this.send('POST', `${this.memory()}/add`, { ...mapping, result: result.result });
+      /*
+       * A payload the store will not hold costs its rows, not the column.
+       *
+       * `/add` rejects a page whose values do not fit the mapping's declared
+       * types — under `--drift` that is `assignee` arriving as an object where
+       * `VARCHAR` was declared. Letting that throw would abort ingest and skip
+       * the adapter, which reports the most interesting outcome this benchmark
+       * can produce as an infrastructure failure and leaves the column out of
+       * the table. It is also not what an agent would do: it would lose the
+       * page and keep the memory it already had.
+       *
+       * So the loss is recorded and the run goes on. The rows are genuinely
+       * gone — no retry, no widening the column to JSON behind the model's
+       * back — so the questions they would have answered are answered wrong,
+       * which is the cost of having committed to a schema, measured.
+       */
+      try {
+        await this.send('POST', `${this.memory()}/add`, { ...mapping, result: result.result });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.refused.push(`${result.tool} ${result.id}: ${reason}`);
+      }
+    }
+
+    // Every payload refused is not a partial loss, it is no store at all — and
+    // a column of zeroes from an empty memory is not a retrieval result. That
+    // one really is an infrastructure failure and belongs in the skip path.
+    if (this.refused.length === corpus.length) {
+      throw new Error(
+        `every one of the ${corpus.length} payloads was refused; the first said: ` +
+          `${this.refused[0] ?? ''}`,
+      );
     }
 
     // Keyword search is off until asked for, so a run that did not ask for it
@@ -255,6 +288,10 @@ export class IngotRestAdapter implements MemoryAdapter {
       // its own bad SQL is a run that reflects how the product behaves.
       return error instanceof Error ? error.message : String(error);
     }
+  }
+
+  refusals(): readonly string[] {
+    return this.refused;
   }
 
   async teardown(): Promise<void> {

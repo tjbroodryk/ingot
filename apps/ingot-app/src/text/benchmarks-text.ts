@@ -25,6 +25,8 @@ import {
   mappingWriter,
   SOURCE_BLURBS,
   SOURCES,
+  TABLES,
+  type PublishedTable,
 } from '../benchmarks/benchmarks';
 import { sourceHref } from '../site/mode';
 import type { Article } from './markdown';
@@ -44,9 +46,11 @@ function renderBenchmarks(): string {
     `> ${BENCHMARKS_DESCRIPTION}`,
     BENCHMARKS_LEDE,
 
-    ...results(),
+    ...TABLES.flatMap((published) => results(published)),
 
-    ...corpus(),
+    ...(TABLES.length === 0 ? results(null) : []),
+
+    ...corpus(TABLES[0] ?? null),
 
     heading(2, 'What is compared'),
     'One agent loop serves every column, with the same model, the same tool-call budget and the same answer channel. Only the retrieval tools differ, so a gap between two columns has exactly one possible cause.',
@@ -85,8 +89,8 @@ function renderBenchmarks(): string {
  * of it never read again. Quoting the accuracy without the corpus it was
  * measured over is the same failure as quoting it without the model.
  */
-function corpus(): readonly string[] {
-  const shape = BENCHMARK.corpus;
+function corpus(published: PublishedTable | null): readonly string[] {
+  const shape = published?.corpus ?? null;
   const count = (value: number): string => value.toLocaleString('en-GB');
 
   const described = shape
@@ -126,8 +130,10 @@ function corpus(): readonly string[] {
 }
 
 /** The numbers, or an honest statement that there are none yet. */
-function results(): readonly string[] {
-  const { run, categories, adapters } = BENCHMARK;
+function results(published: PublishedTable | null): readonly string[] {
+  const run = published?.run ?? null;
+  const categories = published?.categories ?? [];
+  const adapters = published?.adapters ?? [];
 
   if (!HAS_RESULTS || !run) {
     return [
@@ -138,7 +144,17 @@ function results(): readonly string[] {
   }
 
   return [
-    heading(2, 'Results'),
+    // Named by corpus whenever there is more than one, because this file is
+    // what an assistant answers from. A model that quotes "99%" without saying
+    // which corpus it was measured over has made exactly the mistake the
+    // second table exists to prevent, and two sections both headed "Results"
+    // is an invitation to it.
+    heading(2, TABLES.length > 1 ? `Results — ${published?.label ?? ''}` : 'Results'),
+    ...(run.drift
+      ? [
+          'This run was measured over a corpus whose payloads change shape partway through each listing: a field renamed, a unit changed with the name, a string that becomes an object, and a foreign key that arrives late. Every record is still present exactly once, so every question remains answerable — but not by an adapter that fixed its schema on the first page. These numbers are not comparable with the ordinary-corpus table.',
+        ]
+      : []),
     bullets([
       `Seed \`${run.seed}\`, ${run.questions} questions, ${run.repeats} run(s) each.`,
       `Agent: \`${run.model}\` on \`${run.provider}\`, reasoning ${run.thinking ? `\`${run.effort}\`` : 'off'}.`,

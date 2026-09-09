@@ -17,11 +17,41 @@ import { summarise, type ReportHeader, type RunRecord } from './report.js';
  */
 export interface PublishedBenchmark {
   /** The version of this file's own shape, so the page can refuse a stale one. */
-  readonly schema: 1;
+  readonly schema: 2;
   readonly generatedAt: string | null;
-  readonly run: PublishedRun | null;
+  /**
+   * Every run the page can show, one per corpus the questions were asked over.
+   *
+   * A list rather than a single run because `--drift` made the corpus a
+   * variable. The same columns over an ordinary corpus and over one whose
+   * payloads change shape are two tables, never two sets of columns in one —
+   * `readRuns` refuses that merge and it is right to. But they belong on the
+   * same page: a reader who sees only the ordinary table is reading the
+   * friendliest case this project can construct, and a reader who sees only
+   * the drifted one is reading a corpus built to be hostile. The page shows
+   * both and lets them switch.
+   *
+   * Ordered least-modified first, so the tab that opens is the ordinary
+   * corpus. Empty until a run has been published.
+   */
+  readonly tables: readonly PublishedTable[];
+}
+
+/** One run, and everything the page needs to render it on its own. */
+export interface PublishedTable {
+  /**
+   * What this table is, in two or three words, for the switch that selects it.
+   *
+   * Derived from the run rather than written by hand, and required to be
+   * unique within the file — see {@link labelFor}. Two tabs a reader cannot
+   * tell apart is the failure worth preventing, and it is the one that happens
+   * when a publish quietly appends a run that differs from an existing one in
+   * nothing a reader can see.
+   */
+  readonly label: string;
+  readonly run: PublishedRun;
   /** What the agents were given to remember. See {@link PublishedCorpus}. */
-  readonly corpus: PublishedCorpus | null;
+  readonly corpus: PublishedCorpus;
   readonly categories: readonly Category[];
   readonly adapters: readonly PublishedAdapter[];
 }
@@ -86,6 +116,18 @@ export interface PublishedRun {
    * heading.
    */
   readonly logs: number;
+  /**
+   * Whether the corpus was rendered with schema drift. False is the ordinary
+   * run, and the only kind published before this existed.
+   *
+   * Published for the same reason `logs` is, and with more at stake: it is the
+   * run where a field is renamed underneath the agent and a unit changes with
+   * it, so every column falls and the Ingot ones fall furthest. A page that
+   * showed those numbers without saying so would be understating this
+   * project's own product, which is the one direction a missing stamp is easy
+   * to leave missing.
+   */
+  readonly drift: boolean;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -119,13 +161,61 @@ export interface PublishedAdapter {
 
 /** The state the site ships with until a run has been published into it. */
 export const NO_RESULTS: PublishedBenchmark = {
-  schema: 1,
+  schema: 2,
   generatedAt: null,
-  run: null,
-  corpus: null,
-  categories: [],
-  adapters: [],
+  tables: [],
 };
+
+/**
+ * What to call a run, from the settings that make it a different experiment.
+ *
+ * Only the three that change the corpus or who wrote the schema get a name,
+ * because those are the ones that produce a second table anybody wants beside
+ * the first. Everything else that could differ — model, provider, effort — is
+ * a run that replaces rather than joins: two tables under one heading whose
+ * columns came from different models is the thing the merge rules exist to
+ * prevent, and putting them behind a tab instead of in one table would be the
+ * same error with better manners.
+ *
+ * `rank` is how far from the ordinary corpus this is, and it orders the tabs
+ * so the plain run leads. A reader arrives at the case the rest of the page's
+ * prose describes, and chooses the harder one.
+ */
+export function labelFor(run: PublishedRun): { label: string; rank: number } {
+  const parts: string[] = [];
+  if (run.drift) parts.push('drifted');
+  if (run.logs > 0) parts.push(`${run.logs.toLocaleString('en-GB')} log lines`);
+  if (run.mapping === 'agent') parts.push('agent-mapped');
+  return {
+    label: parts.length === 0 ? 'ordinary corpus' : parts.join(', '),
+    rank: parts.length,
+  };
+}
+
+/**
+ * A published file with one more run in it.
+ *
+ * Publishing appends rather than overwrites, because the second table is the
+ * point of having a list and re-buying the first one to keep it would be hours
+ * and real money for numbers nobody expects to move. A run whose label matches
+ * one already there replaces it — that is a re-publish of the same experiment,
+ * and the newer rows are the ones to show.
+ *
+ * A label collision between *different* experiments is impossible by
+ * construction rather than by check: the label is a pure function of the three
+ * settings that decide it, so two runs share a label exactly when they are the
+ * same experiment. Which is why the label is derived and not an argument.
+ */
+export function withTable(
+  existing: PublishedBenchmark,
+  table: PublishedTable,
+): PublishedBenchmark {
+  const kept = existing.tables.filter((other) => other.label !== table.label);
+  const tables = [...kept, table].sort(
+    (a, b) => labelFor(a.run).rank - labelFor(b.run).rank || a.label.localeCompare(b.label),
+  );
+  return { schema: 2, generatedAt: new Date().toISOString(), tables };
+}
 
 /** What a paginated payload looks like from the outside. */
 interface Page {
@@ -140,9 +230,14 @@ interface Page {
  * this is the identical array of payloads every adapter ingested, down to the
  * bytes. Replaying an old run with `--from` therefore republishes the corpus
  * it was actually asked about.
+ *
+ * Which is why `drift` is a parameter and not a default: the sample payload
+ * this puts on the page comes out of the corpus itself, so a drifted run
+ * republished without it would show the reader a tidy `owner` field that the
+ * run being reported never saw past its first few records.
  */
-export function corpusShape(seed: number, logs: number): PublishedCorpus {
-  const corpus = buildCorpus(buildWorld({ seed, logs }));
+export function corpusShape(seed: number, logs: number, drift = false): PublishedCorpus {
+  const corpus = buildCorpus(buildWorld({ seed, logs }), { drift });
 
   // Grouped in the order the tools first appear, which is the order an agent
   // met them: a table sorted by size would put the shape of the corpus second
@@ -193,7 +288,7 @@ export function publishable(
   header: ReportHeader,
   rows: readonly RunRecord[],
   categories: readonly Category[],
-): PublishedBenchmark {
+): PublishedTable {
   const names = [...new Set(rows.map((row) => row.adapter))];
 
   const adapters = names.map((name): PublishedAdapter => {
@@ -234,26 +329,28 @@ export function publishable(
     categoryCounts[row.category] = (categoryCounts[row.category] ?? 0) + 1;
   }
 
+  const run: PublishedRun = {
+    runId: header.runId,
+    seed: header.seed,
+    provider: header.provider,
+    model: header.model,
+    effort: header.effort,
+    thinking: header.thinking,
+    repeats: header.repeats,
+    maxToolCalls: header.maxToolCalls,
+    embedder: header.embedder,
+    mapping: header.mapping,
+    logs: header.logs,
+    drift: header.drift ?? false,
+    questions: questionIds.size,
+    categoryCounts,
+    warnings: header.warnings,
+  };
+
   return {
-    schema: 1,
-    generatedAt: new Date().toISOString(),
-    run: {
-      runId: header.runId,
-      seed: header.seed,
-      provider: header.provider,
-      model: header.model,
-      effort: header.effort,
-      thinking: header.thinking,
-      repeats: header.repeats,
-      maxToolCalls: header.maxToolCalls,
-      embedder: header.embedder,
-      mapping: header.mapping,
-      logs: header.logs,
-      questions: questionIds.size,
-      categoryCounts,
-      warnings: header.warnings,
-    },
-    corpus: corpusShape(header.seed, header.logs),
+    label: labelFor(run).label,
+    run,
+    corpus: corpusShape(header.seed, header.logs, header.drift ?? false),
     // Only the categories this run actually asked about, so the page never
     // renders a column with nothing under it.
     categories: categories.filter((category) => categoryCounts[category] !== undefined),

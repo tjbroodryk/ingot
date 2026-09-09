@@ -1,5 +1,17 @@
-import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+'use client';
+
+// The directive is the first statement in the file and has to stay there: a
+// comment above it is tolerated by TypeScript and not by the bundler, which
+// silently builds this as a server component and fails at prerender with an
+// undefined export rather than anything that names the cause.
+//
+// The page is a client component for one reason: the switch between published
+// corpora is state, and both the results section and the corpus section below
+// it have to move together — the drifted run's payload samples are the drifted
+// payloads. Splitting the state out would mean two components that have to
+// agree about which run is showing, which is the bug this avoids.
+
+import { useState, type ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
@@ -12,7 +24,6 @@ import {
   ADAPTERS,
   arrival,
   BENCHMARK,
-  BENCHMARKS_DESCRIPTION,
   BENCHMARKS_LEDE,
   CATEGORIES,
   CONTROL_NAMES,
@@ -21,17 +32,14 @@ import {
   countWord,
   HAS_RESULTS,
   leadStats,
+  TABLES,
   mappingWriter,
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
   type PublishedAdapter,
+  type PublishedTable,
 } from './benchmarks';
-
-export const benchmarksMetadata: Metadata = {
-  title: 'Benchmarks',
-  description: BENCHMARKS_DESCRIPTION,
-};
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 
@@ -50,7 +58,23 @@ const percent = (value: number): string => `${Math.round(value * 100)}%`;
  * ship.
  */
 export function BenchmarksPage(): ReactNode {
-  const { run, categories, adapters } = BENCHMARK;
+  /*
+   * Which published run the page is showing.
+   *
+   * State rather than a route because the tables are the same questions and
+   * the same columns over two corpora, and a reader comparing them wants to
+   * flick between them with the scroll position kept. A URL per corpus would
+   * also make the drifted numbers linkable on their own, which is the one
+   * reading of them that is not true — they mean nothing except beside the
+   * ordinary ones.
+   */
+  const [selected, setSelected] = useState(0);
+  const table = TABLES[selected] ?? TABLES[0] ?? null;
+  const { run, categories, adapters } = table ?? {
+    run: null,
+    categories: [] as readonly string[],
+    adapters: [] as readonly PublishedAdapter[],
+  };
 
   return (
     <>
@@ -116,12 +140,36 @@ export function BenchmarksPage(): ReactNode {
             </p>
           </div>
 
+          {/*
+            The switch is above the numbers rather than beside them, because
+            which corpus a table was measured over is not a filter on the
+            table — it is what the table is. A reader who scrolls past it and
+            reads the drifted numbers as the headline result has been misled by
+            the layout, so it sits where the heading would.
+          */}
+          {TABLES.length > 1 ? (
+            <div className="bench-switch label label-sm">
+              <span className="bench-switch-legend">measured over</span>
+              {TABLES.map((option, index) => (
+                <button
+                  aria-pressed={index === selected}
+                  className="bench-switch-option"
+                  key={option.label}
+                  onClick={() => setSelected(index)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {run ? (
             <>
-              <Tiles />
+              <Tiles table={table} />
               <RankedAccuracy adapters={adapters} />
               <HeatMatrix categories={categories} adapters={adapters} />
-              <Provenance />
+              <Provenance table={table} />
               <CostTable adapters={adapters} />
               <Failures adapters={adapters} />
               <p className="bench-note">
@@ -158,7 +206,7 @@ export function BenchmarksPage(): ReactNode {
             <p>{CORPUS_LEDE}</p>
           </div>
 
-          <CorpusShape />
+          <CorpusShape table={table} />
         </section>
 
         <section className="landblock" id="method">
@@ -276,8 +324,8 @@ export function BenchmarksPage(): ReactNode {
 }
 
 /** What produced the numbers, beside the numbers. */
-function Provenance(): ReactNode {
-  const run = BENCHMARK.run;
+function Provenance({ table }: { table: PublishedTable | null }): ReactNode {
+  const run = table?.run;
   if (!run) return null;
 
   const facts: readonly [string, string][] = [
@@ -329,8 +377,9 @@ function Provenance(): ReactNode {
  * of file paths in it settles what kind of thing is being remembered in less
  * time than a paragraph does.
  */
-function CorpusShape(): ReactNode {
-  const { corpus, run } = BENCHMARK;
+function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
+  const corpus = table?.corpus ?? null;
+  const run = table?.run ?? null;
   const count = (value: number): string => value.toLocaleString('en-GB');
 
   // Described by the catalogue, in the order the agent met them. With no
@@ -348,7 +397,7 @@ function CorpusShape(): ReactNode {
   // `raw-context` puts the corpus in the prompt, so its input-token count is
   // the corpus in tokens plus a question. A characters-to-tokens ratio would
   // be this page guessing at the one number it can simply read.
-  const rawContext = BENCHMARK.adapters.find((adapter) => adapter.name === 'raw-context');
+  const rawContext = table?.adapters.find((adapter) => adapter.name === 'raw-context');
 
   return (
     <>
@@ -447,6 +496,37 @@ function CorpusShape(): ReactNode {
           />
         </p>
       ) : null}
+
+      {/*
+       * The corpus above is one shape per tool, and that is the assumption most
+       * worth naming out loud: it is the case this project is most flattered
+       * by, because a corpus that never changes shape is a table already. The
+       * note says so on the ordinary run rather than only on the drifted one —
+       * a caveat that appears only when the numbers are bad is an excuse.
+       */}
+      {run ? (
+        <p className="bench-note">
+          <Prose
+            text={
+              run.drift
+                ? 'This run was bought with `--drift`: partway through each listing a field ' +
+                  'is renamed, a unit changes with the name, a string becomes an object and a ' +
+                  'foreign key arrives late. Every ' +
+                  'record is still present exactly once, so every question above is still ' +
+                  'answerable — but not by anything that fixed its schema on the first page, ' +
+                  'which is the cost Ingot pays and a vector index does not. These numbers ' +
+                  'are not comparable with a run over the ordinary corpus.'
+                : 'Every payload above also keeps one shape from first page to last, which is ' +
+                  'the friendliest assumption on this page: real tools rename fields, change ' +
+                  'units, return an object where a string used to be, and hand back a ' +
+                  'return an object where a string used to be. `--drift` is the run ' +
+                  'that does all of that, and it is the one where committing to a column ' +
+                  'mapping before the last page has a price — so it costs Ingot more than it ' +
+                  'costs a vector index. No such run is published here yet.'
+            }
+          />
+        </p>
+      ) : null}
     </>
   );
 }
@@ -457,8 +537,8 @@ function bar(value: number): Record<string, string> {
 }
 
 /** The three figures that lead the section, computed in `benchmarks.ts`. */
-function Tiles(): ReactNode {
-  const stats = leadStats();
+function Tiles({ table }: { table: PublishedTable | null }): ReactNode {
+  const stats = leadStats(table);
   if (stats.length === 0) return null;
   return (
     <div className="bench-tiles">

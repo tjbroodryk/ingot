@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Category } from '../src/questions/questions.js';
-import { corpusShape, publishable } from '../src/run/publish.js';
+import { corpusShape, labelFor, NO_RESULTS, publishable, withTable } from '../src/run/publish.js';
 import type { ReportHeader, RunRecord } from '../src/run/report.js';
 
 /**
@@ -25,6 +25,7 @@ const HEADER: ReportHeader = {
   mapping: 'authored',
   notes: [],
   logs: 0,
+  drift: false,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -113,8 +114,6 @@ describe('publishable', () => {
   test('carries the provenance the page refuses to publish a number without', () => {
     const published = publishable(HEADER, [row({})], CATEGORIES);
 
-    expect(published.schema).toBe(1);
-    expect(published.generatedAt).not.toBeNull();
     expect(published.run?.seed).toBe(42);
     expect(published.run?.model).toBe('gpt-5-mini');
     expect(published.run?.provider).toBe('foundry-gpt');
@@ -166,5 +165,64 @@ describe('publishable', () => {
 
     expect(published.adapters[0]?.evidenceRecall).toBeNull();
     expect(published.adapters[0]?.evidencePrecision).toBeNull();
+  });
+});
+
+/**
+ * The file the page reads holds one table per corpus, and a publish adds to it.
+ *
+ * The failure this exists to prevent is quiet: the ordinary run is bought,
+ * published, and eighty minutes later the drifted one is published over the
+ * top of it. Both are expensive, only one is on the page, and the only symptom
+ * is a tab that used to be there.
+ */
+describe('publishing into a file that already has a run in it', () => {
+  const table = (over: Partial<ReportHeader>) =>
+    publishable({ ...HEADER, ...over }, [row({})], CATEGORIES);
+
+  test('keeps the run already there and adds the new one', () => {
+    const one = withTable(NO_RESULTS, table({ runId: 'plain' }));
+    const two = withTable(one, table({ runId: 'drifted', drift: true }));
+
+    expect(two.tables.map((t) => t.label)).toEqual(['ordinary corpus', 'drifted']);
+    expect(two.tables.map((t) => t.run.runId)).toEqual(['plain', 'drifted']);
+  });
+
+  test('puts the ordinary corpus first however the runs arrived', () => {
+    const one = withTable(NO_RESULTS, table({ runId: 'drifted', drift: true }));
+    const two = withTable(one, table({ runId: 'plain' }));
+
+    // The tab that opens is the case the rest of the page's prose describes.
+    expect(two.tables[0]?.label).toBe('ordinary corpus');
+  });
+
+  test('replaces a re-publish of the same experiment rather than doubling it', () => {
+    const one = withTable(NO_RESULTS, table({ runId: 'first' }));
+    const again = withTable(one, table({ runId: 'second' }));
+
+    expect(again.tables).toHaveLength(1);
+    expect(again.tables[0]?.run.runId).toBe('second');
+  });
+
+  /**
+   * Labels are a pure function of the settings that make a run a different
+   * experiment, which is what makes "same label" and "same experiment" the
+   * same test. A label written by hand could collide between two runs a reader
+   * genuinely needs to tell apart.
+   */
+  test('names a run by what makes it a different experiment', () => {
+    expect(labelFor(table({}).run).label).toBe('ordinary corpus');
+    expect(labelFor(table({ drift: true }).run).label).toBe('drifted');
+    expect(labelFor(table({ logs: 5000 }).run).label).toBe('5,000 log lines');
+    expect(labelFor(table({ mapping: 'agent' }).run).label).toBe('agent-mapped');
+    expect(labelFor(table({ drift: true, mapping: 'agent' }).run).label).toBe(
+      'drifted, agent-mapped',
+    );
+  });
+
+  test('starts empty and says so', () => {
+    expect(NO_RESULTS.tables).toEqual([]);
+    expect(NO_RESULTS.schema).toBe(2);
+    expect(NO_RESULTS.generatedAt).toBeNull();
   });
 });

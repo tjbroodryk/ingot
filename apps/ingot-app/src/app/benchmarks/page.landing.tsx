@@ -1,4 +1,5 @@
-import { BenchmarksPage, benchmarksMetadata } from '../../benchmarks/benchmarks-page';
+import { benchmarksMetadata } from '../../benchmarks/benchmarks';
+import { BenchmarksPage } from '../../benchmarks/benchmarks-page';
 
 /**
  * `/benchmarks` in a landing build.

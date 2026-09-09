@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
-    "db:up": "docker compose up -d --wait",
+    "db:up": "docker compose up -d --wait postgres minio && docker compose run --rm minio-init",
     "db:down": "docker compose down",
     "db:migrate": "docker compose exec -T postgres sh /usr/local/bin/migrate.sh",
     "db:reset": "docker compose down -v && docker compose up -d --wait",

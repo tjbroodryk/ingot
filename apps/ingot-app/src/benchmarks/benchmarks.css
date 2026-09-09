@@ -745,3 +745,47 @@
   font-size: 14px;
   color: var(--ink-70);
 }
+
+/*
+ * The switch between published corpora.
+ *
+ * Set as a row of segmented buttons rather than a select, because the choice
+ * is between two or three named things a reader should be able to see at once
+ * — a collapsed menu hides that a second corpus exists at all, which is the
+ * whole reason it is on the page.
+ */
+.bench-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-8) var(--space-4);
+}
+
+.bench-switch-legend {
+  color: var(--ink-70);
+  margin-right: 4px;
+}
+
+.bench-switch-option {
+  padding: 5px 12px;
+  border: var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-70);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.bench-switch-option:hover {
+  color: var(--ink-100);
+}
+
+/* The selected corpus, marked the way every other current thing on the site
+   is: the accent, and enough weight that it reads as chosen rather than hovered. */
+.bench-switch-option[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

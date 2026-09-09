@@ -78,7 +78,14 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
   // reached, so it needs the same treatment as the rows or a merge would report
   // a column under one name and list it under another.
   const adapters = meta.adapters.map(canonicalAdapter);
-  return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
+  // A sidecar written before `--drift` existed has no `drift` key, and every
+  // run that produced one was over the ordinary corpus. Defaulting it here
+  // rather than leaving it `undefined` is what lets those runs still merge
+  // with new ones: `MUST_MATCH` compares with `===`, and `undefined !== false`
+  // would refuse exactly the splice — a new column beside a table already
+  // bought — that the merge exists to allow.
+  const drift = meta.drift ?? false;
+  return { meta: { ...meta, adapters, drift }, rows: rows as readonly RunRecord[] };
 }
 
 /**
@@ -86,7 +93,7 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
  * one table.
  *
  * Everything that could move a number: the corpus and questions (`seed`,
- * `perTemplate`, `logs`), the agent (`model`, `provider`, `effort`,
+ * `perTemplate`, `logs`, `drift`), the agent (`model`, `provider`, `effort`,
  * `thinking`, `maxToolCalls`), the vectors (`embedder`), who wrote the
  * mappings, and `repeats` — because the ± in the report is a function of how
  * many runs are behind each cell, and a column bought once beside columns
@@ -96,7 +103,7 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
  * the site does not publish, so refusing a merge over it would block a
  * perfectly good table for a number nobody is reading.
  */
-const MUST_MATCH: readonly (keyof RunMeta)[] = [
+export const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'seed',
   'perTemplate',
   'repeats',
@@ -108,7 +115,56 @@ const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'mapping',
   'embedder',
   'logs',
+  'drift',
 ];
+
+/**
+ * The one setting two runs are being compared *across*.
+ *
+ * A merge and a comparison are opposites, and the difference is worth keeping
+ * sharp. `readRuns` splices columns that were bought under identical
+ * conditions, and refuses when a setting disagrees — the columns would not be
+ * a comparison of retrieval. A comparison is the case that disagreement *is*
+ * the question: the same columns, the same questions, one setting changed, and
+ * the result is the difference rather than either table.
+ *
+ * Exactly one field, because two would confound it. A run that changed the
+ * corpus and the model at once produces a number that belongs to neither
+ * change, and the honest thing is to refuse rather than to render it with a
+ * caveat nobody reads.
+ *
+ * Zero fields is refused too, and that is not pedantry: two runs that agree
+ * about everything are a merge, and rendering them as a comparison would put a
+ * column of zeroes on the page as though something had been measured.
+ */
+export interface ComparisonAxis {
+  readonly field: keyof RunMeta;
+  readonly left: unknown;
+  readonly right: unknown;
+}
+
+export function comparisonAxis(left: RunMeta, right: RunMeta): ComparisonAxis {
+  const differing = MUST_MATCH.filter((key) => left[key] !== right[key]);
+
+  if (differing.length === 0) {
+    throw new Error(
+      `${left.runId} and ${right.runId} agree about every setting that could move a number. ` +
+        'There is nothing to compare them across — if you meant to put their columns in one ' +
+        'table, that is a merge: pass both to --from and drop --against.',
+    );
+  }
+  if (differing.length > 1) {
+    throw new Error(
+      `${left.runId} and ${right.runId} differ in ${differing.length} settings: ` +
+        `${differing.map((key) => `${key} (${JSON.stringify(left[key])} vs ${JSON.stringify(right[key])})`).join(', ')}. ` +
+        'A comparison across two changes at once measures neither of them. Re-run one of them ' +
+        'so that a single setting differs.',
+    );
+  }
+
+  const field = differing[0] as keyof RunMeta;
+  return { field, left: left[field], right: right[field] };
+}
 
 /**
  * Several finished runs, read back as one table.
