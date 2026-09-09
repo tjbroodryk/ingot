@@ -49,6 +49,23 @@ export interface MemoryAdapter {
   /** Run one tool call and return exactly the text the model will read. */
   call(name: string, input: Record<string, unknown>): Promise<string>;
 
+  /**
+   * What the store refused to hold, said out loud.
+   *
+   * Ingest is not all-or-nothing, and pretending it is turns a measurable loss
+   * into an absent column. Under `--drift` a typed column meets a payload it
+   * was not declared for, `/add` returns a 422, and the honest model of an
+   * agent in that position is one that loses those rows and carries on — not
+   * one that throws its whole memory away. So a rejected payload is counted
+   * here and the run continues, and the questions those rows would have
+   * answered are answered wrong, in the table, where a reader can see them.
+   *
+   * The distinction the report rests on: a skipped *adapter* is an
+   * infrastructure failure and says nothing about retrieval; refused *payloads*
+   * are the finding. Adapters that hold whatever arrives return nothing.
+   */
+  refusals?(): readonly string[];
+
   teardown(): Promise<void>;
 }
 
