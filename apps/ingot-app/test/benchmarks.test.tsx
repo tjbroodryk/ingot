@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   ADAPTERS,
   BENCHMARK,
+  TABLES,
   CATEGORIES,
   CORPUS_LEDE,
   HAS_RESULTS,
@@ -32,56 +33,69 @@ describe('the published results file', () => {
   const file = BENCHMARK as PublishedBenchmark;
 
   it('is the shape the page reads', () => {
-    expect(file.schema).toBe(1);
-    expect(Array.isArray(file.categories)).toBe(true);
-    expect(Array.isArray(file.adapters)).toBe(true);
-    // `run` and `generatedAt` are null together or set together; a file with a
-    // run and no date, or adapters and no run, is a half-written publish.
-    expect(file.run === null).toBe(file.generatedAt === null);
-    if (file.adapters.length > 0) expect(file.run).not.toBeNull();
+    expect(file.schema).toBe(2);
+    expect(Array.isArray(file.tables)).toBe(true);
+    // Tables and `generatedAt` arrive together; a file with tables and no date,
+    // or a date and no tables, is a half-written publish.
+    expect(file.tables.length === 0).toBe(file.generatedAt === null);
+  });
+
+  /**
+   * Two tabs a reader cannot tell apart is the failure the label exists to
+   * prevent, and it is the one a careless publish produces: the label is a
+   * pure function of the settings that make a run a different experiment, so a
+   * duplicate here means two runs were published as though they were two
+   * experiments when they are one.
+   */
+  it('gives every table a distinct name', () => {
+    const labels = file.tables.map((table) => table.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    for (const label of labels) expect(label.length).toBeGreaterThan(0);
   });
 
   it('carries provenance for every number it carries', () => {
-    if (!file.run) return;
-    // A figure nobody can trace to a seed and a model is the thing this page
-    // exists to not publish.
-    expect(file.run.seed).toBeGreaterThanOrEqual(0);
-    expect(file.run.model.length).toBeGreaterThan(0);
-    expect(file.run.provider.length).toBeGreaterThan(0);
-    expect(file.run.embedder.length).toBeGreaterThan(0);
-    expect(file.run.repeats).toBeGreaterThan(0);
-  });
-
-  it('only names categories it has questions for', () => {
-    if (!file.run) return;
-    for (const category of file.categories) {
-      expect(file.run.categoryCounts[category]).toBeGreaterThan(0);
+    for (const { run } of file.tables) {
+      // A figure nobody can trace to a seed and a model is the thing this page
+      // exists to not publish.
+      expect(run.seed).toBeGreaterThanOrEqual(0);
+      expect(run.model.length).toBeGreaterThan(0);
+      expect(run.provider.length).toBeGreaterThan(0);
+      expect(run.embedder.length).toBeGreaterThan(0);
+      expect(run.repeats).toBeGreaterThan(0);
     }
   });
 
-  it('describes the corpus it was measured over', () => {
+  it('only names categories it has questions for', () => {
+    for (const table of file.tables) {
+      for (const category of table.categories) {
+        expect(table.run.categoryCounts[category]).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('describes the corpus each table was measured over', () => {
     // A published run with no corpus block is a table whose workload nobody
     // can see, which is the misreading the section exists to prevent: this
     // benchmark is over tool-call JSON, and a reader whose data is documents
-    // should be told so rather than left to assume.
-    expect(file.corpus === null).toBe(file.run === null);
-    if (!file.corpus) return;
-
-    expect(file.corpus.sources.length).toBeGreaterThan(0);
-    expect(file.corpus.records).toBe(
-      file.corpus.sources.reduce((total, source) => total + source.records, 0),
-    );
-    for (const source of file.corpus.sources) {
-      expect(source.records).toBeGreaterThan(0);
-      // The sample is the load-bearing part. A source that published counts
-      // and no record would leave the page asserting a shape it cannot show.
-      expect(source.sample.length).toBeGreaterThan(0);
-      expect(JSON.parse(source.sample)).toHaveProperty('ref');
+    // should be told so rather than left to assume. Every table carries its
+    // own, because with `--drift` the corpus is what differs between them.
+    for (const { corpus } of file.tables) {
+      expect(corpus.sources.length).toBeGreaterThan(0);
+      expect(corpus.records).toBe(
+        corpus.sources.reduce((total, source) => total + source.records, 0),
+      );
+      for (const source of corpus.sources) {
+        expect(source.records).toBeGreaterThan(0);
+        // The sample is the load-bearing part. A source that published counts
+        // and no record would leave the page asserting a shape it cannot show.
+        expect(source.sample.length).toBeGreaterThan(0);
+        expect(JSON.parse(source.sample)).toHaveProperty('ref');
+      }
     }
   });
 
   it('never claims an accuracy outside 0..1', () => {
-    for (const adapter of file.adapters) {
+    for (const adapter of file.tables.flatMap((table) => table.adapters)) {
       expect(adapter.accuracy).toBeGreaterThanOrEqual(0);
       expect(adapter.accuracy).toBeLessThanOrEqual(1);
       for (const value of Object.values(adapter.byCategory)) {
@@ -114,7 +128,9 @@ describe('the benchmarks page', () => {
     // with no account of what produced them is a number nobody can read — and
     // the page filters its blurbs to the run, so the omission is silent.
     const described = ADAPTERS.map((adapter) => adapter.name);
-    for (const adapter of BENCHMARK.adapters) expect(described).toContain(adapter.name);
+    for (const table of TABLES) {
+      for (const adapter of table.adapters) expect(described).toContain(adapter.name);
+    }
   });
 
   /**
@@ -129,7 +145,7 @@ describe('the benchmarks page', () => {
     expect(markup).toContain(CORPUS_LEDE);
 
     const described = SOURCE_BLURBS.map((blurb) => blurb.tool);
-    for (const source of BENCHMARK.corpus?.sources ?? []) {
+    for (const source of TABLES[0]?.corpus.sources ?? []) {
       expect(described).toContain(source.tool);
       expect(markup).toContain(source.tool);
       // The sample is rendered verbatim, so a distinctive line of it is enough
@@ -189,16 +205,16 @@ describe('the markdown half', () => {
    * the same failure as quoting it without the model.
    */
   it('carries the corpus and a record of it verbatim', () => {
-    for (const source of BENCHMARK.corpus?.sources ?? []) {
+    for (const source of TABLES[0]?.corpus.sources ?? []) {
       expect(body).toContain(source.tool);
       expect(body).toContain(source.sample);
     }
   });
 
   it('does not quote a figure without the conditions on it', () => {
-    if (HAS_RESULTS && BENCHMARK.run) {
-      expect(body).toContain(BENCHMARK.run.model);
-      expect(body).toContain(String(BENCHMARK.run.seed));
+    if (HAS_RESULTS && TABLES[0]) {
+      expect(body).toContain(TABLES[0].run.model);
+      expect(body).toContain(String(TABLES[0].run.seed));
     } else {
       expect(body).toContain('No run has been published yet');
     }

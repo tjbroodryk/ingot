@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import results from './results.json';
 
 /**
@@ -29,6 +30,15 @@ export interface PublishedRun {
   readonly mapping: string;
   /** Log lines in the corpus, as one unpaginated result. 0 is the ordinary run. */
   readonly logs: number;
+  /**
+   * Whether the corpus was rendered with a payload shape that changes
+   * underneath the agent. False is the ordinary run.
+   *
+   * Read by the page for the same reason `logs` is: the two runs answer the
+   * same questions over different corpora, and a drifted run rendered as an
+   * ordinary one would understate every column in the table.
+   */
+  readonly drift: boolean;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -71,13 +81,32 @@ export interface PublishedAdapter {
 export interface PublishedBenchmark {
   readonly schema: number;
   readonly generatedAt: string | null;
-  readonly run: PublishedRun | null;
-  readonly corpus: PublishedCorpus | null;
+  /**
+   * One table per corpus the questions were asked over, ordinary first.
+   *
+   * A list because `--drift` made the corpus a variable. The same columns over
+   * an ordinary corpus and over one whose payloads change shape are two
+   * tables and never two sets of columns in one — the harness refuses that
+   * merge — but they belong on the same page, because a reader shown only the
+   * ordinary table is being shown the friendliest case this project can
+   * construct.
+   */
+  readonly tables: readonly PublishedTable[];
+}
+
+export interface PublishedTable {
+  /** What this table is, for the switch that selects it: `drifted`. */
+  readonly label: string;
+  readonly run: PublishedRun;
+  readonly corpus: PublishedCorpus;
   readonly categories: readonly string[];
   readonly adapters: readonly PublishedAdapter[];
 }
 
 export const BENCHMARK = results as PublishedBenchmark;
+
+/** Every published run, in the order the page offers them. */
+export const TABLES: readonly PublishedTable[] = BENCHMARK.tables ?? [];
 
 /**
  * The control, which is a reference point rather than an entrant.
@@ -115,8 +144,8 @@ export interface LeadStat {
   readonly subjects: readonly string[];
 }
 
-export function leadStats(): readonly LeadStat[] {
-  const memories = BENCHMARK.adapters.filter((a) => !CONTROL_NAMES.has(a.name));
+export function leadStats(table: PublishedTable | null): readonly LeadStat[] {
+  const memories = (table?.adapters ?? []).filter((a) => !CONTROL_NAMES.has(a.name));
   if (memories.length === 0) return [];
 
   const byAccuracy = [...memories].sort((a, b) => b.accuracy - a.accuracy);
@@ -150,12 +179,27 @@ export function leadStats(): readonly LeadStat[] {
 }
 
 /** Whether there is anything to show, which decides which page this is. */
-export const HAS_RESULTS = BENCHMARK.run !== null && BENCHMARK.adapters.length > 0;
+export const HAS_RESULTS = TABLES.some((table) => table.adapters.length > 0);
 
 export const BENCHMARKS_DESCRIPTION =
   'What an agent gets back out of a memory, and what it costs to get it — Ingot ' +
   'against vector search local and hosted, a hosted memory, and its own embedding ' +
   'path with SQL taken away.';
+
+/**
+ * The route's metadata, kept here rather than beside the component.
+ *
+ * `benchmarks-page.tsx` is a client component, and every export of a client
+ * module reaches a server component as a reference proxy rather than as the
+ * value — so a `Metadata` object exported from there prerenders as `undefined`
+ * and the build fails with an error that does not name the cause. This module
+ * carries no directive and is read by the page, the text emitter and the route
+ * alike, which makes it the right side of that boundary.
+ */
+export const benchmarksMetadata: Metadata = {
+  title: 'Benchmarks',
+  description: BENCHMARKS_DESCRIPTION,
+};
 
 export const BENCHMARKS_LEDE =
   'Ingot contains a vector index, so we are not going to pretend this is ' +
@@ -221,12 +265,15 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
  * and falls back to the whole catalogue only when there are no results at all
  * and it is explaining what it is going to measure rather than what it found.
  */
-export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] =
-  BENCHMARK.adapters.length > 0
-    ? ADAPTER_BLURBS.filter((blurb) =>
-        BENCHMARK.adapters.some((adapter) => adapter.name === blurb.name),
-      )
-    : ADAPTER_BLURBS;
+export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] = HAS_RESULTS
+  ? // The union across published runs, not the intersection. A column that ran
+    // on the ordinary corpus and was skipped on the drifted one is still a
+    // column this page shows, and describing it in one tab but not the other
+    // would read as two different benchmarks rather than one under two corpora.
+    ADAPTER_BLURBS.filter((blurb) =>
+      TABLES.some((table) => table.adapters.some((adapter) => adapter.name === blurb.name)),
+    )
+  : ADAPTER_BLURBS;
 
 /**
  * What the memories were asked to hold, said before the table is read.
