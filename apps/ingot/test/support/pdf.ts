@@ -1,3 +1,5 @@
+import { zlibSync } from 'fflate';
+
 /**
  * Building the PDFs the parser tests read.
  *
@@ -111,4 +113,100 @@ function pad(offset: number): string {
 
 function escape(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+/**
+ * A page that is a photograph rather than text: one image, drawn to fill it.
+ *
+ * What a scanner, a photocopier and "print to PDF from a screenshot" all
+ * produce, and the shape the OCR path exists for. `pdfjs` finds no text on one
+ * of these, which is the whole point.
+ */
+export interface Scan {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** One sheet: lines of text, or a scanned image. */
+export type Sheet = Page | Scan;
+
+/**
+ * A PDF with no text layer at all — every page a scan.
+ *
+ * Structurally the inverse of `pdf` above: a content stream that paints an
+ * image XObject rather than running `Tj`.
+ */
+export function scannedPdf(pages: number, size: Scan = { width: 8, height: 8 }): Buffer {
+  return mixedPdf(Array.from({ length: pages }, () => size));
+}
+
+/**
+ * Text pages and scanned pages in one document.
+ *
+ * The case the OCR condition is written for and the reason it is per page
+ * rather than per document: a scan stapled into the middle of a text export
+ * should cost one page to read, not eleven, and only its chunks should come
+ * back marked.
+ *
+ * The pixels are a flat colour per page, deflated the way a real producer
+ * would. Nothing reads them — the engine in these tests is a stub — and what
+ * is being asserted is which pages reach one at all.
+ */
+export function mixedPdf(sheets: readonly Sheet[]): Buffer {
+  const objects: string[] = [];
+  // 1 catalogue, 2 page tree, 3 font, then three slots a sheet — page, content
+  // stream, and an image for the sheets that are scans.
+  const pageIds = sheets.map((_unused, at) => 4 + at * 3);
+
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] =
+    `<< /Type /Pages /Count ${sheets.length} ` +
+    `/Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`;
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+
+  sheets.forEach((sheet, at) => {
+    const pageId = pageIds[at] as number;
+    const streamId = pageId + 1;
+    const imageId = pageId + 2;
+
+    if (isScan(sheet)) {
+      objects[pageId] =
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
+        `/Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${streamId} 0 R >>`;
+
+      // Scale the unit square up to the page and paint the image over it,
+      // which is exactly what a scanner writes.
+      const stream = 'q 612 0 0 792 0 0 cm /Im0 Do Q';
+      objects[streamId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+
+      const pixels = new Uint8Array(sheet.width * sheet.height * 3).fill(16 * (at + 1));
+      const deflated = zlibSync(pixels, { level: 6 });
+      objects[imageId] =
+        `<< /Type /XObject /Subtype /Image /Width ${sheet.width} /Height ${sheet.height} ` +
+        '/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode ' +
+        `/Length ${deflated.length} >>\nstream\n${latin1(deflated)}\nendstream`;
+      return;
+    }
+
+    objects[pageId] =
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
+      `/Resources << /Font << /F1 3 0 R >> >> /Contents ${streamId} 0 R >>`;
+
+    const drawn = sheet
+      .map((line, index) => `${index === 0 ? '' : 'T* '}(${escape(line)}) Tj`)
+      .join('\n');
+    const stream = `BT /F1 12 Tf 72 720 Td 14 TL\n${drawn}\nET`;
+    objects[streamId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  });
+
+  return assemble(objects, null);
+}
+
+function isScan(sheet: Sheet): sheet is Scan {
+  return !Array.isArray(sheet);
+}
+
+/** Binary, as the `latin1` string `assemble` lays out — one byte per char. */
+function latin1(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('latin1');
 }

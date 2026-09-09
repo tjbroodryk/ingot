@@ -223,6 +223,70 @@ button.btn-outline {
   white-space: nowrap;
 }
 
+/* — putting a document in — */
+
+.upload {
+  margin-bottom: var(--space-4);
+}
+
+.upload-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--pad-x) var(--space-2);
+}
+
+.upload-picker {
+  padding: 6px 10px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.upload-options {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.upload-actions {
+  padding: 0;
+}
+
+.upload-hint {
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+/* The column above already spaces these; `.notice` brings its own margin. */
+.upload-body .notice {
+  margin-top: 0;
+}
+
+.upload-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.upload-line {
+  margin: 0;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+}
+
+.upload-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.upload-links button {
+  padding: 5px 12px;
+  font-size: 11.5px;
+}
+
 /* — the editor — */
 
 .console-panel {

@@ -1,3 +1,4 @@
+import type { Ocr } from '../../../ai/ocr.port.js';
 import type { MediaType } from './media-type.js';
 
 /**
@@ -32,6 +33,17 @@ export interface Block {
    */
   readonly hard: boolean;
   readonly kind: BlockKind;
+  /**
+   * What machine-read this text, where one did — `tesseract-eng`,
+   * `gpt-4.1-mini`. Absent for the ordinary case, which is text the document
+   * carried and this service only had to decode.
+   *
+   * It rides all the way to a column, because OCR text is *read* and not
+   * extracted: an engine can drop a digit and a vision model can invent one,
+   * and "which of these did a machine guess at" has to stay answerable after
+   * the fact.
+   */
+  readonly ocr?: string;
 }
 
 export enum BlockKind {
@@ -67,6 +79,19 @@ export interface ParseInput {
   readonly content: Buffer;
   readonly mediaType: MediaType;
   readonly filename: string;
+  /**
+   * What to do about a page the document has no text for, when a deployment
+   * has bought an answer to that.
+   *
+   * Null is the default and the common case — `INGOT_OCR` is off — and it
+   * means a blank page stays blank. Passed in rather than reached for, so the
+   * handler stays a function of its input and a test can hand it a stub.
+   *
+   * Only `pdf.ts` looks at it. A scanned page in a `.docx` is an image inside a
+   * document that also has real text, and reading it would be a different
+   * feature: this one is about the format whose pages arrive as photographs.
+   */
+  readonly ocr?: Ocr | null;
 }
 
 /**

@@ -1,4 +1,11 @@
-import type { AccountDetail, IngotInfo, IngotSummary, QueryResult } from '@ingot/shared/ingot-v1';
+import type {
+  AccountDetail,
+  FileBody,
+  FileResult,
+  IngotInfo,
+  IngotSummary,
+  QueryResult,
+} from '@ingot/shared/ingot-v1';
 
 /**
  * The browser's half of the Ingot API.
@@ -94,6 +101,30 @@ export function runQuery(
   );
 }
 
+/**
+ * One document, as multipart, exactly as `/file` wants it.
+ *
+ * The `body` part is the options JSON and is left off entirely when there are
+ * none — an empty part would be a second thing the endpoint has to read as
+ * "nothing", and the interceptor counts fields.
+ */
+export function uploadFile(
+  credentials: Credentials,
+  ingotId: string,
+  file: File,
+  body?: FileBody,
+): Promise<FileResult> {
+  const form = new FormData();
+  form.append('file', file);
+  if (body && Object.keys(body).length > 0) form.append('body', JSON.stringify(body));
+
+  return call<FileResult>(
+    credentials,
+    `/api/v1/${enc(credentials.account)}/${enc(ingotId)}/file`,
+    { method: 'POST', body: form },
+  );
+}
+
 async function call<T>(credentials: Credentials, path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
 
@@ -102,7 +133,10 @@ async function call<T>(credentials: Credentials, path: string, init: RequestInit
       ...init,
       headers: {
         accept: 'application/json',
-        'content-type': 'application/json',
+        // Not for a `FormData` body. The boundary is part of the header and
+        // only the browser knows it, so setting the type here would send a
+        // multipart body multer cannot find the parts in.
+        ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
         authorization: `Bearer ${credentials.key}`,
         ...init.headers,
       },

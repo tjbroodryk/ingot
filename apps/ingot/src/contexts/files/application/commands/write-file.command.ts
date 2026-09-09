@@ -24,6 +24,7 @@ import {
   CHUNKS_TABLE,
   CHUNK_FILE_ID,
   CHUNK_KIND,
+  CHUNK_OCR,
   CHUNK_ORDINAL,
   CHUNK_PAGE,
   CHUNK_SECTION,
@@ -155,7 +156,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
       error: string | null;
     },
   ): Promise<void> {
-    const table = await this.registry.ensure(job.ingotId, FILES_TABLE, () =>
+    const table = await this.registry.ensureCurrent(job.ingotId, FILES_TABLE, () =>
       declareFilesTable(job.ingotId, now),
     );
 
@@ -195,7 +196,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
   ): Promise<void> {
     if (chunks.length === 0) return;
 
-    const table = await this.registry.ensure(job.ingotId, CHUNKS_TABLE, () =>
+    const table = await this.registry.ensureCurrent(job.ingotId, CHUNKS_TABLE, () =>
       declareChunksTable(job.ingotId, now),
     );
 
@@ -214,6 +215,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
       [CHUNK_TOKENS]: piece.tokens,
       [CHUNK_PAGE]: piece.page,
       [CHUNK_SECTION]: piece.section,
+      [CHUNK_OCR]: piece.ocr,
     })) as Record<string, Coerced>[];
 
     await this.overlay.append({
@@ -318,7 +320,7 @@ export class FailFileHandler implements ICommandHandler<FailFile> {
      * caller gets an answer and the deployment keeps its evidence.
      */
     const now = this.clock.now();
-    const table = await this.registry.ensure(job.ingotId, FILES_TABLE, () =>
+    const table = await this.registry.ensureCurrent(job.ingotId, FILES_TABLE, () =>
       declareFilesTable(job.ingotId, now),
     );
 

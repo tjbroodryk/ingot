@@ -131,7 +131,7 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
 
   /** The memory's receipt table, creating it on the first receipt. */
   private async receiptTable(ingotId: string): Promise<IngotTable> {
-    return this.registry.ensure(ingotId, RECEIPT_TABLE, () =>
+    return this.registry.ensureCurrent(ingotId, RECEIPT_TABLE, () =>
       declareReceiptTable(ingotId, this.clock.now()),
     );
   }

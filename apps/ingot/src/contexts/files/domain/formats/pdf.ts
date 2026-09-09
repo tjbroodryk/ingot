@@ -8,7 +8,9 @@ import {
   type ParseInput,
   type ParsedDocument,
 } from '../format.js';
+import type { PageImage } from '../../../../ai/ocr.port.js';
 import { MediaType } from '../media-type.js';
+import { pageImage } from './page-image.js';
 
 /**
  * How many pages one document may have.
@@ -38,6 +40,8 @@ interface PdfDocument {
   readonly numPages: number;
   getPage(number: number): Promise<{
     getTextContent(): Promise<{ items: readonly unknown[] }>;
+    getOperatorList(): Promise<{ fnArray: number[]; argsArray: unknown[][] }>;
+    objs: { get(name: string, callback: (value: unknown) => void): void };
     cleanup(): void;
   }>;
   getMetadata(): Promise<{ info?: unknown }>;
@@ -145,7 +149,12 @@ export const pdfHandler: FormatHandler = {
         blocks.push(await page(document, number));
       }
 
-      return { blocks, pages: document.numPages, title: await title(document), rows: null };
+      return {
+        blocks: await read(blocks, document, input, pdfjs.OPS.paintImageXObject),
+        pages: document.numPages,
+        title: await title(document),
+        rows: null,
+      };
     } finally {
       // Releases the worker and the page cache. Without it a parse leaks for the
       // life of the process, which for this queue means every document.
@@ -153,6 +162,64 @@ export const pdfHandler: FormatHandler = {
     }
   },
 };
+
+/**
+ * The pages that came out blank, read by whatever this deployment configured.
+ *
+ * The condition is deliberately narrow: a block with no text at all, in a
+ * document where an engine is configured. A page with three words on it is not
+ * a scan, it is a page with three words on it, and sending it to a model would
+ * be paying to have "Page 4" read back — the sort of heuristic that costs money
+ * every day to help on the day somebody uploads a bad export.
+ *
+ * Every page that comes back keeps its own provenance, because with a fallback
+ * configured one document can be part model-read and part Tesseract-read.
+ *
+ * **Blank stays blank on every failure.** No engine, no image to lift, an
+ * engine that refused, more blank pages than the cap allows: all of them leave
+ * the block exactly as the text layer left it, which is the behaviour a
+ * deployment with OCR switched off has all the time.
+ */
+async function read(
+  blocks: readonly Block[],
+  document: PdfDocument,
+  input: ParseInput,
+  paintImageXObject: number,
+): Promise<Block[]> {
+  const ocr = input.ocr;
+  if (!ocr) return [...blocks];
+
+  const blank = blocks.flatMap((block, at) => (block.text.length === 0 ? [at] : []));
+  if (blank.length === 0) return [...blocks];
+
+  // Lifted one at a time and in page order, so a document past the cap spends
+  // its budget on its beginning — which is where a covering letter, a summary
+  // or a title page is — rather than on an arbitrary slice of the middle.
+  const images: PageImage[] = [];
+  for (const at of blank.slice(0, ocr.maxPages)) {
+    const number = blocks[at]?.page ?? at + 1;
+    const handle = await document.getPage(number);
+
+    try {
+      const image = await pageImage(handle, number, paintImageXObject);
+      if (image) images.push(image);
+    } finally {
+      handle.cleanup();
+    }
+  }
+
+  if (images.length === 0) return [...blocks];
+
+  const texts = await ocr.read(images);
+  const byPage = new Map(images.map((image, at) => [image.number, texts[at] ?? null]));
+
+  return blocks.map((block, at) => {
+    if (!blank.includes(at)) return block;
+
+    const found = byPage.get(block.page ?? at + 1);
+    return found ? { ...block, text: found.text, ocr: found.engine } : block;
+  });
+}
 
 async function page(document: PdfDocument, number: number): Promise<Block> {
   const handle = await document.getPage(number);

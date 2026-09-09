@@ -65,6 +65,43 @@ export class TableRegistry {
   }
 
   /**
+   * A **system** table, brought up to the schema this build declares for it.
+   *
+   * The difference from `ensure` is what happens when the table is already
+   * there. `ensure` hands it back untouched, which is right for a caller's
+   * table — its schema is theirs, and the only thing entitled to widen it is
+   * their own mapping. A system table's schema belongs to this codebase, so a
+   * release that adds a column to `ingot_file_chunks` has to add it to the
+   * ones already out there as well.
+   *
+   * The failure this exists to stop is not theoretical; it shipped once. `ocr`
+   * was added to the chunk table, and every memory created before it kept the
+   * nine columns it was made with — so `/file` handed back a `chunksQuery`
+   * naming a column that was not there, and the promissory note answered
+   * `Binder Error: Referenced column "ocr" not found` for every document in
+   * every memory that predated the release.
+   *
+   * Widening only, on the same terms as `/add`: a new column arrives optional
+   * because the Parquet already written lacks it, and a changed type is still
+   * refused. The declaration is built on every write of a system table rather
+   * than only on the first — two objects and a few column names, against a
+   * document parse — and nothing is saved unless something actually moved,
+   * which keeps the version contention `save` warns about at zero.
+   */
+  async ensureCurrent(
+    ingotId: string,
+    name: string,
+    declare: () => IngotTable,
+  ): Promise<IngotTable> {
+    const table = await this.ensure(ingotId, name, declare);
+
+    const added = table.accommodate(declare().columns);
+    if (added.length > 0 && table.hasChanges) await this.save(table);
+
+    return table;
+  }
+
+  /**
    * Persists a table whose schema `accommodate` has just widened.
    *
    * Here rather than through the repository directly so that a caller which

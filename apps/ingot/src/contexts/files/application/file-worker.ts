@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { OCR, type Ocr } from '../../../ai/ocr.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
 import { OBJECT_STORE, type ObjectStore } from '../../../storage/object-store.port.js';
@@ -57,6 +58,9 @@ export class FileWorker {
     private readonly dispatcher: Dispatcher,
     @Inject(OBJECT_STORE) private readonly objects: ObjectStore,
     @Inject(FILE_SETTINGS) private readonly settings: FileSettings,
+    // Null unless `INGOT_OCR` names an engine, which is the default. A PDF
+    // with a page the text layer had nothing for leaves it blank without one.
+    @Inject(OCR) private readonly ocr: Ocr | null,
   ) {}
 
   /**
@@ -135,6 +139,7 @@ export class FileWorker {
         content,
         mediaType: job.mediaType,
         filename: job.filename,
+        ocr: this.ocr,
       }),
       PARSE_TIMEOUT_MS,
       `Parsing "${job.filename}" took longer than ${PARSE_TIMEOUT_MS / 1000}s`,

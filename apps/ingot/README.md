@@ -178,6 +178,9 @@ curl -sX POST $A/$ING/file -H "authorization: Bearer $KEY" \
   -F 'file=@handbook.md;type=text/markdown'
 ```
 
+The dashboard has a panel for the same thing — pick a memory, choose a file,
+and it watches the row until the document is `ready` or `failed`.
+
 ```jsonc
 {
   "fileId": "file_e0c60d05…",
@@ -255,6 +258,75 @@ cutting a deck every 512 tokens beats cutting it every slide. `chunkTokens` and
 `overlapTokens` are, per upload or per deployment, because those are a function
 of your embedder and your context budget. Overlap is applied only where the
 boundary was ours — a slide does not bleed into the next slide.
+
+### Scans, which have no text to extract
+
+A PDF whose pages are photographs — a scanner, a photocopier, a screenshot
+printed to PDF — has no text layer, so a parse comes back with a blank chunk
+per page. That is a fact worth recording and `chunker.ts` records it, but on
+its own it is a document that says nothing.
+
+`INGOT_OCR` names something to do about it, and it is **off by default**. The
+other two model selectors pick *which* engine because both have a free
+stand-in; this one picks *whether*, because reading a page costs money or CPU
+and most PDFs are not scans.
+
+| `INGOT_OCR` | what reads the page                                                       |
+| ----------- | ------------------------------------------------------------------------- |
+| `off`       | Nothing. A blank page stays blank. The default.                           |
+| `local`     | Tesseract, in the process. ~350ms a page, no network, no bill.            |
+| `openai`    | A vision model. Better on a bad scan; seconds and money a page.           |
+| `gcp`       | The same, on Vertex.                                                      |
+
+**It is a fallback and never a mode.** A page reaches an engine only when the
+document's own text layer produced nothing for it — so a PDF that has text is
+read exactly as before, at no cost, and a scan stapled into the middle of a
+text export costs one page rather than the whole document. A page with three
+words on it is not a scan; it is a page with three words on it.
+
+**Naming a model and a tessdata directory together means "model first,
+Tesseract for the pages it did not read".** That is a declaration and not a
+silent degradation — the boot line says the arrangement out loud, and every
+chunk carries the engine that produced it:
+
+```sql
+-- what this document actually contained, and what a machine read off a picture
+SELECT page, ocr, text FROM ingot_file_chunks WHERE file_id = 'file_…';
+-- and the version somebody can quote in an email:
+SELECT text FROM ingot_file_chunks WHERE file_id = 'file_…' AND ocr IS NULL;
+```
+
+That column is the point of the whole feature. OCR text is **machine-read, not
+extracted**: Tesseract drops a character on a bad scan and a vision model will
+invent a plausible digit rather than admit it cannot see one, so a figure read
+off a page is evidence of a different quality from a figure lifted out of a
+text layer. `WHERE ocr IS NULL` is the difference, and it is one predicate.
+
+Three things bound what it can cost you. `INGOT_OCR_MAX_PAGES` (20) is how many
+pages of one document an engine is given, from page 1 down — a 300-page scan
+through a hosted model is a bill nobody chose and a parse that outlives the
+claim it is held under. Pages past it stay blank. `INGOT_OCR_CONCURRENCY` is
+how many are in flight at once. And a page an engine refuses stays blank rather
+than storing the refusal, because "I'm sorry, I can't help with that" is a
+perfectly good string that would otherwise be embedded and ranked against every
+question anybody asks.
+
+**No renderer, and no native module in the image.** Rasterising a PDF page
+means a canvas, which in Node means `node-canvas` or `@napi-rs/canvas` — a
+compiler in the build and a platform-specific binary — for the minority of
+documents that are scans. But a scanned page *is* an image already:
+`page-image.ts` lifts the single image XObject `pdfjs` has already decoded and
+wraps it in a PNG with `fflate`, which is here anyway for `.docx`. The cost of
+the trick is its edge: a page that is several images, or one whose content is
+drawn rather than photographed, has no single image to lift and stays blank —
+and drawn text has a text layer anyway.
+
+Tesseract's language data is **baked into the image**, at `/opt/tessdata`.
+Left alone `tesseract.js` fetches it from a CDN on first use, which would be a
+parse reaching the network on behalf of an uploaded document — the one thing no
+handler in `formats/` does — and a first scan that fails on any network without
+egress. It is the argument `INGOT_DUCKDB_EXTENSION_DIR` already makes, about a
+different download.
 
 ### Pulling typed rows out
 

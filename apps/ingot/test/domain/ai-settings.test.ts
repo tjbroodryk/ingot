@@ -5,21 +5,29 @@ import {
   GCP_EMBEDDING_DIMENSIONS,
   GCP_EMBEDDING_MODEL,
   GCP_LOCATION,
+  GCP_OCR_MODEL,
   GCP_SUMMARY_MODEL,
+  OCR_CONCURRENCY,
+  OCR_LANGUAGE,
+  OCR_MAX_PAGES,
+  OCR_OFF,
   OPENAI_BASE_URL,
   OPENAI_EMBEDDING_DIMENSIONS,
   OPENAI_EMBEDDING_MODEL,
+  OPENAI_OCR_MODEL,
   OPENAI_SUMMARY_MODEL,
   embedderSettings,
+  ocrSettings,
   summariserSettings,
 } from '../../src/ai/ai-settings.js';
-import { buildEmbedder, buildSummariser } from '../../src/ai/ai.module.js';
+import { buildEmbedder, buildOcr, buildSummariser } from '../../src/ai/ai.module.js';
 import { ExtractiveSummariser } from '../../src/ai/extractive-summariser.js';
 import { GcpEmbedder } from '../../src/ai/gcp-embedder.js';
 import { HashEmbedder } from '../../src/ai/hash-embedder.js';
 import { ModelSummariser } from '../../src/ai/model-summariser.js';
 import { OpenAiEmbedder } from '../../src/ai/openai-embedder.js';
 import { AiProvider } from '../../src/ai/providers.js';
+import { transcriptFrom } from '../../src/ai/ocr.port.js';
 import { extractJson, receiptFrom } from '../../src/ai/summariser.port.js';
 import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 
@@ -264,5 +272,146 @@ describe('the model deadline', () => {
     expect(() =>
       embedderSettings(env({ INGOT_EMBEDDER: 'openai', INGOT_AI_TIMEOUT_MS: over, ...OPENAI })),
     ).toThrow(/INGOT_AI_TIMEOUT_MS.*lease/s);
+  });
+});
+
+/**
+ * What reads a scanned page, which is the one selector that is off by default.
+ *
+ * The matrix differs from the other two in exactly that: an unset embedder is
+ * the stand-in and an unset OCR is nothing at all, because there is no cheap
+ * approximation of reading a photograph and no deployment should pay per page
+ * for a feature it did not ask for.
+ *
+ * The tessdata directory is the other thing worth asserting. `tesseract.js`
+ * fetches its language data from a CDN when it is not given a path, which for
+ * this service would be a parse reaching the network on behalf of an uploaded
+ * document — so the path is required for the engine that needs it, and the
+ * check that the file is actually there happens at boot.
+ */
+describe('choosing how a scan is read', () => {
+  const TESSDATA = { INGOT_TESSDATA_DIR: '/opt/tessdata' };
+
+  it('is off unless it is asked for', () => {
+    expect(ocrSettings(env({}))).toEqual({ provider: OCR_OFF });
+    expect(ocrSettings(env({ INGOT_OCR: 'off' }))).toEqual({ provider: OCR_OFF });
+  });
+
+  it('reads the offline engine, and demands somewhere to find its language data', () => {
+    expect(ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA }))).toEqual({
+      provider: AiProvider.Local,
+      language: OCR_LANGUAGE,
+      tessdataDir: '/opt/tessdata',
+      maxPages: OCR_MAX_PAGES,
+    });
+
+    expect(() => ocrSettings(env({ INGOT_OCR: 'local' }))).toThrow(AiMisconfigured);
+    expect(() => ocrSettings(env({ INGOT_OCR: 'local' }))).toThrow(/INGOT_TESSDATA_DIR/);
+  });
+
+  it('reads a hosted model, filling in every default', () => {
+    expect(ocrSettings(env({ INGOT_OCR: 'openai', ...OPENAI }))).toEqual({
+      provider: AiProvider.OpenAi,
+      apiKey: 'sk-test',
+      baseUrl: OPENAI_BASE_URL,
+      model: OPENAI_OCR_MODEL,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      maxPages: OCR_MAX_PAGES,
+      concurrency: OCR_CONCURRENCY,
+      fallback: null,
+    });
+
+    expect(ocrSettings(env({ INGOT_OCR: 'gcp', ...GCP }))).toMatchObject({
+      provider: AiProvider.Gcp,
+      model: GCP_OCR_MODEL,
+      location: GCP_LOCATION,
+      fallback: null,
+    });
+  });
+
+  it('refuses a provider named without its credentials', () => {
+    expect(() => ocrSettings(env({ INGOT_OCR: 'openai' }))).toThrow(AiMisconfigured);
+    expect(() => ocrSettings(env({ INGOT_OCR: 'gcp' }))).toThrow(/INGOT_GCP_PROJECT/);
+  });
+
+  it('names something that is not a way to read a page', () => {
+    expect(() => ocrSettings(env({ INGOT_OCR: 'ocrmypdf' }))).toThrow(/not a way to read/);
+  });
+
+  /**
+   * The fallback is a *declaration*, and this is the assertion that says so.
+   *
+   * A model and a tessdata directory together mean "model first, Tesseract for
+   * the pages it did not read". The same model with no directory means a page
+   * the model refuses stays blank — which is the honest half of the rule this
+   * file exists for: nobody silently gets something other than what they asked
+   * for, and `ocr` on each chunk says which engine produced it.
+   */
+  it('puts the offline engine behind a model only when the deployment named both', () => {
+    expect(ocrSettings(env({ INGOT_OCR: 'openai', ...OPENAI, ...TESSDATA }))).toMatchObject({
+      provider: AiProvider.OpenAi,
+      fallback: {
+        provider: AiProvider.Local,
+        language: OCR_LANGUAGE,
+        tessdataDir: '/opt/tessdata',
+      },
+    });
+
+    expect(ocrSettings(env({ INGOT_OCR: 'openai', ...OPENAI }))).toMatchObject({ fallback: null });
+  });
+
+  it('takes a page cap and a concurrency, and refuses a typo for either', () => {
+    expect(
+      ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA, INGOT_OCR_MAX_PAGES: '3' })),
+    ).toMatchObject({ maxPages: 3 });
+
+    expect(
+      ocrSettings(env({ INGOT_OCR: 'openai', ...OPENAI, INGOT_OCR_CONCURRENCY: '1' })),
+    ).toMatchObject({ concurrency: 1 });
+
+    expect(() =>
+      ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA, INGOT_OCR_MAX_PAGES: '0' })),
+    ).toThrow(AiMisconfigured);
+    expect(() =>
+      ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA, INGOT_OCR_MAX_PAGES: 'lots' })),
+    ).toThrow(/whole number/);
+  });
+
+  /**
+   * A boot that finds no traineddata where it was told to look.
+   *
+   * Checked here rather than left to the first scanned page, because that page
+   * arrives hours later in a worker nobody is watching, and lands as a failed
+   * document for a directory that was wrong the whole time.
+   */
+  it('refuses to build an engine whose language data is not there', async () => {
+    const settings = ocrSettings(env({ INGOT_OCR: 'local', INGOT_TESSDATA_DIR: '/nowhere' }));
+    expect(buildOcr(settings)).rejects.toThrow(/nowhere.*eng\.traineddata/s);
+  });
+});
+
+/**
+ * What comes back from a model, and what is not text at all.
+ *
+ * A refusal is the case worth the code: "I'm sorry, I can't help with that" is
+ * a perfectly good string, and storing it would put an apology in a chunk,
+ * embed it, and rank it against every question anybody asks afterwards.
+ */
+describe('reading what an engine answered about a page', () => {
+  it('keeps a transcription, fences and all', () => {
+    expect(transcriptFrom('```\nInvoice 41\nTotal £9.00\n```')).toBe('Invoice 41\nTotal £9.00');
+    expect(transcriptFrom('  Membership Number 69086537  ')).toBe('Membership Number 69086537');
+  });
+
+  it('treats a refusal and an empty answer as a page that was not read', () => {
+    expect(transcriptFrom('')).toBeNull();
+    expect(transcriptFrom('   \n  ')).toBeNull();
+    expect(transcriptFrom("I'm sorry, I can't transcribe this image.")).toBeNull();
+    expect(transcriptFrom('As an AI language model, I am unable to read this.')).toBeNull();
+  });
+
+  it('keeps a page that is *about* an apology, which is not the same thing', () => {
+    const letter = `I am sorry to hear about the delay to your claim. ${'We have reviewed it. '.repeat(20)}`;
+    expect(transcriptFrom(letter)).toBe(letter.trim());
   });
 });

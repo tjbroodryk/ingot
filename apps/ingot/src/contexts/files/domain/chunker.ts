@@ -12,6 +12,11 @@ export interface Chunk {
   readonly section: string | null;
   readonly kind: ChunkKind;
   readonly tokens: number;
+  /**
+   * What machine-read this chunk's text, or null where the document carried
+   * it. Taken from the blocks, which is where a handler put it.
+   */
+  readonly ocr: string | null;
 }
 
 /** What a chunk's `kind` column gets, from what the parser said the block was. */
@@ -86,6 +91,11 @@ export function chunk(input: {
         // heading line and the carried tail, since a caller budgeting context
         // is going to be handed all of it.
         tokens: encode(text).length,
+        // From the group rather than from one block, since a chunk can span
+        // several. A group is a page under `Boundary.Page`, which is the only
+        // boundary an OCR'd document is ever chunked on, so in practice every
+        // block in it was read the same way.
+        ocr: group.find((block) => block.ocr !== undefined)?.ocr ?? null,
       });
     });
   }

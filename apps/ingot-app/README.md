@@ -1,8 +1,8 @@
 # @ingot/app
 
 The public site for [`apps/ingot`](../ingot): a landing page, the API
-reference, and a small dashboard for running a query against a memory you hold
-a key to.
+reference, and a small dashboard for putting a document into a memory you hold
+a key to, and running a query against it.
 
 ```bash
 bun run dev     # http://localhost:5174 — dashboard mode
@@ -56,7 +56,7 @@ Which mode goes where:
 | `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
 | `/why`        | The argument: why a query engine and not a vector store. Landing only. |
 | `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
-| `/dashboard`  | Paste a key, pick a memory, run one SELECT, read the grid.            |
+| `/dashboard`  | Paste a key, pick a memory, upload a document, run one SELECT, read the grid. |
 
 `/why` is the only page on the site that argues rather than describes, and it
 is held to a stricter standard for it: every claim on it is a fact about a
@@ -151,6 +151,26 @@ The console does no SQL validation. One statement, SELECT only, no `ATTACH` —
 all of that is decided by the sandbox in `apps/ingot`, and a second opinion in
 the browser would be a rule that disagrees with the real one the first time
 either changes.
+
+## Uploading a document
+
+`src/dashboard/file-upload.tsx`, in the console rather than on a page of its
+own: the thing anybody wants immediately after an upload is a query over it,
+and the buttons on the result write one into the editor below.
+
+`POST /:account/:ingot/file` is multipart and answers `pending` the moment the
+bytes are stored — parsing happens in a worker, and the response is a
+promissory note carrying the two SELECTs that report on it. So the panel does
+what a caller would otherwise do by hand: it runs `FileResult.query` every
+second and a half until the row appears, and shows what it settled as, `failed`
+and its reason included. A 422 while polling is `ingot_files` not existing yet —
+the table is created by the write being waited for — and is the one error that
+means "not yet" rather than "no".
+
+The options box is the JSON `FileBody`: `externalId`, `mediaType`, `extract`,
+`chunkTokens`, `overlapTokens`. It goes in the `body` part, which is the same
+one JSON shape `@ingot/shared` describes — the endpoint deliberately does not
+take a flattened form, and neither does this.
 
 ## What a build decides
 

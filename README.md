@@ -80,6 +80,10 @@ the same overlay, the same embedding queue and the same roll-up as a tool
 result. There is no document store. `ingot_files` and `ingot_file_chunks` are
 ordinary tables in your memory, which is what lets one SQL statement filter on a
 number pulled out of a PDF and rank on the meaning of the paragraph beside it.
+A page with no text layer — a scan, a photocopy — can be read by an engine
+`INGOT_OCR` names, off unless you ask; every chunk that comes back that way
+says which engine read it, so `WHERE ocr IS NULL` is still the text the
+document itself contained.
 
 Writes land in Postgres and are queryable the instant they are accepted. A
 sweeper folds them into Parquet on a schedule, and the same question gets the

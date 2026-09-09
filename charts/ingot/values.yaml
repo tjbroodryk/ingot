@@ -235,6 +235,37 @@ config:
   embedder: local
   summariser: local
 
+  # What reads a page a PDF has no text layer for — a scan, a photocopy, a
+  # screenshot printed to PDF. `off`, and it is the one selector that is:
+  # embedding and summarising have free stand-ins, and this is paid per page.
+  #
+  #   off      a page with no text stays blank. Its row still says so.
+  #   local    Tesseract, in the pod. No network, no bill, ~350ms a page. The
+  #            language data ships in the image, at INGOT_TESSDATA_DIR.
+  #   openai   a vision model, and better on a bad scan. Seconds and money a
+  #            page, and it can misread a figure with confidence — so every
+  #            chunk read this way carries the engine in its `ocr` column, and
+  #            `WHERE ocr IS NULL` is the text a document actually contained.
+  #   gcp      the same, on Vertex.
+  #
+  # **Naming a model gets Tesseract behind it**, because the image ships the
+  # language data and the boot line says so out loud — a page the model refuses
+  # or times out on is read in-process rather than lost. Set `tessdataDir: ''`
+  # to turn that off and let a refused page stay blank.
+  ocr: 'off'
+
+  ocrSettings:
+    # Pages of one document an engine will be given, longest-first from page 1.
+    # A cap rather than a limit on what a scan can be: a 300-page scan through
+    # a hosted model is a bill nobody chose and a parse that outlives its claim.
+    maxPages: 20
+    # Pages in flight at once, for a hosted model. Tesseract is always one.
+    concurrency: 4
+    # Where `<language>.traineddata` is. The image bakes `eng` here; add more
+    # with `--build-arg TESSDATA_LANGUAGES="eng deu"`.
+    tessdataDir: /opt/tessdata
+    language: eng
+
   openai:
     baseUrl: ''
     embeddingModel: ''
@@ -243,6 +274,7 @@ config:
     # re-embed rather than a configuration change.
     embeddingDimensions: null
     summaryModel: ''
+    ocrModel: ''
 
   gcp:
     project: ''
@@ -250,6 +282,7 @@ config:
     embeddingModel: ''
     embeddingDimensions: null
     summaryModel: ''
+    ocrModel: ''
 
   # ── background concurrency ───────────────────────────────────────────────
   # How many drains of each queue run at once, **per replica**.

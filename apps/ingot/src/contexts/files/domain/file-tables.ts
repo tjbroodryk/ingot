@@ -110,6 +110,18 @@ export const CHUNK_SECTION = 'section';
 export const CHUNK_KIND = 'kind';
 /** So a caller can budget before pulling text back into a model's context. */
 export const CHUNK_TOKENS = 'tokens';
+/**
+ * What machine-read this chunk, for the pages a PDF had no text layer for.
+ *
+ * Null for everything the document actually carried, which is almost every
+ * chunk in almost every memory — and that is what makes the column worth
+ * having: `WHERE ocr IS NULL` is the text this service only had to decode, and
+ * a value is a page some engine looked at a picture of. OCR drops characters
+ * and a vision model can invent them, so a figure read off a scan is evidence
+ * of a different quality from a figure lifted out of a text layer, and a
+ * caller who cares is entitled to tell them apart.
+ */
+export const CHUNK_OCR = 'ocr';
 
 export const CHUNK_EMBEDDED: readonly string[] = [CHUNK_TEXT];
 
@@ -181,6 +193,7 @@ export function declareChunksTable(ingotId: string, now: Date): IngotTable {
       ColumnSpec.of({ name: CHUNK_TOKENS, type: ColumnType.Integer }),
       ColumnSpec.of({ name: CHUNK_PAGE, type: ColumnType.Integer, required: false }),
       ColumnSpec.of({ name: CHUNK_SECTION, type: ColumnType.Varchar, required: false }),
+      ColumnSpec.of({ name: CHUNK_OCR, type: ColumnType.Varchar, required: false }),
     ],
   });
 
@@ -260,7 +273,19 @@ export function queryForFile(fileId: string): string {
  * be echoing back at them.
  */
 export function queryForChunks(fileId: string): string {
-  const columns = [CHUNK_ORDINAL, CHUNK_PAGE, CHUNK_SECTION, CHUNK_KIND, CHUNK_TOKENS, CHUNK_TEXT]
+  // `ocr` is in the promissory note's own query, because a caller looking at
+  // the chunks of a document they just uploaded is exactly who needs to know
+  // that some of them were read off a picture rather than lifted out of a text
+  // layer. Null for almost everything, which is the answer they want.
+  const columns = [
+    CHUNK_ORDINAL,
+    CHUNK_PAGE,
+    CHUNK_SECTION,
+    CHUNK_KIND,
+    CHUNK_TOKENS,
+    CHUNK_OCR,
+    CHUNK_TEXT,
+  ]
     .map(ident)
     .join(', ');
 
