@@ -134,7 +134,6 @@ function results(): readonly string[] {
       heading(2, 'Results'),
       'No run has been published yet. The harness is in `packages/bench`; the method below is what it does, and this section fills in when a run is published into it:',
       fence('bun run bench --publish ../../apps/ingot-app/src/benchmarks/results.json'),
-      'Nothing on this page is written by hand, so there is nothing to show until a run has produced it.',
     ];
   }
 

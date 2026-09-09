@@ -143,10 +143,6 @@ export function BenchmarksPage(): ReactNode {
                   bun run bench --publish ../../apps/ingot-app/src/benchmarks/results.json
                 </code>
               </pre>
-              <p>
-                Nothing on this page is written by hand, so there is nothing to show until a run has
-                produced it.
-              </p>
             </div>
           )}
         </section>
