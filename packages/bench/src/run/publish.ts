@@ -443,6 +443,20 @@ export interface AdapterTranscript {
   readonly adapter: string;
   readonly answer: unknown;
   readonly correct: boolean;
+  /** The final request's input tokens: what the model had to read to answer. */
+  readonly contextTokens: number;
+  /**
+   * Wall time for this one run, in milliseconds.
+   *
+   * The summary deliberately omits latency — a mean `ms` measured under
+   * `--concurrency` invites a comparison across columns that it cannot support,
+   * so it is kept off the page. This is the narrower thing it is safe to show:
+   * one recorded trace's own wall time, presented as a property of that trace
+   * rather than as a claim that this adapter is faster than that one. A reader
+   * comparing two traces' `ms` is doing what the summary refuses to publish, and
+   * the number is here for the trace, not for the ranking.
+   */
+  readonly ms: number;
   readonly calls: readonly PublishedCall[];
 }
 
@@ -465,6 +479,8 @@ export interface PublishedCall {
    * deciding to — so decide it here before turning that harness loose.
    */
   readonly output: string;
+  /** This call's own latency, for the trace. See {@link AdapterTranscript.ms}. */
+  readonly ms: number;
   readonly failed: boolean;
 }
 
@@ -516,10 +532,13 @@ export function transcriptTable(label: string, rows: readonly RunRecord[]): Tran
             adapter: row.adapter,
             answer: row.answer,
             correct: row.correct,
+            contextTokens: row.finalInputTokens,
+            ms: row.ms,
             calls: row.calls.map((call) => ({
               name: call.name,
               input: call.input,
               output: cap(call.output),
+              ms: call.ms,
               failed: call.failed,
             })),
           }),

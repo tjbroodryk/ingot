@@ -804,10 +804,6 @@
   border-top: var(--rule);
   color: var(--ink-100);
 }
-/* One grid for the whole list rather than one per row, so the terms share a
-   column and line up. `max-content` sizes it to the longest of them, which
-   beats a guess in `ch`: the terms are letter-spaced small caps, where a
-   character is not a reliable unit. */
 .bench-drifts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -837,158 +833,252 @@
   }
 }
 
-/* The transcripts: what each column did, opened one question at a time.
+/* The transcripts: what each column did, one run per row, a trace behind each.
    Everything above is a mean; this is the evidence under it, so it sits below
    the numbers rather than beside them and is loaded on a click. */
 .bench-transcripts {
-  padding: 0 var(--space-8);
+  padding: 0 var(--space-8) var(--space-8);
   margin-top: var(--space-6);
 }
+/* The text on the left, the button held to the right — the copy explains, the
+   button acts, and space-between keeps them from crowding on a wide screen. */
 .bench-transcripts-prompt {
-  max-width: 68ch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  flex-wrap: wrap;
 }
 .bench-transcripts-prompt p {
-  margin: 0 0 var(--space-4);
+  max-width: 68ch;
+  margin: 0;
   color: var(--ink-70);
   font-size: 14px;
 }
+.bench-transcripts-prompt .btn-outline {
+  flex: none;
+  white-space: nowrap;
+}
 
-.bench-qs {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: var(--rule);
+/* The tally above the table: how many runs, and the split the reader is about
+   to be able to check row by row. */
+.bench-runs-summary {
+  margin: var(--space-4) 0;
+  color: var(--ink-60);
 }
-.bench-q {
-  border-bottom: var(--rule);
-}
-/* A grid so the id, the class and the gold hold their columns down the list and
-   the question text takes whatever is left. */
-.bench-q-head {
-  display: grid;
-  grid-template-columns: 4.5em 6em 1fr auto;
-  align-items: baseline;
-  gap: var(--space-4);
+
+.bench-runs {
   width: 100%;
-  padding: var(--space-4) 0;
-  border: 0;
-  background: none;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.bench-runs th,
+.bench-runs td {
+  padding: var(--space-4) var(--space-4) var(--space-4) 0;
   text-align: left;
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
+  border-bottom: var(--rule);
+  white-space: nowrap;
 }
-.bench-q-id {
+.bench-runs thead th {
+  color: var(--ink-60);
+  font-weight: 400;
   font-family: var(--font-code);
-  font-size: 12.5px;
-  color: var(--ink-45);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--ink-100);
 }
-.bench-q-cat {
-  color: var(--ink-60);
-}
-.bench-q-text {
-  font-size: 14.5px;
-}
-.bench-q-gold {
-  color: var(--ink-60);
+.bench-runs-num {
   text-align: right;
-  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
-@media (max-width: 640px) {
-  /* The gold moves under the question rather than fighting it for width. */
-  .bench-q-head {
-    grid-template-columns: 4.5em 1fr;
-  }
-  .bench-q-text {
-    grid-column: 1 / -1;
-  }
-  .bench-q-gold {
-    grid-column: 1 / -1;
-    text-align: left;
-  }
-}
-/* After every plain `.bench-q-text` rule, base and responsive, so the one
-   selector that outweighs them comes last — a lower-specificity rule following
-   this would be the descending-specificity trap. */
-.bench-q-head:hover .bench-q-text {
-  color: var(--color-accent);
-}
-
-.bench-q-body {
-  padding: 0 0 var(--space-6);
-  display: grid;
-  gap: var(--space-4);
-}
-
-/* One column's run: a head that reads left to right — who, right or wrong, what
-   it answered — then the calls under it. */
-.bench-run {
-  padding: var(--space-4);
-  border: var(--rule);
-  background: var(--ink-08);
-}
-.bench-run-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-  margin-bottom: var(--space-2);
-}
-.bench-run-name {
+.bench-runs-id {
   font-family: var(--font-code);
-  font-size: 14px;
-  color: var(--color-accent);
+  font-size: 13px;
+  color: var(--ink-70);
+  font-weight: 400;
 }
-/* A verdict, drawn as a fact and not a grade: the tick takes the accent every
-   other current thing on the site takes, and the cross is drawn in ink rather
-   than in red, since the glyph already says which it is and a red-green page
-   would be encoding a verdict these error bars cannot carry. */
-.bench-run-mark {
-  font-size: 14px;
+.bench-runs-class {
+  color: var(--ink-60);
+}
+.bench-runs td code {
+  font-family: var(--font-code);
+  font-size: 13.5px;
+}
+/* Ingot's own surfaces in bold, so the column under test is the one the eye
+   lands on down a table mostly made of baselines. */
+.bench-runs-adapter-key {
   font-weight: 700;
 }
-.bench-run-ok {
-  color: var(--color-accent);
+.bench-runs-trace {
+  text-align: right;
+  white-space: nowrap;
 }
-.bench-run-no {
-  color: var(--ink-45);
+
+/* PASS filled, FAIL outlined — the value drawn as a fact, never a red/green
+   grade the error bars cannot carry. */
+.bench-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-.bench-run-answer {
-  font-size: 13.5px;
-  color: var(--ink-70);
-  overflow-wrap: anywhere;
+.bench-badge-pass {
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
 }
-.bench-run-empty {
-  margin: 0;
-  font-size: 13px;
+.bench-badge-fail {
+  border: 1px solid var(--ink-35);
   color: var(--ink-60);
 }
 
-.bench-calls {
-  list-style: none;
+.bench-trace-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--ink-35);
+  background: none;
+  color: var(--ink-70);
+  font-family: var(--font-code);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.bench-trace-btn:hover {
+  background: var(--color-ink);
+  color: var(--color-ink-inverse);
+}
+
+/* The trace, in a native dialog: `showModal` gives the backdrop, the focus and
+   the top layer, so the styling here is only the box and the dimmed behind. */
+.bench-trace {
+  width: min(760px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-8));
+  padding: 0;
+  border: var(--rule);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  overflow: auto;
+}
+.bench-trace::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.bench-trace-inner {
+  position: relative;
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+.bench-trace-close {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 32px;
+  height: 32px;
+  border: var(--rule);
+  background: var(--color-bg);
+  color: var(--ink-70);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.bench-trace-close:hover {
+  color: var(--color-ink);
+  border-color: var(--ink-100);
+}
+
+.bench-trace-card {
+  padding: var(--space-4);
+  border: 2px solid var(--ink-100);
+  margin-bottom: var(--space-6);
+}
+.bench-trace-kicker {
+  color: var(--ink-60);
+  margin-bottom: var(--space-2);
+}
+.bench-trace-q {
+  margin: 0 0 var(--space-4);
+  font-size: 22px;
+  line-height: 1.3;
+  /* Room for the close button, which floats over this corner of the card. */
+  padding-right: var(--space-6);
+}
+.bench-trace-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
   margin: 0;
+  border-top: var(--rule);
+}
+.bench-trace-stats > div {
+  padding: var(--space-4) var(--space-4) 0 0;
+}
+.bench-trace-stats dt {
+  color: var(--ink-60);
+  margin-bottom: 4px;
+}
+.bench-trace-stats dd {
+  margin: 0;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  .bench-trace-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.bench-trace-rule {
+  margin-bottom: var(--space-4);
+}
+.bench-trace-empty {
+  padding: 0;
+}
+
+.bench-trace-calls {
+  list-style: none;
+  margin: 0 0 var(--space-6);
   padding: 0;
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-4);
 }
 .bench-call {
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--ink-16);
-}
-.bench-call-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: 4px;
-  color: var(--ink-70);
-}
-.bench-call-tag {
-  color: var(--ink-45);
+  padding: var(--space-4);
+  background: var(--ink-08);
+  /* The accent spine down the left edge is the trace's one bit of colour, and
+     it is what makes the calls read as steps rather than as a stack of boxes. */
+  border-left: 3px solid var(--color-accent);
 }
 /* A failed call is dimmed rather than coloured: the tag says failed, and the
    whole point of showing it is that a wrong answer often has a thrown tool
    behind it. */
 .bench-call-failed {
-  opacity: 0.75;
+  opacity: 0.8;
+  border-left-color: var(--ink-45);
+}
+.bench-call-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--ink-70);
+}
+.bench-call-idx {
+  color: var(--ink-45);
+  font-variant-numeric: tabular-nums;
+}
+.bench-call-name {
+  font-family: var(--font-code);
+  font-size: 14px;
+  color: var(--color-ink);
+}
+.bench-call-tag {
+  color: var(--ink-60);
+}
+/* Pushed to the far edge of the head, the way the mock puts the latency. */
+.bench-call-ms {
+  margin-left: auto;
+  color: var(--ink-45);
+  font-variant-numeric: tabular-nums;
 }
 .bench-call-io {
   margin: 0 0 4px;
@@ -1009,4 +1099,22 @@
   /* Long even after the cap; give it a ceiling and let it scroll inside. */
   max-height: 240px;
   overflow: auto;
+}
+
+.bench-trace-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 2px solid var(--ink-100);
+}
+.bench-trace-answer {
+  margin: var(--space-2) 0 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+/* A wrong answer is dimmed, not reddened — the EXPECTED beside it is the
+   comparison, and the reader makes the judgement the palette refuses to. */
+.bench-trace-wrong {
+  color: var(--ink-45);
 }

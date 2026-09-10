@@ -145,6 +145,10 @@ export interface AdapterTranscript {
   readonly adapter: string;
   readonly answer: unknown;
   readonly correct: boolean;
+  /** The final request's input tokens: what the model had to read to answer. */
+  readonly contextTokens: number;
+  /** Wall time for this one run, shown per trace rather than compared across them. */
+  readonly ms: number;
   readonly calls: readonly PublishedCall[];
 }
 
@@ -154,6 +158,8 @@ export interface PublishedCall {
   readonly input: Record<string, unknown>;
   /** What the tool returned, capped by the harness with the truncation marked. */
   readonly output: string;
+  /** This call's own latency. */
+  readonly ms: number;
   readonly failed: boolean;
 }
 
