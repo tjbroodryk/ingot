@@ -8,10 +8,13 @@
 # one tag that resolves to whichever of the two the puller is. See the `build`
 # and `manifest` jobs for why that is four jobs and not one `platforms:` line.
 #
-# A pull request builds both images on both architectures and renders the chart,
-# and pushes none of the three — so anything that stopped working fails on the
-# branch that broke it rather than on the merge. `main` pushes the images. Only a
-# `v*` tag publishes the chart.
+# A pull request renders the chart and builds no image. Four docker builds is
+# ten minutes a PR to prove that a Dockerfile still works, which is not what
+# most changes touch; `test.yml` runs `bun run build` on every PR instead, so a
+# `next build` or a `tsc` that stopped working still fails on the branch that
+# broke it. What a PR no longer catches is a break in the Dockerfiles
+# themselves — that lands on `main`, where these jobs run. `main` pushes the
+# images. Only a `v*` tag publishes the chart.
 #
 # The chart is a job here rather than a workflow of its own, and the `needs:`
 # line is the whole reason. A chart's default image tag is its own `appVersion`,
@@ -52,6 +55,8 @@ jobs:
   # below is what turns a pair of those into one tag.
   build:
     name: ${{ matrix.image.name }} · ${{ matrix.platform.arch }}
+    # Not on a pull request. The workflow still runs there, for the chart.
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       # `packages: write` is the whole of the registry credential: GITHUB_TOKEN
@@ -89,11 +94,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Skipped on a pull request, where the token is read-only and nothing is
-      # pushed anyway. A fork's PR has no packages scope at all, so logging in
-      # would fail the job before it built anything.
       - name: Log in to ghcr.io
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -128,12 +129,7 @@ jobs:
           # either of them briefly *being* that tag. `name-canonical` is what
           # stamps the repository into the image so the digest is addressable
           # as `…/server@sha256:…` afterwards.
-          #
-          # A pull request pushes nothing and has no packages scope to push
-          # with, so it builds to the cache and throws the result away; the
-          # point on that event is that the build still works, on both
-          # architectures.
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || format('type=image,name={0}/{1}/{2},push-by-digest=true,name-canonical=true,push=true', env.REGISTRY, github.repository, matrix.image.name) }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
           # The site is a static export, so the address of the API is inlined at
           # build time rather than read at run time — which makes it a property
           # of the image. Set the repository variable `INGOT_PUBLIC_API_URL` to
@@ -152,17 +148,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
           # Both produce an extra manifest that GHCR's package page renders as
           # an `unknown/unknown` row beside the real image. Set them to `false`
-          # if that is more confusing than the attestations are worth. Off on a
-          # pull request, where there is nothing published for them to attest to
-          # and `cacheonly` has nowhere to write them.
-          provenance: ${{ github.event_name != 'pull_request' }}
-          sbom: ${{ github.event_name != 'pull_request' }}
+          # if that is more confusing than the attestations are worth.
+          provenance: true
+          sbom: true
 
       # The digest is the only thing that crosses between jobs — the image
       # itself is already in the registry, unnamed. An empty file per digest,
       # because an artifact is a set of files and the names are the payload.
       - name: Export the digest
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/digests"
@@ -170,7 +163,6 @@ jobs:
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload the digest
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.image.name }}-${{ matrix.platform.arch }}
@@ -183,7 +175,8 @@ jobs:
   # rebuilt here: `imagetools create` writes an index over digests that are
   # already in the registry, so this is a metadata push and takes seconds.
   #
-  # Skipped on a pull request, where the digests it merges were never pushed.
+  # Skipped on a pull request, along with the `build` jobs whose digests it
+  # merges.
   manifest:
     name: manifest · ${{ matrix.name }}
     if: github.event_name != 'pull_request'
@@ -225,7 +218,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
@@ -260,9 +252,10 @@ jobs:
   # succeeded — so a half-published pair, or a pair with no tag pointing at it,
   # cannot be followed by a chart claiming the version is out.
   #
-  # The condition is what a plain `needs` cannot express: `manifest` is skipped
-  # on a pull request, and a skipped dependency skips its dependents. The chart
-  # is rendered on pull requests on purpose, so it has to survive that — while
+  # The condition is what a plain `needs` cannot express: both `build` and
+  # `manifest` are skipped on a pull request, and a skipped dependency skips
+  # its dependents. The chart is rendered on pull requests on purpose — it is
+  # the only thing in this file that is — so it has to survive that, while
   # still refusing to run after anything that actually failed.
   chart:
     needs: [build, manifest]
@@ -282,9 +275,11 @@ jobs:
           # out about during a release.
           version: v3.19.0
 
-      # Renders on every event, including a pull request, for the reason the
-      # image build does: a template that no longer compiles should fail on the
-      # branch that broke it.
+      # Renders on every event, including a pull request. Helm is a template
+      # engine and nothing else typechecks it, so a chart that no longer
+      # compiles should fail on the branch that broke it — and rendering it
+      # costs seconds, which is why this stayed on pull requests when the image
+      # builds came off them.
       #
       # The two `--set` flags are not sample data, they are the point. The chart
       # refuses to render without a secret and a bucket, the same way the
