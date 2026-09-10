@@ -1,0 +1,33 @@
+-- The natural key stops being a unique constraint, and stays an index.
+--
+-- Deriving a table's id from `(ingot_id, name)` was supposed to end the
+-- collision two concurrent writers hit when the table does not exist yet: both
+-- compute the same id, so `ON CONFLICT (id)` turns the loser's insert into an
+-- ordinary version miss it can re-read past, rather than a unique violation
+-- that aborts a transaction and becomes a 500. It closed most of the window
+-- and not all of it. `ON CONFLICT (id)` only diverts a conflict on the
+-- *arbiter* index. Between the arbiter check finding nothing and the insert
+-- reaching the table's other indexes, the concurrent writer commits its
+-- `ingot_table_name` tuple — and that index is not the arbiter, so Postgres
+-- raises there instead of diverting. `concurrent-add.test.ts` fails on it
+-- roughly one run in six.
+--
+-- So the second unique index goes. It has enforced nothing since the id became
+-- `sha256(ingot_id:name)`: two rows with one `(ingot_id, name)` are two rows
+-- with one primary key, which the primary key already refuses. What it still
+-- did was raise, from the one place a raced insert could not recover.
+--
+-- Re-created immediately as a plain index, because `findByName` reads on
+-- exactly these two columns and dropping the constraint would take its index
+-- with it.
+--
+-- Under a *different* name, which is not cosmetic. Every migration in this
+-- directory is re-run in full on every boot and by the test harness, and 0001
+-- still adds the constraint. Reusing `ingot_table_name` for the index would
+-- leave 0001's `ADD CONSTRAINT` colliding with an existing relation of that
+-- name on the second pass — the whole set would stop being idempotent. With
+-- two names each pass converges: 0001 adds the constraint back, this drops it
+-- again, and the index is already there.
+
+ALTER TABLE ingot_table DROP CONSTRAINT IF EXISTS ingot_table_name;
+CREATE INDEX IF NOT EXISTS ingot_table_ingot_name ON ingot_table (ingot_id, name);

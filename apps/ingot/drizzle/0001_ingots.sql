@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS ingot_table (
 
 -- The natural key, as a constraint rather than as the primary key: the
 -- aggregate has a version and the write guards on a single column.
+--
+-- 0010 drops this again and re-creates it as a plain index, for a race it was
+-- losing. Left here because a database that has already run this migration
+-- holds the constraint, and 0010 is what takes it off.
 ALTER TABLE ingot_table DROP CONSTRAINT IF EXISTS ingot_table_name;
 ALTER TABLE ingot_table ADD CONSTRAINT ingot_table_name UNIQUE (ingot_id, name);
 

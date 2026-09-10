@@ -1,5 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { index, integer, jsonb, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingot-v1';
 
 /**
@@ -78,9 +78,15 @@ export interface StoredFile {
 /**
  * The manifest, per table.
  *
- * `(ingot_id, name)` is the natural key and carries a unique index, but the
- * primary key is a synthetic id: the aggregate has its own version, and the
- * optimistic-concurrency write guards on a single column.
+ * `(ingot_id, name)` is the natural key, but the primary key is a synthetic
+ * id: the aggregate has its own version, and the optimistic-concurrency write
+ * guards on a single column.
+ *
+ * The natural key carries a plain index rather than a unique one, and that is
+ * load-bearing. Since `IngotTableId.forTable` derived the id from these two
+ * columns, uniqueness here has been the primary key's job — while a second
+ * unique index went on being somewhere a raced insert could raise instead of
+ * diverting to `ON CONFLICT (id)`. See `drizzle/0010_table_natural_key.sql`.
  *
  * There is no foreign key from here to `ingot`. Deleting an ingot deletes its
  * tables in the same transaction, and a cascade would make that implicit
@@ -108,7 +114,7 @@ export const ingotTable = pgTable(
     version: integer('version').notNull(),
   },
   (table) => [
-    unique('ingot_table_name').on(table.ingotId, table.name),
+    index('ingot_table_ingot_name').on(table.ingotId, table.name),
     index('ingot_table_ingot').on(table.ingotId),
   ],
 );
