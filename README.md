@@ -109,6 +109,22 @@ the code already uses. Two of them refuse to boot rather than guess:
   separately because they are two purchases. Both default to deterministic
   offline stand-ins, and each says at boot that it is one.
 
+## CI
+
+`.github/workflows/test.yml` runs on every pull request and every push to
+`main`, in two jobs so that a lint failure and a test failure are two answers
+rather than one: the suite against the compose Postgres and MinIO, and
+`build`, `typecheck` and `lint` beside it. It needs no key and no secret — the
+suite pins the embedder and the summariser to the offline stand-ins and the
+base tier to a temporary directory, so what runs in CI is what runs on a
+laptop.
+
+It starts its dependencies with `bun run db:up` rather than with `services:`
+blocks, because the compose file already knows two things a `services:` block
+would have to be told again — that `docker/initdb.sh` creates and migrates two
+databases rather than one, and that MinIO's bucket is made by a one-shot
+container that exits.
+
 ## Images
 
 Two, both built from the repository root because both consume workspace
@@ -121,11 +137,14 @@ docker build -f apps/ingot-app/Dockerfile -t ingot-app:dev .
 bun run docker:build
 ```
 
-`.github/workflows/images.yml` builds both on every pull request and pushes
-them to `ghcr.io/<owner>/<repo>/{server,app}` from `main` and from a `v*` tag.
-The Helm chart is a job in the same workflow, published only from a tag and
-only once both images are pushed — a chart names its images by its own
-`appVersion`, so one that goes out first names a version that does not exist.
+`.github/workflows/images.yml` pushes both to
+`ghcr.io/<owner>/<repo>/{server,app}` from `main` and from a `v*` tag. It does
+not build them on a pull request: four builds is ten minutes to prove that a
+Dockerfile still works, and most changes do not touch one. The Helm chart is a
+job in the same workflow — rendered on every event, published only from a tag
+and only once both images are pushed, because a chart names its images by its
+own `appVersion` and one that goes out first names a version that does not
+exist.
 
 **The server** is Debian rather than Alpine, and that is not a preference:
 `@duckdb/node-api` is a glibc N-API addon that installs happily on musl and

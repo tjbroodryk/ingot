@@ -790,6 +790,49 @@
   color: var(--color-accent);
 }
 
+/* Sits between the switch and the first table, so it is read before any number. */
+.bench-corpus-meaning {
+  padding: 0 var(--space-8) var(--space-4);
+  font-size: 15px;
+  color: var(--ink-70);
+}
+.bench-corpus-meaning p {
+  margin: 0 0 var(--space-3);
+}
+.bench-corpus-meaning-rule {
+  padding-top: var(--space-3);
+  border-top: var(--rule);
+  color: var(--ink-100);
+}
+.bench-drifts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px var(--space-6);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+}
+.bench-drifts > div {
+  display: contents;
+}
+.bench-drifts dt {
+  color: var(--ink-100);
+}
+.bench-drifts dd {
+  margin: 0;
+}
+/* Stacked, where a term and its gloss side by side would leave neither room. */
+@media (max-width: 620px) {
+  .bench-drifts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .bench-drifts dd {
+    margin-bottom: 10px;
+  }
+}
+
 /* The transcripts: what each column did, one run per row, a trace behind each.
    Everything above is a mean; this is the evidence under it, so it sits below
    the numbers rather than beside them and is loaded on a click. */

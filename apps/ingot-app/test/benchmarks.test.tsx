@@ -196,6 +196,30 @@ describe('the benchmarks page', () => {
     }
   });
 
+  it('offers every published corpus by name', () => {
+    // The switch is the only route to a table that is not the first, so a
+    // corpus published into `results.json` and missing from here is a run
+    // bought and then hidden.
+    if (TABLES.length > 1) for (const table of TABLES) expect(markup).toContain(table.label);
+  });
+
+  it('does not deny a drifted run once one is published', () => {
+    // The copy on the ordinary corpus used to end "No such run is published
+    // here yet", which was true when written and became false the moment a
+    // drifted run was published — and nothing failed. The page renders only
+    // the selected table, so the stale sentence sat on the default view.
+    if (TABLES.some((table) => table.run?.drift)) {
+      expect(markup).not.toContain('No such run is published here yet');
+    }
+  });
+
+  it('says what the corpus it is showing means, above the numbers', () => {
+    // Both corpora are explained, not only the drifted one: a caveat that
+    // shows up only when the numbers are worse is an excuse. This asserts the
+    // default view, which is the one most readers never click away from.
+    if (HAS_RESULTS) expect(markup).toContain('the same world with that assumption taken away');
+  });
+
   /**
    * The workload, on the page and not only in the harness.
    *

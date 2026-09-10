@@ -1,0 +1,83 @@
+# Run the suite, and the checks that do not need a database.
+#
+# The server's half of `bun run test` wants Postgres and MinIO. Those come from
+# `docker-compose.yml` rather than from `services:` blocks here, because the
+# compose file already knows things this one would have to learn again: two
+# databases created by `docker/initdb.sh` rather than one, a bucket made by a
+# one-shot that exits, and fsync off on a database nobody keeps. A `services:`
+# block cannot pass MinIO its `server /data` argument at all.
+#
+# Nothing here needs a key or a network beyond the image pulls.
+# `test/support/environment.ts` pins the embedder and the summariser to the
+# offline stand-ins, `makeWorld` pins the base tier to a temporary directory,
+# and the two tests that boot the real graph are handed their auth settings —
+# so no `.env` is copied and none is read.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── the suite ──────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # The version in `packageManager`, spelled out because setup-bun
+          # takes the latest otherwise — and a runner that upgraded underneath
+          # us is not a thing to find out about from a test failure.
+          bun-version: 1.2.19
+
+      - run: bun install --frozen-lockfile
+
+      # Waits until both are actually serving. The suite applies every
+      # migration itself, every time, so there is no migrate step after this.
+      - name: Start Postgres and MinIO
+        run: bun run db:up
+
+      # `INGOT_TEST_DATABASE_URL` is deliberately not set here. `turbo.json`
+      # declares `globalEnv`, which puts Turbo in strict env mode: anything not
+      # named there is stripped before `bun test` ever sees it, so a value set
+      # on this step would be silently ignored. The suite falls back to
+      # `postgres://ingot:ingot@localhost:5432/ingot_test`, which is exactly
+      # what the compose file just started.
+      - run: bun run test
+
+  # ── everything that needs no database ──────────────────────────────────────
+  # Its own job so that a lint failure and a test failure are two answers
+  # rather than one.
+  #
+  # `build` is in this list because `images.yml` stopped building on pull
+  # requests: without it, nothing on a PR would notice that `next build` or
+  # `tsc -p tsconfig.build.json` had stopped working until the merge.
+  #
+  # `format:check` is not in it. Twenty-eight files in the tree do not satisfy
+  # Prettier today, so adding it would be a permanently red check about
+  # formatting rather than a check anybody asked for. Reformat first, then add
+  # the line.
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run build
+
+      - run: bun run typecheck
+
+      - run: bun run lint

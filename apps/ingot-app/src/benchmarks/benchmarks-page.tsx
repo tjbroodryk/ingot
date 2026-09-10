@@ -168,6 +168,17 @@ export function BenchmarksPage(): ReactNode {
             </div>
           ) : null}
 
+          {/*
+           * What the selected corpus is, said where the reader selects it.
+           *
+           * The corpus section below carries the same distinction in more
+           * detail, and that is too far down to help: by the time a reader
+           * reaches it they have already read a table and formed a view of
+           * what the numbers mean. A switch that silently changes every figure
+           * on the page owes an explanation next to itself.
+           */}
+          {run ? <CorpusMeaning run={run} /> : null}
+
           {run ? (
             <>
               <Tiles table={table} />
@@ -325,6 +336,88 @@ export function BenchmarksPage(): ReactNode {
 
       <SiteFooter />
     </>
+  );
+}
+
+/** The four shape changes `--drift` makes, in the order the corpus makes them. */
+const DRIFTS: readonly [string, string][] = [
+  ['a field renamed', '`owner` becomes `owner_team` partway through the services'],
+  ['a unit changed with the name', '`duration_sec` becomes `duration_ms`, values converted'],
+  ['a type changed', '`assignee` is a string, then `{id, name}`'],
+  ['a key arriving late', 'files gain `service_ref` only after the change'],
+];
+
+/**
+ * What the selected corpus is, and what reading its numbers commits you to.
+ *
+ * Both branches are written, not just the drifted one. A caveat that appears
+ * only when the numbers are worse is an excuse, and the one-shape-per-tool
+ * assumption is the more consequential of the two — it is the case this
+ * project is most flattered by, and it goes unstated everywhere else.
+ */
+function CorpusMeaning({ run }: { run: NonNullable<PublishedTable['run']> }): ReactNode {
+  if (!run.drift) {
+    return (
+      <div className="bench-corpus-meaning">
+        <p>
+          <Prose
+            text={
+              'Every payload here keeps one shape from its first page to its last, and every ' +
+              'page carries byte-identical keys to every other. That is the friendliest ' +
+              'assumption on this page — a corpus that never changes shape is a table ' +
+              'already — and it is the case this project is most flattered by. The drifted ' +
+              'corpus is the same world with that assumption taken away.'
+            }
+          />
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bench-corpus-meaning">
+      <p>
+        <Prose
+          text={
+            'The same world as the ordinary corpus, written down the way a provider actually ' +
+            'writes things down. Two fifths of the way through each listing the shape moves ' +
+            'underneath the agent:'
+          }
+        />
+      </p>
+      <dl className="bench-drifts">
+        {DRIFTS.map(([what, how]) => (
+          <div key={what}>
+            <dt className="label label-sm">{what}</dt>
+            <dd>
+              <Prose text={how} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p>
+        <Prose
+          text={
+            'Nothing is lost. Every record still appears exactly once, so every question is ' +
+            'still answerable — by an adapter that notices. What drift costs is the ' +
+            'commitment: `remember` has to fix a column name and a column type before it has ' +
+            'seen the last page, while a vector index commits to nothing and embeds whatever ' +
+            'bytes arrive. So the expected result is that the Ingot columns fall, the dense ' +
+            'columns stay roughly flat, and the gap this benchmark exists to show gets ' +
+            'smaller. That is the point: a benchmark only ever run over the corpus its own ' +
+            'authors designed is not yet evidence.'
+          }
+        />
+      </p>
+      <p className="bench-corpus-meaning-rule">
+        <Prose
+          text={
+            'These numbers are not comparable with the ordinary corpus, and the harness will ' +
+            'not let you pretend otherwise. Read them beside it, never instead of it.'
+          }
+        />
+      </p>
+    </div>
   );
 }
 
@@ -509,20 +602,18 @@ function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
           <Prose
             text={
               run.drift
-                ? 'This run was bought with `--drift`: partway through each listing a field ' +
-                  'is renamed, a unit changes with the name, a string becomes an object and a ' +
-                  'foreign key arrives late. Every ' +
-                  'record is still present exactly once, so every question above is still ' +
-                  'answerable — but not by anything that fixed its schema on the first page, ' +
-                  'which is the cost Ingot pays and a vector index does not. These numbers ' +
-                  'are not comparable with a run over the ordinary corpus.'
+                ? 'The payloads above are the drifted ones — the samples move shape partway ' +
+                  'through exactly as the listings do, which is why `assignee` reads as an ' +
+                  'object in one and a string in another. Every record is still present ' +
+                  'exactly once, so every question above is still answerable, but not by ' +
+                  'anything that fixed its schema on the first page. What that costs each ' +
+                  'column is the table at the top of this page.'
                 : 'Every payload above also keeps one shape from first page to last, which is ' +
                   'the friendliest assumption on this page: real tools rename fields, change ' +
-                  'units, return an object where a string used to be, and hand back a ' +
-                  'return an object where a string used to be. `--drift` is the run ' +
-                  'that does all of that, and it is the one where committing to a column ' +
+                  'units, and return an object where a string used to be. `--drift` is the ' +
+                  'run that does all of that, and it is the one where committing to a column ' +
                   'mapping before the last page has a price — so it costs Ingot more than it ' +
-                  'costs a vector index. No such run is published here yet.'
+                  'costs a vector index. Switch the corpus at the top of this page to read it.'
             }
           />
         </p>
