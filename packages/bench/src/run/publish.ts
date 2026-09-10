@@ -1,14 +1,19 @@
+import { dirname, join } from 'node:path';
 import { buildCorpus, type ToolResult } from '../corpus/stream.js';
 import { buildWorld } from '../corpus/world.js';
-import type { Category } from '../questions/questions.js';
+import type { Category, Gold } from '../questions/questions.js';
 import { summarise, type ReportHeader, type RunRecord } from './report.js';
 
 /**
- * The shape the site renders.
+ * The summary the site imports and renders.
  *
- * A *summary*, deliberately: aggregates and provenance, never the transcripts.
- * Those are the expensive, private half of a run — they carry every tool call
- * and every returned row — and a published page needs none of it.
+ * Aggregates and provenance, and no transcripts — but no longer because the
+ * transcripts are thrown away. They are published too, into a separate file the
+ * page fetches only when a reader opens a question (see {@link
+ * PublishedTranscripts}). They are kept out of *this* file for one reason:
+ * `results.json` is imported by the page and lands in its JS bundle, and a
+ * run's transcripts are tens of megabytes of returned rows. A summary is what
+ * belongs in the bundle; the rows belong behind a fetch.
  *
  * The whole point of writing this file from the run rather than by hand is
  * that the page cannot drift from the data. A number on `/benchmarks` that
@@ -356,4 +361,230 @@ export function publishable(
     categories: categories.filter((category) => categoryCounts[category] !== undefined),
     adapters,
   };
+}
+
+/**
+ * The cap on a published tool output, in characters.
+ *
+ * Measured over a real eight-adapter run — 264 (adapter, question) pairs and
+ * 1,391 tool calls. The two halves of a transcript cost nothing alike:
+ *
+ *   inputs  — the SQL, the search query    116 KB total,     86 B mean per call
+ *   outputs — the rows the tool returned     22 MB total, 16,851 B mean per call
+ *
+ * So inputs are published whole and outputs are capped, and the cap sets the
+ * file size almost on its own: 300 chars → 0.56 MB, 600 → 0.90 MB, 1,200 →
+ * 1.58 MB. 600 keeps a row or two of returned JSON legible — enough to see that
+ * a query came back with thirty-six rows or with none, which is the whole point
+ * of showing the transcript — while holding the fetched sidecar under a
+ * megabyte.
+ */
+const OUTPUT_CAP = 600;
+
+/**
+ * A tool output, capped with the truncation said out loud.
+ *
+ * The trailing count is not decoration. Without it a reader cannot tell a tool
+ * that genuinely returned this little from one whose result was clipped to fit,
+ * and a transcript a reader cannot trust is not worth publishing. `… N more
+ * characters` says which of the two happened.
+ */
+function cap(output: string): string {
+  if (output.length <= OUTPUT_CAP) return output;
+  const more = output.length - OUTPUT_CAP;
+  return `${output.slice(0, OUTPUT_CAP)}… ${more} more character${more === 1 ? '' : 's'}`;
+}
+
+/**
+ * The transcripts, published beside the summary rather than inside it.
+ *
+ * Every benchmark run records what each column did to answer each question —
+ * the SQL it wrote or the searches it ran, and the rows that came back — and
+ * until now the publishing path threw it away. It is the whole argument on one
+ * screen: the accuracy table asks to be trusted, and a transcript can be
+ * checked. So it is published, but not into {@link PublishedBenchmark}: that
+ * file is imported by the page and a run's transcripts are tens of megabytes,
+ * so they go in this separate file the page fetches only when a reader opens a
+ * question.
+ *
+ * Same schema-versioned, per-table shape as the summary, and that is
+ * load-bearing rather than tidy: the two are published from one run in one
+ * step, keyed by the same label, and merge the same way (see {@link
+ * withTranscripts}). If only the summary merged, publishing the drifted run an
+ * hour after the ordinary one would silently drop the ordinary run's
+ * transcripts while the summary still promised them.
+ */
+export interface PublishedTranscripts {
+  /** This file's own shape, so the page can refuse a stale one. */
+  readonly schema: 1;
+  readonly generatedAt: string | null;
+  /** One entry per published table, keyed by the same label as its summary. */
+  readonly tables: readonly TranscriptTable[];
+}
+
+/** One corpus's transcripts, the questions in id order. */
+export interface TranscriptTable {
+  /** Matches the {@link PublishedTable} label these questions belong to. */
+  readonly label: string;
+  readonly questions: readonly TranscriptQuestion[];
+}
+
+export interface TranscriptQuestion {
+  readonly id: string;
+  readonly question: string;
+  readonly category: Category;
+  /** The gold answer, so a reader can check each column against it in place. */
+  readonly gold: Gold;
+  /** What each column did, in the order the table shows the columns. */
+  readonly adapters: readonly AdapterTranscript[];
+}
+
+export interface AdapterTranscript {
+  readonly adapter: string;
+  readonly answer: unknown;
+  readonly correct: boolean;
+  /** The final request's input tokens: what the model had to read to answer. */
+  readonly contextTokens: number;
+  /**
+   * Wall time for this one run, in milliseconds.
+   *
+   * The summary deliberately omits latency — a mean `ms` measured under
+   * `--concurrency` invites a comparison across columns that it cannot support,
+   * so it is kept off the page. This is the narrower thing it is safe to show:
+   * one recorded trace's own wall time, presented as a property of that trace
+   * rather than as a claim that this adapter is faster than that one. A reader
+   * comparing two traces' `ms` is doing what the summary refuses to publish, and
+   * the number is here for the trace, not for the ranking.
+   */
+  readonly ms: number;
+  readonly calls: readonly PublishedCall[];
+}
+
+export interface PublishedCall {
+  readonly name: string;
+  /**
+   * The tool input, verbatim: the SQL, the search query, the arguments. This
+   * is the interesting half of a call and it is almost free — 86 bytes a call
+   * on average — so none of it is dropped.
+   */
+  readonly input: Record<string, unknown>;
+  /**
+   * What the tool handed back, capped at {@link OUTPUT_CAP} with the truncation
+   * marked. This is what the model actually read, so it is corpus rows and not
+   * a description of them — the cap is a display choice, never redaction.
+   *
+   * Safe to publish only because this corpus is synthetic and public. A harness
+   * pointed at real tool traffic would be putting somebody's rows on a static
+   * page, and this field is exactly where that would happen without anyone
+   * deciding to — so decide it here before turning that harness loose.
+   */
+  readonly output: string;
+  /** This call's own latency, for the trace. See {@link AdapterTranscript.ms}. */
+  readonly ms: number;
+  readonly failed: boolean;
+}
+
+/** The sidecar the site ships with until a run has been published into it. */
+export const NO_TRANSCRIPTS: PublishedTranscripts = {
+  schema: 1,
+  generatedAt: null,
+  tables: [],
+};
+
+/**
+ * One table's transcripts: what each column did to answer each question.
+ *
+ * One repeat per (adapter, question), never all three. A run defaults to three
+ * because agents are stochastic and the ± needs them, but three near-identical
+ * transcripts triple the file and tell a reader nothing the first does not — so
+ * the lowest-numbered repeat is the one published. `label` is passed rather
+ * than derived so it is the same string {@link publishable} wrote for the
+ * summary, since the page joins the two files on it.
+ */
+export function transcriptTable(label: string, rows: readonly RunRecord[]): TranscriptTable {
+  // The lowest repeat of each (adapter, question). At concurrency > 1 rows land
+  // in completion order, so "first seen" is not "repeat 0" — pick by repeat.
+  const chosen = new Map<string, RunRecord>();
+  for (const row of rows) {
+    const key = `${row.adapter} ${row.questionId}`;
+    const held = chosen.get(key);
+    if (!held || row.repeat < held.repeat) chosen.set(key, row);
+  }
+
+  // Columns in the order they first appear, which is the order the table shows
+  // them; questions grouped so each renders as one expandable row.
+  const columnOrder = [...new Set(rows.map((row) => row.adapter))];
+  const byQuestion = new Map<string, RunRecord[]>();
+  for (const row of chosen.values()) {
+    const bucket = byQuestion.get(row.questionId);
+    if (bucket) bucket.push(row);
+    else byQuestion.set(row.questionId, [row]);
+  }
+
+  const questions = [...byQuestion.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, group]): TranscriptQuestion => {
+      const first = group[0] as RunRecord;
+      const adapters = [...group]
+        .sort((a, b) => columnOrder.indexOf(a.adapter) - columnOrder.indexOf(b.adapter))
+        .map(
+          (row): AdapterTranscript => ({
+            adapter: row.adapter,
+            answer: row.answer,
+            correct: row.correct,
+            contextTokens: row.finalInputTokens,
+            ms: row.ms,
+            calls: row.calls.map((call) => ({
+              name: call.name,
+              input: call.input,
+              output: cap(call.output),
+              ms: call.ms,
+              failed: call.failed,
+            })),
+          }),
+        );
+      return { id, question: first.question, category: first.category, gold: first.gold, adapters };
+    });
+
+  return { label, questions };
+}
+
+/**
+ * The transcript sidecar with one more table in it.
+ *
+ * The mirror of {@link withTable}, and it has to stay one. A label already
+ * present is replaced — a re-publish of the same experiment — and every other
+ * table is kept, which is the whole reason this file has a list rather than one
+ * table: the ordinary and drifted runs are published hours apart, and a publish
+ * that dropped the table it was not about would orphan transcripts the summary
+ * still links to.
+ */
+export function withTranscripts(
+  existing: PublishedTranscripts,
+  table: TranscriptTable,
+): PublishedTranscripts {
+  const kept = existing.tables.filter((other) => other.label !== table.label);
+  return {
+    schema: 1,
+    generatedAt: new Date().toISOString(),
+    tables: [...kept, table],
+  };
+}
+
+/**
+ * Where the transcript sidecar goes, derived from where the summary goes.
+ *
+ * `--publish` names `apps/ingot-app/src/benchmarks/results.json`, which the
+ * page imports — so it is bundled, and transcripts must not be. A static export
+ * serves only `public/`, so the sidecar lands there and the page fetches it at
+ * runtime through `BASE_PATH`. Derived from `--publish` rather than given its
+ * own flag so the two files can never be pointed at different runs.
+ *
+ * The `../../public` is the one place the harness knows the app's layout, and
+ * the price of `--publish` staying a single flag. A `--publish` path that is
+ * not the app's `results.json` writes the sidecar somewhere useless rather than
+ * corrupting anything, which is the right way for the coupling to fail.
+ */
+export function transcriptsPathFor(publishPath: string): string {
+  return join(dirname(publishPath), '..', '..', 'public', 'benchmark-transcripts.json');
 }

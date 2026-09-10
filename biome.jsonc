@@ -10,6 +10,10 @@
     // `.next` and `out` are `apps/ingot-app`'s build output — the same kind of
     // thing as `dist`, and linting a bundler's own emitted chunks produces tens
     // of thousands of diagnostics about code nobody wrote.
+    //
+    // `benchmark-transcripts.json` is the published transcript sidecar
+    // `packages/bench` writes: generated data, megabytes of returned rows, and
+    // over Biome's file-size limit by design. It is fetched, never authored.
     "includes": [
       "**",
       "!**/dist",
@@ -18,6 +22,7 @@
       "!**/node_modules",
       "!**/.turbo",
       "!**/coverage",
+      "!**/benchmark-transcripts.json",
       "!bun.lock"
     ]
   },

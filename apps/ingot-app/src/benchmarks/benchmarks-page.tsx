@@ -11,10 +11,10 @@
 // payloads. Splitting the state out would mean two components that have to
 // agree about which run is showing, which is the bug this avoids.
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
+import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // The landing page's layout, used rather than restated, the way `/why` uses
 // it: this page is the same shape of document — a hero and ruled bands.
 import '../landing/landing.css';
@@ -37,8 +37,12 @@ import {
   LIMITS,
   SOURCE_BLURBS,
   SOURCES,
+  TRANSCRIPTS_FILE,
+  type AdapterTranscript,
   type PublishedAdapter,
   type PublishedTable,
+  type PublishedTranscripts,
+  type TranscriptQuestion,
 } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
@@ -178,6 +182,7 @@ export function BenchmarksPage(): ReactNode {
                 are computed only over questions whose answer is a set of records — see the limits
                 below. Context tokens is what the model had to read to answer.
               </p>
+              <Transcripts table={table} />
             </>
           ) : (
             <div className="bench-empty">
@@ -354,11 +359,6 @@ function Provenance({ table }: { table: PublishedTable | null }): ReactNode {
           </div>
         ))}
       </dl>
-      {run.warnings.map((warning) => (
-        <p className="bench-warning" key={warning}>
-          {warning}
-        </p>
-      ))}
     </div>
   );
 }
@@ -860,4 +860,368 @@ function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): Rea
       </table>
     </div>
   );
+}
+
+/** One run — one column's attempt at one question — as the table lists it. */
+interface Run {
+  readonly question: TranscriptQuestion;
+  readonly run: AdapterTranscript;
+}
+
+/**
+ * What each column actually did, one run at a time.
+ *
+ * The section the whole change exists for. Every number above is a mean over
+ * transcripts, and a mean asks to be trusted where a transcript can be checked:
+ * one screen showing the same store answered two ways, one of them silently
+ * wrong, is worth more than a percentage. The table lists the runs; a trace
+ * opens the one a reader wants to check — the SQL it wrote or the searches it
+ * ran, the rows that came back, and the answer it gave against the gold.
+ *
+ * The transcripts are not imported — they are tens of megabytes and would sit
+ * in the bundle for a section most readers never open — so they are fetched,
+ * and only when a reader asks. Nothing is fetched on load; the button below is
+ * the fetch. With no published run there is no table and this renders nothing:
+ * the empty state is method-only, and a control that loads data that will never
+ * arrive is worse than no control.
+ */
+function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [data, setData] = useState<PublishedTranscripts | null>(null);
+  const [trace, setTrace] = useState<Run | null>(null);
+
+  // No run, no transcripts: degrade to nothing rather than to a dead control.
+  if (!table) return null;
+
+  const load = async (): Promise<void> => {
+    if (state === 'loading' || state === 'ready') return;
+    setState('loading');
+    try {
+      // Through BASE_PATH, so the fetch resolves when the site is served from a
+      // subdirectory (GitHub Pages puts a project site under `/<repo>/`). A
+      // root-relative path would 404 there and nowhere a developer would see it.
+      const response = await fetch(`${BASE_PATH}/${TRANSCRIPTS_FILE}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      setData((await response.json()) as PublishedTranscripts);
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  };
+
+  // The sidecar carries every corpus; which one the reader is looking at is the
+  // selected table's label. A run published before transcripts existed, or one
+  // whose sidecar entry has not caught up, simply has no match — said plainly
+  // rather than spun.
+  const forThis = data?.tables.find((one) => one.label === table.label) ?? null;
+
+  // One row per (question, adapter), grouped by question the way the sidecar
+  // already orders them — the order the summary shows the columns in.
+  const runs: readonly Run[] =
+    forThis?.questions.flatMap((question) =>
+      question.adapters.map((run) => ({ question, run })),
+    ) ?? [];
+
+  return (
+    <div className="bench-transcripts">
+      <div className="bench-rule label label-sm">
+        <span>What each column did</span>
+        <span className="bench-rule-line" aria-hidden="true" />
+        <span>Open a trace</span>
+      </div>
+
+      {state === 'idle' ? (
+        <div className="bench-transcripts-prompt">
+          <p>
+            Every number above is a mean over transcripts, and a transcript can be checked where a
+            mean has to be trusted. Load them to see what each column actually did to answer a
+            question — the SQL it wrote or the searches it ran, the rows that came back, and the
+            answer it gave.
+          </p>
+          <button className="btn-outline" type="button" onClick={() => void load()}>
+            Show the transcripts
+          </button>
+        </div>
+      ) : null}
+
+      {state === 'loading' ? <p className="bench-note">Loading the transcripts…</p> : null}
+
+      {state === 'error' ? (
+        <p className="bench-note">
+          The transcripts could not be loaded. They are a separate file published beside the
+          numbers, and a run from before transcript publishing has none to show.
+        </p>
+      ) : null}
+
+      {state === 'ready' && runs.length === 0 ? (
+        <p className="bench-note">No transcripts have been published for this corpus yet.</p>
+      ) : null}
+
+      {runs.length > 0 ? <RunsTable runs={runs} onTrace={setTrace} /> : null}
+
+      <TraceDialog target={trace} onClose={() => setTrace(null)} />
+    </div>
+  );
+}
+
+/** A latency, in the units it reads best in — ms up to a second, then seconds. */
+function formatMs(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+}
+
+/** Ingot's own surfaces, set in bold so the eye finds the thing under test. */
+function isProduct(adapter: string): boolean {
+  return adapter.startsWith('ingot');
+}
+
+/** The runs, flat, with a trace one click away from each. */
+function RunsTable({
+  runs,
+  onTrace,
+}: {
+  runs: readonly Run[];
+  onTrace: (run: Run) => void;
+}): ReactNode {
+  const correct = runs.filter(({ run }) => run.correct).length;
+
+  return (
+    <>
+      <p className="bench-runs-summary label label-sm">
+        {runs.length} runs shown <span aria-hidden="true">·</span> {correct} correct{' '}
+        <span aria-hidden="true">·</span> {runs.length - correct} wrong
+      </p>
+      <div className="bench-scroll">
+        <table className="bench-runs">
+          <thead>
+            <tr>
+              <th scope="col">run</th>
+              <th scope="col">class</th>
+              <th scope="col">adapter</th>
+              <th scope="col">result</th>
+              <th scope="col" className="bench-runs-num">
+                calls
+              </th>
+              <th scope="col" className="bench-runs-num">
+                tokens
+              </th>
+              <th scope="col" className="bench-runs-num">
+                time
+              </th>
+              <th scope="col">
+                <span className="bench-sr">trace</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map(({ question, run }) => (
+              <tr key={`${question.id} ${run.adapter}`}>
+                <th scope="row" className="bench-runs-id">
+                  {question.id}
+                </th>
+                <td className="bench-runs-class label label-sm">{question.category}</td>
+                <td>
+                  <code className={isProduct(run.adapter) ? 'bench-runs-adapter-key' : undefined}>
+                    {run.adapter}
+                  </code>
+                </td>
+                <td>
+                  <Verdict correct={run.correct} />
+                </td>
+                <td className="bench-runs-num">{run.calls.length}</td>
+                <td className="bench-runs-num">{run.contextTokens.toLocaleString('en-GB')}</td>
+                <td className="bench-runs-num">{formatMs(run.ms)}</td>
+                <td className="bench-runs-trace">
+                  <button
+                    type="button"
+                    className="bench-trace-btn"
+                    onClick={() => onTrace({ question, run })}
+                  >
+                    Trace <span aria-hidden="true">↗</span>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/** Pass or fail as a badge: pass is filled, fail is outlined — a fact, not a grade. */
+function Verdict({ correct }: { correct: boolean }): ReactNode {
+  return (
+    <span className={correct ? 'bench-badge bench-badge-pass' : 'bench-badge bench-badge-fail'}>
+      {correct ? 'pass' : 'fail'}
+    </span>
+  );
+}
+
+/**
+ * One run's trace, in a modal.
+ *
+ * A native `<dialog>` rather than a hand-rolled overlay: `showModal()` gives the
+ * Escape key, the focus move, the inert background and the top-layer stacking
+ * for free, and this is a static export with no room for a modal library. The
+ * element is always in the tree so the ref is stable; an effect opens and
+ * closes it as the selection changes, and its contents render only when there
+ * is a run to show, so the empty page ships no trace markup.
+ */
+function TraceDialog({ target, onClose }: { target: Run | null; onClose: () => void }): ReactNode {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    if (target && !element.open) element.showModal();
+    if (!target && element.open) element.close();
+    // A modal over a scrollable page that still scrolls behind it is the one
+    // thing `showModal` does not fix on its own.
+    document.body.style.overflow = target ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [target]);
+
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard way out is Escape, which `showModal()` handles natively and fires through `onClose`; the onClick below is the mouse-only backdrop convenience on top of it.
+    <dialog
+      ref={ref}
+      className="bench-trace"
+      aria-labelledby="bench-trace-q"
+      onClose={onClose}
+      // A click that lands on the dialog itself rather than on its content is a
+      // click on the backdrop, and the expected way out of a modal.
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      {target ? <Trace run={target} onClose={onClose} /> : null}
+    </dialog>
+  );
+}
+
+/** The trace itself: the question, what it cost, the calls in order, the answer. */
+function Trace({ run: { question, run }, onClose }: { run: Run; onClose: () => void }): ReactNode {
+  const stats: readonly [string, ReactNode][] = [
+    ['calls', run.calls.length],
+    ['tokens read', run.contextTokens.toLocaleString('en-GB')],
+    ['wall time', formatMs(run.ms)],
+    ['result', <Verdict key="v" correct={run.correct} />],
+  ];
+
+  return (
+    <div className="bench-trace-inner">
+      <button type="button" className="bench-trace-close" onClick={onClose} aria-label="Close trace">
+        <span aria-hidden="true">×</span>
+      </button>
+
+      <header className="bench-trace-card">
+        <div className="bench-trace-kicker label label-sm">
+          Question <span aria-hidden="true">·</span> Class: {question.category}
+        </div>
+        <h3 className="bench-trace-q" id="bench-trace-q">
+          {question.question}
+        </h3>
+        <dl className="bench-trace-stats">
+          {stats.map(([term, value]) => (
+            <div key={term}>
+              <dt className="label label-sm">{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </header>
+
+      <div className="bench-rule label label-sm bench-trace-rule">
+        <span>Tool calls in order</span>
+        <span className="bench-rule-line" aria-hidden="true" />
+      </div>
+
+      {run.calls.length === 0 ? (
+        <p className="bench-note bench-trace-empty">
+          No tool calls — {run.adapter} answered from the prompt.
+        </p>
+      ) : (
+        <ol className="bench-trace-calls">
+          {run.calls.map((call, index) => (
+            <li
+              className={call.failed ? 'bench-call bench-call-failed' : 'bench-call'}
+              // biome-ignore lint/suspicious/noArrayIndexKey: the transcript is ordered and immutable — position in the call list is the identity of a call, and nothing is inserted, removed or reordered.
+              key={index}
+            >
+              <div className="bench-call-head">
+                <span className="bench-call-idx label label-sm">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <code className="bench-call-name">{call.name}</code>
+                {call.failed ? <span className="bench-call-tag label label-sm">failed</span> : null}
+                <span className="bench-call-ms label label-sm">{formatMs(call.ms)}</span>
+              </div>
+              <pre className="bench-call-io">
+                <code>{formatInput(call.input)}</code>
+              </pre>
+              <pre className="bench-call-io bench-call-out">
+                <code>{call.output}</code>
+              </pre>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="bench-trace-foot">
+        <div>
+          <div className="label label-sm">answer given</div>
+          <p className={run.correct ? 'bench-trace-answer' : 'bench-trace-answer bench-trace-wrong'}>
+            {summariseAnswer(run.answer)}
+          </p>
+        </div>
+        <div>
+          <div className="label label-sm">expected</div>
+          <p className="bench-trace-answer">{summariseAnswer(question.gold)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A gold or an answer as a short line.
+ *
+ * Gold is `{ kind, value | values }` and an answer is whatever the model
+ * submitted — usually the same shape, sometimes not. Both are rendered by the
+ * same reader-facing rule so a question's gold and a column's answer can be
+ * compared at a glance, which is the whole reason they sit on the same row.
+ */
+function summariseAnswer(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.length === 0 ? '∅' : value.map(String).join(', ');
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.values)) {
+    return record.values.length === 0 ? '∅' : (record.values as unknown[]).map(String).join(', ');
+  }
+  if ('value' in record) return String(record.value);
+  return JSON.stringify(value);
+}
+
+/**
+ * A tool input as the reader would say it out loud.
+ *
+ * A lone string argument — the SQL, the search query — is the whole call and
+ * reads best unadorned; anything with more than one field keeps its keys so a
+ * `k` or a `limit` beside the query is not lost. Verbatim either way: this is
+ * the half of the transcript the harness publishes uncapped.
+ */
+function formatInput(input: Record<string, unknown>): string {
+  const keys = Object.keys(input);
+  const only = keys[0];
+  if (keys.length === 1 && only !== undefined && typeof input[only] === 'string') {
+    return input[only] as string;
+  }
+  return JSON.stringify(input, null, 2);
 }

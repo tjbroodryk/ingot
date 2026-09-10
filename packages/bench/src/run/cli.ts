@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { buildModel, reasoningOptions, type Provider } from '../agent/model.js';
 import { agentMapping } from '../adapters/agent-mapping.js';
@@ -27,9 +27,14 @@ import { scoreRun } from '../score/score.js';
 import { renderComparison, renderLine, renderReport, type RunRecord } from './report.js';
 import {
   NO_RESULTS,
+  NO_TRANSCRIPTS,
   publishable,
+  transcriptsPathFor,
+  transcriptTable,
   withTable,
+  withTranscripts,
   type PublishedBenchmark,
+  type PublishedTranscripts,
 } from './publish.js';
 import { pool } from './pool.js';
 import {
@@ -948,16 +953,53 @@ async function emit(
       // No file yet, or an unreadable one. Either way there is nothing to keep.
     }
 
-    const merged = withTable(existing, publishable(meta, rows, CATEGORIES));
+    const table = publishable(meta, rows, CATEGORIES);
+    const merged = withTable(existing, table);
     // Pretty-printed and newline-terminated because it is a tracked file that
     // people will read in a diff: a one-line JSON blob makes every run look
     // like a total rewrite.
     await writeFile(publish, `${JSON.stringify(merged, null, 2)}\n`);
     console.log(
       `published: ${publish} — ${merged.tables.length} table(s): ` +
-        merged.tables.map((table) => table.label).join(', '),
+        merged.tables.map((one) => one.label).join(', '),
     );
+
+    await publishTranscripts(publish, table.label, rows);
   }
+}
+
+/**
+ * The transcripts, into the file the page fetches rather than the one it imports.
+ *
+ * Written in the same step as the summary and merged the same way — a table
+ * already present under this label is replaced, every other kept — because the
+ * summary and the transcripts are two halves of one publish keyed on one label,
+ * and a re-publish of the drifted run must not orphan the ordinary run's
+ * transcripts. Keyed on `table.label` for exactly that reason: it is the string
+ * the summary was just written with, so the page joins the two files on it.
+ *
+ * A file that cannot be read or parsed is treated as absent rather than fatal,
+ * the same as the summary: the first publish into a fresh checkout is that case.
+ */
+async function publishTranscripts(
+  publishPath: string,
+  label: string,
+  rows: readonly RunRecord[],
+): Promise<void> {
+  const path = transcriptsPathFor(publishPath);
+
+  let existing = NO_TRANSCRIPTS;
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as PublishedTranscripts;
+    if (parsed.schema === 1 && Array.isArray(parsed.tables)) existing = parsed;
+  } catch {
+    // No file yet, or an unreadable one. Nothing to keep either way.
+  }
+
+  const merged = withTranscripts(existing, transcriptTable(label, rows));
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(merged, null, 2)}\n`);
+  console.log(`transcripts: ${path} — ${merged.tables.length} table(s)`);
 }
 
 /**
