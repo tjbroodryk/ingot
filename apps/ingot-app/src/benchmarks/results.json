@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generatedAt": "2026-09-09T12:50:44.416Z",
+  "generatedAt": "2026-09-10T09:23:55.363Z",
   "tables": [
     {
       "label": "ordinary corpus",
@@ -267,6 +267,274 @@
             "join": 1,
             "semantic": 1,
             "multi-hop": 0.8888888888888888
+          }
+        }
+      ]
+    },
+    {
+      "label": "drifted",
+      "run": {
+        "runId": "combined-seed1-2026-09-09T23-13-15-101Z",
+        "seed": 1,
+        "provider": "foundry-gpt",
+        "model": "gpt-5-mini",
+        "effort": "high",
+        "thinking": true,
+        "repeats": 3,
+        "maxToolCalls": 12,
+        "embedder": "text-embedding-3-small",
+        "mapping": "authored",
+        "logs": 0,
+        "drift": true,
+        "questions": 33,
+        "categoryCounts": {
+          "aggregate": 6,
+          "absence": 3,
+          "ordering": 3,
+          "join": 12,
+          "semantic": 6,
+          "multi-hop": 3
+        },
+        "warnings": [
+          "Corpus was rendered with schema drift: a field renamed, a unit changed with it, a string that becomes an object, and a foreign key that arrives late. Every world record is still present exactly once, so every question remains answerable — but not by an adapter that fixed its schema on the first page. These numbers are not comparable with a run over the ordinary corpus.",
+          "This table was assembled from 3 runs with identical settings — same seed, model, provider, effort, budget and repeats. `ingot-mcp`, `control-same-store-top-k`, `ingot-rest`, `vector`, `pinecone` from 2026-09-09T14-06-34-721Z-seed1; `turbopuffer`, `hyperspell` from 2026-09-09T20-24-04-436Z-seed1; `raw-context` from 2026-09-09T21-56-02-428Z-seed1. Everything that decides a number was held equal, but the runs were bought at different times, so a column is only as comparable as the provider was stable between them.",
+          "The rows behind this table also hold `control-same-store-top-k-rest`, which is not shown. Provenance above may still name that column: it was bought, and the transcript keeps it. Leaving it out of the table is a decision about what to publish, not about what happened."
+        ]
+      },
+      "corpus": {
+        "results": 19,
+        "records": 501,
+        "bytes": 103900,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "perResult": 8,
+            "paginated": true,
+            "bytes": 581,
+            "largest": 581,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}"
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "perResult": 40,
+            "paginated": true,
+            "bytes": 7248,
+            "largest": 3660,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}"
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 5,
+            "records": 120,
+            "perResult": 25,
+            "paginated": true,
+            "bytes": 37335,
+            "largest": 8010,
+            "sample": "{\n  \"ref\": \"pr:1400\",\n  \"number\": 1400,\n  \"title\": \"document the retry path\",\n  \"author\": \"akiyama\",\n  \"state\": \"open\",\n  \"created_at\": \"2026-05-26T18:00:00.000Z\",\n  \"merged_at\": null,\n  \"additions\": 469,\n  \"deletions\": 88,\n  \"files\": [\n    \"src/auth/cache.ts\",\n    \"src/delivery/config.ts\",\n    \"src/notify/client.ts\",\n    \"src/search/schema.ts\"\n  ],\n  \"labels\": []\n}"
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 6,
+            "records": 226,
+            "perResult": 40,
+            "paginated": true,
+            "bytes": 38572,
+            "largest": 6917,
+            "sample": "{\n  \"ref\": \"ci:run-0001\",\n  \"id\": \"run-0001\",\n  \"pr\": 1400,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 854,\n  \"started_at\": \"2026-05-26T18:00:00.000Z\",\n  \"failed_step\": null\n}"
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "perResult": 10,
+            "paginated": true,
+            "bytes": 4438,
+            "largest": 3144,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}"
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 3,
+            "records": 60,
+            "perResult": 20,
+            "paginated": true,
+            "bytes": 15726,
+            "largest": 5490,
+            "sample": "{\n  \"ref\": \"iss:ENG-200\",\n  \"id\": \"ENG-200\",\n  \"title\": \"refactor the retry path in billing\",\n  \"service\": \"billing\",\n  \"state\": \"open\",\n  \"assignee\": \"kowalski\",\n  \"created_at\": \"2026-05-13T17:00:00.000Z\",\n  \"body\": \"Reported against billing. Needs a look before the next release.\"\n}"
+          }
+        ]
+      },
+      "categories": [
+        "aggregate",
+        "absence",
+        "ordering",
+        "join",
+        "semantic",
+        "multi-hop"
+      ],
+      "adapters": [
+        {
+          "name": "ingot-mcp",
+          "runs": 99,
+          "accuracy": 0.6868686868686869,
+          "stderr": 0.04661036580726,
+          "f1": 0.7461279461279462,
+          "evidenceRecall": 0.8668717948717949,
+          "evidencePrecision": 0.3918087887047836,
+          "toolCalls": 3.1616161616161618,
+          "contextTokens": 5210,
+          "failures": 0,
+          "byCategory": {
+            "aggregate": 0.5,
+            "absence": 0.2222222222222222,
+            "ordering": 0.6666666666666666,
+            "join": 0.6944444444444444,
+            "semantic": 1,
+            "multi-hop": 0.8888888888888888
+          }
+        },
+        {
+          "name": "control-same-store-top-k",
+          "runs": 99,
+          "accuracy": 0.35353535353535354,
+          "stderr": 0.04804754666752025,
+          "f1": 0.44334621363606863,
+          "evidenceRecall": 0.7715384615384615,
+          "evidencePrecision": 0.08351281669395509,
+          "toolCalls": 7.242424242424242,
+          "contextTokens": 29349,
+          "failures": 0,
+          "byCategory": {
+            "aggregate": 0.1111111111111111,
+            "absence": 0.2222222222222222,
+            "ordering": 0.3333333333333333,
+            "join": 0.25,
+            "semantic": 1,
+            "multi-hop": 0.1111111111111111
+          }
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 99,
+          "accuracy": 0.8080808080808081,
+          "stderr": 0.03957938139025311,
+          "f1": 0.8727272727272728,
+          "evidenceRecall": 0.946871794871795,
+          "evidencePrecision": 0.4000295341693785,
+          "toolCalls": 2.7777777777777777,
+          "contextTokens": 3528,
+          "failures": 0,
+          "byCategory": {
+            "aggregate": 1,
+            "absence": 0.3333333333333333,
+            "ordering": 0.6666666666666666,
+            "join": 0.75,
+            "semantic": 0.9444444444444444,
+            "multi-hop": 1
+          }
+        },
+        {
+          "name": "vector",
+          "runs": 99,
+          "accuracy": 0.7070707070707071,
+          "stderr": 0.04573990171415522,
+          "f1": 0.7694153161593522,
+          "evidenceRecall": 0.9088547008547009,
+          "evidencePrecision": 0.043109270585891,
+          "toolCalls": 7.454545454545454,
+          "contextTokens": 39073,
+          "failures": 9,
+          "byCategory": {
+            "aggregate": 0.6111111111111112,
+            "absence": 0.5555555555555556,
+            "ordering": 0.3333333333333333,
+            "join": 0.7777777777777778,
+            "semantic": 1,
+            "multi-hop": 0.5555555555555556
+          }
+        },
+        {
+          "name": "pinecone",
+          "runs": 99,
+          "accuracy": 0.6767676767676768,
+          "stderr": 0.047006682143746474,
+          "f1": 0.7941153749531645,
+          "evidenceRecall": 0.8827008547008548,
+          "evidencePrecision": 0.04064635273243581,
+          "toolCalls": 7.6767676767676765,
+          "contextTokens": 44427,
+          "failures": 0,
+          "byCategory": {
+            "aggregate": 0.6666666666666666,
+            "absence": 0.6666666666666666,
+            "ordering": 0.1111111111111111,
+            "join": 0.6666666666666666,
+            "semantic": 0.9444444444444444,
+            "multi-hop": 0.7777777777777778
+          }
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 99,
+          "accuracy": 0.7070707070707071,
+          "stderr": 0.04573990171415522,
+          "f1": 0.8040802167209095,
+          "evidenceRecall": 0.9021880341880342,
+          "evidencePrecision": 0.04294240575669412,
+          "toolCalls": 7.505050505050505,
+          "contextTokens": 43679,
+          "failures": 0,
+          "byCategory": {
+            "aggregate": 0.5555555555555556,
+            "absence": 0.6666666666666666,
+            "ordering": 0.2222222222222222,
+            "join": 0.7777777777777778,
+            "semantic": 1,
+            "multi-hop": 0.6666666666666666
+          }
+        },
+        {
+          "name": "hyperspell",
+          "runs": 89,
+          "accuracy": 0.7078651685393258,
+          "stderr": 0.048202763651959996,
+          "f1": 0.764604620548757,
+          "evidenceRecall": 0.8827300150829562,
+          "evidencePrecision": 0.04276351704268034,
+          "toolCalls": 7.348314606741573,
+          "contextTokens": 89923,
+          "failures": 2,
+          "byCategory": {
+            "aggregate": 0.5,
+            "absence": 0.5,
+            "ordering": 0.3333333333333333,
+            "join": 0.84375,
+            "semantic": 1,
+            "multi-hop": 0.5
+          }
+        },
+        {
+          "name": "raw-context",
+          "runs": 99,
+          "accuracy": 0.898989898989899,
+          "stderr": 0.030286020461497483,
+          "f1": 0.9282867894632602,
+          "evidenceRecall": null,
+          "evidencePrecision": null,
+          "toolCalls": 0,
+          "contextTokens": 34275,
+          "failures": 1,
+          "byCategory": {
+            "aggregate": 0.7777777777777778,
+            "absence": 0.6666666666666666,
+            "ordering": 1,
+            "join": 1,
+            "semantic": 1,
+            "multi-hop": 0.6666666666666666
           }
         }
       ]

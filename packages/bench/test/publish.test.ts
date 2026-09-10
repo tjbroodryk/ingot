@@ -331,6 +331,26 @@ describe('transcriptTable', () => {
     expect(question?.adapters[0]?.answer).toBe(0);
     expect(question?.adapters[0]?.correct).toBe(false);
   });
+
+  test('carries the run’s tokens and wall time, and each call’s latency', () => {
+    const table = transcriptTable('ordinary corpus', [
+      row({
+        adapter: 'ingot',
+        questionId: 'q-001',
+        finalInputTokens: 1410,
+        ms: 203,
+        calls: [call({ ms: 142 })],
+      }),
+    ]);
+
+    const adapter = table.questions[0]?.adapters[0];
+    // Tokens are already a published, comparable metric; ms is the one the
+    // summary withholds, shown here as one trace's own latency. Both come off
+    // the row rather than being recomputed.
+    expect(adapter?.contextTokens).toBe(1410);
+    expect(adapter?.ms).toBe(203);
+    expect(adapter?.calls[0]?.ms).toBe(142);
+  });
 });
 
 /**
@@ -350,7 +370,9 @@ describe('withTranscripts', () => {
         question: 'how many?',
         category: 'aggregate' as Category,
         gold: { kind: 'number', value: 1 } as const,
-        adapters: [{ adapter: 'ingot', answer, correct: true, calls: [] }],
+        adapters: [
+          { adapter: 'ingot', answer, correct: true, contextTokens: 800, ms: 120, calls: [] },
+        ],
       },
     ],
   });
