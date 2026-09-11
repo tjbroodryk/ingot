@@ -37,6 +37,7 @@ describe('the background concurrency', () => {
         INGOT_EMBEDDINGS_CONCURRENCY: '8',
         INGOT_RECEIPTS_CONCURRENCY: '4',
         INGOT_DELIVERIES_CONCURRENCY: '16',
+        INGOT_FILES_CONCURRENCY: '3',
       }),
     );
 
@@ -44,6 +45,7 @@ describe('the background concurrency', () => {
       [BackgroundKind.Embeddings]: 8,
       [BackgroundKind.Receipts]: 4,
       [BackgroundKind.Deliveries]: 16,
+      [BackgroundKind.Files]: 3,
     });
   });
 

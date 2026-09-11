@@ -589,6 +589,172 @@ export interface DeleteResult {
   readonly truncated: boolean;
 }
 
+// ── files ─────────────────────────────────────────────────────────────────
+
+/**
+ * What a document has become.
+ *
+ * **A row in `ingot_files` only ever holds a terminal one.** Rows here are
+ * append-only — that is what the base tier being Parquet buys and costs — so a
+ * status that moved through `pending` and `parsing` would mean tombstoning and
+ * re-appending a row twice per upload, for two states nobody can act on.
+ *
+ * So the row is written once, when the work is finished, and `/file` reports
+ * `Pending` in its own response because that is the only honest thing it can
+ * say. A caller polling `query` gets no rows while a document is in flight and
+ * exactly one when it lands, whichever way it landed. That is the same contract
+ * `receipt: "summary"` already makes, for the same reason.
+ *
+ * What is in flight is visible to an operator instead, as `ingot_files_pending`
+ * and `ingot_files_abandoned` — kept apart because they mean opposite things.
+ */
+export enum FileStatus {
+  /** Accepted, stored and queued. Nothing has read the bytes yet. */
+  Pending = 'pending',
+  /** Chunks are written and queryable. Embedding may still be catching up. */
+  Ready = 'ready',
+  /** Parsing or extraction failed too often. `error` says what happened. */
+  Failed = 'failed',
+}
+
+/**
+ * What a chunk is a chunk of.
+ *
+ * A column rather than a table per format, because a caller asking "what do my
+ * documents say about X" does not know which of them was a PDF — and making
+ * them know is the thing one table exists to prevent. Every strategy in
+ * `Chunker` emits one of these.
+ */
+export enum ChunkKind {
+  /** Running text: a paragraph run, a section body, a page of a PDF. */
+  Prose = 'prose',
+  /** One slide, with its speaker notes. Never split, never merged. */
+  Slide = 'slide',
+  /** A table lifted out of a document, rendered as text. */
+  Table = 'table',
+  /** A fenced or indented code block, kept whole where it fits. */
+  Code = 'code',
+}
+
+/**
+ * How one extracted column is filled.
+ *
+ * `ColumnMapping` with a third way to fill it. `from` and `value` mean exactly
+ * what they mean at `/add` — a path into the parsed document and a constant —
+ * and `describe` is the new one: a sentence for a model, used when the source
+ * is prose and there is no path to write.
+ *
+ * The type is declared here as it is everywhere else in this service, and that
+ * is the point of routing extraction through the same mapping. A model that
+ * answers `"thirty"` for an `INTEGER` fails the same coercion a bad `/add`
+ * fails, rather than quietly making the column a `VARCHAR` on Tuesday.
+ */
+export interface ExtractMapping {
+  readonly from?: string;
+  readonly value?: string | number | boolean | null;
+  /**
+   * What this column is, in words, for a model to fill in from prose.
+   *
+   * Ignored when `from` is given: a tabular file has real field names and needs
+   * no model. Required when it is not, because a column a model is asked to
+   * fill with nothing said about it is a column it invents.
+   */
+  readonly describe?: string;
+  readonly type: ColumnType;
+  readonly embed?: boolean;
+}
+
+/**
+ * Pulling typed rows out of a document, into a table of the caller's own.
+ *
+ * The shape is `AddBody`'s mapping half, deliberately: what happens after a
+ * document has been turned into JSON is exactly `/add`, and reusing the mapping
+ * means reusing its paths, its coercion and its schema evolution rather than
+ * writing a second, subtly different projection.
+ *
+ * Where the JSON comes from is what differs. A spreadsheet already has rows and
+ * field names, so `from` paths resolve against them and **no model is called at
+ * all**. Prose has neither, so a model is handed the declared columns as a
+ * schema it is held to, and what it returns is projected through the same
+ * mapping.
+ */
+export interface FileExtraction {
+  readonly table: string;
+  /** A path to fan out on, as at `/add`. Defaults to one row per document. */
+  readonly rows?: string;
+  readonly key?: readonly string[];
+  readonly columns: Readonly<Record<string, ExtractMapping>>;
+}
+
+/**
+ * The JSON half of a `/file` upload. The bytes are the other half.
+ *
+ * Every field is optional, and that is the default worth having: a bare upload
+ * with no body parses, chunks and embeds, which is the thing almost everybody
+ * wants. `extract` is the rung that costs a model, and it is opt-in for the
+ * reason `receipt` is.
+ */
+export interface FileBody {
+  /** The caller's own handle for this document — a job id, a ticket. */
+  readonly externalId?: string;
+  /**
+   * What this document is, when the upload itself cannot say.
+   *
+   * The type is otherwise taken from the part's `Content-Type`, or from the
+   * filename when that is `application/octet-stream` — which is what a great
+   * many HTTP clients send for everything. Neither works for a document that
+   * arrives as a stream, or under a generated name, or from a proxy that
+   * flattened the type on the way through. This is the way to say it outright.
+   *
+   * It is also how to correct a file whose name lies: a `.txt` export that is
+   * really CSV parses as prose until somebody says otherwise.
+   *
+   * **It overrides what the upload declares, never what the bytes say.** The
+   * type is still checked against the content, and a mismatch is still refused —
+   * this changes which of the three sources is believed, not whether the claim
+   * is checked. A caller who could name a decoder for arbitrary bytes would be
+   * the thing that check exists to prevent.
+   */
+  readonly mediaType?: string;
+  /** Typed rows to pull out of it, into a table of your own. */
+  readonly extract?: FileExtraction;
+  /**
+   * Roughly how large a chunk should be, in tokens.
+   *
+   * A knob rather than a strategy. Which boundary a document is split on is
+   * decided by what it *is* — a slide is a slide — but how much text belongs in
+   * one embedding is a function of the embedder and of what the caller intends
+   * to put back into a model's context, and this service knows neither.
+   */
+  readonly chunkTokens?: number;
+  /** How much of the previous chunk to repeat. Ignored where a format's own
+   * boundaries are authoritative, since a slide does not overlap the next. */
+  readonly overlapTokens?: number;
+}
+
+/**
+ * The promissory note `/file` hands back.
+ *
+ * Nothing here is the document's content, and nothing can be: parsing is
+ * seconds to minutes, and this returns the moment the bytes are safely stored
+ * and the work is queued. What it gives instead is the two queries that report
+ * on it — the same promise a receipt makes, in the same shape.
+ */
+export interface FileResult {
+  readonly fileId: string;
+  readonly filename: string;
+  readonly mediaType: string;
+  readonly bytes: number;
+  /** Always `pending` here. Running `query` is what says it moved on. */
+  readonly status: FileStatus;
+  /** A SELECT returning this document's row in `ingot_files`. */
+  readonly query: string;
+  /** A SELECT returning its chunks, once there are any. */
+  readonly chunksQuery: string;
+  /** Where `extract` is putting rows, when one was asked for. */
+  readonly extractingInto?: string;
+}
+
 // ── accounts ──────────────────────────────────────────────────────────────
 
 export interface Account {

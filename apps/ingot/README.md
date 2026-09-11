@@ -66,6 +66,7 @@ named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 | `POST /:account/create`                 | Cast an ingot. `retainFor` sets a retention.                         |
 | `GET /:account/ingots`                  | List them.                                                           |
 | `POST /:account/:ingot/add`             | Store a tool result.                                                 |
+| `POST /:account/:ingot/file`            | Store a document. Multipart. Chunks and rows follow.                 |
 | `POST /:account/:ingot/query`           | DuckDB SQL, plain language, or both.                                 |
 | `GET /:account/:ingot/info`             | The information schema, settings included.                           |
 | `POST /:account/:ingot/config`          | Set where receipts are delivered. A patch; returns the whole config. |
@@ -165,6 +166,362 @@ introduce columns — added _optional_, since the Parquet already written lacks
 them — but may not change an existing column's type, and may not change the
 key. Both are a 409 naming what moved, and the way out is
 `DELETE …/tables/:table`.
+
+## Documents
+
+`/file` is `/add` with three things in front of it: **bytes → structure →
+JSON**. Everything after that already existed, and that is the whole design —
+one write path, and no read paths at all.
+
+```bash
+curl -sX POST $A/$ING/file -H "authorization: Bearer $KEY" \
+  -F 'file=@handbook.md;type=text/markdown'
+```
+
+The dashboard has a panel for the same thing — pick a memory, choose a file,
+and it watches the row until the document is `ready` or `failed`.
+
+```jsonc
+{
+  "fileId": "file_e0c60d05…",
+  "status": "pending",
+  "query": "SELECT … FROM \"ingot_files\" WHERE \"file_id\" = 'file_e0c60d05…'",
+  "chunksQuery": "SELECT … FROM \"ingot_file_chunks\" WHERE \"file_id\" = 'file_e0c60d05…'",
+}
+```
+
+**It cannot be synchronous.** Parsing a two-hundred-page PDF is seconds to
+minutes, `Dispatcher.send` wraps every command in a transaction, and the pool
+holds ten connections — so a handler that parsed would hold a tenth of the pool
+for the length of a document and starve the queries this service exists to
+answer, while presenting as a database problem. So it is the same three-step
+split the receipt, embedding and delivery workers use, for the fourth time:
+claim, parse with no connection held, write. What comes back is a promissory
+note, which is what `receipt: "summary"` already hands back and for the same
+reason.
+
+The bytes go to the object store beside the Parquet. A fifty-megabyte deck in a
+`jsonb` column is exactly the failure `INGOT_STORAGE` refuses to boot without a
+decision about — and keeping the original is what will make re-chunking
+possible, since every chunking decision is baked into rows at write time and
+rows are append-only.
+
+### Two more ordinary tables
+
+`ingot_files` is a row per document; `ingot_file_chunks` is a row per chunk, keyed on
+`(file_id, ordinal)`. Both are **ordinary tables in your memory**, which is the
+same argument `ingot_receipts` makes and the reason this feature is small: they
+get the overlay, the embedding sweeper, the roll-up into Parquet, tombstones,
+`/query` over both tiers and deletion with the memory, none of it written a
+second time.
+
+A row in `ingot_files` only ever holds a terminal status — `ready` or `failed`.
+Rows are append-only, so a status that moved through `pending` and `parsing`
+would mean tombstoning and re-appending a row twice per upload for two states
+nobody can act on. While a document is in flight there is no row; `/file` says
+`pending` in its own response because that is the only honest thing it can say.
+What is in flight is `ingot_files_pending` and `ingot_files_abandoned` instead,
+kept apart because they mean opposite things.
+
+An abandoned document still gets a row, which is the one place this improves on
+a receipt: `status` is `failed`, `error` says what happened, and nobody has to
+guess whether their upload is slow or dead.
+
+### Chunking, which is per format
+
+The rule, and it is the whole of it: **split on the strongest boundary the
+format actually gives you, and fall back exactly one level at a time.**
+
+| format         | boundary                       |                                                                     |
+| -------------- | ------------------------------ | ------------------------------------------------------------------- |
+| `.pptx`        | one slide, always              | A slide is an authored unit. Never split one, never merge two.      |
+| `.docx` `.md` `.html` | the heading hierarchy   | Explicit and reliable, and the path is carried into the text.       |
+| `.pdf`         | the page, then the paragraph   | Pages are real; headings are guessed from font runs and often wrong.|
+| `.csv` `.xlsx` | not chunked as prose           | It already has rows. See below.                                     |
+| `.txt`         | paragraph → sentence → window  | Nothing to exploit. The fallback, never the default.                |
+
+A slide's title becomes its heading, so `carryHeadings` puts it at the top of
+what gets embedded — a body reading "Up 4% year on year" ranks against nothing
+anybody would type, and with "Q3 revenue" attached it ranks against the question
+being asked. Speaker notes join their slide for the same reason: they are
+usually the sentence the slide is missing, they live in a different part of the
+archive, and nothing else would ever bring the two together.
+
+Carrying the heading path into the embedded text is the single highest-value
+line in `chunker.ts`. A chunk reading "…within thirty days of written notice"
+ranks against "what is the termination notice period" only if "4.2 Notice"
+travels with it — the body is the answer and the heading is the question's
+vocabulary, and they are in different blocks.
+
+**Which boundary is not a caller's choice**, because there is no case where
+cutting a deck every 512 tokens beats cutting it every slide. `chunkTokens` and
+`overlapTokens` are, per upload or per deployment, because those are a function
+of your embedder and your context budget. Overlap is applied only where the
+boundary was ours — a slide does not bleed into the next slide.
+
+### Scans, which have no text to extract
+
+A PDF whose pages are photographs — a scanner, a photocopier, a screenshot
+printed to PDF — has no text layer, so a parse comes back with a blank chunk
+per page. That is a fact worth recording and `chunker.ts` records it, but on
+its own it is a document that says nothing.
+
+`INGOT_OCR` names something to do about it, and it is **off by default**. The
+other two model selectors pick *which* engine because both have a free
+stand-in; this one picks *whether*, because reading a page costs money or CPU
+and most PDFs are not scans.
+
+| `INGOT_OCR` | what reads the page                                                       |
+| ----------- | ------------------------------------------------------------------------- |
+| `off`       | Nothing. A blank page stays blank. The default.                           |
+| `local`     | Tesseract, in the process. ~350ms a page, no network, no bill.            |
+| `openai`    | A vision model. Better on a bad scan; seconds and money a page.           |
+| `gcp`       | The same, on Vertex.                                                      |
+
+**It is a fallback and never a mode.** A page reaches an engine only when the
+document's own text layer produced nothing for it — so a PDF that has text is
+read exactly as before, at no cost, and a scan stapled into the middle of a
+text export costs one page rather than the whole document. A page with three
+words on it is not a scan; it is a page with three words on it.
+
+**Naming a model and a tessdata directory together means "model first,
+Tesseract for the pages it did not read".** That is a declaration and not a
+silent degradation — the boot line says the arrangement out loud, and every
+chunk carries the engine that produced it:
+
+```sql
+-- what this document actually contained, and what a machine read off a picture
+SELECT page, ocr, text FROM ingot_file_chunks WHERE file_id = 'file_…';
+-- and the version somebody can quote in an email:
+SELECT text FROM ingot_file_chunks WHERE file_id = 'file_…' AND ocr IS NULL;
+```
+
+That column is the point of the whole feature. OCR text is **machine-read, not
+extracted**: Tesseract drops a character on a bad scan and a vision model will
+invent a plausible digit rather than admit it cannot see one, so a figure read
+off a page is evidence of a different quality from a figure lifted out of a
+text layer. `WHERE ocr IS NULL` is the difference, and it is one predicate.
+
+Three things bound what it can cost you. `INGOT_OCR_MAX_PAGES` (20) is how many
+pages of one document an engine is given, from page 1 down — a 300-page scan
+through a hosted model is a bill nobody chose and a parse that outlives the
+claim it is held under. Pages past it stay blank. `INGOT_OCR_CONCURRENCY` is
+how many are in flight at once. And a page an engine refuses stays blank rather
+than storing the refusal, because "I'm sorry, I can't help with that" is a
+perfectly good string that would otherwise be embedded and ranked against every
+question anybody asks.
+
+**No renderer, and no native module in the image.** Rasterising a PDF page
+means a canvas, which in Node means `node-canvas` or `@napi-rs/canvas` — a
+compiler in the build and a platform-specific binary — for the minority of
+documents that are scans. But a scanned page *is* an image already:
+`page-image.ts` lifts the single image XObject `pdfjs` has already decoded and
+wraps it in a PNG with `fflate`, which is here anyway for `.docx`. The cost of
+the trick is its edge: a page that is several images, or one whose content is
+drawn rather than photographed, has no single image to lift and stays blank —
+and drawn text has a text layer anyway.
+
+Tesseract's language data is **baked into the image**, at `/opt/tessdata`.
+Left alone `tesseract.js` fetches it from a CDN on first use, which would be a
+parse reaching the network on behalf of an uploaded document — the one thing no
+handler in `formats/` does — and a first scan that fails on any network without
+egress. It is the argument `INGOT_DUCKDB_EXTENSION_DIR` already makes, about a
+different download.
+
+### Pulling typed rows out
+
+```jsonc
+// a spreadsheet: real field names, so paths resolve and NO MODEL IS CALLED
+{ "extract": {
+    "table": "invoices",
+    "rows": "$[*]",
+    "key": ["invoice_no"],
+    "columns": {
+      "invoice_no": { "from": "$[\"Invoice #\"]", "type": "VARCHAR" },
+      "amount":     { "from": "$.Amount",         "type": "INTEGER" }
+}}}
+```
+
+This goes through **`RowMapping` — the same mapping `/add` uses** — so it is the
+same paths, the same declared types, the same coercion and the same schema
+evolution. Reimplementing any of that would be a second projection with its own
+opinions, and the two would drift. `$["Invoice #"]` is the quoted-key form the
+path grammar gained here, because `Invoice #` and `Total (USD)` are what real
+header rows say and a caller has no choice about them.
+
+Prose has no field names to path into, so its columns carry `describe` and a
+model fills them against a schema it is held to — the same trick
+`RECEIPT_SCHEMA` plays. **That rung is not built yet**: a prose extraction
+parses and chunks and its extracted table stays empty, with a line in the log
+saying so. Mixing the two forms is refused rather than resolved, because a
+mapping half paths and half descriptions is one whose author has not decided
+what they uploaded.
+
+Everything refusable is refused **at upload**, while the caller is still holding
+the response — the media type, the size, every path in the mapping, the
+chunking knobs. That is the `/add` rule and it matters more here, because the
+work happens minutes later in a sweeper with nowhere to complain to but a
+column.
+
+### What it is for
+
+```sql
+SELECT f.filename, c.page, c.text
+FROM ingot_file_chunks c
+  JOIN ingot_files f USING (file_id)
+  JOIN contracts   k USING (file_id)
+WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
+ORDER BY array_cosine_similarity(c.text_vec, $q) DESC
+LIMIT 10
+```
+
+A structured filter no vector store can express, ranked by a similarity no
+warehouse can compute, over both tiers, in one round trip. Nothing was written
+to make that work — it works because all three are tables.
+
+**Keyword search over chunks is on out of the box**, which no other table gets —
+`ingot_file_chunks` is the only one where prose is guaranteed, and the index is
+built only when a query actually mentions `fts_main_ingot_file_chunks`, so
+nobody else pays for it. Semantic search finds what a chunk *means*; this is for
+when the thing wanted is the chunk containing `ECONNREFUSED`.
+
+```sql
+SELECT page, section, fts_main_ingot_file_chunks.match_bm25(_row_id, 'ECONNREFUSED') AS score
+FROM ingot_file_chunks WHERE score IS NOT NULL ORDER BY score DESC
+```
+
+Its `ignore` is `[^a-z0-9]+` rather than DuckDB's default, which discards digits
+and would index `error 500` and `error 404` identically — wrong for almost
+anything a document contains, where invoice numbers, section numbers, versions
+and error codes are frequently the most searched thing in the file. Only `text`
+is indexed; `file_id` and `kind` would add tokens nobody searches for.
+
+Neighbour expansion needs no API surface either, which is why `/query` gained no
+`window` parameter: `ordinal` makes it a self-join, and the caller picks the
+width.
+
+```sql
+WITH hit AS (SELECT file_id, ordinal, array_cosine_similarity(text_vec,$q) s
+             FROM ingot_file_chunks ORDER BY s DESC LIMIT 5)
+SELECT c.* FROM ingot_file_chunks c JOIN hit USING (file_id)
+WHERE abs(c.ordinal - hit.ordinal) <= 1
+```
+
+### The boundary, and two things that are not built
+
+`/file` takes opaque bytes from anyone holding a key and hands them to a
+decoder, so it is a boundary like `/query` is. The claimed media type and the
+sniffed bytes must **agree** — a claim alone is a caller choosing which decoder
+runs, and four sniffed bytes cannot tell a `.docx` from a `.pptx` because every
+OOXML file is a zip. A filename never reaches a path: object keys are built from
+an id this service generated. Multer's limit is the absolute ceiling on what is
+buffered at all; `INGOT_MAX_UPLOAD_BYTES` is the number a deployment chose.
+
+A claim comes from one of three places, tried in order of how deliberate they
+are:
+
+```jsonc
+// the body part, when the upload itself cannot say what it is
+{ "mediaType": "text/csv" }
+```
+
+1. **`mediaType` in the body** — for a document that arrives as a stream, under
+   a generated name, or from a proxy that flattened the type on the way through.
+   Also how to correct a name that lies: a `.txt` export that is really CSV
+   parses as prose until somebody says otherwise.
+2. **The part's `Content-Type`** — what the client said.
+3. **The filename extension** — reached only when the header says
+   `application/octet-stream`, which is what a great many clients send.
+
+**The override changes which source is believed and nothing about the check.**
+It is held to the same closed set, and a claim the bytes disagree with is refused
+whichever of the three it came from — a caller who could name a decoder for
+arbitrary bytes is precisely what the agreement rule exists to prevent. A refusal
+says which source it believed, since a caller who set all three has no other way
+to tell.
+
+### The registry
+
+Everything this service knows about a format is one object implementing
+`FormatHandler`, and `FORMATS` is a `Record<MediaType, FormatHandler>`:
+
+```ts
+export interface FormatHandler {
+  readonly mediaType: MediaType;        // restated, so it can be checked against the key
+  readonly extensions: readonly string[];
+  readonly shape: ByteShape;            // checked against the declared type
+  readonly tabular: boolean;            // already has rows? then extraction needs no model
+  readonly chunking: ChunkingStrategy;  // boundary, overlap, carryHeadings
+  parse(input: ParseInput): Promise<ParsedDocument>;
+}
+```
+
+That replaced four places a format used to be described: a `FORMATS` table for
+signatures and extensions, a `STRATEGIES` table for chunking, a `handles` set on
+whichever parser class claimed it, and that parser's own `switch`. Adding one
+meant finding all four, and only some failed to compile if you missed one.
+
+Keying on the enum makes the exhaustiveness the compiler's — **a media type
+without a handler does not build** — so `MediaType` is now exactly what this
+service reads, and `.docx`/`.xlsx` are simply absent rather than named with
+nothing behind them. Adding either is one enum member and one file next to
+`pptx.ts`, using the same zip machinery.
+
+Two mistakes remain that types cannot catch: a handler filed under a key that is
+not its own `mediaType`, and two formats claiming one extension. `assertConsistent`
+checks both at boot, so either is a service that refuses to start rather than one
+that quietly misreads uploads.
+
+**A handler fetches nothing** — no remote images, no external entities, nothing a
+document claims lives elsewhere. That is the interface's rule, not a per-parser
+promise.
+
+**A zip from an untrusted upload is the most dangerous thing here**, and
+`office-zip.ts` is where that is taken seriously. A forty-kilobyte archive can
+honestly declare that it expands to eight gigabytes, and a decompressor that
+believes it takes the pod down with every query in flight on it. So the limits
+are read out of the archive's own central directory **before anything is
+inflated** — entry count, per-part size, total declared size, and above all the
+expansion ratio, which is what actually separates `42.zip` at a million from a
+real deck at one. Only the parts asked for are decompressed at all: a real
+thirteen-slide deck inflated 26 of its 113 members and touched none of its 3.9
+MB of media.
+
+`pdfjs` is a full PDF implementation and a PDF is a format with a scripting
+engine, so the parser switches off `isEvalSupported`, font loading, streaming
+and auto-fetch — and **deliberately does not configure `cMapUrl` or
+`standardFontDataUrl` at all**, since those are the two options that make it
+fetch. The defence there is not configuring them rather than configuring them
+safely. Extraction needs the characters, not the glyphs.
+
+Two format details worth knowing, both found by running this against real files
+rather than by reading about them:
+
+- **Slide parts sort numerically, not lexically.** A real deck came back
+  `slide1, slide10, slide11, …, slide2`, and a lexical sort would have numbered
+  thirteen slides in an order nobody's deck is in — invisibly, since every chunk
+  would still look well-formed.
+- **`notesSlide7.xml` is not the notes for `slide7.xml`.** Notes parts are
+  numbered in creation order, so a deck where only slides 2 and 4 have notes has
+  `notesSlide1` and `notesSlide2`. The mapping is in
+  `ppt/slides/_rels/slideN.xml.rels`, and guessing instead staples one slide's
+  speaker notes onto another — which is then embedded and returned as though
+  somebody said it about the wrong slide.
+
+Two things are worth writing down before anyone relies on this at volume:
+
+- **One request can now queue a hundred thousand embeddings.** The backlog used
+  to be fed by tool results a few rows at a time. `INGOT_EMBEDDINGS_CONCURRENCY`
+  times the replica count is currently the only thing between a document dump
+  and an unbounded bill, and the HPA scales on CPU — so a bulk upload adds pods
+  and multiplies the fan-out exactly when it is worst. A per-memory in-flight
+  bound is the obvious next thing.
+- **A chunks table is the first table here that will realistically hit the
+  no-index ceiling.** Brute-force cosine stops being a good trade somewhere in
+  the low millions of rows per table; tool results reach that slowly and
+  documents reach it in a few thousand files. Nothing above is wrong, but the
+  persisted index tier stops being "the obvious next thing" and becomes a dated
+  dependency the moment this is used in earnest.
 
 ## Receipts
 
@@ -482,10 +839,12 @@ reports what every table is set to, defaults included.
 
 Four things worth knowing:
 
-- **Off by default.** The index is built inside the session, over the whole
-  table, on the query that searches it. Building one for every table of every
-  memory would put that cost on queries that store no prose at all, so a caller
-  asks for it once.
+- **Off by default, with one exception.** The index is built inside the session,
+  over the whole table, on the query that searches it. Building one for every
+  table of every memory would put that cost on queries that store no prose at
+  all, so a caller asks for it once. `ingot_file_chunks` is the exception and is
+  on out of the box: it is the only table where prose is *guaranteed*, and by
+  the next rule a query that does not search still pays nothing.
 - **Only for a query that searches.** `match_bm25` is a macro in the index's
   own schema, so a query using it must contain the text `fts_main_<table>`. No
   mention, no index built — an ordinary SELECT and a roll-up pay nothing.

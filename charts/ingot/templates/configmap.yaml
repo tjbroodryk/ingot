@@ -54,7 +54,17 @@ data:
   # ── the models ──────────────────────────────────────────────────────────
   INGOT_EMBEDDER: {{ .Values.config.embedder | quote }}
   INGOT_SUMMARISER: {{ .Values.config.summariser | quote }}
-  {{- if or (eq .Values.config.embedder "openai") (eq .Values.config.summariser "openai") }}
+  INGOT_OCR: {{ .Values.config.ocr | quote }}
+  {{- if ne .Values.config.ocr "off" }}
+  INGOT_OCR_MAX_PAGES: {{ .Values.config.ocrSettings.maxPages | quote }}
+  INGOT_OCR_CONCURRENCY: {{ .Values.config.ocrSettings.concurrency | quote }}
+  INGOT_OCR_LANGUAGE: {{ .Values.config.ocrSettings.language | quote }}
+  # Empty means no in-process engine: `local` then refuses to boot, and a model
+  # runs with no fallback. The image sets this, so blanking it here is how a
+  # deployment says it wants pages a model missed left blank.
+  INGOT_TESSDATA_DIR: {{ .Values.config.ocrSettings.tessdataDir | quote }}
+  {{- end }}
+  {{- if or (eq .Values.config.embedder "openai") (eq .Values.config.summariser "openai") (eq .Values.config.ocr "openai") }}
   {{- with .Values.config.openai.baseUrl }}
   OPENAI_BASE_URL: {{ . | quote }}
   {{- end }}
@@ -67,11 +77,14 @@ data:
   {{- with .Values.config.openai.summaryModel }}
   INGOT_OPENAI_SUMMARY_MODEL: {{ . | quote }}
   {{- end }}
+  {{- with .Values.config.openai.ocrModel }}
+  INGOT_OPENAI_OCR_MODEL: {{ . | quote }}
   {{- end }}
-  {{- if or (eq .Values.config.embedder "gcp") (eq .Values.config.summariser "gcp") }}
+  {{- end }}
+  {{- if or (eq .Values.config.embedder "gcp") (eq .Values.config.summariser "gcp") (eq .Values.config.ocr "gcp") }}
   # Required even under Workload Identity: a token does not say whose quota to
   # spend, so the project is named here rather than inferred from the credential.
-  INGOT_GCP_PROJECT: {{ required "config.gcp.project is required when embedder or summariser is gcp" .Values.config.gcp.project | quote }}
+  INGOT_GCP_PROJECT: {{ required "config.gcp.project is required when embedder, summariser or ocr is gcp" .Values.config.gcp.project | quote }}
   INGOT_GCP_LOCATION: {{ .Values.config.gcp.location | quote }}
   {{- with .Values.config.gcp.embeddingModel }}
   INGOT_GCP_EMBEDDING_MODEL: {{ . | quote }}
@@ -82,6 +95,9 @@ data:
   {{- with .Values.config.gcp.summaryModel }}
   INGOT_GCP_SUMMARY_MODEL: {{ . | quote }}
   {{- end }}
+  {{- with .Values.config.gcp.ocrModel }}
+  INGOT_GCP_OCR_MODEL: {{ . | quote }}
+  {{- end }}
   {{- end }}
 
   # ── background concurrency ──────────────────────────────────────────────
@@ -90,6 +106,15 @@ data:
   INGOT_EMBEDDINGS_CONCURRENCY: {{ .Values.config.background.embeddings | quote }}
   INGOT_RECEIPTS_CONCURRENCY: {{ .Values.config.background.receipts | quote }}
   INGOT_DELIVERIES_CONCURRENCY: {{ .Values.config.background.deliveries | quote }}
+  INGOT_FILES_CONCURRENCY: {{ .Values.config.background.files | quote }}
+
+  # ── documents ───────────────────────────────────────────────────────────
+  # The ceiling on one upload, and how it is split. The ceiling is heap rather
+  # than policy: the bytes are held whole to be parsed, so this times
+  # `background.files` times two passes is memory this pod needs.
+  INGOT_MAX_UPLOAD_BYTES: {{ .Values.config.files.maxUploadBytes | quote }}
+  INGOT_CHUNK_TOKENS: {{ .Values.config.files.chunkTokens | quote }}
+  INGOT_CHUNK_OVERLAP_TOKENS: {{ .Values.config.files.overlapTokens | quote }}
 
   # ── delivering receipts ─────────────────────────────────────────────────
   # The broker URL is not here: it carries credentials, so it lives in the

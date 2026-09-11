@@ -235,6 +235,37 @@ config:
   embedder: local
   summariser: local
 
+  # What reads a page a PDF has no text layer for — a scan, a photocopy, a
+  # screenshot printed to PDF. `off`, and it is the one selector that is:
+  # embedding and summarising have free stand-ins, and this is paid per page.
+  #
+  #   off      a page with no text stays blank. Its row still says so.
+  #   local    Tesseract, in the pod. No network, no bill, ~350ms a page. The
+  #            language data ships in the image, at INGOT_TESSDATA_DIR.
+  #   openai   a vision model, and better on a bad scan. Seconds and money a
+  #            page, and it can misread a figure with confidence — so every
+  #            chunk read this way carries the engine in its `ocr` column, and
+  #            `WHERE ocr IS NULL` is the text a document actually contained.
+  #   gcp      the same, on Vertex.
+  #
+  # **Naming a model gets Tesseract behind it**, because the image ships the
+  # language data and the boot line says so out loud — a page the model refuses
+  # or times out on is read in-process rather than lost. Set `tessdataDir: ''`
+  # to turn that off and let a refused page stay blank.
+  ocr: 'off'
+
+  ocrSettings:
+    # Pages of one document an engine will be given, longest-first from page 1.
+    # A cap rather than a limit on what a scan can be: a 300-page scan through
+    # a hosted model is a bill nobody chose and a parse that outlives its claim.
+    maxPages: 20
+    # Pages in flight at once, for a hosted model. Tesseract is always one.
+    concurrency: 4
+    # Where `<language>.traineddata` is. The image bakes `eng` here; add more
+    # with `--build-arg TESSDATA_LANGUAGES="eng deu"`.
+    tessdataDir: /opt/tessdata
+    language: eng
+
   openai:
     baseUrl: ''
     embeddingModel: ''
@@ -243,6 +274,7 @@ config:
     # re-embed rather than a configuration change.
     embeddingDimensions: null
     summaryModel: ''
+    ocrModel: ''
 
   gcp:
     project: ''
@@ -250,6 +282,7 @@ config:
     embeddingModel: ''
     embeddingDimensions: null
     summaryModel: ''
+    ocrModel: ''
 
   # ── background concurrency ───────────────────────────────────────────────
   # How many drains of each queue run at once, **per replica**.
@@ -271,10 +304,40 @@ config:
   # the caller nominated: sixty concurrent ones are sixty different endpoints
   # rather than sixty calls at one provider, and one slow receiver must not hold
   # up everybody else's.
+  # `files` is the odd one out and is bounded by something different. The other
+  # three limit calls at somebody else's service; this one limits **your own
+  # pod's memory**. A parse holds the whole document in RAM — a zip is read from
+  # its central directory and a PDF from its trailer, so neither streams — and
+  # each drain makes two passes. So `files × 2 × files.maxUploadBytes` is heap
+  # this pod has to have on top of everything else it is doing, which is why it
+  # is the lowest number here and why raising it wants `resources` raised with
+  # it. `ingot_files_pending` says whether it is keeping up.
   background:
     embeddings: 2
     receipts: 2
     deliveries: 6
+    files: 2
+
+  # ── documents ────────────────────────────────────────────────────────────
+  # `/file` turns a PDF, a deck or a spreadsheet into two ordinary tables in the
+  # memory. Nothing here is required.
+  #
+  # `maxUploadBytes` is a memory decision, not a policy one. The bytes are held
+  # whole to be parsed — a zip is read from its central directory and a PDF from
+  # its trailer, and neither streams — so raising it means raising `resources`
+  # to match, and it draws on the same heap `queryMemoryLimit` does.
+  #
+  # The chunking numbers are a *budget*, not a strategy. Which boundary a
+  # document is split on is decided by what it is — one slide is one chunk, one
+  # Word section is one chunk, one PDF page is one chunk — and is deliberately
+  # not configurable, because there is no case where cutting a deck every 512
+  # tokens beats cutting it every slide. How much text belongs in one embedding
+  # is a function of your embedder's window and your context budget, so it is
+  # yours. Both can also be set per upload.
+  files:
+    maxUploadBytes: 33554432
+    chunkTokens: 512
+    overlapTokens: 64
 
   # ── delivering receipts ──────────────────────────────────────────────────
   # A receipt is collected by polling by default: /add hands back a SELECT and

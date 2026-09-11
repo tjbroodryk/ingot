@@ -1,8 +1,18 @@
-import { Global, Logger, Module } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   type EmbedderSettings,
   embedderSettings,
+  OCR_OFF,
+  type OcrSettings,
+  ocrSettings,
   type SummariserSettings,
   summariserSettings,
 } from './ai-settings.js';
@@ -11,10 +21,31 @@ import { ExtractiveSummariser } from './extractive-summariser.js';
 import { GcpEmbedder } from './gcp-embedder.js';
 import { GOOGLE_CREDENTIALS, GoogleCredentials } from './google-auth.js';
 import { HashEmbedder } from './hash-embedder.js';
+import { FallbackOcr, openAiOcr, vertexOcr } from './model-ocr.js';
 import { openAiSummariser, vertexSummariser } from './model-summariser.js';
+import { OCR, type Ocr } from './ocr.port.js';
 import { OpenAiEmbedder } from './openai-embedder.js';
 import { AiProvider } from './providers.js';
 import { SUMMARISER, type Summariser } from './summariser.port.js';
+import { checkTessdata, TesseractOcr } from './tesseract-ocr.js';
+
+/**
+ * Closes the OCR engine when the process is going down.
+ *
+ * A provider of its own because the engine is built in a factory, and a
+ * factory's return value is not something Nest calls lifecycle hooks on. This
+ * is: `enableShutdownHooks` in `main.ts` reaches it, and it reaches the one
+ * adapter that holds a worker thread — which, left running, keeps the event
+ * loop alive and turns a SIGTERM into a kill.
+ */
+@Injectable()
+class OcrShutdown implements OnApplicationShutdown {
+  constructor(@Inject(OCR) private readonly ocr: Ocr | null) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.ocr?.close?.();
+  }
+}
 
 /**
  * The models a deployment asked for, and a line at boot saying which.
@@ -54,8 +85,28 @@ import { SUMMARISER, type Summariser } from './summariser.port.js';
         return summariser;
       },
     },
+    {
+      provide: OCR,
+      inject: [ConfigService],
+      /**
+       * Null when `INGOT_OCR` is off, which is the default and is a real
+       * value rather than a missing one: `pdf.ts` reaches for this only when a
+       * page came out blank, and no adapter means that page stays blank. A
+       * no-op engine in its place would be an object saying "I read nothing"
+       * for every page, which is the same outcome described less honestly.
+       */
+      useFactory: async (config: ConfigService): Promise<Ocr | null> => {
+        const settings = ocrSettings(read(config));
+        if (settings.provider === OCR_OFF) return null;
+
+        const ocr = await buildOcr(settings);
+        Logger.log(`Reading scanned pages with ${describe(settings, ocr)}`, 'Ai');
+        return ocr;
+      },
+    },
+    OcrShutdown,
   ],
-  exports: [EMBEDDER, SUMMARISER],
+  exports: [EMBEDDER, SUMMARISER, OCR],
 })
 export class AiModule {}
 
@@ -86,6 +137,52 @@ const SUMMARISERS: {
   // from the same library and the same scope. The embedder still takes one.
   [AiProvider.Gcp]: (settings) => vertexSummariser(settings),
 };
+
+/**
+ * The engine, and the one behind it where a deployment asked for both.
+ *
+ * The tessdata check is here rather than inside the adapter because this is
+ * the last moment anybody is watching. A directory that is wrong fails a boot,
+ * which somebody is reading; discovered instead on the first scanned page, it
+ * is a document that lands `failed` hours later for a reason that was true the
+ * whole time.
+ */
+export async function buildOcr(settings: OcrSettings): Promise<Ocr> {
+  if (settings.provider === OCR_OFF) {
+    throw new Error('buildOcr was given "off". The module returns null for that instead.');
+  }
+
+  if (settings.provider === AiProvider.Local) {
+    await checkTessdata(settings);
+    return new TesseractOcr(settings);
+  }
+
+  const model = settings.provider === AiProvider.OpenAi ? openAiOcr(settings) : vertexOcr(settings);
+  if (settings.fallback === null) return model;
+
+  await checkTessdata(settings.fallback);
+  return new FallbackOcr(model, new TesseractOcr(settings.fallback));
+}
+
+/**
+ * The boot line, which has to say the arrangement and not just the engine.
+ *
+ * "Reading scanned pages with gpt-4.1-mini" would be a half-truth in the one
+ * configuration where it matters most — the one where some chunks will come
+ * back marked `tesseract-eng` — and somebody reading the column later should
+ * be able to find the sentence that predicted it.
+ */
+function describe(settings: OcrSettings, ocr: Ocr): string {
+  const cap =
+    settings.provider === OCR_OFF ? '' : `, at most ${settings.maxPages} pages a document`;
+  const fallback =
+    settings.provider === AiProvider.OpenAi || settings.provider === AiProvider.Gcp
+      ? settings.fallback
+      : null;
+
+  const behind = fallback ? `, falling back to tesseract-${fallback.language}` : '';
+  return `"${ocr.engine}"${behind}${cap}`;
+}
 
 export function buildEmbedder(
   settings: EmbedderSettings,

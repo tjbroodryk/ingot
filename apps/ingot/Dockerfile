@@ -69,10 +69,30 @@ FROM build AS extensions
 # one every `INSTALL` fails with "Problem with the SSL CA cert (path? access
 # rights?)" — an error that names TLS and not the missing package.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/duckdb-extensions \
  && bun apps/ingot/scripts/bake-extensions.ts /opt/duckdb-extensions
+
+# ── 4b. Tesseract's language data ──────────────────────────────────────────
+# The same argument as the extensions above, about a different download.
+# `tesseract.js` fetches `<lang>.traineddata` from a CDN when it is not given a
+# path — which would be a *parse* reaching the network on behalf of an uploaded
+# document, the one thing every handler in `formats/` is built not to do, and a
+# first scan that fails on any network without egress. So it is baked, and
+# `INGOT_TESSDATA_DIR` below points at it.
+#
+# `tessdata_fast` rather than `tessdata_best`: 4MB against 15MB, and on the
+# scans this reads — screenshots, exports, ordinary office scanners — the
+# difference in accuracy does not show. Nothing here loads it: the image only
+# carries the file, and a deployment that leaves `INGOT_OCR` off never opens it.
+ARG TESSDATA_LANGUAGES="eng"
+ARG TESSDATA_REF="4.1.0"
+RUN mkdir -p /opt/tessdata \
+ && for lang in ${TESSDATA_LANGUAGES}; do \
+      curl -fsSL -o "/opt/tessdata/${lang}.traineddata" \
+        "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${TESSDATA_REF}/${lang}.traineddata"; \
+    done
 
 # ── 5. what runs ───────────────────────────────────────────────────────────
 FROM oven/bun:1.2.19-slim AS runtime
@@ -90,11 +110,13 @@ COPY --from=build /repo/apps/ingot/dist ./apps/ingot/dist
 # the service it migrates for rather than a second thing to keep in step.
 COPY --from=build /repo/apps/ingot/drizzle ./apps/ingot/drizzle
 COPY --from=extensions /opt/duckdb-extensions /opt/duckdb-extensions
+COPY --from=extensions /opt/tessdata /opt/tessdata
 
 ENV NODE_ENV=production \
     PORT=3002 \
     METRICS_PORT=9465 \
     INGOT_DUCKDB_EXTENSION_DIR=/opt/duckdb-extensions \
+    INGOT_TESSDATA_DIR=/opt/tessdata \
     INGOT_STAGING_DIR=/var/lib/ingot/staging \
     INGOT_TEMP_DIR=/var/lib/ingot/tmp
 

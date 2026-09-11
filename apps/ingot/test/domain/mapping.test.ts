@@ -38,6 +38,40 @@ describe('paths', () => {
     expect(() => parsePath('files.name', 'rows')).toThrow(/must start with/);
     expect(() => parsePath('$.a[', 'rows')).toThrow(/bad subscript/);
   });
+
+  /**
+   * The quoted subscript, which arrived with `/file` and a spreadsheet.
+   *
+   * `Invoice #`, `Total (USD)` and `Ship Date` are what real header rows say,
+   * and every one of them is a key the caller has no choice about — it is in
+   * the file they were sent. Widening the dotted grammar to admit them would
+   * have made `$.a.b` ambiguous about where a key ends, so this is the escape
+   * hatch instead, and it is the one JSONPath itself uses.
+   */
+  it('reaches a key the dotted form cannot spell', () => {
+    const blob = { 'Invoice #': 'ACME-4471', 'Total (USD)': 18400 };
+
+    expect(readPath(blob, parsePath('$["Invoice #"]', 'x'))).toBe('ACME-4471');
+    expect(readPath(blob, parsePath("$['Total (USD)']", 'x'))).toBe(18400);
+  });
+
+  it('keeps a quoted key and a numeric index apart', () => {
+    // A JSON object may perfectly well have `"0"` as a field name, and an array
+    // never does. Collapsing the two forms would make one of them unreachable.
+    expect(readPath({ '0': 'by key' }, parsePath('$["0"]', 'x'))).toBe('by key');
+    expect(readPath(['by index'], parsePath('$[0]', 'x'))).toBe('by index');
+  });
+
+  it('unescapes inside a quoted key, and refuses an empty one', () => {
+    expect(readPath({ 'a"b': 1 }, parsePath('$["a\\"b"]', 'x'))).toBe(1);
+    expect(() => parsePath('$[""]', 'x')).toThrow(/empty quoted key/);
+  });
+
+  it('mixes quoted keys with the rest of the grammar', () => {
+    const blob = { rows: [{ 'Ship Date': '2026-03-01' }] };
+
+    expect(readPath(blob, parsePath('$.rows[0]["Ship Date"]', 'x'))).toBe('2026-03-01');
+  });
 });
 
 describe('coercion', () => {

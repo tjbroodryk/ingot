@@ -10,6 +10,7 @@ import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../../../records/application/ports/overlay-store.port.js';
+import { FILE_QUEUE, type FileQueue } from '../../../files/application/ports/file-queue.port.js';
 import { Keys, OBJECT_STORE, type ObjectStore } from '../../../../storage/object-store.port.js';
 import { INGOT_REPOSITORY, type IngotRepository } from '../../domain/index.js';
 import { IngotAccess } from '../ingot-access.js';
@@ -25,7 +26,14 @@ export class DeleteIngot extends Command {
 }
 
 /**
- * Destroys a memory: manifest, overlay, and every Parquet object under it.
+ * Destroys a memory: manifest, overlay, queued work, and every object under it.
+ *
+ * The list is the interesting part rather than the mechanism. Anything keyed on
+ * an ingot and *not* purged here outlives the memory silently — nothing else
+ * visits those rows, so there is no later moment at which the omission shows up.
+ * `file_queue` was exactly that for a while: destroying a memory left a row
+ * holding a filename, a hash, an extraction mapping and an error message
+ * quoting the document, pointing at an object that had already been removed.
  *
  * The bucket is emptied *after* the transaction commits, not inside it. An
  * object store has no rollback, so deleting first and then failing to commit
@@ -43,6 +51,7 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     @Inject(INGOT_REPOSITORY) private readonly ingots: IngotRepository,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     @Inject(DELIVERY_OUTBOX) private readonly outbox: DeliveryOutbox,
+    @Inject(FILE_QUEUE) private readonly files: FileQueue,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
@@ -54,6 +63,17 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     // Announcements go with the memory. Delivering one afterwards would hand a
     // receiver a query that can only ever come back empty.
     await this.outbox.purgeIngot(ingot.id.value);
+    /*
+     * And unparsed uploads, which is the one that leaks if it is forgotten.
+     *
+     * A queue row outlives its memory in a way an overlay row cannot: nothing
+     * else ever visits it. It holds the filename, the sha256, the caller's
+     * extraction mapping and `last_error` — and that last field quotes the value
+     * that failed to coerce, so it can carry a fragment of the document itself.
+     * Leaving one behind means "destroy this memory" quietly kept content
+     * derived from it, for ever, pointing at an object that is already gone.
+     */
+    await this.files.purgeIngot(ingot.id.value);
     await this.ingots.remove(ingot.id);
 
     const prefix = Keys.ingot(ingot.accountId, ingot.id.value);

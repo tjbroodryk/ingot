@@ -1,5 +1,6 @@
 import type { IngotInfo, IngotSummary, QueryResult } from '@ingot/shared/ingot-v1';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { FileUpload } from './file-upload';
 import { type Credentials, IngotError, fetchInfo, listMemories, runQuery } from './ingot-api';
 import { ResultGrid } from './result-grid';
 
@@ -24,6 +25,8 @@ export function QueryConsole({
   const [memories, setMemories] = useState<readonly IngotSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [info, setInfo] = useState<IngotInfo | null>(null);
+  /** Bumped when an upload lands, which is when the schema has changed. */
+  const [landed, setLanded] = useState(0);
 
   const [sql, setSql] = useState('');
   const [running, setRunning] = useState(false);
@@ -48,6 +51,11 @@ export function QueryConsole({
     [onCredentialsRejected],
   );
 
+  // Re-read on `landed` as well, for the table and row counts in the picker:
+  // a document that landed is rows this list is now wrong about, and a picker
+  // saying "0 tables" about the memory you just filled is the kind of small
+  // lie that makes somebody doubt the upload rather than the label.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on `landed`, which is the point.
   useEffect(() => {
     let live = true;
 
@@ -64,13 +72,17 @@ export function QueryConsole({
     return () => {
       live = false;
     };
-  }, [credentials, report]);
+  }, [credentials, landed, report]);
 
+  // `landed` is a trigger and not a value this reads — an upload finishing is
+  // the schema having changed, and re-reading it is the only way to find out
+  // how. The `live` guard is what keeps the reply it starts from landing on a
+  // memory the user has since switched away from.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on `landed`, which is the point.
   useEffect(() => {
     if (!selected) return;
     let live = true;
 
-    setInfo(null);
     fetchInfo(credentials, selected)
       .then((found) => {
         if (live) setInfo(found);
@@ -80,7 +92,12 @@ export function QueryConsole({
     return () => {
       live = false;
     };
-  }, [credentials, selected, report]);
+  }, [credentials, selected, landed, report]);
+
+  // Both are passed to `FileUpload`, which polls on a timer keyed on them. A
+  // new function identity per render would restart that timer per render.
+  const onLanded = useCallback(() => setLanded((count) => count + 1), []);
+  const onQuery = useCallback((statement: string) => setSql(statement), []);
 
   async function run(): Promise<void> {
     if (!selected || running || sql.trim().length === 0) return;
@@ -106,7 +123,14 @@ export function QueryConsole({
           <select
             className="input"
             value={selected ?? ''}
-            onChange={(event) => setSelected(event.target.value || null)}
+            onChange={(event) => {
+              // Cleared here rather than in the effect that reads it: another
+              // memory's tables are wrong to show, but the same memory's are
+              // only stale — and blanking them on every re-read would make the
+              // strip flicker each time an upload lands.
+              setInfo(null);
+              setSelected(event.target.value || null);
+            }}
             disabled={!memories || memories.length === 0}
           >
             {memories === null ? <option value="">Loading…</option> : null}
@@ -122,6 +146,17 @@ export function QueryConsole({
 
         {selected ? <code className="console-id muted">{selected}</code> : null}
       </div>
+
+      {selected ? (
+        <FileUpload
+          key={selected}
+          credentials={credentials}
+          ingotId={selected}
+          onQuery={onQuery}
+          onSettled={onLanded}
+          onError={report}
+        />
+      ) : null}
 
       <Schema info={info} onPick={(table) => setSql(`SELECT *\nFROM ${table}\nLIMIT 100`)} />
 
@@ -222,7 +257,7 @@ function Schema({
   if (info.tables.length === 0) {
     return (
       <div className="schema schema-empty label label-sm muted">
-        [ this memory has no tables yet — POST to /add to make one ]
+        [ this memory has no tables yet — upload a document above, or POST to /add ]
       </div>
     );
   }

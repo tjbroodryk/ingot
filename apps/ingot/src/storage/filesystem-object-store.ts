@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import type { ObjectStore, PendingWrite } from './object-store.port.js';
@@ -44,6 +44,16 @@ export class FilesystemObjectStore implements ObjectStore {
         await rm(path, { force: true });
       },
     };
+  }
+
+  async put(key: string, body: Buffer): Promise<void> {
+    const path = this.pathFor(key);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body);
+  }
+
+  async fetch(key: string): Promise<Buffer> {
+    return readFile(this.pathFor(key));
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {

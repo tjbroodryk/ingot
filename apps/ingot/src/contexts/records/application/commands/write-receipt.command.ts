@@ -8,20 +8,14 @@ import {
   type UnitOfWork,
 } from '../../../../shared/application/index.js';
 import { DELIVERY_TRIGGER, type DeliveryTrigger } from '../ports/delivery-trigger.port.js';
-import {
-  CLOCK,
-  type Clock,
-  ConflictingState,
-  newIdValue,
-} from '../../../../shared/domain/index.js';
+import { CLOCK, type Clock, newIdValue } from '../../../../shared/domain/index.js';
 import {
   BATCH,
   INGESTED_AT,
-  INGOT_TABLE_REPOSITORY,
   type IngotTable,
-  type IngotTableRepository,
   ROW_ID,
 } from '../../../ingots/domain/index.js';
+import { TableRegistry } from '../../../ingots/application/table-registry.js';
 import type { Coerced } from '../../domain/coercion.js';
 import {
   RECEIPT_BATCH,
@@ -68,7 +62,7 @@ export class WriteReceipt extends Command<void> {
 export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
   constructor(
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
-    @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
+    private readonly registry: TableRegistry,
     @Inject(RECEIPT_NOTIFIER) private readonly notifier: ReceiptNotifier,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(DELIVERY_TRIGGER) private readonly background: DeliveryTrigger,
@@ -135,28 +129,10 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
     this.uow.afterCommit(async () => this.background.wakeDeliveries());
   }
 
-  /**
-   * The memory's receipt table, creating it on the first receipt.
-   *
-   * Same race as `/add` creating a table, handled the same way and for the
-   * same reason: the id is derived from `(ingot, name)`, so two workers
-   * colliding lose on the primary key rather than on a unique index — an
-   * ordinary version miss, with a table now sitting there to be re-read.
-   */
+  /** The memory's receipt table, creating it on the first receipt. */
   private async receiptTable(ingotId: string): Promise<IngotTable> {
-    const existing = await this.tables.findByName(ingotId, RECEIPT_TABLE);
-    if (existing) return existing;
-
-    const declared = declareReceiptTable(ingotId, this.clock.now());
-    try {
-      await this.tables.save(declared);
-      return declared;
-    } catch (error) {
-      if (!(error instanceof ConflictingState)) throw error;
-
-      const winner = await this.tables.findByName(ingotId, RECEIPT_TABLE);
-      if (!winner) throw error; // Lost the race to something that then vanished.
-      return winner;
-    }
+    return this.registry.ensureCurrent(ingotId, RECEIPT_TABLE, () =>
+      declareReceiptTable(ingotId, this.clock.now()),
+    );
   }
 }

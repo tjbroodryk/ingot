@@ -7,6 +7,7 @@ import { DropTableHandler } from './application/commands/drop-table.command.js';
 import { GetIngotInfoHandler } from './application/queries/get-ingot-info.query.js';
 import { ListIngotsHandler } from './application/queries/list-ingots.query.js';
 import { IngotAccess } from './application/ingot-access.js';
+import { TableRegistry } from './application/table-registry.js';
 import { INGOT_REPOSITORY, INGOT_TABLE_REPOSITORY } from './domain/index.js';
 import {
   PgIngotRepository,
@@ -25,14 +26,15 @@ import { IngotsController } from './interface/ingots.controller.js';
     GetIngotInfoHandler,
     ListIngotsHandler,
     IngotAccess,
+    TableRegistry,
     PgIngotRepository,
     PgIngotTableRepository,
     { provide: INGOT_REPOSITORY, useExisting: PgIngotRepository },
     { provide: INGOT_TABLE_REPOSITORY, useExisting: PgIngotTableRepository },
   ],
-  // The access helper and both repositories are exported because the write
-  // path, the read path and the roll-up all need them, and all three live in
-  // other contexts.
-  exports: [IngotAccess, INGOT_REPOSITORY, INGOT_TABLE_REPOSITORY],
+  // The access helper, the registry and both repositories are exported because
+  // the write path, the read path, the roll-up and `/file` all need them, and
+  // every one of those lives in another context.
+  exports: [IngotAccess, TableRegistry, INGOT_REPOSITORY, INGOT_TABLE_REPOSITORY],
 })
 export class IngotsModule {}
