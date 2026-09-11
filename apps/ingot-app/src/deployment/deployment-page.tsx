@@ -99,7 +99,7 @@ export function DeploymentPage(): ReactNode {
             reads like a bill.
           */}
           <section className="section" id="bring-it-up">
-            <span className="label section-kicker">[ Bring it up ]</span>
+            <span className="label section-kicker kicker-n">Bring it up</span>
             <h2 className="deps-heading">Pick a place</h2>
             <p className="deps-para">
               <Prose text={BRING_IT_UP_LEDE} />
@@ -117,7 +117,7 @@ export function DeploymentPage(): ReactNode {
           ))}
 
           <section className="section" id="nothing-else">
-            <span className="label section-kicker">[ What you do not run ]</span>
+            <span className="label section-kicker kicker-n">What you do not run</span>
             <h2 className="deps-heading">The rest of the list</h2>
             <table className="table">
               <thead>
@@ -146,7 +146,7 @@ export function DeploymentPage(): ReactNode {
             that on in a minute.
           */}
           <section className="cta">
-            <span className="label label-sm kicker">[ The quickest of the three ]</span>
+            <span className="label kicker kicker-n">The quickest of the three</span>
             <h2>Bring one up before you believe any of this</h2>
             <p>
               The compose file is the same one the test suite runs against, so what comes up on your

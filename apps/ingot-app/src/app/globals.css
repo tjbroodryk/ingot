@@ -7,10 +7,12 @@
  * site actually uses; the canvas export carried every rule inline, which is
  * how an artboard is built and not how a page should be.
  *
- * One deviation from the export, and it is deliberate: `--color-stock` is a
- * warm off-white rather than `#fff`. A code panel that bleaches to pure white
- * on a warm ground reads as a hole punched in the page. Every other value is
- * the design's.
+ * The rules for which token goes where are the project's design brief
+ * (`Ingot Design System.md` in the Claude Design project): code windows sit on
+ * the ground, edges are ink, section rules are 20% and row rules 12%.
+ * `--color-stock` is the brief's rare inset surface — a field you type into —
+ * and a warm off-white rather than `#fff`, because pure white on a warm ground
+ * reads as a hole punched in the page.
  *
  * Never write a hex below this block. Every colour resolves to a token, so
  * retuning the site is editing `:root` and nothing else.
@@ -38,11 +40,26 @@
   --ink-35: color-mix(in srgb, var(--color-ink) 35%, transparent);
   --ink-30: color-mix(in srgb, var(--color-ink) 30%, transparent);
   --ink-25: color-mix(in srgb, var(--color-ink) 25%, transparent);
+  --ink-20: color-mix(in srgb, var(--color-ink) 20%, transparent);
   --ink-16: color-mix(in srgb, var(--color-ink) 16%, transparent);
+  --ink-12: color-mix(in srgb, var(--color-ink) 12%, transparent);
   --ink-08: color-mix(in srgb, var(--color-ink) 8%, transparent);
+  --ink-100: var(--color-ink);
 
-  --rule: 1px solid var(--ink-16);
+  /* The heat scale, light to dark. The last step is the accent itself. */
+  --accent-100: #d8e2eb;
+  --accent-200: #b9cadd;
+  --accent-300: #8ba6c4;
+  --accent-400: #5b81aa;
+  --accent-tint: color-mix(in srgb, var(--color-accent) 5%, transparent);
+
+  /* Three weights of line, and the brief is strict about which is which:
+     sections are divided at 20%, rows inside a list at 12%, and the edge of a
+     page or a panel is the ink itself. `--rule-heavy` opens a data block. */
+  --rule: 1px solid var(--ink-20);
+  --rule-row: 1px solid var(--ink-12);
   --rule-strong: 1px solid var(--color-ink);
+  --rule-heavy: 2px solid var(--color-ink);
 
   /* — type — */
   --font-heading: var(--font-display), system-ui, sans-serif;
@@ -160,8 +177,8 @@ pre {
   align-items: center;
   gap: var(--space-6);
   padding: 14px var(--gutter);
-  background: color-mix(in srgb, var(--color-bg) 96%, transparent);
-  backdrop-filter: blur(8px);
+  /* Solid, not frosted: the brief has no glass in it anywhere. */
+  background: var(--color-bg);
 }
 
 .topbar-nav {
@@ -227,7 +244,7 @@ pre {
   color: inherit;
   font-family: var(--font-code);
   font-size: 12.5px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -242,14 +259,19 @@ pre {
   color: var(--color-ink-inverse);
 }
 
+/* Drawn in the ink, and it becomes the primary on hover — the one place the
+   outline and the solid are allowed to look alike. */
 .btn-outline {
   padding: 10px 22px;
-  border: 1px solid var(--ink-35);
+  border: var(--rule-strong);
+  /* A `<button>` brings the platform's grey fill; an `<a>` brings none. */
+  background: transparent;
 }
 
 .btn-outline:hover {
-  background: var(--ink-08);
-  color: var(--color-ink);
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
 }
 
 /* ══ the frame ══════════════════════════════════════════════════════════
@@ -262,7 +284,7 @@ pre {
   grid-template-columns: 250px minmax(0, 1fr);
   align-items: start;
   margin: 0 var(--gutter) var(--gutter);
-  border: var(--rule);
+  border: var(--rule-strong);
 }
 
 /*
@@ -314,10 +336,36 @@ pre {
   border-bottom: var(--rule);
 }
 
+/* A page's own label — `[ API reference · v1 ]` — which says what the page
+   is rather than where in it you are, so it stays quiet and unnumbered. */
 .kicker {
   display: block;
   margin-bottom: 22px;
   color: var(--ink-60);
+}
+
+/*
+ * A section's label: accent, and numbered by its position in the document.
+ *
+ * The number is a counter rather than text so that a section added, moved or
+ * cut renumbers the page instead of leaving `[ 04 ]` after `[ 06 ]`. The two
+ * frames a document can sit in reset it, which is all "the document" means
+ * here.
+ */
+.landframe,
+.docmain {
+  counter-reset: section;
+}
+
+.kicker-n {
+  counter-increment: section;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+}
+
+.kicker-n::before {
+  content: '[ ' counter(section, decimal-leading-zero) ' ]\00a0';
 }
 
 .display {
@@ -400,7 +448,6 @@ pre {
 .section-kicker {
   display: block;
   margin-bottom: 18px;
-  color: var(--ink-60);
 }
 
 .reference-head {
@@ -785,12 +832,14 @@ pre {
 
 /* ══ code ═══════════════════════════════════════════════════════════════ */
 
+/* A code window sits on the ground, edged in ink, or is the ink — never a
+   white card on a warm page. */
 .code {
   margin: 0;
   padding: 16px;
   min-width: 0;
-  background: var(--color-stock);
-  border: 1px solid var(--ink-25);
+  background: var(--color-bg);
+  border: var(--rule-strong);
   font-size: 12px;
   line-height: 1.75;
   overflow-x: auto;
@@ -821,7 +870,7 @@ pre {
 /* — the framed terminal — */
 
 .panel {
-  background: var(--color-stock);
+  background: var(--color-bg);
   border: var(--rule-strong);
 }
 

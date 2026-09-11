@@ -143,7 +143,17 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
      * correctness argument for the two tiers.
      */
     await this.tables.save(table);
-    await this.overlay.drain(table.id.value, watermark);
+    /*
+     * The view is what the engine was given, so its vectors are the ones the
+     * new file holds. Handing them back is what lets the drain tell an
+     * embedding it has written from one that is still owed — the two are
+     * indistinguishable from the rows alone.
+     */
+    await this.overlay.drain(
+      table.id.value,
+      watermark,
+      view.overlayVectors.map((vector) => ({ rowId: vector.rowId, column: vector.column })),
+    );
 
     /*
      * Reap the generation two behind, after the commit.

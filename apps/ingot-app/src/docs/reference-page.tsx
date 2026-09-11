@@ -94,7 +94,7 @@ export function ReferencePage() {
           </section>
 
           <section className="section" id="quickstart">
-            <span className="label section-kicker">[ Quickstart ]</span>
+            <span className="label section-kicker kicker-n">Quickstart</span>
             <div className="panel">
               <div className="panel-bar">
                 <span className="panel-glyph">≡ ×</span>
@@ -107,7 +107,7 @@ export function ReferencePage() {
           </section>
 
           <section className="section" id="errors">
-            <span className="label section-kicker">[ Status codes ]</span>
+            <span className="label section-kicker kicker-n">Status codes</span>
             <table className="table table-mono">
               <thead>
                 <tr>
@@ -129,7 +129,7 @@ export function ReferencePage() {
           </section>
 
           <div className="reference-head" id="reference">
-            <span className="label label-sm kicker">[ Reference ]</span>
+            <span className="label kicker kicker-n">Reference</span>
             <h2>Endpoints</h2>
           </div>
 
@@ -156,7 +156,7 @@ export function ReferencePage() {
           })}
 
           <section className="cta">
-            <span className="label label-sm kicker">[ Get started ]</span>
+            <span className="label kicker kicker-n">Get started</span>
             <h2>{ENDPOINTS.length} routes is the whole surface</h2>
             <p>Sign up, mint a key, cast a memory. The secret comes back exactly once.</p>
             <div className="cta-actions">

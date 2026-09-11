@@ -113,7 +113,7 @@ export function WhyPage(): ReactNode {
         */}
         <section className="landblock" id="problem">
           <div className="landhead">
-            <span className="label label-sm kicker">[ What happens today ]</span>
+            <span className="label kicker kicker-n">What happens today</span>
             <h2 className="landtitle">
               Three ways to lose
               <br />
@@ -150,7 +150,7 @@ export function WhyPage(): ReactNode {
         */}
         <section className="landblock" id="sql">
           <div className="landhead">
-            <span className="label label-sm kicker">[ Why SQL ]</span>
+            <span className="label kicker kicker-n">Why SQL</span>
             <h2 className="landtitle">
               Models write SQL.
               <br />
@@ -205,7 +205,7 @@ export function WhyPage(): ReactNode {
         */}
         <section className="split" id="vectors">
           <div className="split-copy">
-            <span className="label label-sm kicker">[ Where the embeddings went ]</span>
+            <span className="label kicker kicker-n">Where the embeddings went</span>
             <h3>
               Not a database.
               <br />
@@ -248,7 +248,7 @@ export function WhyPage(): ReactNode {
         */}
         <section className="landblock" id="grain">
           <div className="landhead">
-            <span className="label label-sm kicker">[ One memory per what ]</span>
+            <span className="label kicker kicker-n">One memory per what</span>
             <h2 className="landtitle">
               One memory per
               <br />
@@ -298,7 +298,7 @@ export function WhyPage(): ReactNode {
         */}
         <section className="landblock" id="cost">
           <div className="landhead">
-            <span className="label label-sm kicker">[ What it costs to keep ]</span>
+            <span className="label kicker kicker-n">What it costs to keep</span>
             <h2 className="landtitle">
               Cheap enough
               <br />
@@ -358,7 +358,7 @@ export function WhyPage(): ReactNode {
             <CodeBlock code={OWN_IT} />
           </div>
           <div className="split-copy">
-            <span className="label label-sm kicker">[ Self-deployed ]</span>
+            <span className="label kicker kicker-n">Self-deployed</span>
             <h3>
               Your bucket.
               <br />
@@ -386,8 +386,8 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        <section className="cta cta-centred">
-          <span className="label label-sm kicker">[ The argument is a repository ]</span>
+        <section className="cta">
+          <span className="label kicker kicker-n">The argument is a repository</span>
           <h2>Every claim above is a file you can go and disagree with</h2>
           <p>
             The join is the query handler, the five minutes is a sweeper, the sandbox is two hundred

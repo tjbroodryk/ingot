@@ -107,7 +107,7 @@ export function LandingPage(): ReactNode {
 
         <section className="landblock" id="how">
           <div className="landhead">
-            <span className="label label-sm kicker">[ How it works ]</span>
+            <span className="label kicker kicker-n">How it works</span>
             <h2 className="landtitle">
               <span className="mark">Cast it</span>, fill it,
               <br />
@@ -133,7 +133,7 @@ export function LandingPage(): ReactNode {
 
         <section className="landblock">
           <div className="landhead landhead-tight">
-            <span className="label label-sm kicker">[ What you get ]</span>
+            <span className="label kicker kicker-n">What you get</span>
             <h2 className="landtitle">
               Everything an agent
               <br />
@@ -171,7 +171,7 @@ export function LandingPage(): ReactNode {
         */}
         <section className="landblock" id="harness">
           <div className="landhead">
-            <span className="label label-sm kicker">[ In the agent loop ]</span>
+            <span className="label kicker kicker-n">In the agent loop</span>
             <h2 className="landtitle">
               Store the result.
               <br />
@@ -226,7 +226,7 @@ export function LandingPage(): ReactNode {
 
         <section className="landblock" id="ai-sdk">
           <div className="landhead">
-            <span className="label label-sm kicker">[ Vercel AI SDK ]</span>
+            <span className="label kicker kicker-n">Vercel AI SDK</span>
             <h2 className="landtitle">
               It fits inside
               <br />
@@ -282,7 +282,7 @@ export function LandingPage(): ReactNode {
             <CodeBlock code={RECEIPTS} />
           </div>
           <div className="split-copy">
-            <span className="label label-sm kicker">[ Receipts &amp; embeddings ]</span>
+            <span className="label kicker kicker-n">Receipts &amp; embeddings</span>
             <h3>
               Opt in to the
               <br />
@@ -311,7 +311,7 @@ export function LandingPage(): ReactNode {
 
         <section className="split" id="read">
           <div className="split-copy">
-            <span className="label label-sm kicker">[ Retrieval, and RAG ]</span>
+            <span className="label kicker kicker-n">Retrieval, and RAG</span>
             <h3>
               RAG retrieval.
               <br />
@@ -365,7 +365,7 @@ export function LandingPage(): ReactNode {
             <CodeBlock code={MCP_CONFIG} tone={SampleTone.Ink} />
           </div>
           <div className="split-copy">
-            <span className="label label-sm kicker">[ MCP native ]</span>
+            <span className="label kicker kicker-n">MCP native</span>
             <h3>
               Same key.
               <br />
@@ -400,7 +400,7 @@ export function LandingPage(): ReactNode {
         */}
         <section className="landblock" id="run">
           <div className="landhead">
-            <span className="label label-sm kicker">[ Ways to run it ]</span>
+            <span className="label kicker kicker-n">Ways to run it</span>
             {/*
               The highlight gets its own line rather than being left to wrap
               into one: `.mark` is a painted box, and a box broken across two
@@ -473,8 +473,8 @@ export function LandingPage(): ReactNode {
           brought up yourself. The commands that used to sit here are the local
           target's now, so that the bring-up is written down once.
         */}
-        <section className="cta cta-centred">
-          <span className="label label-sm kicker">[ Self-hosted, for now ]</span>
+        <section className="cta">
+          <span className="label kicker kicker-n">Self-hosted, for now</span>
           <h2>Bring it up. Sign up against your own address.</h2>
           <p>
             There is no hosted Ingot yet, and we would rather say that at the top than let you find

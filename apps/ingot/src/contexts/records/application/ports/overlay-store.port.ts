@@ -22,6 +22,18 @@ export interface PendingEmbedding {
   readonly text: string;
 }
 
+/**
+ * A vector a compaction was handed, and therefore wrote into its Parquet.
+ *
+ * Named individually rather than derived from the rows that were consumed,
+ * because the two sets are not the same and the difference is where
+ * embeddings go missing — see `drain`.
+ */
+export interface FoldedVector {
+  readonly rowId: string;
+  readonly column: string;
+}
+
 /** One `/add` waiting to be described. Enough to prompt a model, and no more. */
 export interface PendingReceipt {
   /** The batch of the `/add` this describes. Its identity, here and in SQL. */
@@ -88,8 +100,19 @@ export interface OverlayStore {
    * `throughSeq` is null when a table was compacted purely to apply deletes —
    * there were no rows to fold in, only rows to leave out. Nothing is drained
    * in that case, but the tombstones are still spent.
+   *
+   * `folded` is the vectors the compaction read, which are exactly the ones it
+   * wrote. It has to be told rather than work it out from the rows it
+   * consumed: a row can be consumed before its vector exists, and a vector can
+   * exist for a row consumed generations ago. Nothing here ever touches the
+   * embedding queue — a queued text leaves it when its vector is written, or
+   * when the row is forgotten, and a roll-up is neither.
    */
-  drain(tableId: string, throughSeq: bigint | null): Promise<void>;
+  drain(
+    tableId: string,
+    throughSeq: bigint | null,
+    folded: readonly FoldedVector[],
+  ): Promise<void>;
 
   /** Everything belonging to a table, for a drop. */
   purgeTable(tableId: string): Promise<void>;

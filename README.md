@@ -92,6 +92,58 @@ worth having, and `test/application/rollup-equivalence.test.ts` is what holds
 it up. DuckDB is the engine and never the store: a fresh in-memory instance per
 query, built from the manifest, hardened, used once, thrown away.
 
+## Against RAG
+
+The question this gets asked is whether it belongs inside a RAG stack or
+replaces one. It replaces the half that stores and finds, and does no part of
+the half that writes the answer.
+
+Everything a retrieval pipeline does before the model call is already here.
+`/file` chunks per format. `"embed": true` queues a column and a sweeper works
+it. `array_cosine_similarity` ranks by meaning, DuckDB's `fts` ranks by term,
+and one SELECT can do both. `/mcp` is how an agent reaches all of it. So there
+is no vector store standing beside this one — Pinecone and turbopuffer are
+columns in `packages/bench`, over identical vectors, rather than things Ingot
+is wired to.
+
+What changes is the interface. A vector store offers `top_k(embedding)`; this
+offers SQL, with similarity as one ranking function inside it — `$q` being the
+query embedding, which `/query` binds for you.
+
+```sql
+SELECT f.filename, c.page, c.text
+FROM ingot_file_chunks c
+  JOIN ingot_files f USING (file_id)
+  JOIN contracts   k USING (file_id)   -- typed rows out of the same PDFs
+WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
+ORDER BY array_cosine_similarity(c.text_vec, $q) DESC LIMIT 10
+```
+
+Top-k cannot express that, and it cannot count, aggregate or order by recency
+at all — "how many times did this check fail last month" has no
+nearest-neighbour formulation. Whether that is worth the schema it costs is the
+whole point of `packages/bench`, and `control-same-store-top-k` is the column
+that can say no: the same rows and the same vectors, reached only through
+top-k.
+
+The other difference is what goes in. A RAG corpus is documents. The first way
+in here is `/add` — an agent's own tool results, projected into typed columns —
+and documents are the second door into the same tables.
+
+Four things a mature retrieval stack has that this does not:
+
+- **No generation.** Rows come back; the agent writes the answer.
+- **No reranker and no query rewriting.** Hybrid means the SQL you wrote ranks
+  on BM25 and cosine together, not that something fused them on your behalf.
+- **No ANN index.** Brute-force cosine, which stops being a good trade
+  somewhere in the low millions of rows per table.
+- **A schema up front**, for `/add`. A vector store asks for none, and that is
+  a real cost the benchmark does not put a number on.
+
+"RAG" names two things that come apart: store documents so a model can find
+them, and put the top k chunks in the prompt. This is the first one. The second
+is what the benchmark exists to argue with.
+
 ## Running it locally
 
 `bun run db:up` brings up everything the service talks to. The defaults in

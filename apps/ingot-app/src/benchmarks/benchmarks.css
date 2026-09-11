@@ -50,10 +50,13 @@
   font-weight: 400;
 }
 
+/* A column header is chrome, so it is in the mono voice every other label is. */
 .bench-table thead th {
-  color: var(--ink-70);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  color: var(--ink-60);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   border-bottom: var(--rule);
 }
@@ -72,17 +75,17 @@
  * a number without "which adapter" attached would be the marketing version.
  */
 /*
- * The horizontal padding is `var(--space-8)` here and in every other block on
- * this page, so the tiles, the bars and the matrix share one left edge. The
- * rules still run the full width of the band, because a border sits outside
- * the padding — which is the arrangement `.bench-strip` already relies on.
+ * Inset by `var(--space-8)` like every other block on this page, so the tiles,
+ * the bars and the matrix share one left edge — but as a margin rather than a
+ * padding, because the strip is a block of data and opens and closes on the
+ * heavy ink rule, and that rule belongs to the strip, not to the band.
  */
 .bench-tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 0 var(--space-8);
-  border-top: var(--rule);
-  border-bottom: var(--rule);
+  margin: 0 var(--space-8);
+  border-top: var(--rule-heavy);
+  border-bottom: var(--rule-heavy);
 }
 
 .bench-tile {
@@ -94,11 +97,15 @@
   border-left: var(--rule);
 }
 
+/* A figure is content, so it is set in the content face; mono is for the
+   caption that says what it is. */
 .bench-tile-value {
-  font-family: var(--font-code);
-  font-size: 44px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 52px;
   line-height: 1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .bench-tile-label {
@@ -175,7 +182,7 @@
 }
 
 .bench-rank-track {
-  height: 12px;
+  height: 26px;
   background: var(--ink-08);
 }
 
@@ -218,6 +225,23 @@
   font-family: var(--font-code);
   font-size: 14px;
   font-variant-numeric: tabular-nums;
+}
+
+/* The accuracy is the figure the row exists for, so it gets the figure's
+   face and weight; its error sits under it, small, where it qualifies the
+   number without competing with it. The cost beside it stays in mono. */
+.bench-rank-value:not(.bench-rank-cost) {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.bench-rank-value:not(.bench-rank-cost) .muted {
+  display: block;
+  font-family: var(--font-code);
+  font-weight: 400;
+  font-size: 12px;
 }
 
 /*
@@ -543,8 +567,8 @@
  * glance down the column without reading a paragraph.
  */
 .bench-source-shape {
-  padding: 3px 8px 4px;
-  background: var(--ink-08);
+  padding: 2px 7px 3px;
+  border: 1px solid var(--ink-30);
   color: var(--ink-70);
   text-transform: none;
   letter-spacing: 0;
@@ -574,8 +598,8 @@
      against a future source with a hundred fields, not a crop. */
   max-height: 420px;
   overflow: auto;
-  border: var(--rule);
-  background: var(--ink-08);
+  border: var(--rule-strong);
+  background: var(--color-bg);
   font-size: 12.5px;
   line-height: 1.55;
   /*
@@ -695,8 +719,20 @@
 }
 
 @media (max-width: 720px) {
+  /* A figure set at 52px does not fit a third of a phone, so the strip
+     becomes a column and the rule between tiles turns to run across. */
+  .bench-tiles {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 0 var(--space-4);
+  }
+
+  .bench-tile + .bench-tile {
+    padding-left: 0;
+    border-left: 0;
+    border-top: var(--rule);
+  }
+
   .bench-scroll,
-  .bench-tiles,
   .bench-ranked,
   .bench-prov,
   .bench-facts,
@@ -769,8 +805,7 @@
 
 .bench-switch-option {
   padding: 5px 12px;
-  border: var(--rule);
-  border-radius: 999px;
+  border: 1px solid var(--ink-30);
   background: transparent;
   color: var(--ink-70);
   font: inherit;

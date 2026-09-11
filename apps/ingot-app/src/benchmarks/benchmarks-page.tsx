@@ -128,7 +128,7 @@ export function BenchmarksPage(): ReactNode {
 
         <section className="landblock" id="results">
           <div className="landhead">
-            <span className="label label-sm kicker">[ Results ]</span>
+            <span className="label kicker kicker-n">Results</span>
             <h2 className="landtitle">
               Accuracy,
               <br />
@@ -213,7 +213,7 @@ export function BenchmarksPage(): ReactNode {
 
         <section className="landblock" id="corpus">
           <div className="landhead">
-            <span className="label label-sm kicker">[ What it is asked about ]</span>
+            <span className="label kicker kicker-n">What it is asked about</span>
             <h2 className="landtitle">
               Tool results,
               <br />
@@ -227,7 +227,7 @@ export function BenchmarksPage(): ReactNode {
 
         <section className="landblock" id="method">
           <div className="landhead">
-            <span className="label label-sm kicker">[ What is compared ]</span>
+            <span className="label kicker kicker-n">What is compared</span>
             {/*
               "Columns" rather than "memories", because two of them are not
               memories: `raw-context` answers from the prompt and is a
@@ -258,7 +258,7 @@ export function BenchmarksPage(): ReactNode {
 
         <section className="landblock" id="limits">
           <div className="landhead">
-            <span className="label label-sm kicker">[ What this does not measure ]</span>
+            <span className="label kicker kicker-n">What this does not measure</span>
             <h2 className="landtitle">
               The limits,
               <br />
@@ -291,7 +291,7 @@ export function BenchmarksPage(): ReactNode {
 
         <section className="landblock" id="check">
           <div className="landhead">
-            <span className="label label-sm kicker">[ Check it ]</span>
+            <span className="label kicker kicker-n">Check it</span>
             <h2 className="landtitle">
               Every claim,
               <br />
@@ -1107,7 +1107,7 @@ function RunsTable({
           </thead>
           <tbody>
             {runs.map(({ question, run }) => (
-              <tr key={`${question.id} ${run.adapter}`}>
+              <tr key={`${question.id}\u0000${run.adapter}`}>
                 <th scope="row" className="bench-runs-id">
                   {question.id}
                 </th>

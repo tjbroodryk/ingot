@@ -21,7 +21,7 @@ same routes with something hidden:
 
 | Mode                   | `/`              | `/docs`   | `/why`        | `/deployment`  | `/dashboard` |
 | ---------------------- | ---------------- | --------- | ------------- | -------------- | ------------ |
-| `dashboard` *(default)* | The reference    | —         | —             | —              | The console  |
+| `dashboard` *(default)* | The reference    | —         | —             | —              | The workbench |
 | `landing`              | The landing page | Reference | Why it is this shape | How to run one | —     |
 
 `NEXT_PUBLIC_INGOT_MODE` picks one, and a static export has no server to pick
@@ -56,7 +56,7 @@ Which mode goes where:
 | `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
 | `/why`        | The argument: why a query engine and not a vector store. Landing only. |
 | `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
-| `/dashboard`  | Paste a key, pick a memory, upload a document, run one SELECT, read the grid. |
+| `/dashboard`  | Paste a key; then memories and their schema, one SELECT and its grid, and this tab's uploads and queries. |
 
 `/why` is the only page on the site that argues rather than describes, and it
 is held to a stricter standard for it: every claim on it is a fact about a
@@ -115,9 +115,22 @@ of the system's red. `src/app/globals.css` carries the token layer and the
 classes; the artboards carried every rule inline, which is how an artboard is
 built and not how a page should be.
 
-One deviation, deliberate: code panels sit on a warm off-white (`--color-stock`)
-rather than `#fff`, because a panel bleached to pure white on a warm ground
-reads as a hole punched in the page.
+The spec is `Ingot Design System.md` in the Claude Design project, which came
+after the landing artboard and wins where they disagree. The rules it is most
+often checked against:
+
+- Nothing is centred but a hero. Section heads, grids and bands are flush left.
+- A section's kicker is accent and numbered — `[ 02 ] What you get` — by
+  `.kicker-n`, whose number is a CSS counter so moving a section renumbers the
+  page. A page's own label (`[ API reference · v1 ]`) stays grey and unnumbered.
+- Edges of a page or a panel are the ink; sections divide at 20%, rows at 12%
+  (`--rule-strong`, `--rule`, `--rule-row`). A data block opens on the 2px ink
+  rule, `--rule-heavy`.
+- Code windows sit on the ground edged in ink, or are the ink. `--color-stock`,
+  a warm off-white, is only for fields you type into.
+- Chrome is mono uppercase — labels, buttons, table headers. Figures are
+  Archivo at weight, tabular.
+- An outline button fills with the accent on hover.
 
 `src/landing/landing.css` is the landing page's own layout and nothing else —
 its hero, its grids, its splits. Everything that page shares with the rest of
@@ -126,9 +139,15 @@ tokens, the closing band, and the deployment rows it draws with `/deployment`)
 comes from `globals.css` and is used rather than restated.
 
 **Never write a hex outside `:root`.** Every colour resolves to a token,
-Griddle's `--dg-*` variables included — those are re-declared from these tokens
-on `.resultgrid`, which is what stops the grid arriving as a component from a
-different product.
+Griddle's `--dg-*` variables included — all nine are re-declared from these
+tokens on `.cotera-griddle` in `dashboard.css`, which is what stops the grid
+arriving as a component from a different product. Griddle's stock themes are
+not imported. Its structure — the row-count bar, the row numbers, the typed
+headers, the ruled cells — is kept as it ships; what changes is reached through
+roles (`columnheader`, `gridcell`) rather than its utility class names.
+
+The dashboard is the 1b "Workbench" and 1d "Gate" artboards of
+`Ingot Dashboard.dc.html` in the same project.
 
 ## The dashboard's idea of a session
 
@@ -147,23 +166,29 @@ worked a moment ago".
 - A 401 or a 403 anywhere reopens the gate. It is not an error to show; it is
   the session being over.
 
-The console does no SQL validation. One statement, SELECT only, no `ATTACH` —
+The workbench does no SQL validation. One statement, SELECT only, no `ATTACH` —
 all of that is decided by the sandbox in `apps/ingot`, and a second opinion in
 the browser would be a rule that disagrees with the real one the first time
 either changes.
 
 ## Uploading a document
 
-`src/dashboard/file-upload.tsx`, in the console rather than on a page of its
-own: the thing anybody wants immediately after an upload is a query over it,
-and the buttons on the result write one into the editor below.
+In the workbench's right-hand pane rather than on a page of its own: the thing
+anybody wants immediately after an upload is a query over it, and the buttons
+on its log entry write one into the editor. `src/dashboard/upload-form.tsx` is
+the form; `src/dashboard/activity.tsx` is the log, and the entry is what does
+the watching — so the form is free for the next document while the last one is
+still parsing.
 
 `POST /:account/:ingot/file` is multipart and answers `pending` the moment the
 bytes are stored — parsing happens in a worker, and the response is a
-promissory note carrying the two SELECTs that report on it. So the panel does
+promissory note carrying the two SELECTs that report on it. So the entry does
 what a caller would otherwise do by hand: it runs `FileResult.query` every
 second and a half until the row appears, and shows what it settled as, `failed`
-and its reason included. A 422 while polling is `ingot_files` not existing yet —
+and its reason included.
+
+The log is this tab's history and nothing more. It lives in React state, not
+in storage, and a reload clears it; the pane says so. A 422 while polling is `ingot_files` not existing yet —
 the table is created by the write being waited for — and is the one error that
 means "not yet" rather than "no".
 
@@ -181,11 +206,11 @@ hand back a directory made with different ones.
 
 | Variable                  | Default              | What it decides                          |
 | ------------------------- | -------------------- | ---------------------------------------- |
-| `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the console talks to.   |
+| `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the dashboard talks to. |
 | `NEXT_PUBLIC_INGOT_MODE`  | `dashboard`          | Which site this is, and which routes exist. |
 | `NEXT_PUBLIC_BASE_PATH`   | *(empty)*            | The subdirectory it is served from.      |
 
-`NEXT_PUBLIC_INGOT_URL` is the one the sign-in card prints, so a dashboard
+`NEXT_PUBLIC_INGOT_URL` is the one the gate and the footer print, so a dashboard
 pointed at the wrong service says so rather than failing on the first query.
 
 `NEXT_PUBLIC_BASE_PATH` exists for GitHub Pages, which serves a project site

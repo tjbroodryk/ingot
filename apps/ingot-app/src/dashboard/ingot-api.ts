@@ -29,6 +29,21 @@ import type {
  */
 export const INGOT_URL = process.env.NEXT_PUBLIC_INGOT_URL ?? 'http://localhost:3002';
 
+/**
+ * The same address without its scheme, for where it is printed rather than
+ * fetched — the gate and the footer. A build value that is not a URL prints as
+ * written rather than throwing on every render.
+ */
+export const INGOT_HOST = hostOf(INGOT_URL);
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /** What the sign-in form collects, and the whole of a session. */
 export interface Credentials {
   /** The account slug — the `:account` segment. */

@@ -4,6 +4,7 @@ import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 import {
   CLAIM_LEASE_MS,
+  type FoldedVector,
   type OverlayDepth,
   type OverlayRow,
   type OverlayStore,
@@ -142,6 +143,24 @@ export class PgOverlayStore implements OverlayStore {
         .insert(overlayTombstone)
         .values(chunk.map((rowId) => ({ tableId, rowId, at })))
         .onConflictDoNothing();
+
+      /*
+       * A forgotten row needs no vector, and this is the only place that can
+       * say so.
+       *
+       * `_row_id` is generated per row and never derived from a key, so a
+       * tombstone is final: nothing will ever be written under this id again.
+       * Left queued, the text would be bought from the embedder after the row
+       * it describes is gone, and filed against an id no query can reach.
+       */
+      await this.uow.queryable
+        .delete(overlayEmbedQueue)
+        .where(
+          and(eq(overlayEmbedQueue.tableId, tableId), inArray(overlayEmbedQueue.rowId, chunk)),
+        );
+      await this.uow.queryable
+        .delete(overlayVector)
+        .where(and(eq(overlayVector.tableId, tableId), inArray(overlayVector.rowId, chunk)));
     }
   }
 
@@ -160,32 +179,64 @@ export class PgOverlayStore implements OverlayStore {
    *
    * A tombstone for a row still sitting *above* the watermark has to stay: it
    * was not in the file this compaction wrote, so nothing has excluded it yet.
+   *
+   * **The embedding queue is not swept here.** It used to be, for every row
+   * this drain consumed, on the assumption that a consumed row is an embedded
+   * row. It is not: embedding is asynchronous, so a roll-up that outruns the
+   * embedder was deleting texts nobody had bought a vector for yet. Those rows
+   * landed in Parquet with no vector and nothing left to produce one, and the
+   * gauge that would have said so — `pendingCount()` — went *down* as it
+   * happened. A queued text leaves when its vector is written, or when the row
+   * is forgotten, and those are the only two.
    */
-  async drain(tableId: string, throughSeq: bigint | null): Promise<void> {
-    const consumed =
-      throughSeq === null
-        ? []
-        : await this.uow.queryable
-            .select({ rowId: overlayRow.rowId })
-            .from(overlayRow)
-            .where(and(eq(overlayRow.tableId, tableId), lte(overlayRow.seq, throughSeq)));
-
+  async drain(
+    tableId: string,
+    throughSeq: bigint | null,
+    folded: readonly FoldedVector[],
+  ): Promise<void> {
     if (throughSeq !== null) {
       await this.uow.queryable
         .delete(overlayRow)
         .where(and(eq(overlayRow.tableId, tableId), lte(overlayRow.seq, throughSeq)));
     }
 
-    const ids = consumed.map((row) => row.rowId);
-    for (const chunk of chunked(ids, INSERT_CHUNK)) {
-      await this.uow.queryable
-        .delete(overlayEmbedQueue)
-        .where(
-          and(eq(overlayEmbedQueue.tableId, tableId), inArray(overlayEmbedQueue.rowId, chunk)),
-        );
-      await this.uow.queryable
-        .delete(overlayVector)
-        .where(and(eq(overlayVector.tableId, tableId), inArray(overlayVector.rowId, chunk)));
+    /*
+     * Which of the folded vectors are now safely in the file.
+     *
+     * All of them, except those belonging to a row the compaction did not
+     * materialise — which, once the rows at or below the watermark are gone,
+     * is exactly what is left in the overlay. A vector for one of those was
+     * read but never attached to anything, so it was never written, and
+     * deleting it here would lose it with its queue entry already spent.
+     *
+     * Vectors saved *after* the compaction read are not in `folded` at all, so
+     * they survive by not being named. That is the other half of the same
+     * window, and the reason this takes the set rather than deriving it.
+     */
+    const pending = new Set(
+      (
+        await this.uow.queryable
+          .select({ rowId: overlayRow.rowId })
+          .from(overlayRow)
+          .where(eq(overlayRow.tableId, tableId))
+      ).map((row) => row.rowId),
+    );
+
+    const spent = folded.filter((vector) => !pending.has(vector.rowId));
+    for (const chunk of chunked(spent, INSERT_CHUNK)) {
+      await this.uow.queryable.delete(overlayVector).where(
+        and(
+          eq(overlayVector.tableId, tableId),
+          or(
+            ...chunk.map((vector) =>
+              and(
+                eq(overlayVector.rowId, vector.rowId),
+                eq(overlayVector.columnName, vector.column),
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
     await this.uow.queryable.delete(overlayTombstone).where(

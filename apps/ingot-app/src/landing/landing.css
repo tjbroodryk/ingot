@@ -17,13 +17,13 @@
  */
 
 /*
- * The whole page sits inside one ruled box, the way the artboard drew it. The
- * header and the footer sit outside it, which is what makes the box read as
- * the document rather than as a card.
+ * The whole page sits inside one box edged in ink. The header and the footer
+ * sit outside it, which is what makes the box read as the document rather
+ * than as a card.
  */
 .landframe {
   margin: 0 var(--gutter) var(--gutter);
-  border: var(--rule);
+  border: var(--rule-strong);
 }
 
 /*
@@ -35,7 +35,7 @@
   border-bottom: var(--rule);
 }
 
-/* One that does not: a section whose content is a single centred block. */
+/* One that does not: a section whose content is a single block. */
 .landsection {
   padding: 56px var(--space-8) 72px;
   border-bottom: var(--rule);
@@ -141,7 +141,6 @@
  */
 .panel-wide {
   max-width: 1040px;
-  margin: 0 auto;
 }
 
 .panel-split {
@@ -158,11 +157,13 @@
   border-left: var(--rule);
 }
 
-/* ══ a centred section head ═════════════════════════════════════════════ */
+/* ══ a section head ═════════════════════════════════════════════════════
+   Flush left, like everything below the hero. The artboard centred these; the
+   brief that came after it does not, and says so in as many words.
+   ═══════════════════════════════════════════════════════════════════════ */
 
 .landhead {
   padding: 72px var(--space-8) 56px;
-  text-align: center;
 }
 
 .landhead-tight {
@@ -171,16 +172,16 @@
 
 .landtitle {
   max-width: 24ch;
-  margin: 0 auto 24px;
-  font-size: clamp(32px, 5vw, 62px);
-  line-height: 0.95;
+  margin: 0 0 24px;
+  font-size: clamp(32px, 4.4vw, 52px);
+  line-height: 0.92;
   text-transform: uppercase;
 }
 
 .landhead p {
-  max-width: 52ch;
-  margin: 0 auto;
-  font-size: 17px;
+  max-width: 660px;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--ink-70);
 }
 
@@ -195,10 +196,9 @@
 .step {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 48px var(--space-8);
-  text-align: center;
 }
 
 .step + .step {
@@ -377,7 +377,6 @@
 
 .feature {
   padding: 44px var(--space-8);
-  text-align: center;
 }
 
 .feature h4 {
@@ -387,7 +386,6 @@
 
 .feature p {
   max-width: 36ch;
-  margin: 0 auto;
   font-size: 14.5px;
   color: var(--ink-70);
 }
@@ -509,9 +507,8 @@
    invitation that closes the section.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* The head's own table of contents, centred under its lede. */
+/* The head's own table of contents, under its lede. */
 .target-jumps {
-  justify-content: center;
   margin-top: 28px;
 }
 
@@ -556,24 +553,7 @@
   color: var(--ink-70);
 }
 
-/* ══ the closing band ═══════════════════════════════════════════════════
-   `.cta` in globals is left-aligned, because on the reference it closes a
-   left-aligned document. Here it closes a centred page.
-   ═══════════════════════════════════════════════════════════════════════ */
-
-.cta-centred {
-  text-align: center;
-}
-
-.cta-centred h2,
-.cta-centred p {
-  margin-right: auto;
-  margin-left: auto;
-}
-
-.cta-centred .cta-actions {
-  justify-content: center;
-}
+/* ══ the closing band ═══════════════════════════════════════════════════ */
 
 /* On the accent field the outline button borrows the field's ink, not the page's. */
 .cta-secondary {
