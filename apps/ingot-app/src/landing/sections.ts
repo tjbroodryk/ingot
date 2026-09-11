@@ -64,8 +64,8 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     kicker: 'Schema first',
-    title: '/info costs nothing',
-    body: 'Answered straight out of Postgres. No bucket read, no DuckDB session — cheap enough to call every turn.',
+    title: '/info',
+    body: 'Tell the model exactly what is can query.',
   },
   {
     kicker: 'Sandboxed',
@@ -91,6 +91,11 @@ export const FEATURES: readonly Feature[] = [
     kicker: 'Delivery',
     title: 'Poll it, or be told',
     body: 'A receipt hands back the SELECT that finds your rows. Or point the memory at a webhook or a queue and each one gets pushed as it lands, out of an outbox that survives a restart.',
+  },  
+  {
+    kicker: 'Joins',
+    title: 'Across memory types',
+    body: 'Every memory type is a table in the same database, so one SELECT can join a tool result to another on a value neither declared as a key — a file path in one, the team that owns it in another.',
   },
 ];
 
@@ -104,16 +109,11 @@ export const FEATURES: readonly Feature[] = [
  * this is the pitch, so it is the one that gets edited.
  */
 export const LEDE =
-  'Your agent calls a tool, gets four hundred rows back, and pays for them on every turn until the window trims and they are gone for good. Ingot keeps them as real tables instead, so the model can read them back with SQL, by keyword or by meaning — next turn, or next week. No vector database running beside it.';
+  'Models are good at writing SQL. Why rely on similarity searches, when you can let it ask for exactly what it needs?';
 
 /** The row under the hero. What the thing already speaks, rather than logos. */
 export const SPEAKS: readonly string[] = [
-  'MCP',
-  'DuckDB',
-  'Parquet',
-  'Postgres',
-  'HTTP/JSON',
-  'SQL',
+  'SQL Queries', 'Similarity Searches', 'Document Chunking'
 ];
 
 /**
@@ -174,16 +174,16 @@ POST /api/v1/acme/ing_01H8Z…/query
  * The two things a write can opt into, and what each hands back.
  *
  * Both are opt-in and they are opt-in at different grains, which is the point
- * worth making: `embed` is per column and set once when the column is declared,
- * `receipt` is per call because it costs a model call every time. A page that
- * showed them as one switch would be describing a product that bills
- * differently from this one.
+ * worth making: `embed` is per memory type and set once when the type is
+ * declared, `receipt` is per call because it costs a model call every time. A
+ * page that showed them as one switch would be describing a product that
+ * bills differently from this one.
  *
  * `summary` and `searchTerm` are null in the response and that is not a gap
  * being glossed over — it is the promise the receipt makes. Showing the query
  * answering underneath is the only honest way to draw it.
  */
-export const RECEIPTS = `# opt in: per column, and per call
+export const RECEIPTS = `# opt in: per memory type, and per call
 POST /api/v1/acme/ing_01H8Z…/add
 {
   "table": "notes",
@@ -479,6 +479,83 @@ export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: strin
     scope: 'per memory',
     tools:
       'describe · remember · query · recall · forget · configure_table · configure_delivery · drop_table',
+  },
+];
+
+/**
+ * One row of "What it's not": a job a full RAG stack does, and what Ingot does
+ * about it. Backticks are code, through `Prose`.
+ *
+ * The README's "Against RAG" is the source, and the claims here should not get
+ * ahead of it — in particular the four it leaves out are the ones the README
+ * lists, not a softer set.
+ */
+export interface RagContrast {
+  readonly job: string;
+  readonly rag: string;
+  readonly ingot: string;
+}
+
+/** The half of a RAG stack that stores and finds. */
+export const RAG_REPLACED: readonly RagContrast[] = [
+  {
+    job: 'Chunk documents',
+    rag: 'A loader and a splitter in front of the store.',
+    ingot: '`/file` chunks per format, and can pull typed rows out of the same file.',
+  },
+  {
+    job: 'Embed',
+    rag: 'A pipeline writing vectors into another system.',
+    ingot: 'Opt in per memory type. A sweeper works the queue.',
+  },
+  {
+    job: 'Store vectors',
+    rag: 'A vector database beside your data.',
+    ingot: 'The same tables as the rows. No second database.',
+  },
+  {
+    job: 'Retrieve',
+    rag: '`top_k(embedding)`.',
+    ingot: 'SQL, with cosine and BM25 as ranking functions inside it.',
+  },
+  {
+    job: 'Count, aggregate, sort by time',
+    rag: 'No nearest-neighbour formulation.',
+    ingot: 'A `GROUP BY` and an `ORDER BY`.',
+  },
+  {
+    job: 'Join sources',
+    rag: 'One index per query.',
+    ingot: 'One SELECT across memory types — chunks, files and typed rows together.',
+  },
+  {
+    job: 'What goes in',
+    rag: 'Documents.',
+    ingot: 'An agent’s own tool results, typed. Documents are a second way into the same tables.',
+  },
+];
+
+/** The half that writes the answer, and the rest of what a mature stack has. */
+export const RAG_LEFT_OUT: readonly RagContrast[] = [
+  {
+    job: 'Write the answer',
+    rag: 'Top-k chunks into the prompt, then a model call.',
+    ingot: 'Not done here. Rows come back; the agent writes the answer.',
+  },
+  {
+    job: 'Rerank and rewrite',
+    rag: 'A reranker, often a query rewriter.',
+    ingot: 'Neither. Hybrid means the SQL you wrote ranks on BM25 and cosine together.',
+  },
+  {
+    job: 'ANN index',
+    rag: 'HNSW or similar.',
+    ingot: 'None. Brute-force cosine, a good trade until the low millions of rows per table.',
+  },
+  {
+    job: 'Schema',
+    rag: 'None asked for.',
+    ingot: 'Required up front for `/add`. A real cost, and one the benchmark does not put a number on.',
   },
 ];
 

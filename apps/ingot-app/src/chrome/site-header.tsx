@@ -53,6 +53,15 @@ export function SiteHeader({
     <header className="topbar label">
       <nav className="topbar-nav">
         {/*
+          A dashboard build's front page is the reference, so there "Home" and
+          "Docs" would be two names for one page.
+        */}
+        {HOME_HREF !== DOCS_HREF ? (
+          <a href={HOME_HREF} aria-current={current === SiteSection.Landing ? 'page' : undefined}>
+            Home
+          </a>
+        ) : null}
+        {/*
           Before the reference, because it is the question asked before that
           one: why is this shaped like this. A dashboard build has no such
           page — its reader is running the service and has been persuaded by

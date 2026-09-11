@@ -252,10 +252,23 @@
  * makes that possible and is the reason this does not share `.bench-table`.
  */
 .bench-matrix {
-  width: 100%;
+  /* The outer border-spacing is pulled back so the row labels and the rule
+     above the controls start on the same edge as the rules around the table. */
+  width: calc(100% + 8px);
+  min-width: 840px;
+  margin: 0 -4px;
   border-collapse: separate;
   border-spacing: 4px;
+  /* Auto layout sizes each column by its header, so `ordering` came out nearly
+     twice as wide as `join`. Every category is the same kind of cell. */
+  table-layout: fixed;
   font-variant-numeric: tabular-nums;
+}
+
+/* Fixed layout takes column widths from the first row only. Wide enough for
+   `control-same-store-top-k-rest`, the longest adapter name. */
+.bench-matrix thead th:first-child {
+  width: 264px;
 }
 
 /*
@@ -355,7 +368,6 @@
 }
 
 .bench-matrix tbody th {
-  width: 200px;
   padding-right: var(--space-4);
   font-family: var(--font-code);
   font-size: 14px;

@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { ELSEWHERE, RUN_TARGETS } from '../deployment/targets';
-import { RunTargetRow } from '../deployment/run-target';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { SampleTone } from '../docs/reference';
-import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
+import { BENCHMARKS_HREF, DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
 import './landing.css';
 import {
   AI_SDK_SEEN,
@@ -17,6 +15,8 @@ import {
   LEDE,
   MCP_CONFIG,
   MCP_TOOLS,
+  RAG_LEFT_OUT,
+  RAG_REPLACED,
   RECALL,
   RECEIPTS,
   REMEMBER,
@@ -25,6 +25,13 @@ import {
   SPEAKS,
   STEPS,
 } from './sections';
+
+/**
+ * How to run it is the deployment page's, and only there. The fallback is for
+ * a dashboard build, which never serves this page but is what a test run is.
+ */
+const RUN_HREF = DEPLOYMENT_HREF ?? REPO_URL;
+const RUN_LOCAL_HREF = DEPLOYMENT_HREF ? `${DEPLOYMENT_HREF}#run-local` : REPO_URL;
 
 /**
  * The page in front of the project, and only in a landing build — see
@@ -56,7 +63,7 @@ export function LandingPage(): ReactNode {
         <section className="hero">
           <div className="hero-badge label">
             <span className="badge">Self-hosted</span>
-            <a href="#run">There is no hosted Ingot yet — you run it</a>
+            <a href={RUN_HREF}>There is no hosted Ingot yet — you run it</a>
           </div>
 
           <h1 className="hero-title">
@@ -69,7 +76,7 @@ export function LandingPage(): ReactNode {
           <p className="hero-lede">{LEDE}</p>
 
           <div className="hero-actions label">
-            <a className="btn-solid btn-lg" href="#run-local">
+            <a className="btn-solid btn-lg" href={RUN_LOCAL_HREF}>
               Run it locally
             </a>
             <a className="btn-outline btn-lg" href={DOCS_HREF}>
@@ -289,8 +296,8 @@ export function LandingPage(): ReactNode {
               expensive parts.
             </h3>
             <p>
-              We split these two on purpose. <code>embed</code> belongs to the table: set it once
-              when the column is declared and it applies to every write after that.{' '}
+              We split these two on purpose. <code>embed</code> belongs to the memory type: set it
+              once when the type is declared and it applies to every write after that.{' '}
               <code>receipt</code> is per call, because it costs a model call every time. A loop
               storing ten thousand tool results should never end up paying for either by accident.
             </p>
@@ -301,7 +308,7 @@ export function LandingPage(): ReactNode {
               instead of having to ask.
             </p>
             <div className="chips">
-              <span className="chip chip-accent">embed per column</span>
+              <span className="chip chip-accent">embed per memory type</span>
               <span className="chip">receipt per call</span>
               <span className="chip">webhook</span>
               <span className="chip">rabbitmq</span>
@@ -332,8 +339,8 @@ export function LandingPage(): ReactNode {
               That is normally three pieces of infrastructure: a vector store, a metadata index, and
               a filtering hop between them. We did not want to run any of those, so here it is one
               POST against the memory you were already writing to. Neither half is on by default —
-              you declare embeddings per column and the keyword index per table, so a memory holding
-              no prose pays for neither.
+              you turn on embeddings and the keyword index per memory type, so a memory holding no
+              prose pays for neither.
             </p>
             <div className="chips">
               <span className="chip chip-accent">one SELECT</span>
@@ -389,89 +396,72 @@ export function LandingPage(): ReactNode {
         </section>
 
         {/*
-          Where you can run it, one row per place.
-
-          This is the section that grows, so nothing about it is written twice:
-          the rows come from `targets.ts` and the numbering comes from their
-          position, which is what keeps a fourth target from being an edit in
-          four files. The four labelled slots repeat down the section on
-          purpose — that repetition is what lets somebody compare two ways of
-          running this without reading either in full.
+          The README's "Against RAG", last before the sign-up band: somebody
+          deciding whether to run this should know what it leaves to something
+          else before they bring one up.
         */}
-        <section className="landblock" id="run">
+        <section className="landblock" id="not">
           <div className="landhead">
-            <span className="label kicker kicker-n">Ways to run it</span>
-            {/*
-              The highlight gets its own line rather than being left to wrap
-              into one: `.mark` is a painted box, and a box broken across two
-              lines is two boxes with a ragged edge between them.
-            */}
+            <span className="label kicker kicker-n">What it&rsquo;s not</span>
             <h2 className="landtitle">
-              Pick a place.
+              Half of RAG.
               <br />
-              The steps are
-              <br />
-              <span className="mark">the same shape</span>
+              <span className="mark">The half that finds</span>
             </h2>
             <p>
-              Every target below answers the same four questions in the same order: what you need,
-              what to run, how you know it worked, and the one thing that catches people out. No
-              target skips one.
+              &ldquo;RAG&rdquo; names two things that come apart: store documents so a model can
+              find them, and put the top k chunks in the prompt. Ingot is the first. It replaces the
+              half of the stack that stores and finds, and does no part of the half that writes the
+              answer.
             </p>
-
-            {/*
-              The jumps are derived rather than written down, so a target added
-              to the list is a target this row can reach. They double as the
-              section's own table of contents: the rows are long, and the one
-              somebody wants is usually decided before they start reading.
-            */}
-            <div className="chips target-jumps">
-              {RUN_TARGETS.map((target) => (
-                <a className="chip" href={`#${target.id}`} key={target.id}>
-                  {target.nav}
-                </a>
-              ))}
-            </div>
-
-            {/*
-              Where the same three rows are, with the two dependencies they
-              all share written out underneath them. Guarded because the route
-              is `null` in a dashboard build — which is a build this page is
-              never in, and a thing the type cannot know.
-            */}
-            {DEPLOYMENT_HREF ? (
-              <a className="target-more landhead-more" href={DEPLOYMENT_HREF}>
-                The same three, with the dependencies underneath →
+            {BENCHMARKS_HREF ? (
+              <a className="target-more landhead-more" href={BENCHMARKS_HREF}>
+                The same rows through top-k alone, measured →
               </a>
             ) : null}
           </div>
 
-          <div className="targets">
-            {RUN_TARGETS.map((target, index) => (
-              <RunTargetRow index={index} key={target.id} target={target} />
+          <table className="contrast">
+            <thead>
+              <tr>
+                <th scope="col">The job</th>
+                <th scope="col">A full RAG stack</th>
+                <th scope="col">Ingot</th>
+              </tr>
+            </thead>
+            {[
+              { label: 'What it replaces', rows: RAG_REPLACED },
+              { label: 'What it leaves out', rows: RAG_LEFT_OUT },
+            ].map((group) => (
+              <tbody key={group.label}>
+                <tr className="contrast-group">
+                  <th colSpan={3} scope="rowgroup">
+                    {group.label}
+                  </th>
+                </tr>
+                {group.rows.map((row) => (
+                  <tr key={row.job}>
+                    <th scope="row">{row.job}</th>
+                    {/* The labels are for the stacked layout, where the header row is gone. */}
+                    <td data-label="A full RAG stack">
+                      <Prose text={row.rag} />
+                    </td>
+                    <td data-label="Ingot">
+                      <Prose text={row.ingot} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             ))}
-
-            <div className="elsewhere" id="run-elsewhere">
-              <div className="elsewhere-copy">
-                <div className="target-num">{ELSEWHERE.kicker}</div>
-                <h4>{ELSEWHERE.title}</h4>
-                <p>
-                  <Prose text={ELSEWHERE.body} />
-                </p>
-              </div>
-              <a className="btn-outline label" href={ELSEWHERE.cta.href}>
-                {ELSEWHERE.cta.label}
-              </a>
-            </div>
-          </div>
+          </table>
         </section>
 
         {/*
           Where the design put "Sign up. The secret is shown once." There is
           nothing to sign up to, so this is the same band saying the true
           version: the sign-up route is real, and it is on the instance you
-          brought up yourself. The commands that used to sit here are the local
-          target's now, so that the bring-up is written down once.
+          brought up yourself. The commands for that live on the deployment
+          page, so that the bring-up is written down once.
         */}
         <section className="cta">
           <span className="label kicker kicker-n">Self-hosted, for now</span>
