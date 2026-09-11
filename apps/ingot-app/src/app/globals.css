@@ -214,7 +214,22 @@ pre {
   background: var(--ink-25);
 }
 
-/* — the two buttons, flush-left labels and all — */
+/* — the two buttons, flush-left labels and all —
+   The base strips native-button chrome so an <a> and a <button> with the same
+   class render identically, and carries the label voice (globals.css:.label)
+   so a button reads right wherever it sits, not only inside a .label parent. */
+
+.btn-solid,
+.btn-outline {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 .btn-solid {
   padding: 11px 22px;

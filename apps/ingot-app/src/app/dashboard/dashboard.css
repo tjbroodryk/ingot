@@ -123,20 +123,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.btn-solid,
-button.btn-outline {
-  font-family: var(--font-code);
-  font-size: 12.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-button.btn-outline {
-  background: transparent;
-  color: var(--color-ink);
-}
-
 /* ── notices ───────────────────────────────────────────────────────────── */
 
 .notice {
