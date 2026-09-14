@@ -82,7 +82,8 @@ services:
   # Ingot falls back to the local filesystem when no bucket is configured, so
   # this is optional for `bun run dev`; it is the suite that wants it.
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # quay.io rather than Docker Hub, where MinIO no longer publishes.
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ingot-minio
     command: server /data --console-address ':9001'
     environment:
@@ -104,7 +105,7 @@ services:
   # because a service that creates its own bucket needs credentials that can,
   # which is more than it should be trusted with in production.
   minio-init:
-    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
     container_name: ingot-minio-init
     depends_on:
       minio:
