@@ -4,7 +4,7 @@ import {
   DASHBOARD_HREF,
   DEPLOYMENT_HREF,
   DOCS_HREF,
-  HOME_HREF,
+  WHAT_HREF,
   WHY_HREF,
 } from '../site/mode';
 import { BrandMark } from './brand-mark';
@@ -52,13 +52,9 @@ export function SiteHeader({
   return (
     <header className="topbar label">
       <nav className="topbar-nav">
-        {/*
-          A dashboard build's front page is the reference, so there "Home" and
-          "Docs" would be two names for one page.
-        */}
-        {HOME_HREF !== DOCS_HREF ? (
-          <a href={HOME_HREF} aria-current={current === SiteSection.Landing ? 'page' : undefined}>
-            Home
+        {WHAT_HREF !== DOCS_HREF ? (
+          <a href={WHAT_HREF} aria-current={current === SiteSection.Landing ? 'page' : undefined}>
+            What
           </a>
         ) : null}
         {/*
@@ -106,7 +102,7 @@ export function SiteHeader({
         ) : null}
       </nav>
 
-      <a className="brand" href={HOME_HREF}>
+      <a className="brand" href={WHAT_HREF}>
         <BrandMark className="brand-mark" />
         <span className="brand-word">Ingot</span>
       </a>

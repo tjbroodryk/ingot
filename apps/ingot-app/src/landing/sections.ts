@@ -49,7 +49,10 @@ export const STEPS: readonly Step[] = [
   },
 ];
 
-/** One cell of the six under "What you get". */
+/**
+ * A kicker, a claim and a paragraph: the six cells under "What you get", and
+ * the pair at the top of the page that say what the thing is.
+ */
 export interface Feature {
   readonly kicker: string;
   readonly title: string;
@@ -96,6 +99,31 @@ export const FEATURES: readonly Feature[] = [
     kicker: 'Joins',
     title: 'Across memory types',
     body: 'Every memory type is a table in the same database, so one SELECT can join a tool result to another on a value neither declared as a key — a file path in one, the team that owns it in another.',
+  },
+];
+
+/**
+ * The two cells under "What this is", which is the first section on the page.
+ *
+ * It is first because everything below it is API, and a reader who has not yet
+ * been told that this is the place an agent loop puts its tool results reads
+ * the samples as a database's rather than as a memory's.
+ *
+ * Two cells because `/add` and `/file` are the whole front door. Documents sit
+ * here rather than being left to "What it's not" nine sections down: it is the
+ * half of the product people arrive already looking for, and the claim worth
+ * making early is that a chunk lands in the same tables a tool result does.
+ */
+export const WAYS_IN: readonly Feature[] = [
+  {
+    kicker: 'Tool results',
+    title: 'What the loop already makes',
+    body: 'Map JSON paths onto typed columns and a tool result becomes rows a model can filter, count and sort. What goes back into the context window is a receipt carrying the SELECT that finds them again — about 180 tokens standing in for 48,000.',
+  },
+  {
+    kicker: 'Documents',
+    title: 'Chunked per format, into the same tables',
+    body: 'Post a PDF, a deck, a CSV, HTML, Markdown or plain text. It is chunked the way its own format divides — a slide does not bleed into the next one — embedded on the way in, and it can hand back typed rows pulled out of the same upload. Chunks are an ordinary table, so one SELECT ranks a paragraph by meaning and filters it on a number from the tool result beside it.',
   },
 ];
 

@@ -412,6 +412,16 @@
   border-top: var(--rule);
 }
 
+/*
+ * The same cell at the top of the page, where there are two of them rather
+ * than six. The rules above still hold at this width — `3n + 1` is the first
+ * cell of a pair as well as of a triple, and nothing reaches a fourth — so
+ * this is the column count and nothing else.
+ */
+.features-pair {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 /* ══ the two split sections ═════════════════════════════════════════════ */
 
 .split {

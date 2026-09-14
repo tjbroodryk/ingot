@@ -4,7 +4,7 @@ import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
-import { DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF, REPO_URL } from '../site/mode';
+import { DEPLOYMENT_HREF, DOCS_HREF, WHAT_HREF, REPO_URL } from '../site/mode';
 // The landing page's layout, used rather than restated — see the note at the
 // top of that file. This page is the same shape of argument in the same
 // idiom: a hero, ruled bands, three-up grids and two splits.
@@ -230,7 +230,7 @@ export function WhyPage(): ReactNode {
               <span className="chip">a real WHERE</span>
               <span className="chip">no second store</span>
             </div>
-            <a className="target-more" href={`${HOME_HREF}#read`}>
+            <a className="target-more" href={`${WHAT_HREF}#read`}>
               How retrieval works, on the landing page →
             </a>
           </div>

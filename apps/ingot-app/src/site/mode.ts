@@ -85,7 +85,7 @@ export function absolute(path: string): string {
 
 /** Where each page is, for one mode. */
 export interface SiteRoutes {
-  readonly home: string;
+  readonly what: string;
   /** The reference. Its own page in a landing build; the front page otherwise. */
   readonly docs: string;
   /** The console, or `null` where the build does not have one. */
@@ -132,7 +132,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
   const landing = mode === SiteMode.Landing;
 
   return {
-    home: `${basePath}/`,
+    what: `${basePath}/`,
     docs: landing ? `${basePath}/docs/` : `${basePath}/`,
     dashboard: landing ? null : `${basePath}/dashboard/`,
     why: landing ? `${basePath}/why/` : null,
@@ -143,7 +143,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
 
 const ROUTES = routesFor(MODE);
 
-export const HOME_HREF = ROUTES.home;
+export const WHAT_HREF = ROUTES.what;
 export const DOCS_HREF = ROUTES.docs;
 export const DASHBOARD_HREF = ROUTES.dashboard;
 export const WHY_HREF = ROUTES.why;

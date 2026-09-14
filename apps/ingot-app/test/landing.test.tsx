@@ -17,6 +17,7 @@ import {
   SDK_NOTES,
   SPEAKS,
   STEPS,
+  WAYS_IN,
 } from '../src/landing/sections';
 import { RUN_TARGETS } from '../src/deployment/targets';
 import { SiteMode, routesFor } from '../src/site/mode';
@@ -62,7 +63,7 @@ describe('the site modes', () => {
   it('carries the base path into every hand-written link', () => {
     const routes = routesFor(SiteMode.Landing, '/ingot');
 
-    expect(routes.home).toBe('/ingot/');
+    expect(routes.what).toBe('/ingot/');
     expect(routes.docs).toBe('/ingot/docs/');
     expect(routes.deployment).toBe('/ingot/deployment/');
   });
@@ -104,6 +105,33 @@ describe('the landing page', () => {
 
     expect(anchors.length).toBeGreaterThan(0);
     expect(anchors.filter((anchor) => !ids.has(anchor))).toEqual([]);
+  });
+
+  /**
+   * What it is comes before how it works.
+   *
+   * The order is the whole point of the section: a reader who has not been
+   * told that this is where an agent loop puts its tool results reads the
+   * terminal under it as a database's samples. Both ids are asserted before
+   * they are compared, because a missing one is -1 and -1 sorts first.
+   */
+  it('says what it is before it says how it works', () => {
+    for (const way of WAYS_IN) expect(markup).toContain(way.title);
+
+    const what = markup.indexOf('id="what"');
+
+    expect(what).toBeGreaterThan(-1);
+    expect(markup.indexOf('id="how"')).toBeGreaterThan(what);
+  });
+
+  /**
+   * `.features-pair` is `repeat(2, 1fr)`, and the border rules it inherits are
+   * written `3n + 1` — right for a pair and for a triple, and wrong for the
+   * third cell somebody adds here, which would start a row against the
+   * section's own edge.
+   */
+  it('keeps the pair a pair', () => {
+    expect(WAYS_IN.length).toBe(2);
   });
 
   /**

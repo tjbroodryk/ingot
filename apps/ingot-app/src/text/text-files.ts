@@ -168,7 +168,7 @@ function robotsTxt(mode: SiteMode): string {
  */
 function sitemapXml(mode: SiteMode): string {
   const routes = routesFor(mode);
-  const pages = [routes.home, routes.why, routes.docs, routes.deployment].filter(
+  const pages = [routes.what, routes.why, routes.docs, routes.deployment].filter(
     (route): route is string => route !== null,
   );
 

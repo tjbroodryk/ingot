@@ -24,6 +24,7 @@ import {
   SDK_NOTES,
   SPEAKS,
   STEPS,
+  WAYS_IN,
 } from './sections';
 
 /**
@@ -88,6 +89,60 @@ export function LandingPage(): ReactNode {
           <div className="speaks">
             {SPEAKS.map((thing) => (
               <span key={thing}>{thing}</span>
+            ))}
+          </div>
+        </section>
+
+        {/*
+          What the thing is, before any of the API below it.
+
+          The hero says it in one sentence and a sentence is not enough: a
+          reader arriving here has to be told that this is where an agent loop
+          puts its tool results, or they read the terminal underneath as a
+          database's samples rather than as a memory's. The `/why` link is the
+          third paragraph rather than a fourth cell because the argument is not
+          a feature — and it is guarded, because the route is `null` in a build
+          that does not have that page.
+        */}
+        <section className="landblock" id="what">
+          <div className="landhead">
+            <span className="label kicker kicker-n">What this is</span>
+            <h2 className="landtitle">
+              Somewhere to put
+              <br />
+              <span className="mark">a tool result</span>
+            </h2>
+            <p>
+              Ingot is a drop-in memory for an agent loop. Your harness does not change and
+              neither does the shape of your tool: the model asks for one, the tool runs, and
+              instead of returning four hundred objects into the context window it POSTs them
+              here and returns the receipt. The rows are typed and queryable the same second —
+              this turn, and in a session next week that never saw them go in.
+            </p>
+            <p>
+              Documents come in the same door. A PDF or a deck is chunked, embedded and landed
+              in tables of the same memory, next to the tool results, so finding a paragraph
+              and filtering on a number are one SELECT rather than two systems.
+            </p>
+            <p>
+              They are all held as tables rather than as vectors because the questions an agent
+              actually has are joins — which of these also, how many, in what order. Similarity
+              answers exactly one question, and it is rarely that one.
+            </p>
+            {WHY_HREF ? (
+              <a className="target-more landhead-more" href={WHY_HREF}>
+                The argument, in full →
+              </a>
+            ) : null}
+          </div>
+
+          <div className="features features-pair">
+            {WAYS_IN.map((way) => (
+              <div className="feature" key={way.kicker}>
+                <div className="feature-kicker">{way.kicker.toUpperCase()}</div>
+                <h4>{way.title}</h4>
+                <p>{way.body}</p>
+              </div>
             ))}
           </div>
         </section>
