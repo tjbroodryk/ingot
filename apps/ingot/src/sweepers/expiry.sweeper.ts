@@ -41,6 +41,15 @@ const PER_TICK = 25;
 @Cron({
   name: 'reap-expired-ingots',
   everyMs: EVERY,
+  /*
+   * Kept exclusive, though the re-read below would make concurrent reaping
+   * correct. `PER_TICK` is a blast-radius bound on the only thing in the
+   * service that deletes data nobody asked it to delete, and per replica it
+   * would quietly become twenty-five times however many pods are running. A
+   * ten-minute sweep over expired memories has no throughput problem worth
+   * trading that for.
+   */
+  exclusive: true,
   description: 'Deletes memories whose retention has run out',
 })
 export class ExpirySweeper {

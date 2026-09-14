@@ -30,6 +30,15 @@ const FIRST_BACKOFF_MS = 5_000;
 const MAX_BACKOFF_MS = 60_000;
 
 /**
+ * How many of its own intervals a turn may take before it is worth a log line.
+ *
+ * Three rather than one, because a sweep overrunning slightly is ordinary —
+ * `drainWithin` deliberately stops a tick at the moment the next would have
+ * started, and overruns by up to a drain doing it.
+ */
+const OVERRUN_FACTOR = 3;
+
+/**
  * Runs the sweepers on their schedules.
  *
  * This replaces a durable-execution engine, and it is worth being precise about
@@ -77,7 +86,10 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
         continue;
       }
 
-      this.logger.log(`${spec.name} sweeps every ${spec.everyMs / 60_000} minute(s)`);
+      this.logger.log(
+        `${spec.name} sweeps every ${spec.everyMs / 60_000} minute(s), ` +
+          `${spec.exclusive ?? true ? 'one replica at a time' : 'on every replica'}`,
+      );
       // Immediately, rather than one interval from now: a pod that has just
       // started is the most likely one to have a backlog waiting for it.
       this.schedule(ticker, spec, 0, FIRST_BACKOFF_MS);
@@ -109,12 +121,10 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
   private async turn(ticker: Type<Ticker>, spec: CronSpec, backoffMs: number): Promise<void> {
     if (this.stopped) return;
 
+    const overrunning = this.warnWhileItOverruns(spec);
     try {
       const instance = this.moduleRef.get<Ticker>(ticker, { strict: false });
-      // `false` means another replica holds the lock. Not an error, and not a
-      // reason to back off: the work is being done, and the next turn comes
-      // round at the ordinary interval.
-      await this.exclusive.attempt(spec.name, () => instance.tick());
+      await this.run(spec, () => instance.tick());
 
       this.schedule(ticker, spec, spec.everyMs, FIRST_BACKOFF_MS);
     } catch (error) {
@@ -134,7 +144,60 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
         );
       }
       this.schedule(ticker, spec, backoffMs, Math.min(backoffMs * 2, MAX_BACKOFF_MS));
+    } finally {
+      clearInterval(overrunning);
     }
+  }
+
+  /**
+   * Runs the tick, under the lock or not, as the spec asked for.
+   *
+   * `exclusive: false` skips the lock rather than taking one and disregarding
+   * the answer, and the difference is the point: a lock taken is a lock every
+   * other replica is refused.
+   */
+  private async run(spec: CronSpec, tick: () => Promise<void>): Promise<void> {
+    if (!(spec.exclusive ?? true)) {
+      await tick();
+      return;
+    }
+
+    // `false` means another replica holds the lock. Not an error, and not a
+    // reason to back off: the work is being done, and the next turn comes
+    // round at the ordinary interval.
+    await this.exclusive.attempt(spec.name, tick);
+  }
+
+  /**
+   * Says so, and keeps saying so, while a turn runs long past the point it
+   * should have finished.
+   *
+   * A sweep that hangs — a model call with no timeout, a bucket that accepted
+   * the connection and then went quiet — holds its advisory lock for exactly as
+   * long as it hangs, and no other replica can take over. The pod is not sick
+   * in any way a probe can see: it serves traffic, answers `/api/health`, and
+   * liveness leaves it alone. This log line is the only thing that will say
+   * which sweep it is stuck in, and for how long.
+   *
+   * It deliberately does not break in and release the lock. The work is still
+   * running — abandoning a promise does not abandon what it was waiting on —
+   * and handing the lock to a second pod while the first is still inside
+   * `CompactTable` is precisely the race the lock is there to prevent. Making
+   * the wedge visible is worth doing; making it concurrent is not.
+   */
+  private warnWhileItOverruns(spec: CronSpec): ReturnType<typeof setInterval> {
+    const startedAt = Date.now();
+
+    const timer = setInterval(() => {
+      const seconds = Math.round((Date.now() - startedAt) / 1_000);
+      this.logger.warn(
+        `${spec.name} has been running for ${seconds}s, over ${OVERRUN_FACTOR}× its interval` +
+          (spec.exclusive ?? true ? ' — no other replica can run it until it finishes.' : '.'),
+      );
+    }, spec.everyMs * OVERRUN_FACTOR);
+
+    timer.unref?.();
+    return timer;
   }
 
   /**

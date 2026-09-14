@@ -16,8 +16,8 @@ import type { Drained } from '../contexts/records/application/drained.js';
  * **The deadline is what keeps a tick a tick.** Without one, a sweeper handed a
  * large enough backlog runs until it is gone — which is right for the work and
  * wrong for everything else: `Scheduler.onModuleDestroy` waits for a turn in
- * flight, so a shutdown would wait with it, and the advisory lock would be held
- * by one replica for the whole time. One interval is the natural bound: a tick
+ * flight, so a shutdown would wait with it, and a pod's grace period does not
+ * last. One interval is the natural bound: a tick
  * never runs past the moment the next one would have started, and what it did
  * not finish is the next tick's, which is the arrangement a sweeper already
  * has with itself.

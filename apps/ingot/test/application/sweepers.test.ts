@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { TestingModule } from '@nestjs/testing';
 import { readCronSpec } from '../../src/sweepers/cron.js';
 import { drainWithin } from '../../src/sweepers/drain-within.js';
-import { hash32 } from '../../src/sweepers/exclusive.js';
+import { ExclusiveWork, hash32 } from '../../src/sweepers/exclusive.js';
 import { SweptKind } from '../../src/sweepers/kinds.js';
 import { Scheduler } from '../../src/sweepers/scheduler.js';
 import { SWEEPERS } from '../../src/sweepers/sweepers.module.js';
@@ -25,10 +25,13 @@ import { closeDatabase, openDatabase } from '../support/database.js';
  */
 describe('the sweepers', () => {
   let app: TestingModule;
+  let pool: Awaited<ReturnType<typeof openDatabase>>['pool'];
+  let url: string;
 
   beforeAll(async () => {
-    const { pool } = await openDatabase();
-    process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
+    ({ pool } = await openDatabase());
+    url = (pool.options.connectionString as string) ?? '';
+    process.env.DATABASE_URL ??= url;
     app = await compileAppModule().compile();
     await app.init();
   });
@@ -65,6 +68,64 @@ describe('the sweepers', () => {
 
     expect(new Set(names).size).toBe(names.length);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  /**
+   * Which sweeps take a lock at all, pinned.
+   *
+   * `exclusive` defaults to true, so the risk this guards is not a sweep that
+   * forgets to ask for the lock — it is one that sets `false` because a backlog
+   * looked slow, on work that is not in fact safe on two pods at once. Roll-up
+   * is the reason the lock exists: two replicas compacting one table both
+   * compute `generation + 1` and both flip the manifest. Expiry keeps it for a
+   * different reason, which is that `PER_TICK` bounds a deletion and per
+   * replica it would stop bounding anything.
+   */
+  it('takes a lock for exactly the sweeps that need one', () => {
+    const exclusive = Object.values(SWEEPERS)
+      .map((sweeper) => readCronSpec(sweeper))
+      .filter((spec) => spec?.exclusive ?? true)
+      .map((spec) => spec?.name)
+      .sort();
+
+    expect(exclusive).toEqual(['reap-expired-ingots', 'roll-up-ingots']);
+  });
+
+  /**
+   * One connection, however many sweeps tick at the same moment.
+   *
+   * Every sweeper's first turn is booked at a delay of zero, so all six ask
+   * `ExclusiveWork` for its connection in the same timer phase — before any of
+   * them has one. Against a plain `client | null` field they each read `null`,
+   * each open a socket, and the last to finish wins the field: six backends
+   * where the pool is sized at ten, five of them reachable by nothing, so never
+   * ended and still holding the event loop open through a shutdown.
+   *
+   * `pg_stat_activity` is the check rather than anything internal, because what
+   * is being guarded is a real backend on a real server. A delta rather than a
+   * count, because the app this suite booted is running its own scheduler and
+   * holds a lock connection of its own.
+   */
+  it('opens one lock connection however many sweeps tick together', async () => {
+    const sessions = async (): Promise<number> => {
+      const { rows } = await pool.query<{ open: number }>(
+        `SELECT count(*)::int AS open FROM pg_stat_activity
+          WHERE application_name = 'ingot-sweepers' AND datname = current_database()`,
+      );
+      return rows[0]?.open ?? 0;
+    };
+
+    const before = await sessions();
+    const exclusive = new ExclusiveWork(url);
+    const names = Object.values(SWEEPERS).map((sweeper) => readCronSpec(sweeper)?.name ?? '');
+
+    try {
+      await Promise.all(names.map((name) => exclusive.attempt(name, async () => undefined)));
+
+      expect(await sessions()).toBe(before + 1);
+    } finally {
+      await exclusive.onApplicationShutdown();
+    }
   });
 
   /**
@@ -129,8 +190,8 @@ describe('a tick', () => {
   /**
    * The bound that keeps a tick a tick. Without it a sweeper handed a large
    * enough backlog runs until it is gone — which is right for the work and
-   * wrong for a shutdown waiting on the turn, and for the advisory lock one
-   * replica would be holding throughout.
+   * wrong for a shutdown waiting on the turn inside a grace period that does
+   * not last.
    */
   it('stops at the moment the next tick would have started', async () => {
     let calls = 0;

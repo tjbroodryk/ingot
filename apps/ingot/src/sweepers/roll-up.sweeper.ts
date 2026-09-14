@@ -51,6 +51,9 @@ const MIN_OVERLAY_ROWS = 1_000;
 @Cron({
   name: 'roll-up-ingots',
   everyMs: EVERY,
+  // Said rather than defaulted, because this is the sweep the lock exists for
+  // and the note above is the reasoning.
+  exclusive: true,
   description: 'Rolls overlay rows up into new Parquet generations',
 })
 export class RollUpSweeper {

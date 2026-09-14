@@ -23,6 +23,9 @@ const EVERY = minutes(1);
 @Cron({
   name: 'sweep-files',
   everyMs: EVERY,
+  // Every replica. The claim leases its documents, so two pods draining take
+  // different work — see `CronSpec.exclusive`.
+  exclusive: false,
   description: 'Parses uploaded documents into chunks and extracted rows',
 })
 export class FilesSweeper {

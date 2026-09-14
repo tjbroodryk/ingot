@@ -20,6 +20,9 @@ const EVERY = minutes(1);
 @Cron({
   name: 'sweep-receipts',
   everyMs: EVERY,
+  // Every replica. The claim leases its rows, so two pods draining take
+  // different work — see `CronSpec.exclusive`.
+  exclusive: false,
   description: 'Summarises writes that asked for a receipt with one',
 })
 export class ReceiptsSweeper {

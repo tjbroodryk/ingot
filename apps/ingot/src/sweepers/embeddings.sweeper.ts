@@ -23,6 +23,9 @@ const EVERY = minutes(1);
  * `drain`. Neither has to care about the other arriving at once, because the
  * claim leases its rows with `FOR UPDATE SKIP LOCKED` — a woken drain and a
  * tick running together take different work rather than the same work twice.
+ * That holds across pods exactly as it holds within one, which is why this
+ * sweep takes no advisory lock: ten replicas draining is ten times the rate,
+ * not ten times the work.
  *
  * Silent when nothing moved, which is what keeps a per-write wake and a
  * once-a-minute timer out of the log.
@@ -30,6 +33,9 @@ const EVERY = minutes(1);
 @Cron({
   name: 'sweep-embeddings',
   everyMs: EVERY,
+  // Every replica. The claim leases its rows, so two pods draining take
+  // different work — see `CronSpec.exclusive`.
+  exclusive: false,
   description: 'Embeds overlay rows whose text has no vector yet',
 })
 export class EmbeddingsSweeper {

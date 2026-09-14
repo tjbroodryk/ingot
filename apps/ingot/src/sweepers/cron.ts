@@ -13,6 +13,28 @@ export interface CronSpec {
    * itself, and two passes reconciling the same tables is work paid for twice.
    */
   everyMs: number;
+  /**
+   * Whether only one replica at a time may run this sweep. Defaults to true.
+   *
+   * True is the safe direction, and the default for that reason: a sweep that
+   * has not thought about a second pod running it at the same moment gets the
+   * guarantee anyway. `roll-up-ingots` is why it exists — two replicas
+   * compacting one table both compute `generation + 1`, write the same keys and
+   * both flip the manifest.
+   *
+   * Set it false only when the work is safe to run twice *concurrently* rather
+   * than merely twice in succession. For every queue sweeper here it is, and
+   * not as a theory: the claim leases its rows with `FOR UPDATE SKIP LOCKED`,
+   * so two drains take different work — which is already how the wake path
+   * runs, on every replica, on every write, holding no lock at all.
+   *
+   * What leaving it true costs where it is not needed is throughput, and not a
+   * little of it. The lock is held for the whole of `drainWithin`'s deadline,
+   * so a backlog with no incoming writes drains at one pod's rate however many
+   * the autoscaler has added — and the autoscaler adds them, because a backlog
+   * burns CPU on the one pod doing the work.
+   */
+  exclusive?: boolean;
   description: string;
 }
 
@@ -32,10 +54,12 @@ export interface CronSpec {
  *
  * What a ticker may assume, and it is less than a durable executor promised:
  *
- * - **One replica runs a given sweep at a time.** `Scheduler` takes a Postgres
- *   advisory lock named for the spec, and a pod that cannot take it skips the
- *   turn. That is what stops two replicas compacting one table into the same
- *   generation.
+ * - **One replica runs a given sweep at a time, unless it says otherwise.**
+ *   `Scheduler` takes a Postgres advisory lock named for the spec, and a pod
+ *   that cannot take it skips the turn. That is what stops two replicas
+ *   compacting one table into the same generation. A sweep whose work is
+ *   already safe to run concurrently says `exclusive: false` and every replica
+ *   runs it.
  * - **A tick that throws is retried**, with a backoff, rather than skipped
  *   until the next interval.
  * - **Nothing else.** There is no journal and no replay: a tick that dies

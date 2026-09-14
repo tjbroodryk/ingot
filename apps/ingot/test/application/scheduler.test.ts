@@ -8,7 +8,7 @@ import { Scheduler, type Ticker } from '../../src/sweepers/scheduler.js';
 /**
  * What runs the sweepers, now that nothing durable does.
  *
- * Three properties moved out of the sweepers and into this class when the
+ * Four properties moved out of the sweepers and into this class when the
  * Restate cron chain went, and each used to be asserted somewhere else:
  *
  * - **The schedule survives a quiet tick.** `expiry.test.ts` used to check that
@@ -21,6 +21,9 @@ import { Scheduler, type Ticker } from '../../src/sweepers/scheduler.js';
  * - **One replica at a time.** The lock is what stops two pods rolling the same
  *   table up into the same generation, and a scheduler that ticked anyway when
  *   it could not take the lock would quietly undo it.
+ * - **Except where a sweep says otherwise.** A queue whose claim already leases
+ *   its rows wants every replica draining it, and the lock it does not need is
+ *   a throughput ceiling it would silently impose.
  *
  * No database and no container: the lock and the module are stand-ins, because
  * what is under test is the loop.
@@ -123,6 +126,46 @@ describe('the scheduler', () => {
     expect(attempts.length).toBeGreaterThan(1);
     expect(attempts.every((key) => key === 'contended')).toBe(true);
     expect(ticks).toBe(0);
+  });
+
+  /**
+   * The lock is not consulted at all, rather than consulted and disregarded.
+   *
+   * The distinction is the whole point of the flag: `attempt` that returns
+   * `false` is a lock some other replica has been refused, so a sweep that did
+   * not need one and took it anyway would cap a backlog at one pod's drain rate
+   * — which is what the four queue sweepers were doing.
+   */
+  it('ticks on every replica when the sweep says it may', async () => {
+    let ticks = 0;
+    const attempts: string[] = [];
+
+    @Cron({
+      name: 'shared',
+      everyMs: 5,
+      exclusive: false,
+      description: 'a sweep every replica may run at once',
+    })
+    class Shared implements Ticker {
+      async tick(): Promise<void> {
+        ticks++;
+      }
+    }
+
+    // A lock nobody can ever take. An exclusive sweep would never run a single
+    // tick against it.
+    const scheduler = new Scheduler(
+      [Shared],
+      containerOf(new Map([[Shared, new Shared()]])),
+      lock(false, attempts),
+    );
+
+    scheduler.onApplicationBootstrap();
+    await settle();
+    await scheduler.onModuleDestroy();
+
+    expect(ticks).toBeGreaterThan(1);
+    expect(attempts).toEqual([]);
   });
 
   it('stops when the application does', async () => {

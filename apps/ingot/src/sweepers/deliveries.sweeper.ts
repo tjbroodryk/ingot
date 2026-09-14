@@ -21,6 +21,10 @@ const EVERY = minutes(1);
 @Cron({
   name: 'sweep-deliveries',
   everyMs: EVERY,
+  // Every replica, and it matters most here: this queue is retrying against
+  // somebody else's endpoint, so a backlog is the ordinary case rather than
+  // the exception — see `CronSpec.exclusive`.
+  exclusive: false,
   description: 'Delivers receipts to the targets their memories nominated',
 })
 export class DeliveriesSweeper {
