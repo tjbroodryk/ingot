@@ -152,6 +152,19 @@ export interface AdapterTranscript {
   readonly calls: readonly PublishedCall[];
 }
 
+/**
+ * One run — one adapter's attempt at one question — as the transcripts table
+ * lists it.
+ *
+ * Here rather than in the page because the filter over that table is a
+ * function of a set of these, and a function is worth testing where a
+ * component that only exists after a fetch is not.
+ */
+export interface TranscriptRun {
+  readonly question: TranscriptQuestion;
+  readonly run: AdapterTranscript;
+}
+
 export interface PublishedCall {
   readonly name: string;
   /** The tool input, verbatim: the SQL, the search query, the arguments. */
@@ -263,10 +276,9 @@ export const benchmarksMetadata: Metadata = {
 };
 
 export const BENCHMARKS_LEDE =
-  'Ingot contains a vector index, so we are not going to pretend this is ' +
-  'structure versus embeddings. The question we actually wanted answered is ' +
-  'narrower: do typed rows and SQL on top of the same embeddings retrieve ' +
-  'better than those embeddings alone, and what does each answer cost in context?';
+  "Here we test Ingot's thesis of structure + similarity search " +
+  'better than just similarity search, and ' +
+  'how much does it cost in tokens?';
 
 /** What each adapter is, in the order the table shows them. */
 const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }[] = [
@@ -348,12 +360,9 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
  * not after.
  */
 export const CORPUS_LEDE =
-  'Nothing in this corpus is a document. Every byte of it arrived the way an agent’s ' +
-  'context actually fills up: as the JSON a tool call hands back — paginated listings ' +
-  'from a code catalogue, a pull-request API, a CI service, a pager and an issue ' +
-  'tracker, each one a blob with no schema attached, most of it never referred to ' +
-  'again. Every adapter ingests the identical array of payloads, so what separates ' +
-  'them is what they can do with the same bytes afterwards.';
+  'The initial thesis behind this library was developed on the idea that it could provide better' +
+  'answers when recalling and linking structured tool results,' +
+  'thus we benchmark against JSON tool results from a catelogue.';
 
 /**
  * A small count as a word, for a heading that has to agree with the table.
@@ -551,6 +560,39 @@ export const CATEGORIES: readonly { readonly name: string; readonly blurb: strin
   },
   { name: 'multi-hop', blurb: 'Two hops and an argmax.' },
 ];
+
+/**
+ * The question classes present in a set of runs, and how many runs each has.
+ *
+ * Ordered by {@link CATEGORIES} rather than by count or by first appearance, so
+ * the filter over the transcripts reads in the same order as the matrix's
+ * columns and the method section's cells — a reader who has learned "aggregate,
+ * absence, ordering…" once should not have to relearn it two sections down.
+ *
+ * A class the transcripts carry and `CATEGORIES` does not is still offered,
+ * after the known ones and alphabetically among themselves. The sidecar is
+ * written by another workspace and question classes get added there first; a
+ * class in an unexpected position is a smaller failure than a filter that
+ * silently hides every run of it.
+ */
+export function classesIn(
+  runs: readonly TranscriptRun[],
+): readonly { readonly name: string; readonly count: number }[] {
+  const counts = new Map<string, number>();
+  for (const { question } of runs) {
+    counts.set(question.category, (counts.get(question.category) ?? 0) + 1);
+  }
+
+  const known = CATEGORIES.map((category) => category.name);
+  const rank = (name: string): number => {
+    const index = known.indexOf(name);
+    return index === -1 ? known.length : index;
+  };
+
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+}
 
 /**
  * Where to check each claim this page makes.

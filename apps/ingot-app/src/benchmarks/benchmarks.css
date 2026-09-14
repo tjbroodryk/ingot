@@ -837,6 +837,16 @@
   color: var(--color-accent);
 }
 
+/*
+ * The same control inside a section that already carries the page's side
+ * padding — the class filter over the transcripts. Only the inset differs, and
+ * it differs because `.bench-transcripts` has already paid it.
+ */
+.bench-switch-inline {
+  padding-inline: 0;
+  padding-top: var(--space-4);
+}
+
 /* Sits between the switch and the first table, so it is read before any number. */
 .bench-corpus-meaning {
   padding: 0 var(--space-8) var(--space-4);
@@ -851,7 +861,7 @@
   border-top: var(--rule);
   color: var(--ink-100);
 }
-.bench-drifts {
+.bench-terms {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px var(--space-6);
@@ -860,24 +870,32 @@
   border-top: var(--rule);
   border-bottom: var(--rule);
 }
-.bench-drifts > div {
+.bench-terms > div {
   display: contents;
 }
-.bench-drifts dt {
+.bench-terms dt {
   color: var(--ink-100);
 }
-.bench-drifts dd {
+.bench-terms dd {
   margin: 0;
 }
 /* Stacked, where a term and its gloss side by side would leave neither room. */
 @media (max-width: 620px) {
-  .bench-drifts {
+  .bench-terms {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
   }
-  .bench-drifts dd {
+  .bench-terms dd {
     margin-bottom: 10px;
   }
+}
+/* In a section head it takes the lede's measure and colour, so it reads as
+   the paragraph continuing rather than a table dropped under it. */
+.landhead .bench-terms {
+  max-width: 660px;
+  margin: var(--space-4) 0 0;
+  font-size: 15px;
+  color: var(--ink-70);
 }
 
 /* The transcripts: what each column did, one run per row, a trace behind each.

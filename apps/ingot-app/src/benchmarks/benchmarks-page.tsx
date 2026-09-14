@@ -26,6 +26,7 @@ import {
   BENCHMARK,
   BENCHMARKS_LEDE,
   CATEGORIES,
+  classesIn,
   CONTROL_NAMES,
   CORPUS_JOINS,
   CORPUS_LEDE,
@@ -38,11 +39,10 @@ import {
   SOURCE_BLURBS,
   SOURCES,
   TRANSCRIPTS_FILE,
-  type AdapterTranscript,
   type PublishedAdapter,
   type PublishedTable,
   type PublishedTranscripts,
-  type TranscriptQuestion,
+  type TranscriptRun,
 } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
@@ -107,9 +107,9 @@ export function BenchmarksPage(): ReactNode {
           </div>
 
           <h1 className="hero-title">
-            What comes
+            But is it any
             <br />
-            back <span className="mark">out</span>
+            <span className="mark">good?</span>
           </h1>
 
           <p className="hero-lede">{BENCHMARKS_LEDE}</p>
@@ -130,18 +130,24 @@ export function BenchmarksPage(): ReactNode {
           <div className="landhead">
             <span className="label kicker kicker-n">Results</span>
             <h2 className="landtitle">
-              Accuracy,
+              Accuracy and cost,
               <br />
               <span className="mark">per category</span>
             </h2>
             <p>
-              The split by category is the whole point of the benchmark. The claim under test is
-              that SQL over typed rows, on top of ranking by meaning, recalls more of the answer
-              than similarity search alone. Each category is somewhere that claim can fail.
               Aggregates, absence, ordering and joins are where structure should tell; the semantic
-              questions are where embeddings should. Report one number and you have averaged all of
-              that away.
+              questions are where embeddings should perform better.
             </p>
+            <dl className="bench-terms">
+              {SCORING_TERMS.map(([term, gloss]) => (
+                <div key={term}>
+                  <dt className="label label-sm">{term}</dt>
+                  <dd>
+                    <Prose text={gloss} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
           {/*
@@ -187,12 +193,6 @@ export function BenchmarksPage(): ReactNode {
               <Provenance table={table} />
               <CostTable adapters={adapters} />
               <Failures adapters={adapters} />
-              <p className="bench-note">
-                Evidence recall is the share of the answer-bearing records that came back through
-                the tools; precision is the share of what came back that was answer-bearing. Both
-                are computed only over questions whose answer is a set of records — see the limits
-                below. Context tokens is what the model had to read to answer.
-              </p>
               <Transcripts table={table} />
             </>
           ) : (
@@ -235,14 +235,14 @@ export function BenchmarksPage(): ReactNode {
               listing that many cells is the agreement that matters.
             */}
             <h2 className="landtitle">
-              {countWord(ADAPTERS.length)} columns,
+              {countWord(ADAPTERS.length)} comparisons,
               <br />
-              <span className="mark">one agent</span>
+              same<span className="mark">agent harness</span>
             </h2>
             <p>
-              One agent loop serves every column, with the same model, the same tool-call budget and
+              One agent harness implementation serves every test case, with the same model, the same tool-call budget and
               the same answer channel. Only the retrieval tools differ, so a gap between two columns
-              has exactly one possible cause.
+              <i>should</i> only be down to the tool results.
             </p>
           </div>
 
@@ -260,14 +260,11 @@ export function BenchmarksPage(): ReactNode {
           <div className="landhead">
             <span className="label kicker kicker-n">What this does not measure</span>
             <h2 className="landtitle">
-              The limits,
-              <br />
-              <span className="mark">on the page</span>
+              <span className="mark">Caveats</span>
             </h2>
             <p>
               We are publishing a benchmark of our own software, which you should discount
-              accordingly. The least we can do is say plainly where it is weak, so here is
-              everything we know is wrong with it — worth reading before you trust anything above.
+              accordingly. So we shall attempt to highlight where it is weak.
             </p>
           </div>
 
@@ -293,15 +290,14 @@ export function BenchmarksPage(): ReactNode {
           <div className="landhead">
             <span className="label kicker kicker-n">Check it</span>
             <h2 className="landtitle">
-              Every claim,
+              View our
               <br />
-              <span className="mark">one file away</span>
+              <span className="mark">test cases</span>
             </h2>
             <p>
               This is worth exactly as much as your ability to go and check it, so every part of it
               is one file, linked below by the question it answers. If you want to know whether we
-              shaped the questions to flatter ourselves, read the generator — do not take our word
-              for it.
+              shaped the questions to flatter ourselves, you can read the generator.
             </p>
           </div>
 
@@ -347,6 +343,19 @@ const DRIFTS: readonly [string, string][] = [
   ['a key arriving late', 'files gain `service_ref` only after the change'],
 ];
 
+/** How `packages/bench/src/score/score.ts` decides what the tables count. */
+const SCORING_TERMS: readonly [string, string][] = [
+  ['correct', 'exactly right — a set counts only at F1 = 1, and F1 is reported apart as partial credit'],
+  [
+    'normalisation',
+    'light: answers are trimmed and lowercased, and a comma-separated string stands in for an array, so the envelope is not what gets marked',
+  ],
+  [
+    'evidence recall',
+    'scored apart from the answer — whether the answer-bearing records came back through the tools. Empty for aggregate questions and for `raw-context`, which does no retrieval',
+  ],
+];
+
 /**
  * What the selected corpus is, and what reading its numbers commits you to.
  *
@@ -385,7 +394,7 @@ function CorpusMeaning({ run }: { run: NonNullable<PublishedTable['run']> }): Re
           }
         />
       </p>
-      <dl className="bench-drifts">
+      <dl className="bench-terms">
         {DRIFTS.map(([what, how]) => (
           <div key={what}>
             <dt className="label label-sm">{what}</dt>
@@ -713,7 +722,7 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
       {controls.length > 0 ? (
         <>
           <h3 className="bench-subhead label label-sm bench-subhead-quiet">
-            Reference points — not competitors
+            The Control
           </h3>
           <ol className="bench-ranks">{controls.map((adapter) => row(adapter, true))}</ol>
         </>
@@ -953,12 +962,6 @@ function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): Rea
   );
 }
 
-/** One run — one column's attempt at one question — as the table lists it. */
-interface Run {
-  readonly question: TranscriptQuestion;
-  readonly run: AdapterTranscript;
-}
-
 /**
  * What each column actually did, one run at a time.
  *
@@ -979,7 +982,7 @@ interface Run {
 function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [data, setData] = useState<PublishedTranscripts | null>(null);
-  const [trace, setTrace] = useState<Run | null>(null);
+  const [trace, setTrace] = useState<TranscriptRun | null>(null);
 
   // No run, no transcripts: degrade to nothing rather than to a dead control.
   if (!table) return null;
@@ -1010,7 +1013,7 @@ function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
 
   // One row per (question, adapter), grouped by question the way the sidecar
   // already orders them — the order the summary shows the columns in.
-  const runs: readonly Run[] =
+  const runs: readonly TranscriptRun[] =
     forThis?.questions.flatMap((question) =>
       question.adapters.map((run) => ({ question, run })),
     ) ?? [];
@@ -1072,16 +1075,63 @@ function RunsTable({
   runs,
   onTrace,
 }: {
-  runs: readonly Run[];
-  onTrace: (run: Run) => void;
+  runs: readonly TranscriptRun[];
+  onTrace: (run: TranscriptRun) => void;
 }): ReactNode {
-  const correct = runs.filter(({ run }) => run.correct).length;
+  /*
+   * Which class of question the table is showing, or every class.
+   *
+   * The state is here rather than in `Transcripts` because it is a reading of
+   * one table rather than of the page, and because the corpus switch above
+   * rebuilds these runs: a class the newly selected corpus has no questions in
+   * would otherwise leave an empty table with its cause two sections up. So the
+   * selection is checked against the classes actually present and falls back to
+   * all of them, which is that case and also the first render.
+   */
+  const [chosen, setChosen] = useState<string | null>(null);
+  const classes = classesIn(runs);
+  const showing = classes.some((one) => one.name === chosen) ? chosen : null;
+  const shown =
+    showing === null ? runs : runs.filter(({ question }) => question.category === showing);
+  const correct = shown.filter(({ run }) => run.correct).length;
 
   return (
     <>
+      {/*
+        The corpus switch's control, at the grain of a question class. It reads
+        as the same affordance because it is the same one — a pressed option
+        narrowing what is below it — and the counts are on the buttons so that
+        choosing a class is not how you find out it has four runs in it.
+      */}
+      {classes.length > 1 ? (
+        <div className="bench-switch bench-switch-inline label label-sm">
+          <span className="bench-switch-legend">class</span>
+          <button
+            aria-pressed={showing === null}
+            className="bench-switch-option"
+            onClick={() => setChosen(null)}
+            type="button"
+          >
+            all <span className="muted">{runs.length}</span>
+          </button>
+          {classes.map(({ name, count }) => (
+            <button
+              aria-pressed={showing === name}
+              className="bench-switch-option"
+              key={name}
+              onClick={() => setChosen(name)}
+              type="button"
+            >
+              {name} <span className="muted">{count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <p className="bench-runs-summary label label-sm">
-        {runs.length} runs shown <span aria-hidden="true">·</span> {correct} correct{' '}
-        <span aria-hidden="true">·</span> {runs.length - correct} wrong
+        {shown.length} runs shown
+        {showing === null ? '' : ` of ${runs.length}`} <span aria-hidden="true">·</span> {correct}{' '}
+        correct <span aria-hidden="true">·</span> {shown.length - correct} wrong
       </p>
       <div className="bench-scroll">
         <table className="bench-runs">
@@ -1106,7 +1156,7 @@ function RunsTable({
             </tr>
           </thead>
           <tbody>
-            {runs.map(({ question, run }) => (
+            {shown.map(({ question, run }) => (
               <tr key={`${question.id}\u0000${run.adapter}`}>
                 <th scope="row" className="bench-runs-id">
                   {question.id}
@@ -1160,7 +1210,13 @@ function Verdict({ correct }: { correct: boolean }): ReactNode {
  * closes it as the selection changes, and its contents render only when there
  * is a run to show, so the empty page ships no trace markup.
  */
-function TraceDialog({ target, onClose }: { target: Run | null; onClose: () => void }): ReactNode {
+function TraceDialog({
+  target,
+  onClose,
+}: {
+  target: TranscriptRun | null;
+  onClose: () => void;
+}): ReactNode {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -1195,7 +1251,13 @@ function TraceDialog({ target, onClose }: { target: Run | null; onClose: () => v
 }
 
 /** The trace itself: the question, what it cost, the calls in order, the answer. */
-function Trace({ run: { question, run }, onClose }: { run: Run; onClose: () => void }): ReactNode {
+function Trace({
+  run: { question, run },
+  onClose,
+}: {
+  run: TranscriptRun;
+  onClose: () => void;
+}): ReactNode {
   const stats: readonly [string, ReactNode][] = [
     ['calls', run.calls.length],
     ['tokens read', run.contextTokens.toLocaleString('en-GB')],

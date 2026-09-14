@@ -60,7 +60,7 @@ function renderBenchmarks(): string {
     ),
 
     heading(2, 'The questions'),
-    'The split by category is the whole point of the benchmark. The claim under test is that SQL over typed rows, on top of ranking by meaning, recalls more of the answer than similarity search alone. Each category is somewhere that claim can fail. `aggregate`, `absence`, `ordering` and `join` are where structure should tell; `semantic` is where embeddings should. Report one number and you have averaged all of that away.',
+    'The split by category is the whole point of the benchmark. The claim under test is that SQL over typed rows, on top of ranking by meaning, recalls more of the answer than similarity search alone. Each category is somewhere that claim can fail. `aggregate`, `absence`, `ordering` and `join` are where structure should tell; `semantic` is where embeddings should.',
     table(
       ['Category', 'What it asks'],
       CATEGORIES.map((category) => [`\`${category.name}\``, category.blurb]),

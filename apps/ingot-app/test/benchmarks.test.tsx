@@ -7,6 +7,7 @@ import {
   BENCHMARK,
   TABLES,
   CATEGORIES,
+  classesIn,
   CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
@@ -139,6 +140,38 @@ describe('the transcript sidecar on disk', () => {
       // is an orphan a re-publish left behind, which is the failure the sidecar
       // merges per label to prevent.
       expect(summarised.has(table.label)).toBe(true);
+    }
+  });
+
+  /**
+   * The filter over the runs table, which is the one control that can hide a
+   * transcript.
+   *
+   * So the invariant is coverage rather than presentation: every run belongs to
+   * exactly one class the filter offers, and the counts on the buttons are the
+   * rows the reader will get. The order is the page's order — `CATEGORIES`,
+   * which is also the matrix's columns — for the classes it knows about; a
+   * class only the sidecar carries still has to be offered, because the filter
+   * is the only route to those runs.
+   */
+  it('offers a class for every transcript run, in the order the page teaches', () => {
+    const order = CATEGORIES.map((category) => category.name);
+
+    for (const table of file.tables) {
+      const runs = table.questions.flatMap((question) =>
+        question.adapters.map((run) => ({ question, run })),
+      );
+      const classes = classesIn(runs);
+
+      expect(classes.reduce((total, one) => total + one.count, 0)).toBe(runs.length);
+      expect(new Set(classes.map((one) => one.name)).size).toBe(classes.length);
+
+      for (const { name, count } of classes) {
+        expect(count).toBe(runs.filter(({ question }) => question.category === name).length);
+      }
+
+      const known = classes.map((one) => one.name).filter((name) => order.includes(name));
+      expect(known).toEqual([...known].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
     }
   });
 
