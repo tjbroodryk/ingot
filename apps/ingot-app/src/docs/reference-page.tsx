@@ -15,7 +15,7 @@ import {
   STATUS_CODES,
 } from './page-sections';
 import { Prose } from './prose';
-import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
+import { GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
 export const referenceMetadata: Metadata = {
   title: REFERENCE_TITLE,
