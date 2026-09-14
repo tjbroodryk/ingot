@@ -157,7 +157,7 @@ export function ReferencePage() {
 
           <section className="cta">
             <span className="label kicker kicker-n">Get started</span>
-            <h2>{ENDPOINTS.length} routes is the whole surface</h2>
+            <h2>Self Hosted</h2>
             <p>Sign up, mint a key, cast a memory. The secret comes back exactly once.</p>
             <div className="cta-actions">
               <a className="cta-primary" href="#quickstart">

@@ -3,7 +3,14 @@
  * the first route makes sense, and what every route can answer with.
  */
 
-import { ENDPOINTS } from './reference';
+import {
+  API_VERSION,
+  ENDPOINTS,
+  endpointsIn,
+  GROUP_ORDER,
+  GROUPS,
+  HttpMethod,
+} from './reference';
 
 /**
  * The head of the page, as data, because two artefacts render it.
@@ -22,7 +29,7 @@ export const REFERENCE_DESCRIPTION =
   'Every route Ingot serves, with its authentication, its request body and the shape it answers with.';
 
 /** The paragraph under the title. Backticks render as code. */
-export const REFERENCE_LEDE = `${ENDPOINTS.length} routes. One bearer key. Everything sits under \`/api/v1\` except the two version-neutral service routes, so a load balancer never has to be updated when the contract is.`;
+export const REFERENCE_LEDE = `Version \`${API_VERSION}\` · JSON REST · MCP support`;
 
 /** One of the three ruled cells under the page head. */
 export interface Basic {
@@ -35,14 +42,25 @@ export interface Basic {
   readonly sample: string;
 }
 
+const routesBy = (method: HttpMethod): number =>
+  ENDPOINTS.filter((endpoint) => endpoint.method === method).length;
+
+// Counted off `ENDPOINTS` rather than typed, so the cell cannot disagree with
+// the sections rendered under it.
+const GROUP_WIDTH = Math.max(...GROUP_ORDER.map((group) => GROUPS[group].nav.length));
+const ROUTES_PER_GROUP = GROUP_ORDER.map(
+  (group) => `${GROUPS[group].nav.padEnd(GROUP_WIDTH)}  ${endpointsIn(group).length}`,
+).join('\n');
+
 export const BASICS: readonly Basic[] = [
   {
     id: 'base',
     kicker: 'Base URL',
     title: 'URI versioning',
-    body: 'The origin is wherever you run Ingot — it is self-hosted, so the samples here use the port it listens on locally. Everything is under `/api/v1`; `/api/health` and `/api/versions` are version-neutral, so neither moves when the contract does.',
+    body: 'Send `Ingot-Version` to pin a response shape: omitted means latest, unknown is a 400, and every response echoes the one used.',
     sample: `http://localhost:3002
-  /api/v1/:account/:ingot`,
+  /api/v1/:account/:ingot
+Ingot-Version: ${API_VERSION}`,
   },
   {
     id: 'auth',
@@ -53,12 +71,10 @@ export const BASICS: readonly Basic[] = [
   Bearer ing_sk_…`,
   },
   {
-    kicker: 'Shape',
-    title: 'JSON in, JSON out',
-    body: 'Two POSTs read rather than write — `/query` and `/delete` — because both carry a body, and a body on a GET or a DELETE is a thing intermediaries drop.',
-    sample: `Content-Type:
-  application/json
-Ingot-Version: 2026-08-27`,
+    kicker: 'Surface',
+    title: `${ENDPOINTS.length} routes`,
+    body: `${routesBy(HttpMethod.Get)} GET, ${routesBy(HttpMethod.Post)} POST and ${routesBy(HttpMethod.Delete)} DELETE, plus ${routesBy(HttpMethod.All)} MCP paths that take any method.`,
+    sample: ROUTES_PER_GROUP,
   },
 ];
 

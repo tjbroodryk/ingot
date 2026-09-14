@@ -85,6 +85,13 @@ export interface Endpoint {
   readonly asideChips?: readonly string[];
 }
 
+/**
+ * The newest `Ingot-Version`, as `apps/ingot/src/versioning/changeset.ts`
+ * releases it. Typed rather than imported, since this app cannot reach the
+ * service's code — bump it with a release.
+ */
+export const API_VERSION = '2026-09-06';
+
 export const GROUPS: Record<EndpointGroup, GroupHeading> = {
   [EndpointGroup.Service]: { title: 'Service · version-neutral', nav: 'Service' },
   [EndpointGroup.Accounts]: { title: 'Accounts & keys', nav: 'Accounts & keys' },
@@ -128,7 +135,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
     note: 'Public, because deciding whether to integrate with a service is something you do before you have a key.',
     sample: `200 OK
 { "header": "Ingot-Version",
-  "latest": "2026-09-06",
+  "latest": "${API_VERSION}",
   "versions": ["2026-08-26", "2026-08-27",
                "2026-09-06"],
   "changelog": [
@@ -405,6 +412,62 @@ Ingot-Batch: batch_1508c8…
 # seconds later, receiptQuery answers
 { "summary": "412 EMEA accounts, 17 at risk",
   "search_term": "EMEA renewal risk" }`,
+  },
+  {
+    id: 'file',
+    group: EndpointGroup.Data,
+    nav: 'Upload a file',
+    method: HttpMethod.Post,
+    path: '/api/v1/:account/:ingot/file',
+    auth: Auth.Key,
+    summary:
+      'Store a document. It returns the moment the bytes are stored and queued; parsing, chunking and embedding follow in the background, so nothing in the response is the content.',
+    note: 'What comes back is two SELECTs rather than a status to poll. `query` returns no row while the document is in flight and exactly one when it lands, `ready` or `failed`; `chunksQuery` returns its chunks in order once there are any.',
+    chips: ['PDF', 'PPTX', 'CSV', 'HTML', 'Markdown', 'plain text'],
+    fields: [
+      {
+        name: 'file',
+        doc: 'The document, as a multipart part named `file`. One per call, up to `INGOT_MAX_UPLOAD_BYTES` — 32 MB unless the deployment says otherwise.',
+      },
+      {
+        name: 'body',
+        doc: 'Every option below, as one JSON string in a part named `body`. Omitted, the document is parsed, chunked and embedded with no extraction, which is what most uploads want.',
+      },
+      { name: 'externalId', doc: 'Your own handle for the document — a job id, a ticket.' },
+      {
+        name: 'mediaType',
+        doc: 'What the document is, when the upload cannot say: a client that sends `application/octet-stream` for everything, a generated name, a `.txt` that is really CSV. It overrides what the upload declares, never what the bytes say — a mismatch is still refused.',
+      },
+      {
+        name: 'extract',
+        doc: 'Typed rows into a table of your own, through the same mapping `/add` uses. A CSV’s `from` paths resolve against its own fields and call no model; prose has no paths, so each column needs `describe` and a model fills it.',
+      },
+      {
+        name: 'chunkTokens',
+        doc: 'Roughly how large a chunk is, and `overlapTokens` how much of the previous one it repeats — the deployment’s defaults, 512 and 64, unless set. Overlap is ignored where a format’s own boundaries decide: a slide does not overlap the next.',
+      },
+    ],
+    sample: `curl localhost:3002/api/v1/acme/ing_01H8Z…/file \\
+  -H "Authorization: Bearer ing_sk_…" \\
+  -F "file=@q3-contracts.pdf" \\
+  -F 'body={ "externalId": "job-4471",
+    "extract": { "table": "contracts",
+      "columns": { "counterparty": {
+        "describe": "who the contract is with",
+        "type": "VARCHAR" } } } }'
+
+201 Created
+{ "fileId": "file_3f9c1a…",
+  "filename": "q3-contracts.pdf",
+  "mediaType": "application/pdf",
+  "bytes": 482113,
+  "status": "pending",
+  "query": "SELECT … FROM ingot_files
+     WHERE file_id = 'file_3f9c1a…'",
+  "chunksQuery": "SELECT … FROM ingot_file_chunks
+     WHERE file_id = 'file_3f9c1a…'
+     ORDER BY ordinal",
+  "extractingInto": "contracts" }`,
   },
   {
     id: 'query',
