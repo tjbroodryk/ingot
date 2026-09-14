@@ -7,7 +7,6 @@ import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { DOCS_HREF, REPO_URL } from '../site/mode';
 import {
-  BRING_IT_UP_LEDE,
   DEPLOYMENT_DESCRIPTION,
   DEPLOYMENT_LEDE,
   type Dependency,
@@ -69,7 +68,7 @@ export function DeploymentPage(): ReactNode {
           <section className="pagehead" id="top">
             <span className="label label-sm kicker">[ Deployment ]</span>
             <h1 className="display">
-              Three places, <span className="mark">two dependencies</span>
+              Deploy anywhere a <span className="mark">container</span> can run
             </h1>
             <p className="lede">
               <Prose text={DEPLOYMENT_LEDE} />
@@ -98,13 +97,7 @@ export function DeploymentPage(): ReactNode {
             other order — provisioning first, running last — is the one that
             reads like a bill.
           */}
-          <section className="section" id="bring-it-up">
-            <span className="label section-kicker kicker-n">Bring it up</span>
-            <h2 className="deps-heading">Pick a place</h2>
-            <p className="deps-para">
-              <Prose text={BRING_IT_UP_LEDE} />
-            </p>
-
+          <section className="section section-bare" id="bring-it-up">
             <div className="targets">
               {RUN_TARGETS.map((target, index) => (
                 <RunTargetRow index={index} key={target.id} target={target} />
@@ -147,7 +140,7 @@ export function DeploymentPage(): ReactNode {
           */}
           <section className="cta">
             <span className="label kicker kicker-n">The quickest of the three</span>
-            <h2>Bring one up before you believe any of this</h2>
+            <h2>Try it yourself</h2>
             <p>
               The compose file is the same one the test suite runs against, so what comes up on your
               machine is what the assertions are made about. That holds whichever of the three you

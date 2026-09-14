@@ -644,6 +644,16 @@ pre {
   border-top: var(--rule);
 }
 
+/* A section with no kicker or heading. Its padding and the rows' own top rule
+   would otherwise box an empty band under the rule of whatever sits above. */
+.section-bare {
+  padding-top: 0;
+}
+
+.section-bare > .targets {
+  border-top: 0;
+}
+
 .target {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -9,7 +9,6 @@
  */
 
 import {
-  BRING_IT_UP_LEDE,
   type Dependency,
   DEPLOYMENT_DESCRIPTION,
   DEPLOYMENT_LEDE,
@@ -42,9 +41,8 @@ function renderDeployment(): string {
       blocks(heading(2, `${cell.kicker} — ${cell.title}`), cell.body, fence(cell.sample)),
     ),
 
-    blocks(heading(2, 'Bring it up'), BRING_IT_UP_LEDE),
     ...RUN_TARGETS.map(renderTarget),
-    blocks(heading(3, ELSEWHERE.title), ELSEWHERE.body),
+    blocks(heading(2, ELSEWHERE.title), ELSEWHERE.body),
 
     ...[...REQUIRED, ...OPTIONAL].map(renderDependency),
 
@@ -61,7 +59,7 @@ function renderDeployment(): string {
 /** One way of running it, answering the same four questions in the same order. */
 function renderTarget(target: RunTarget): string {
   return blocks(
-    heading(3, `${target.title} — ${target.kicker}`),
+    heading(2, `${target.title} — ${target.kicker}`),
     target.summary,
     'Needs:',
     bullets(target.needs),

@@ -25,18 +25,8 @@ export const DEPLOYMENT_DESCRIPTION =
 
 /** The paragraph under the title. Backticks render as code. */
 export const DEPLOYMENT_LEDE =
-  'Ingot is one process that needs a Postgres and somewhere to put Parquet. ' +
-  'Every way of running it below is those same two things in a different ' +
-  'dialect, and everything under them is a choice you are allowed to decline. ' +
-  'If you are wondering where the broker, the scheduler and the vector ' +
-  'database went — we did not forget them, we just did not want to make you ' +
-  'run them.';
-
-/** The paragraph under "Pick a place". */
-export const BRING_IT_UP_LEDE =
-  'Each of these answers the same four questions in the same order: what ' +
-  'you need, what to run, how you know it worked, and the one thing that ' +
-  'catches people out. The two sections after them cover what they need.';
+  'Ingot is one process that needs a Postgres and somewhere to put Parquet.' +
+  'We use Postgres for state and as a message broker - bring an existing instance, or give it a new one.';
 
 /** One of the three cells under the page head. Backticks render as code. */
 export interface Summary {
@@ -109,8 +99,7 @@ export const REQUIRED: readonly Dependency[] = [
     body: [
       'Postgres holds the catalogue and the overlay — never the Parquet. A memory is written to the database when it arrives and folded into a Parquet generation later, so what is in Postgres is the rows that have not been folded yet, plus the manifest saying where the folded ones went.',
       'It is also how the replicas agree. The embedding queue, the receipt queue and the delivery outbox are ordinary tables, claimed with `FOR UPDATE SKIP LOCKED` under a lease, and each sweep that drains one takes a Postgres advisory lock so that exactly one replica is sweeping while the rest serve traffic. Nothing else in the deployment holds a timer, a journal or a lock.',
-      'The migrations in `apps/ingot/drizzle` are the whole schema — the tables, the retention indexes and the queue triggers. A fresh container applies them on first boot, to both `ingot` and `ingot_test`; a database that already exists takes them with `bun run db:migrate`.',
-      'One thing in `docker-compose.yml` is a development choice rather than a deployment one. That Postgres runs with `fsync=off`, `synchronous_commit=off` and `full_page_writes=off`, because it is disposable and the suite writes a queue row per assertion. Do not carry those flags to a database you intend to keep.',
+      'The migrations in `apps/ingot/drizzle` define the entire schema.'
     ],
     settings: [
       {
@@ -136,10 +125,8 @@ export const REQUIRED: readonly Dependency[] = [
     kicker: 'Required · the base tier',
     title: 'Where the Parquet goes',
     body: [
-      'Three drivers: `filesystem`, a local path; `s3`, meaning AWS and everything that speaks its protocol — MinIO, R2, Ceph; and `gcs`, held by a service account. `filesystem` is not a stub. A single node with a volume, or a bucket something else has mounted, is a perfectly good way to run this.',
+      'We support three drivers: `filesystem`, a local path; `s3`, meaning AWS and everything that speaks its protocol — MinIO, R2, Ceph; and `gcs`, held by a service account. `filesystem` is not a stub. A single node with a volume, or a bucket something else has mounted, is a perfectly good way to run this.',
       'Which one is in use is declared and never inferred. Leave `INGOT_STORAGE` unset and Parquet goes to the directory in `INGOT_DATA_DIR`; set a bucket variable and leave the driver unnamed, and the service refuses to boot rather than ignoring it. The failure that rule exists to prevent is a typo in a variable name producing a service that starts, serves traffic and writes every file to a container’s ephemeral disk, where it survives until the next deploy. Naming a driver without its keys is refused the same way, and the message names all of the missing ones at once rather than the first.',
-      'MinIO is what `docker-compose.yml` brings up, and it is in the default profile rather than behind one because the roll-up tests write real Parquet and read it back. Its bucket is created by a one-shot `mc` container that exits, not by the service: something that creates its own bucket needs credentials that can, which is more than the API should be trusted with in production.',
-      '`INGOT_S3_PATH_STYLE` defaults to on whenever an endpoint is set, which is what MinIO and most gateways need and what AWS does not. On GCS there is a second directory to think about: DuckDB cannot write to a bucket held by a service account, so a roll-up stages the file on local disk and the client library uploads it. `INGOT_STAGING_DIR` wants real space and wants to be a mounted volume rather than the container’s writable layer.',
     ],
     sample: `# MinIO, as docker-compose.yml runs it
 INGOT_STORAGE=s3
@@ -201,12 +188,11 @@ export const OPTIONAL: readonly Dependency[] = [
     id: 'models',
     nav: 'Models',
     kicker: 'Optional · embeddings and summaries',
-    title: 'Two selectors, not one',
+    title: 'Expensive bits are opt-in.',
     body: [
-      'Two purchases, so two choices. Embedding is a per-row cost paid once; a summary is an LLM call paid every time a caller asks for `receipt: "full"`. Semantic search should not require buying the second.',
-      'Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, key or bill. Good defaults but bad surprises, so each announces itself at boot.',
-      'A provider named without its credentials refuses to boot. Falling back to the stand-in would leave a service that answers, accepts writes and hands back receipts that are lexical nonsense, with only a warning nobody was watching for as evidence.',
-      '`openai` is the adapter for anything speaking that API — Azure, a gateway, a local vLLM — through `OPENAI_BASE_URL`. The embedding width is declared, not discovered: it is baked into every stored vector and every query column, so changing it means a re-embed, and a model that returns a different width is refused.',
+      'Embedding is a per-row cost paid once and a summary is an LLM call paid once per memory, every time a caller asks for `receipt: "full"`.',
+      'They work independantly of each other, but when both enabled, they work well together. Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, key or bill. Not appropriate for prod however, so each announces itself at boot.',
+      'When using either you must supply the provider credentials and a provider without its credentials refuses to boot.'
     ],
     settings: [
       { name: 'INGOT_EMBEDDER', fallback: 'local', note: 'One of `local`, `openai`, `gcp`.' },
@@ -255,8 +241,6 @@ export const OPTIONAL: readonly Dependency[] = [
     body: [
       'Every queue here is drained by a bounded number of workers at once, and that bound is the only thing between a burst of writes and an unbounded burst of calls at whatever `INGOT_EMBEDDER` and `INGOT_SUMMARISER` name. The work itself is safe at any concurrency — a claim leases its rows, so two drains take different ones — so what these numbers protect is a quota and a bill rather than correctness.',
       '**They are per replica, and that is the number to think in.** A write wakes the workers in its own process and takes no advisory lock; only a sweep does. So what a provider actually sees is the bound times however many pods are running — and the chart’s autoscaler moves that on CPU, which means a write burst adds pods and multiplies the fan-out precisely when load is highest. At the defaults and `maxReplicas: 10`, an embedder sees twenty concurrent batches.',
-      'Set them against a quota divided by `autoscaling.maxReplicas`, not against one pod. Raise them freely when the embedder is local or the quota is generous — a local embedding server turns the WAN round trip that dominates this into a LAN one, and is usually the bigger win. Each is refused at boot below 1 or above 64; the cap is a typo guard rather than a limit worth having, since the real bound is a quota this service cannot see.',
-      'Deliveries are higher out of the box, and for a different reason: a delivery goes to a receiver the caller nominated, so six concurrent ones are six different endpoints rather than six calls at one provider — and one slow receiver must not hold up everybody else’s.',
       '`ingot_embeddings_pending`, `ingot_receipts_pending` and `ingot_deliveries_pending` say whether a queue is falling behind. Read them with `max()` and never `sum()`: they are read out of Postgres at scrape time, so every replica reports the same shared depth and summing multiplies a backlog by the pod count.',
     ],
     sample: `# a quota divided by maxReplicas,
@@ -288,12 +272,12 @@ config:
     id: 'delivery',
     nav: 'Receipt delivery',
     kicker: 'Optional · webhooks and RabbitMQ',
-    title: 'Being told, instead of asking',
+    title: 'Get notified when embeddings and/or receipts are ready',
     body: [
-      'A receipt is collected by polling: `/add` hands back a SELECT and the caller runs it when it wants the answer. That needs no registration, no retry policy and no endpoint of yours to be up, which is why it is the default — but it is a poor fit for an agent that has moved on and would rather be told.',
+      'You can either collect a receipt by polling the SELECT and /add call handed back or specify a channel to get a notification pushed to.',
       'So a memory can nominate a target with `POST /:account/:ingot/config`, and each receipt is pushed as it lands: a `webhook`, which needs nothing set here, or an `rmq` queue, which needs a broker. The split is deliberate. A memory’s owner chooses where among their own things a receipt goes — an endpoint, a queue name — and the operator chooses what this service will connect to at all. A tenant naming a broker URL would be a tenant choosing where this service opens an authenticated connection.',
       'A queue named on a deployment with no broker is refused at the call that configures it, naming the variable, rather than accepted and then failing every delivery afterwards in a worker log the caller cannot see. Webhook endpoints are checked the same way and at the same moment: absolute `http`/`https`, no credentials in the URL, and loopback, link-local and private literals refused — this service would be reaching them from inside its own network, on somebody else’s behalf.',
-      'Delivery is at least once, and the mechanism is an outbox rather than a call: the intention to deliver is a row written in the same transaction as the receipt it announces, and a worker sends it afterwards. That is what makes a receipt impossible to announce and then lose, or lose and never announce. `ingot_deliveries_pending` says whether a receiver is keeping up; `ingot_deliveries_abandoned` should sit at zero.',
+      'Delivery is at least once via an outbox mechanism. The intention to deliver is a row gets written in the same transaction as the receipt it announces, and a worker sends it afterwards. The aim is to make a receipt impossible to announce and then lose, or lose and never announce. `ingot_deliveries_pending` says whether a receiver is keeping up; `ingot_deliveries_abandoned` should sit at zero.',
     ],
     sample: `# nothing at all is needed for webhooks
 # a broker adds the second transport
@@ -326,11 +310,9 @@ INGOT_RABBITMQ_URL=
     id: 'telemetry',
     nav: 'Telemetry',
     kicker: 'Optional · traces and metrics',
-    title: 'One endpoint, or none',
+    title: 'Metrics Endpoint',
     body: [
-      '`/metrics` is on its own listener rather than on the public ingress, so scraping it is a network decision rather than an authentication one.',
-      'Traces are OTLP and nothing else — no agent, no Thrift — which means pointing them at a Tempo, a Honeycomb or a collector instead of at the Jaeger in the compose file is one variable.',
-      'That Jaeger and its Prometheus sit behind a profile, so `bun run db:up` stays the dependencies the suite has and CI does not pull two more images to run tests that ignore them. `bun run obs:up` adds them. Neither holds a volume on purpose: local telemetry is worth the session that produced it.',
+      'OLTP metrics are available on the `/metrics` endpoint.'
     ],
     settings: [
       {
