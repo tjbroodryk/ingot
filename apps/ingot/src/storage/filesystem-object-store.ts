@@ -1,5 +1,7 @@
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import type { ObjectStore, PendingWrite } from './object-store.port.js';
 
@@ -54,6 +56,10 @@ export class FilesystemObjectStore implements ObjectStore {
 
   async fetch(key: string): Promise<Buffer> {
     return readFile(this.pathFor(key));
+  }
+
+  async open(key: string): Promise<Readable> {
+    return createReadStream(this.pathFor(key));
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {

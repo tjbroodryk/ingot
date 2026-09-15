@@ -70,9 +70,16 @@ export class DuckDbEngine implements AnalyticalEngine {
           ? bindQueryVector(request.sql, request.queryVector)
           : request.sql;
 
-        // One extra row, so "there were more" is a fact rather than a guess.
+        /*
+         * One extra row, so "there were more" is a fact rather than a guess.
+         *
+         * The skipped rows are read and dropped here rather than by wrapping the
+         * caller's SQL in `LIMIT … OFFSET`: that wrapping is text, and a trailing
+         * comment or semicolon in a statement that is otherwise fine breaks it.
+         * The reader cannot convert a range, which is why the offset is capped.
+         */
         const reader = await this.withTimeout(connection, request.timeoutMs, () =>
-          connection.streamAndReadUntil(sql, request.rowCap + 1),
+          connection.streamAndReadUntil(sql, request.offset + request.rowCap + 1),
         );
 
         const withheld = embeddingColumns(reader);
@@ -86,9 +93,11 @@ export class DuckDbEngine implements AnalyticalEngine {
           );
         }
 
-        const all = reader.getRowObjectsJson();
-        const truncated = all.length > request.rowCap;
-        const capped = truncated ? all.slice(0, request.rowCap) : all;
+        const page = reader
+          .getRowObjectsJson()
+          .slice(request.offset, request.offset + request.rowCap + 1);
+        const truncated = page.length > request.rowCap;
+        const capped = truncated ? page.slice(0, request.rowCap) : page;
         const rows = withheld.names.size === 0 ? capped : capped.map(withhold(withheld.names));
 
         Metrics.RowsReturned.observe({}, rows.length);
@@ -128,6 +137,7 @@ export class DuckDbEngine implements AnalyticalEngine {
       tables: [request.table],
       sql,
       rowCap: request.cap,
+      offset: 0,
       timeoutMs: request.timeoutMs,
     });
 
@@ -748,8 +758,7 @@ function embeddingColumns(reader: DuckDBResultReader): {
 function withhold(
   names: ReadonlySet<string>,
 ): (row: Record<string, unknown>) => Record<string, unknown> {
-  return (row) =>
-    Object.fromEntries(Object.entries(row).filter(([key]) => !names.has(key)));
+  return (row) => Object.fromEntries(Object.entries(row).filter(([key]) => !names.has(key)));
 }
 
 function duckType(type: ColumnType): string {

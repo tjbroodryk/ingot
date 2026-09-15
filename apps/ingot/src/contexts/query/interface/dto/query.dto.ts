@@ -26,4 +26,9 @@ export class QueryDto {
   @Min(1)
   @Max(10_000)
   limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  cursor?: string;
 }

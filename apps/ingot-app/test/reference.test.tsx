@@ -24,9 +24,9 @@ import { Auth, ENDPOINTS, type EndpointGroup, GROUPS, GROUP_ORDER } from '../src
 describe('the reference', () => {
   it('describes every route the service serves', () => {
     // Guards the guards: an empty list would make most of this file pass
-    // vacuously. Eighteen is what `apps/ingot` registers today — five
+    // vacuously. Twenty is what `apps/ingot` registers today — five
     // controllers under `/api/v1`, two version-neutral, two MCP.
-    expect(ENDPOINTS.length).toBe(18);
+    expect(ENDPOINTS.length).toBe(20);
   });
 
   it('gives every endpoint an anchor of its own', () => {

@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import { Storage } from '@google-cloud/storage';
 import { Injectable, Logger } from '@nestjs/common';
 import { DependencyUnavailable } from '../shared/domain/index.js';
@@ -135,6 +136,12 @@ export class GcsObjectStore implements ObjectStore {
       const [body] = await this.storage.bucket(this.settings.bucket).file(key).download();
       return body;
     });
+  }
+
+  async open(key: string): Promise<Readable> {
+    // Lazy: nothing is requested until the first read, so a missing object
+    // surfaces as a stream error. The port says to `stat` first for that reason.
+    return this.storage.bucket(this.settings.bucket).file(key).createReadStream();
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {

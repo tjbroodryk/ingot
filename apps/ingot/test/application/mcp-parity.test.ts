@@ -60,6 +60,9 @@ describe('the MCP surface', () => {
       'model’s context on the way to storing it — which is the cost /file exists to avoid. ' +
       'Nothing is lost to a model: ingot_files and ingot_file_chunks are ordinary tables, so ' +
       '`query` and `recall` already reach every document anybody has uploaded.',
+    GetBaseFile:
+      'A Parquet file is bytes, and a whole table of them. A model has no use for the file ' +
+      'itself: `query` reads the same rows, and `pending` says what the file does not hold yet.',
   };
 
   it('covers every operation the HTTP API exposes', async () => {
@@ -81,6 +84,7 @@ describe('the MCP surface', () => {
       McpTool.Describe,
       McpTool.Query,
       McpTool.Recall,
+      McpTool.Pending,
       McpTool.ListMemories,
     ]);
     for (const tool of TOOLS) {

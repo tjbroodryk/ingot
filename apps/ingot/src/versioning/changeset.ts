@@ -98,6 +98,24 @@ const RELEASES: readonly Release[] = [
       },
     ],
   },
+  {
+    version: '2026-09-15',
+    summary:
+      '`/query` pages: a result cut short by `limit` carries `next`, sent back as `cursor` ' +
+      'for the rows after it. Tables also report what they have not rolled up yet at ' +
+      '`GET /:ingot/tables/:table/pending`, and hand over their Parquet at `…/parquet`.',
+    changes: [
+      {
+        shape: WireShape.QueryResult,
+        note: 'Gained `next`, the cursor for the following page.',
+        // The envelope only. `rows` is the caller's data and is left alone.
+        backward: (value) => {
+          const { next: _dropped, ...rest } = value;
+          return rest;
+        },
+      },
+    ],
+  },
 ];
 
 /**

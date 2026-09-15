@@ -19,6 +19,8 @@ import { FailReceiptHandler } from './application/commands/fail-receipt.command.
 import { ReleaseEmbeddingsHandler } from './application/commands/release-embeddings.command.js';
 import { SaveEmbeddingsHandler } from './application/commands/save-embeddings.command.js';
 import { WriteReceiptHandler } from './application/commands/write-receipt.command.js';
+import { GetBaseFileHandler } from './application/queries/get-base-file.query.js';
+import { GetPendingOperationsHandler } from './application/queries/get-pending-operations.query.js';
 import { DeliveryWorker } from './application/delivery-worker.js';
 import { ReceiptWorker } from './application/receipt-worker.js';
 import { EmbedWorker } from './application/embed-worker.js';
@@ -68,6 +70,8 @@ import { RecordsController } from './interface/records.controller.js';
     { provide: DELIVERY_TRIGGER, useExisting: BackgroundWork },
     DeleteRecordsHandler,
     CompactTableHandler,
+    GetPendingOperationsHandler,
+    GetBaseFileHandler,
 
     ClaimEmbeddingsHandler,
     SaveEmbeddingsHandler,

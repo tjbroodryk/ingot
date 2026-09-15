@@ -39,6 +39,8 @@ export enum WireShape {
   DeleteBody = 'DeleteBody',
   DeleteResult = 'DeleteResult',
 
+  PendingOperations = 'PendingOperations',
+
   /**
    * `/file` takes multipart, so only the response is a versioned shape.
    *
