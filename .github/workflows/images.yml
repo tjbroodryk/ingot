@@ -130,13 +130,6 @@ jobs:
           # stamps the repository into the image so the digest is addressable
           # as `…/server@sha256:…` afterwards.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
-          # The site is a static export, so the address of the API is inlined at
-          # build time rather than read at run time — which makes it a property
-          # of the image. Set the repository variable `INGOT_PUBLIC_API_URL` to
-          # the API's public address; without it the image is built against
-          # localhost and is only good for a local `docker run`.
-          build-args: |
-            NEXT_PUBLIC_INGOT_URL=${{ vars.INGOT_PUBLIC_API_URL || 'http://localhost:3002' }}
           # Scoped per image *and* architecture. Sharing a scope across the two
           # would be two builders overwriting each other's cache with layers the
           # other cannot use — worse than no cache. Four scopes is more pressure

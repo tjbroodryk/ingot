@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { type Credentials, INGOT_HOST, INGOT_URL, IngotError, fetchAccount } from './ingot-api';
+import { type Credentials, IngotError, fetchAccount, hostOf, useIngotUrl } from './ingot-api';
 
 /**
  * The gate: an account slug and a key.
@@ -29,6 +29,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (credentials: Credentials) 
   const [account, setAccount] = useState('');
   const [key, setKey] = useState('');
   const [checking, setChecking] = useState(false);
+  const ingotUrl = useIngotUrl();
   const [refusal, setRefusal] = useState<Refusal | null>(null);
 
   const slug = account.trim();
@@ -59,7 +60,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (credentials: Credentials) 
         <div className="bhead">
           <span>[ Sign in ]</span>
           <span>
-            talking to <code className="bhead-id">{INGOT_HOST}</code>
+            talking to <code className="bhead-id">{hostOf(ingotUrl)}</code>
           </span>
         </div>
 
@@ -150,7 +151,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (credentials: Credentials) 
           <div className="gate-way-n">02 · Mint another</div>
           <p>Any working key on the account can mint a labelled one. The secret comes back exactly once.</p>
           <pre className="code">
-            {`curl -X POST ${INGOT_URL}/api/v1/accounts/${slug || 'acme'}/keys \\\n  -H "Authorization: Bearer ing_sk_…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"label":"dashboard"}'`}
+            {`curl -X POST ${ingotUrl}/api/v1/accounts/${slug || 'acme'}/keys \\\n  -H "Authorization: Bearer ing_sk_…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"label":"dashboard"}'`}
           </pre>
         </div>
       </section>

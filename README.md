@@ -219,17 +219,16 @@ query on any network that does not allow the egress. It listens on `:3002`,
 serves metrics on `:9465`, runs as uid 1000, and wants one `emptyDir` mounted
 over `/var/lib/ingot` for staging and DuckDB's spill.
 
-**The site** is nginx over a directory of files. Because it is a static export,
-the address of the API is inlined at build time rather than read at run time —
-so it is a property of the image, and two deployments pointing at two APIs are
-two images:
+**The site** is nginx over a directory of files. The dashboard calls its own
+origin, and nginx forwards `/api/` to `INGOT_API_URL`, read when the container
+starts — so one image serves any deployment:
 
 ```bash
-docker build -f apps/ingot-app/Dockerfile \
-  --build-arg NEXT_PUBLIC_INGOT_URL=https://api.example.com -t ingot-app:prod .
+docker run -p 8080:8080 -e INGOT_API_URL=http://host.docker.internal:3002 \
+  ghcr.io/tjbroodryk/ingot/app
 ```
 
-In CI that comes from the repository variable `INGOT_PUBLIC_API_URL`.
+Without it, `/api/` answers 502 and says which variable to set.
 
 The same argument decides _which site_ the image is. `@ingot/app` builds in one
 of two modes, and they have different routes rather than the same routes with

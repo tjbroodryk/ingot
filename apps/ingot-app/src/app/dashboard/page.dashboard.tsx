@@ -5,7 +5,7 @@ import './dashboard.css';
 
 import { SiteFooter } from '../../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../../chrome/site-header';
-import { INGOT_HOST } from '../../dashboard/ingot-api';
+import { hostOf, useIngotUrl } from '../../dashboard/ingot-api';
 import { useSession } from '../../dashboard/session';
 import { SignIn } from '../../dashboard/sign-in';
 import { Workbench } from '../../dashboard/workbench';
@@ -22,7 +22,8 @@ import { DOCS_HREF } from '../../site/mode';
  *
  * The page is still statically exported. Nothing here runs on a server —
  * there is no server — and the key never leaves the browser it was typed into:
- * every request goes straight from the tab to the Ingot API.
+ * every request goes from the tab to the Ingot API, directly or through the
+ * image's nginx at `/api/`.
  *
  * Griddle's stylesheet is imported here, at the boundary, because it is global
  * CSS and that is where global CSS is allowed to enter. Its stock themes are
@@ -31,6 +32,7 @@ import { DOCS_HREF } from '../../site/mode';
  */
 export default function DashboardPage() {
   const { session, ready, signIn, signOut } = useSession();
+  const ingotUrl = useIngotUrl();
 
   return (
     <>
@@ -73,7 +75,7 @@ export default function DashboardPage() {
       )}
 
       <SiteFooter>
-        <span className="dash-host">{INGOT_HOST}</span>
+        <span className="dash-host">{hostOf(ingotUrl)}</span>
       </SiteFooter>
     </>
   );

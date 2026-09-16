@@ -12,16 +12,17 @@
 # in that file for why that is a property of the artefact rather than a
 # convention.
 
-# ── the one thing that must be decided at build time ───────────────────────
-# A static export has no server to read an environment variable, so the address
-# of the API is inlined by `next build` and is therefore a property of the
-# image. Two deployments pointing at two APIs are two images.
+# ── where the API is: at run time, not here ────────────────────────────────
+# Empty, so the dashboard calls its own origin and nginx forwards `/api/` to
+# whatever `INGOT_API_URL` names when the container starts (see
+# `api-proxy.sh`). One image then serves any deployment, and however the site
+# is reached — an Ingress, a port-forward, a tailnet — the API is too.
 #
-#   docker build --build-arg NEXT_PUBLIC_INGOT_URL=https://api.example.com …
+#   docker run -p 8080:8080 -e INGOT_API_URL=http://host.docker.internal:3002 ingot-app
 #
-# Defaulted to the port `apps/ingot` listens on locally, which is what makes a
-# plain `docker build` produce something that works against `bun run dev`.
-ARG NEXT_PUBLIC_INGOT_URL=http://localhost:3002
+# Setting it bakes an absolute address in instead, and the browser calls that
+# directly — which then has to allow this site's origin.
+ARG NEXT_PUBLIC_INGOT_URL=
 
 # The other one, for the same reason. This image is the site that ships beside
 # a running service, so it is built in dashboard mode — the reference at `/`
@@ -96,6 +97,7 @@ FROM nginx:1.29-alpine AS runtime
 
 COPY --from=build /repo/apps/ingot-app/out /usr/share/nginx/html
 COPY apps/ingot-app/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=755 apps/ingot-app/api-proxy.sh /docker-entrypoint.d/40-ingot-api.sh
 
 # 8080 rather than 80, so the container needs no privileged port and can run as
 # the `nginx` user under a `runAsNonRoot` pod. The stock image's own directories

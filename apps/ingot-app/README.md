@@ -206,12 +206,16 @@ hand back a directory made with different ones.
 
 | Variable                  | Default              | What it decides                          |
 | ------------------------- | -------------------- | ---------------------------------------- |
-| `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the dashboard talks to. |
+| `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the dashboard talks to. Empty is this site's own origin. |
 | `NEXT_PUBLIC_INGOT_MODE`  | `dashboard`          | Which site this is, and which routes exist. |
 | `NEXT_PUBLIC_BASE_PATH`   | *(empty)*            | The subdirectory it is served from.      |
 
 `NEXT_PUBLIC_INGOT_URL` is the one the gate and the footer print, so a dashboard
 pointed at the wrong service says so rather than failing on the first query.
+
+The image builds it empty. Its nginx forwards `/api/` to `INGOT_API_URL`, read
+at container start by `api-proxy.sh`, so where the API is stays a run-time
+setting even though the page cannot read one.
 
 `NEXT_PUBLIC_BASE_PATH` exists for GitHub Pages, which serves a project site
 from `/<repo>/`. Next prepends it to its own asset URLs and Pages' workflow
