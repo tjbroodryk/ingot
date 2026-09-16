@@ -72,6 +72,15 @@ value rather than two.
 {{- printf "%s:%s" .Values.app.image.repository (.Values.app.image.tag | default .Chart.AppVersion) -}}
 {{- end }}
 
+{{/*
+Where the site's nginx forwards `/api/`. The release's own server Service by
+default, by its short name — nginx resolves it once at startup through the
+pod's resolv.conf, search domains included.
+*/}}
+{{- define "ingot.app.apiUrl" -}}
+{{- .Values.app.apiUrl | default (printf "http://%s-server:%v" (include "ingot.fullname" .) .Values.server.service.port) | trimSuffix "/" -}}
+{{- end }}
+
 {{- define "ingot.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "ingot.fullname" .) .Values.serviceAccount.name -}}
@@ -167,6 +176,12 @@ prints and read the message, which says what to set and why.
   {{- $many := or .Values.server.autoscaling.enabled (gt (int .Values.server.replicaCount) 1) }}
   {{- if and $rwo $many }}
   {{- fail "\n\nconfig.storage is filesystem on a ReadWriteOnce volume, with more than one\nserver replica asked for.\n\nOne pod can mount it. Set server.replicaCount=1 and\nserver.autoscaling.enabled=false, or give the volume a ReadWriteMany class — a\nGCS FUSE CSI volume or an S3 CSI driver is a perfectly good way to run this.\n" }}
+  {{- end }}
+{{- end }}
+
+{{- with .Values.app.apiUrl }}
+  {{- if not (regexMatch "^https?://[^/]+/?$" .) }}
+  {{- fail (printf "\n\napp.apiUrl is %q — it must be an origin with no path, like\nhttp://ingot-server.other-namespace:80.\n\nnginx forwards the request path as it is, and every route the server has is\nalready under /api.\n" .) }}
   {{- end }}
 {{- end }}
 

@@ -126,7 +126,7 @@ curl http://localhost:3002/api/health
 
 200 OK`,
     catches:
-      'The site is a second image, and it is a static export. The address of the API got inlined by `next build` rather than read at run time, so no environment variable will move it. The published one talks to `http://localhost:3002`; anywhere else means a rebuild with `--build-arg NEXT_PUBLIC_INGOT_URL`.',
+      'The site is a second image, and its nginx forwards `/api/` to `INGOT_API_URL`. Leave that unset and the dashboard loads, then every call answers 502. Remember the address is resolved from inside the site container, so `localhost` there is the site itself, not your API.',
     more: { label: 'Both images, and what is in them', href: `${REPO_URL}#images` },
   },
   {
@@ -156,7 +156,7 @@ helm install ingot oci://ghcr.io/tjbroodryk/ingot/charts/ingot \\
 kubectl -n ingot port-forward svc/ingot-server 3002:3002
 curl http://localhost:3002/api/health`,
     catches:
-      'The same baked-in address, one layer up. A dashboard that loads and then reaches nothing is an image built against the wrong host. It is not a value you missed in `values.yaml` — there is no value in the chart that can change it.',
+      'The dashboard reaches the API through the site pod, which forwards `/api/` to the release’s server Service. Exposing only the site is enough, whether through an Ingress, a port-forward, or a tailnet. `app.apiUrl` overrides that address, and the pod resolves it, not the browser, so a hostname only your laptop can see will not work there.',
     more: {
       label: 'The chart, and what it will not guess',
       href: `${REPO_URL}/blob/main/charts/ingot/README.md`,

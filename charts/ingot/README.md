@@ -62,14 +62,18 @@ refuses is something with no default that is right anywhere:
 Each failure says what to set and why. Nothing else in `values.yaml` is
 required.
 
-## The two things that catch people
+## Where the dashboard finds the API
 
-**The site's API address is baked into its image.** `@ingot/app` is a static
-export — no page reads a request, so `NEXT_PUBLIC_INGOT_URL` is inlined by
-`next build` and no value in this chart can change it. The image CI publishes
-is built against the repository variable `INGOT_PUBLIC_API_URL`, and against
-`http://localhost:3002` when that is unset, which is good for `docker run` and
-useless in a cluster. A dashboard that loads and reaches nothing is this.
+It does not have to. The dashboard calls its own origin, and the site pod's
+nginx forwards `/api/` to `app.apiUrl` — which, left empty, is this release's
+server Service. So the dashboard works however the site Service is reached: the
+Ingress, `kubectl port-forward svc/ingot-app`, or a Tailscale Service in front
+of it, with nothing to rebuild and no CORS to configure.
+
+Set `app.apiUrl` only when the API is somewhere else. It is resolved from
+inside the pod, not by the browser.
+
+## The thing that catches people
 
 **The migration is a hook, not a resource.** It runs `bun
 dist/database/migrate.js` out of the server image at `pre-install,pre-upgrade`,
@@ -105,6 +109,7 @@ The migration hook re-runs on every upgrade, ahead of the new pods.
 | `config.tracing.enabled` | off, said out loud — the service's own default is on and pointed at a localhost that is not there inside a pod |
 | `server.resources` | the memory limit is a multiple of `config.query.memoryLimit`, not equal to it |
 | `server.autoscaling` | safe because the sweepers take advisory locks; ten replicas are ten servers and one sweeper |
+| `app.apiUrl` | where the site forwards `/api/`. Empty is this release's server |
 | `ingress.*` | off. One host, `/api` to the server and the rest to the site |
 | `serviceMonitor.*` | off. It is a CRD, and assuming it fails the install on a cluster without monitoring |
 

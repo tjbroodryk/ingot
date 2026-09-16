@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import type {
   AccountDetail,
   FileBody,
@@ -24,19 +25,33 @@ import type {
  * Where the service is.
  *
  * `NEXT_PUBLIC_` because this is a static export: the value is inlined at
- * build time, which is the only way a page with no server can know it. The
- * default is the port `apps/ingot` listens on locally.
+ * build time. Empty means this site's own origin, which is how the image is
+ * built — its nginx forwards `/api/` to `INGOT_API_URL`, so the address is
+ * decided at run time after all. Unset, it is the port `apps/ingot` listens on
+ * locally, for `next dev`.
  */
-export const INGOT_URL = process.env.NEXT_PUBLIC_INGOT_URL ?? 'http://localhost:3002';
+const INGOT_URL = process.env.NEXT_PUBLIC_INGOT_URL ?? 'http://localhost:3002';
+
+const noChange = () => () => {};
 
 /**
- * The same address without its scheme, for where it is printed rather than
- * fetched — the gate and the footer. A build value that is not a URL prints as
- * written rather than throwing on every render.
+ * The address as the browser sees it, for where it is printed — the gate, the
+ * footer, a curl line. The origin is unknown while the page is prerendered, so
+ * a same-origin build renders empty there and fills in on hydration.
  */
-export const INGOT_HOST = hostOf(INGOT_URL);
+export function useIngotUrl(): string {
+  return useSyncExternalStore(
+    noChange,
+    () => INGOT_URL || window.location.origin,
+    () => INGOT_URL,
+  );
+}
 
-function hostOf(url: string): string {
+/**
+ * Without its scheme. A build value that is not a URL prints as written rather
+ * than throwing on every render.
+ */
+export function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
@@ -162,7 +177,9 @@ async function call<T>(credentials: Credentials, path: string, init: RequestInit
     // Naming both is more use than repeating "failed to fetch".
     throw new IngotError(
       0,
-      `Could not reach ${INGOT_URL}. Is it running, and does it allow this origin?`,
+      INGOT_URL
+        ? `Could not reach ${INGOT_URL}. Is it running, and does it allow this origin?`
+        : 'Could not reach /api on this site. Is the service running?',
     );
   }
 

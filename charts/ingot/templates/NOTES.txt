@@ -20,7 +20,12 @@ No Ingress. To look at it without one:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ingot.fullname" . }}-server 3002:{{ .Values.server.service.port }}
   curl http://localhost:3002/api/health
 {{- if .Values.app.enabled }}
+
+The dashboard needs only its own port — its nginx forwards /api to
+{{ include "ingot.app.apiUrl" . }}:
+
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ingot.fullname" . }}-app 8080:{{ .Values.app.service.port }}
+  open http://localhost:8080/dashboard/
 {{- end }}
 {{- end }}
 
@@ -30,20 +35,6 @@ gives you — the key is shown once:
   curl -X POST http{{ if .Values.ingress.enabled }}s://{{ .Values.ingress.host }}{{ else }}://localhost:3002{{ end }}/api/v1/accounts \
     -H 'content-type: application/json' -d '{"slug":"acme","name":"Acme"}'
 
-{{- if .Values.app.enabled }}
-{{- if .Values.ingress.enabled }}
-
-── one thing to check ──────────────────────────────────────────────────────
-The site is a static export, so the address of the API was inlined by
-`next build` and is a property of the image — no value in this chart can
-change it. If the dashboard loads but reaches nothing, the image was built
-against something other than https://{{ .Values.ingress.host }}:
-
-  docker build -f apps/ingot-app/Dockerfile \
-    --build-arg NEXT_PUBLIC_INGOT_URL=https://{{ .Values.ingress.host }} \
-    -t {{ .Values.app.image.repository }}:{{ .Values.app.image.tag | default .Chart.AppVersion }} .
-{{- end }}
-{{- end }}
 
 {{- if eq .Values.config.storage "filesystem" }}
 

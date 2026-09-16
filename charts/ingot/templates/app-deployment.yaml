@@ -1,11 +1,9 @@
 {{- if .Values.app.enabled }}
 # @ingot/app — nginx over a directory of files.
 #
-# There is nothing to configure here, and that is the point rather than an
-# omission. `next.config.ts` sets `output: 'export'`, so no page reads a
-# request and there is no Node process to keep alive. Both of the decisions
-# that would normally be environment variables were made by `docker build` —
-# see the note on `app` in values.yaml, which is the one that catches people.
+# Nearly nothing to configure. `next.config.ts` sets `output: 'export'`, so no
+# page reads a request and there is no Node process to keep alive. The one
+# setting is where nginx forwards `/api/`, read at container start.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -76,6 +74,9 @@ spec:
               # 8080 rather than 80, so nothing needs a privileged port and the
               # pod can run as a non-root user.
               containerPort: 8080
+          env:
+            - name: INGOT_API_URL
+              value: {{ include "ingot.app.apiUrl" . | quote }}
           readinessProbe:
             httpGet:
               path: /

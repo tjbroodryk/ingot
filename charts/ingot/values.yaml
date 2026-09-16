@@ -97,21 +97,17 @@ server:
 # ── the site ───────────────────────────────────────────────────────────────
 # @ingot/app: nginx over a directory of files.
 #
-# Read this before wondering why the dashboard cannot reach anything. The site
-# is a static export, so `NEXT_PUBLIC_INGOT_URL` is inlined by `next build` and
-# is a property of the image — no value in this file can change it. The image
-# CI publishes is built against the repository variable `INGOT_PUBLIC_API_URL`,
-# and against `http://localhost:3002` when that is unset, which is good for
-# `docker run` and useless in a cluster.
-#
-#   docker build -f apps/ingot-app/Dockerfile \
-#     --build-arg NEXT_PUBLIC_INGOT_URL=https://ingot.example.com \
-#     -t ghcr.io/tjbroodryk/ingot/app:main .
-#
-# With the single-host Ingress below, that argument is the site's own address,
-# because the API is `/api` on the same host.
+# The dashboard calls its own origin, and the pod's nginx forwards `/api/` to
+# the server. So however the site is reached — the Ingress, a port-forward, a
+# Tailscale Service — the API comes with it, and nothing about the address is
+# baked into the image.
 app:
   enabled: true
+
+  # Where nginx sends `/api/`, resolved from inside the pod rather than the
+  # browser. Left empty, it is this release's server Service, which is right
+  # unless the API lives somewhere else. An origin only — no path.
+  apiUrl: ''
 
   image:
     repository: ghcr.io/tjbroodryk/ingot/app
@@ -463,8 +459,7 @@ serviceAccount:
 # One host, two paths. The server sets a global `api` prefix, so every route it
 # has is under `/api` and the site can have everything else. That is worth more
 # than tidiness: the dashboard then calls its own origin and CORS never enters
-# into it. It also has to match how the site image was built — see the note on
-# `app` above.
+# into it.
 #
 # `/metrics` is not routable from here at all; it is a separate listener on
 # 9465 and the Ingress only ever targets the http port.
