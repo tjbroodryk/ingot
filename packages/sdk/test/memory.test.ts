@@ -238,6 +238,25 @@ describe('Memory', () => {
     expect(error).toBeInstanceOf(TimeoutError);
   });
 
+  it('clones into a handle on the copy, retrying only when keyed', async () => {
+    const copy = { ...info, id: 'ing_2', name: 'fork', tables: 1, rows: 10 };
+    const { ingot, requests } = client((_, index) =>
+      index === 0 ? json({ message: 'down' }, 503) : json(copy, 201),
+    );
+
+    const clone = await ingot.memory('ing_1').clone({ name: 'fork', externalId: 'fork-1' });
+    expect(clone.id).toBe('ing_2');
+    expect(clone.summary?.name).toBe('fork');
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.url).toBe('https://ingot.test/api/v1/acme/ing_1/clone');
+    expect(bodyOf(requests[1] as never)).toEqual({ name: 'fork', externalId: 'fork-1' });
+
+    const unkeyed = client(() => json({ message: 'down' }, 503));
+    await expect(unkeyed.ingot.memory('ing_1').clone()).rejects.toThrow();
+    expect(unkeyed.requests).toHaveLength(1);
+    expect(bodyOf(unkeyed.requests[0] as never)).toEqual({});
+  });
+
   it('configures expiry and delivery in one patch', async () => {
     const { ingot, requests } = client(() => json({ delivery: { t: 'none' }, expiresAt: null }));
     await ingot.memory('ing_1').configure({ retainFor: null });

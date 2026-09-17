@@ -2,6 +2,7 @@ import type {
   AddBody,
   AddResult,
   BaseFile,
+  CloneIngotBody,
   ColumnInfo,
   ConfigureIngotBody,
   ConfigureTableBody,
@@ -30,6 +31,10 @@ export type Row = Readonly<Record<string, unknown>>;
 /** A `/query` result whose rows the caller has named a type for. */
 export interface TypedQueryResult<R> extends Omit<QueryResult, 'rows'> {
   readonly rows: readonly R[];
+}
+
+export interface CloneMemoryOptions extends CloneIngotBody {
+  readonly signal?: AbortSignal;
 }
 
 export interface AddOptions {
@@ -248,6 +253,24 @@ export class Memory {
       safe: false,
       signal: options.signal,
     });
+  }
+
+  /**
+   * Copies this memory — tables, rows, tombstones and vectors — into a new one,
+   * and hands back a handle on the copy. Writes to either afterwards do not
+   * reach the other. With `externalId`, idempotent, as `memories.create` is.
+   */
+  async clone(options: CloneMemoryOptions = {}): Promise<Memory> {
+    const { signal, ...body } = options;
+    const summary = await this.transport.json<IngotSummary>({
+      method: 'POST',
+      path: this.path('clone'),
+      json: body,
+      // Repeating a clone is only harmless when it is keyed.
+      safe: body.externalId !== undefined,
+      signal,
+    });
+    return new Memory(this.transport, this.account, summary.id, summary);
   }
 
   /** Deletes this memory and everything in it. Not reversible. */
