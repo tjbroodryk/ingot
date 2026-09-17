@@ -139,6 +139,16 @@ export interface OverlayStore {
   purgeTable(tableId: string): Promise<void>;
   purgeIngot(ingotId: string): Promise<void>;
 
+  /**
+   * Copies a table's overlay into another table, for a clone: rows,
+   * tombstones, vectors, and the texts still waiting for one.
+   *
+   * Consistent only inside a snapshot. Each statement is a read of its own,
+   * and an embedding that lands between two of them would otherwise be in
+   * neither the vectors nor the queue.
+   */
+  copyTable(input: { fromTableId: string; toTableId: string; toIngotId: string }): Promise<void>;
+
   tablesWorthCompacting(minimumRows: number, limit: number): Promise<readonly OverlayDepth[]>;
 
   // ── vectors ───────────────────────────────────────────────────────────

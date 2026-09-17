@@ -485,6 +485,22 @@ export interface CreateIngotBody {
   readonly externalId?: string;
 }
 
+/**
+ * What `POST /:account/:ingot/clone` takes. Every field is optional.
+ *
+ * A clone is a new memory holding the source's tables, rows, tombstones and
+ * vectors as of one instant, under a new id. Writes to either afterwards are
+ * not seen by the other. Delivery settings are not copied.
+ */
+export interface CloneIngotBody {
+  /** Omitted, the source's name. */
+  readonly name?: string;
+  /** Omitted, the clone expires when the source does. */
+  readonly retainFor?: string;
+  /** Makes the clone idempotent, exactly as it does `create`. */
+  readonly externalId?: string;
+}
+
 // ── delivery ──────────────────────────────────────────────────────────────
 
 /**

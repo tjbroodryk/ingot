@@ -39,7 +39,7 @@ export class Dispatcher {
       `command.${name}`,
       { 'cqrs.kind': 'command', 'cqrs.name': name },
       outcomeRecorder(Metrics.CommandDuration, { command: name }),
-      () => this.uow.run(() => this.commandBus.execute(command)),
+      () => this.uow.run(() => this.commandBus.execute(command), { isolation: command.isolation }),
     );
   }
 

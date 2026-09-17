@@ -234,6 +234,25 @@ export const ENDPOINTS: readonly Endpoint[] = [
     "expiresAt": null } ]`,
   },
   {
+    id: 'ingot-clone',
+    group: EndpointGroup.Memories,
+    nav: 'Clone a memory',
+    method: HttpMethod.Post,
+    path: '/api/v1/:account/:ingot/clone',
+    auth: Auth.Key,
+    summary:
+      'Copy a memory under a new id: every table, its current Parquet, the overlay, tombstones and vectors, read as of one instant. Takes what create takes, all of it optional.',
+    note: 'Afterwards the two share nothing — writes, roll-ups and deletes on one never reach the other. `name` defaults to the source’s and, without `retainFor`, the clone expires when the source does. Delivery settings are not copied. Refused with 409 while a document is still being parsed. With an `externalId`, asking again answers 200 with the clone already made.',
+    sample: `{ "name": "crm-notes-experiment",
+  "externalId": "exp_42" }
+
+201 Created
+{ "id": "ing_01J9K…", "name": "crm-notes-experiment",
+  "externalId": "exp_42",
+  "tables": 3, "rows": 412,
+  "expiresAt": null }`,
+  },
+  {
     id: 'ingot-info',
     group: EndpointGroup.Memories,
     nav: 'Schema · /info',
@@ -579,7 +598,7 @@ Ingot-Tombstones: 17`,
     auth: Auth.Key,
     summary:
       'Account-wide MCP, for a client that has not been handed a memory yet. Cast one, then reconnect to the scoped path below.',
-    asideChips: ['create_memory', 'list_memories', 'delete_memory'],
+    asideChips: ['create_memory', 'clone_memory', 'list_memories', 'delete_memory'],
   },
   {
     id: 'mcp-ingot',

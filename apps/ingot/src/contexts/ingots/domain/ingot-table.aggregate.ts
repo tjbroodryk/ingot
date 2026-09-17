@@ -148,6 +148,25 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     return declared_;
   }
 
+  /**
+   * This table, as a table of another memory.
+   *
+   * Same schema, settings and generation, so `/parquet?generation=n` means the
+   * same thing on both. The files are the caller's to copy; `rekey` only says
+   * where the copies live.
+   */
+  copyInto(ingotId: string, rekey: (key: string) => string, now: Date): IngotTable {
+    const copy = new IngotTable(IngotTableId.forTable(ingotId, this.props.name.value), {
+      ...this.props,
+      ingotId,
+      baseFiles: this.props.baseFiles.map((file) => ({ ...file, key: rekey(file.key) })),
+      vectorFiles: this.props.vectorFiles.map((file) => ({ ...file, key: rekey(file.key) })),
+      createdAt: now,
+    });
+    copy.#changed = true;
+    return copy;
+  }
+
   static rehydrate(id: IngotTableId, props: TableProps, version: number): IngotTable {
     return new IngotTable(id, props, version);
   }

@@ -1,5 +1,6 @@
 import { Command as CqrsCommand } from '@nestjs/cqrs';
 import type { CommandResult } from '@nestjs/cqrs';
+import type { Isolation } from './ports/unit-of-work.port.js';
 
 /**
  * An intent to change state, named as an imperative (`PostMessage`).
@@ -10,6 +11,11 @@ import type { CommandResult } from '@nestjs/cqrs';
  */
 export abstract class Command<TResult = void> extends CqrsCommand<TResult> {
   readonly commandName: string;
+  /**
+   * The isolation of the transaction `Dispatcher` opens for this command.
+   * Read committed unless a command has to read many tables as of one instant.
+   */
+  readonly isolation: Isolation = 'read committed';
 
   constructor() {
     super();

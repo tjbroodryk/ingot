@@ -64,6 +64,15 @@ const document = await memory.waitForDocument(upload); // status: 'ready' | 'fai
 `memory.info()`, `memory.destroy()`, `memory.configureTable()` and `memory.dropTable()` do what
 they say.
 
+```ts
+// Tables, rows and embeddings as of now, under a new id. Neither sees the other's writes after.
+const fork = await memory.clone({ name: `chat-${chatId}-retry`, externalId: `${chatId}-retry` });
+```
+
+`clone` takes `name` (defaults to the source's), `retainFor` (defaults to expiring with the source)
+and `externalId`. Delivery settings are not copied. It fails with `ConflictError` while a document
+is still being parsed.
+
 ## Querying
 
 ```ts
@@ -128,8 +137,8 @@ for (const tool of tools) {
 ```
 
 `memory.mcp()` connects to the memory's own MCP endpoint, so the tools take no ids and cannot reach
-another memory. `ingot.mcp()` is the account-level set: `create_memory`, `list_memories`,
-`delete_memory`. Filter with `{ only: ['query', 'recall'] }` or `{ readOnly: true }`. A tool that
+another memory. `ingot.mcp()` is the account-level set: `create_memory`, `clone_memory`,
+`list_memories`, `delete_memory`. Filter with `{ only: ['query', 'recall'] }` or `{ readOnly: true }`. A tool that
 fails rejects with `McpToolError`, whose message is written for the model to act on.
 
 ## Datasets: the base tier and the overlay
@@ -228,8 +237,9 @@ Everything thrown on purpose is an `IngotError` with `status` (0 when there was 
 | `ConfigurationError`              | the client was built without url, account or key       |
 
 Requests that are safe to repeat are retried on connection errors, timeouts and 503: reads,
-`query`, `configure`, `pending`, and `memories.create` with an `externalId`. Writes that could store
-twice (`add`, `uploadDocument`, `forget`, an unkeyed create) are never retried.
+`query`, `configure`, `pending`, and `memories.create` or `memory.clone` with an `externalId`.
+Writes that could store twice (`add`, `uploadDocument`, `forget`, an unkeyed create or clone) are
+never retried.
 
 ## Versioning
 

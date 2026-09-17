@@ -17,6 +17,7 @@ import { WireShape } from '../../../versioning/shapes.js';
 import { Account as AccountScope } from '../../accounts/interface/account.decorator.js';
 import { CurrentAccount } from '../../accounts/interface/current-account.decorator.js';
 import type { Account } from '../../accounts/domain/index.js';
+import { CloneIngot } from '../application/commands/clone-ingot.command.js';
 import { ConfigureIngot } from '../application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../application/commands/configure-table.command.js';
 import { CreateIngot } from '../application/commands/create-ingot.command.js';
@@ -24,6 +25,7 @@ import { DeleteIngot } from '../application/commands/delete-ingot.command.js';
 import { DropTable } from '../application/commands/drop-table.command.js';
 import { GetIngotInfo } from '../application/queries/get-ingot-info.query.js';
 import { ListIngots } from '../application/queries/list-ingots.query.js';
+import { CloneIngotDto } from './dto/clone-ingot.dto.js';
 import { ConfigureIngotDto } from './dto/configure-ingot.dto.js';
 import { ConfigureTableDto } from './dto/configure-table.dto.js';
 import { CreateIngotDto } from './dto/create-ingot.dto.js';
@@ -76,6 +78,31 @@ export class IngotsController {
   @Wire({ returns: WireShape.IngotInfo })
   info(@CurrentAccount() account: Account, @Param('ingot') ingot: string): Promise<IngotInfo> {
     return this.dispatcher.ask(new GetIngotInfo(ingot, account.id.value, account.slug.value));
+  }
+
+  /**
+   * A copy of this memory, under a new id. 201, or 200 when `externalId`
+   * named a memory that already existed — exactly as `create` answers.
+   */
+  @Post(':ingot/clone')
+  @AccountScope()
+  @Wire({ accepts: WireShape.CloneIngotBody, returns: WireShape.IngotSummary })
+  @HttpCode(HttpStatus.CREATED)
+  async clone(
+    @CurrentAccount() account: Account,
+    @Param('ingot') ingot: string,
+    @Body() body: CloneIngotDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<IngotSummary> {
+    const { ingot: cloned, created } = await this.dispatcher.send(
+      new CloneIngot(ingot, account.id.value, {
+        name: body.name,
+        retainFor: body.retainFor,
+        externalId: body.externalId,
+      }),
+    );
+    if (!created) response.status(HttpStatus.OK);
+    return cloned;
   }
 
   /**

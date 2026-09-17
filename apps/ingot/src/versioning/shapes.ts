@@ -21,6 +21,7 @@ export enum WireShape {
   IngotSummary = 'IngotSummary',
   IngotInfo = 'IngotInfo',
   CreateIngotBody = 'CreateIngotBody',
+  CloneIngotBody = 'CloneIngotBody',
 
   TableConfig = 'TableConfig',
   ConfigureTableBody = 'ConfigureTableBody',

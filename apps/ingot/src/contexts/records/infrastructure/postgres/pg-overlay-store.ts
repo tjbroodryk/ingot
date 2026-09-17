@@ -328,6 +328,38 @@ export class PgOverlayStore implements OverlayStore {
       .where(eq(overlayReceiptQueue.ingotId, ingotId));
   }
 
+  async copyTable(input: {
+    fromTableId: string;
+    toTableId: string;
+    toIngotId: string;
+  }): Promise<void> {
+    const { fromTableId, toTableId, toIngotId } = input;
+
+    // In `seq` order, so the copy's sequence keeps the order the rows arrived in.
+    await this.uow.queryable.execute(sql`
+      INSERT INTO overlay_row (ingot_id, table_id, row_id, payload, ingested_at)
+      SELECT ${toIngotId}, ${toTableId}, row_id, payload, ingested_at
+      FROM overlay_row WHERE table_id = ${fromTableId}
+      ORDER BY seq
+    `);
+    await this.uow.queryable.execute(sql`
+      INSERT INTO overlay_tombstone (table_id, row_id, at)
+      SELECT ${toTableId}, row_id, at
+      FROM overlay_tombstone WHERE table_id = ${fromTableId}
+    `);
+    await this.uow.queryable.execute(sql`
+      INSERT INTO overlay_vector (table_id, row_id, column_name, model, dims, vector)
+      SELECT ${toTableId}, row_id, column_name, model, dims, vector
+      FROM overlay_vector WHERE table_id = ${fromTableId}
+    `);
+    // Unleased: a worker embedding the source's texts is not embedding these.
+    await this.uow.queryable.execute(sql`
+      INSERT INTO overlay_embed_queue (table_id, row_id, column_name, text, claimed_at, queued_at)
+      SELECT ${toTableId}, row_id, column_name, text, NULL, queued_at
+      FROM overlay_embed_queue WHERE table_id = ${fromTableId}
+    `);
+  }
+
   /**
    * Tables worth rewriting Parquet for.
    *

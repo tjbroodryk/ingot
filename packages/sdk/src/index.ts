@@ -9,6 +9,7 @@ export {
   Table,
   TypedTable,
   type AddOptions,
+  type CloneMemoryOptions,
   type DocumentRow,
   type ParquetOptions,
   type PendingOptions,

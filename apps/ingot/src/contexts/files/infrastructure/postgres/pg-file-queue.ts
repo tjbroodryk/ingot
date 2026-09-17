@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { count, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, count, eq, gte, lt, sql } from 'drizzle-orm';
 import type { FileExtraction } from '@ingot/shared/ingot-v1';
 import { CLAIM_LEASE_MS } from '../../../../shared/claim-lease.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
@@ -110,6 +110,14 @@ export class PgFileQueue implements FileQueue {
       .select({ n: count() })
       .from(fileQueue)
       .where(lt(fileQueue.attempts, maxAttempts));
+    return row?.n ?? 0;
+  }
+
+  async pendingFor(ingotId: string, maxAttempts: number): Promise<number> {
+    const [row] = await this.uow.queryable
+      .select({ n: count() })
+      .from(fileQueue)
+      .where(and(eq(fileQueue.ingotId, ingotId), lt(fileQueue.attempts, maxAttempts)));
     return row?.n ?? 0;
   }
 

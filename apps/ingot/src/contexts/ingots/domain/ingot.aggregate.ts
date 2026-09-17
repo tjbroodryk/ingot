@@ -88,6 +88,31 @@ export class Ingot extends AggregateRoot<IngotId> {
     });
   }
 
+  /**
+   * A new memory holding what `source` holds, under a new id.
+   *
+   * The embedding space comes with it, because the vectors do. Delivery does
+   * not: a receiver configured for the source knows nothing about the copy, and
+   * pushing it events for a memory it never heard of is a surprise nobody
+   * asked for. Retention is the source's unless `retainFor` says otherwise, so
+   * a copy of something due for deletion does not quietly outlive it.
+   */
+  static cloneOf(
+    source: Ingot,
+    input: { name?: string; retainFor?: string; externalId?: string; now: Date },
+  ): Ingot {
+    const clone = Ingot.cast({
+      accountId: source.accountId,
+      name: input.name ?? source.name,
+      retainFor: input.retainFor,
+      externalId: input.externalId,
+      now: input.now,
+    });
+    if (input.retainFor === undefined) clone.props.expiresAt = source.expiresAt;
+    clone.props.embedding = source.embedding;
+    return clone;
+  }
+
   static rehydrate(id: IngotId, props: IngotProps, version: number): Ingot {
     return new Ingot(id, props, version);
   }

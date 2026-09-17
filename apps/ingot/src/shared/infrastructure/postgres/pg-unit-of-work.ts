@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DATABASE, type Database, type Queryable } from '../../../database/database.module.js';
 import { Metrics } from '../../../observability/metrics/catalogue.js';
 import { instrumented, outcomeRecorder } from '../../../observability/observe.js';
-import type { UnitOfWork } from '../../application/ports/unit-of-work.port.js';
+import type { Isolation, UnitOfWork } from '../../application/ports/unit-of-work.port.js';
 
 interface Scope {
   tx: Queryable;
@@ -31,7 +31,7 @@ export class PgUnitOfWork implements UnitOfWork {
 
   constructor(@Inject(DATABASE) private readonly database: Database) {}
 
-  async run<T>(work: () => Promise<T>): Promise<T> {
+  async run<T>(work: () => Promise<T>, options: { isolation?: Isolation } = {}): Promise<T> {
     // Joining rather than nesting: a second `BEGIN` would be a savepoint with
     // its own commit, and a caller asking for atomicity would silently get
     // half of it.
@@ -48,7 +48,15 @@ export class PgUnitOfWork implements UnitOfWork {
       'db.transaction',
       undefined,
       outcomeRecorder(Metrics.TransactionDuration, {}),
-      () => this.database.transaction((tx) => this.scopes.run({ tx, effects }, work)),
+      () =>
+        this.database.transaction(
+          (tx) => this.scopes.run({ tx, effects }, work),
+          // Named only when it differs: Drizzle spends a `SET TRANSACTION`
+          // round trip on it, and `/add` is not the place to pay one for nothing.
+          options.isolation && options.isolation !== 'read committed'
+            ? { isolationLevel: options.isolation }
+            : undefined,
+        ),
     );
 
     // Past the point of no return: the transaction has committed, so a failing

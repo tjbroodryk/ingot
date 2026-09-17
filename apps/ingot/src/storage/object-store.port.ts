@@ -92,6 +92,15 @@ export interface ObjectStore {
 
   stat(key: string): Promise<{ bytes: number } | null>;
 
+  /**
+   * Copies one object to another key, inside the store.
+   *
+   * For cloning a memory. The bytes never pass through this process, so a
+   * table's Parquet is copied at whatever the store charges for a copy rather
+   * than at the price of a download and an upload.
+   */
+  copy(from: string, to: string): Promise<void>;
+
   remove(keys: readonly string[]): Promise<void>;
 
   /** Everything under a prefix. Used when a table or an ingot is destroyed. */
