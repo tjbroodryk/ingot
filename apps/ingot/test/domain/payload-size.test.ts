@@ -51,6 +51,30 @@ describe('measuring a payload', () => {
     expect(elapsed).toBeLessThan(1_000);
   });
 
+  it.each([
+    ['one character repeated', 'x'.repeat(600 * 1024)],
+    ['base64', Buffer.from(new Uint8Array(450 * 1024).map((_, at) => at * 7)).toString('base64')],
+  ])('is cheap on a long run with no separator in it: %s', (_, blob) => {
+    // Tokenising such a run whole is quadratic; 600 KiB of one took minutes
+    // and held the `/add` that carried it.
+    const started = performance.now();
+    const size = sizeOf({ blob });
+
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(size.estimatedTokens).toBeGreaterThan(0);
+  });
+
+  it('stays close to an exact count on ordinary JSON', async () => {
+    const { encode } = await import('gpt-tokenizer/encoding/o200k_base');
+    const payload = {
+      rows: Array.from({ length: 2_000 }, (_, n) => ({ n, note: 'the quick brown fox' })),
+    };
+
+    const exact = encode(JSON.stringify(payload)).length;
+    const estimated = sizeOf(payload).estimatedTokens;
+    expect(Math.abs(estimated - exact) / exact).toBeLessThan(0.02);
+  });
+
   it('survives a payload that will not serialise', () => {
     // Circular structures cannot arrive over HTTP, but the MCP surface builds
     // the same command from a tool call without passing through a parse.

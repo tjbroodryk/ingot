@@ -28,9 +28,10 @@ const MIGRATIONS = join(__dirname, '..', '..', 'drizzle');
  * does not matter — but completeness does. A table missing from this list is
  * state leaking from one test into the next.
  */
-const TABLES = [
+export const TABLES = [
   'account',
   'account_key',
+  'file_queue',
   'ingot',
   'ingot_table',
   'overlay_row',

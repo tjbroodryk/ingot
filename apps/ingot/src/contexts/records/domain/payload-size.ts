@@ -49,14 +49,33 @@ export function sizeOf(payload: unknown): PayloadSize {
   };
 }
 
+/**
+ * How much text is tokenised at once.
+ *
+ * BPE is quadratic in the length of a run with no separator in it, and tool
+ * results are full of those — base64, hashes, minified blobs. Encoding the
+ * prefix whole took minutes on 256 KiB of one; in windows it takes
+ * milliseconds. A split can move a token boundary at each window's edge, which
+ * is well inside what an estimate already is.
+ */
+const WINDOW = 1024;
+
 function countTokens(json: string): number {
-  if (json.length <= MEASURE_LIMIT) return encode(json).length;
+  if (json.length <= MEASURE_LIMIT) return windowed(json);
 
   // Scaled from a measured prefix. The ratio of characters to tokens is stable
   // within one document, so this is a good estimate of a number that is
   // already labelled an estimate.
   const sample = json.slice(0, MEASURE_LIMIT);
-  return Math.round(encode(sample).length * (json.length / sample.length));
+  return Math.round(windowed(sample) * (json.length / sample.length));
+}
+
+function windowed(text: string): number {
+  let tokens = 0;
+  for (let at = 0; at < text.length; at += WINDOW) {
+    tokens += encode(text.slice(at, at + WINDOW)).length;
+  }
+  return tokens;
 }
 
 /**

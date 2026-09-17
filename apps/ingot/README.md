@@ -1377,6 +1377,12 @@ the whole retention window. Per-tenant detail goes on the span, where
   the two are indistinguishable, so an empty answer falls back to materialising
   everything. Wrong in the safe direction, always.
 - **Vector search is brute force.** See above.
+- **A JSON body is parsed whole.** `INGOT_MAX_BODY_BYTES` (16 MiB) is the
+  ceiling on one `/add`, and a result past it is a 413 before any of this code
+  runs. Express's own default was 100 KiB, which refused ordinary tool output.
+  The token estimate a write reports is taken in 1 KiB windows over at most the
+  first 256 KiB, because tokenising a long run with no separator in it — base64,
+  a hash, a minified blob — is quadratic, and took minutes whole.
 - **No webhook when a receipt lands.** `ReceiptNotifier` is called on every one
   and the only adapter logs. What is missing is a place for a caller to say
   where to deliver.

@@ -129,6 +129,9 @@ data:
   INGOT_DELIVERY_USER_AGENT: {{ . | quote }}
   {{- end }}
 
+  # ── request bodies ──────────────────────────────────────────────────────
+  INGOT_MAX_BODY_BYTES: {{ .Values.config.maxBodyBytes | quote }}
+
   # ── replaced Parquet ────────────────────────────────────────────────────
   INGOT_GENERATION_GRACE_MS: {{ .Values.config.generationGraceMs | quote }}
 
