@@ -7,6 +7,7 @@ import {
   ReceiptKind,
 } from '@ingot/shared/ingot-v1';
 import type { Command, Query } from '../shared/application/index.js';
+import { CloneIngot } from '../contexts/ingots/application/commands/clone-ingot.command.js';
 import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
 import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
@@ -31,6 +32,7 @@ export enum McpTool {
   ConfigureDelivery = 'configure_delivery',
   DropTable = 'drop_table',
   CreateMemory = 'create_memory',
+  CloneMemory = 'clone_memory',
   ListMemories = 'list_memories',
   DeleteMemory = 'delete_memory',
 }
@@ -338,6 +340,33 @@ export const TOOLS: readonly ToolDefinition[] = [
         ),
     },
     resolvesTo: CreateIngot,
+    readOnly: false,
+  },
+  {
+    name: McpTool.CloneMemory,
+    scope: McpScope.Account,
+    title: 'Clone a memory',
+    description:
+      'Copy a memory — every table, row and embedding — into a new one, and return the new ' +
+      'id. Writes to either afterwards do not reach the other, so this is how to try ' +
+      'something against a memory without risking it. Delivery settings are not copied.',
+    inputSchema: {
+      ingot: z.string().describe('The id of the memory to copy'),
+      name: z.string().optional().describe('What the copy is for. Omit to keep the source’s name.'),
+      retainFor: z
+        .string()
+        .optional()
+        .describe(
+          'Delete the copy after this long: 30m, 12h, 14d, 4w. Omit to expire with the source.',
+        ),
+      externalId: z
+        .string()
+        .optional()
+        .describe(
+          'Your own id for the copy. Cloning again with the same one returns the existing copy.',
+        ),
+    },
+    resolvesTo: CloneIngot,
     readOnly: false,
   },
   {

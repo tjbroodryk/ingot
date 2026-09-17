@@ -4,6 +4,7 @@ import { Dispatcher } from '../shared/application/index.js';
 import type { Account } from '../contexts/accounts/domain/index.js';
 import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
+import { CloneIngot } from '../contexts/ingots/application/commands/clone-ingot.command.js';
 import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
 import { DropTable } from '../contexts/ingots/application/commands/drop-table.command.js';
@@ -228,6 +229,17 @@ export class IngotMcpServer {
               args.retainFor === undefined ? undefined : String(args.retainFor),
               args.externalId === undefined ? undefined : String(args.externalId),
             ),
+          )
+          .then((result) => result.ingot);
+
+      case McpTool.CloneMemory:
+        return this.dispatcher
+          .send(
+            new CloneIngot(String(args.ingot), accountId, {
+              name: args.name === undefined ? undefined : String(args.name),
+              retainFor: args.retainFor === undefined ? undefined : String(args.retainFor),
+              externalId: args.externalId === undefined ? undefined : String(args.externalId),
+            }),
           )
           .then((result) => result.ingot);
 

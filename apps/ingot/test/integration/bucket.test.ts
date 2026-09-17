@@ -141,6 +141,20 @@ describe('the S3 base tier, against a real bucket', () => {
     await store.removePrefix(prefix);
   });
 
+  it('copies an object to another prefix inside the bucket, for a clone', async () => {
+    const prefix = scope();
+    const [key] = await seed(prefix, 1);
+    const copy = `${prefix}-clone/tables/notes/gen-000001/part-0001.parquet`;
+
+    await store.copy(key as string, copy);
+    expect((await store.fetch(copy)).toString()).toBe(`bytes for ${key}`);
+
+    // The copy is its own object: removing the source's prefix leaves it.
+    await store.removePrefix(prefix);
+    expect(await store.stat(copy)).not.toBeNull();
+    await store.removePrefix(`${prefix}-clone`);
+  });
+
   it('hands DuckDB the object itself to write, with nothing to publish after', async () => {
     // S3 is the one remote case DuckDB can write, so a roll-up here is a
     // `COPY … TO 's3://…'` and `commit` has nothing to do. Google is the case

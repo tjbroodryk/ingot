@@ -125,6 +125,9 @@ export interface FileQueue {
   /** Queued and still winnable. The gauge that says parsing is behind. */
   pending(maxAttempts: number): Promise<number>;
 
+  /** The same, for one memory. A clone waits for these rather than copying them. */
+  pendingFor(ingotId: string, maxAttempts: number): Promise<number>;
+
   /**
    * Queued and out of attempts. Not retried; kept so somebody can look.
    *

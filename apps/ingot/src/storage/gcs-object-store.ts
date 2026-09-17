@@ -155,6 +155,13 @@ export class GcsObjectStore implements ObjectStore {
     });
   }
 
+  async copy(from: string, to: string): Promise<void> {
+    await upstream('gcs', 'copy_object', async () => {
+      const bucket = this.storage.bucket(this.settings.bucket);
+      await bucket.file(from).copy(bucket.file(to));
+    });
+  }
+
   async remove(keys: readonly string[]): Promise<void> {
     if (keys.length === 0) return;
 

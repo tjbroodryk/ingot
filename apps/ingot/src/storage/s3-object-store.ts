@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -148,6 +149,20 @@ export class S3ObjectStore implements ObjectStore {
         return null;
       }
     });
+  }
+
+  async copy(from: string, to: string): Promise<void> {
+    // A single `CopyObject` stops at 5 GiB. A part that large would need a
+    // multipart copy, which nothing this service writes has needed yet.
+    await upstream('s3', 'copy_object', () =>
+      this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.settings.bucket,
+          CopySource: encodeURIComponent(`${this.settings.bucket}/${from}`),
+          Key: to,
+        }),
+      ),
+    );
   }
 
   async remove(keys: readonly string[]): Promise<void> {

@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
@@ -68,6 +68,12 @@ export class FilesystemObjectStore implements ObjectStore {
     } catch {
       return null;
     }
+  }
+
+  async copy(from: string, to: string): Promise<void> {
+    const target = this.pathFor(to);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(this.pathFor(from), target);
   }
 
   async remove(keys: readonly string[]): Promise<void> {

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CloneIngotHandler } from './application/commands/clone-ingot.command.js';
 import { ConfigureIngotHandler } from './application/commands/configure-ingot.command.js';
 import { ConfigureTableHandler } from './application/commands/configure-table.command.js';
 import { CreateIngotHandler } from './application/commands/create-ingot.command.js';
@@ -18,6 +19,7 @@ import { IngotsController } from './interface/ingots.controller.js';
 @Module({
   controllers: [IngotsController],
   providers: [
+    CloneIngotHandler,
     ConfigureIngotHandler,
     ConfigureTableHandler,
     CreateIngotHandler,

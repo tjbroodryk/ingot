@@ -9,9 +9,10 @@
 export interface UnitOfWork {
   /**
    * Opens a transaction, runs `work` inside it, and commits. Nested calls join
-   * the transaction already in progress rather than opening a second one.
+   * the transaction already in progress rather than opening a second one — and
+   * take its isolation, whatever they asked for.
    */
-  run<T>(work: () => Promise<T>): Promise<T>;
+  run<T>(work: () => Promise<T>, options?: { isolation?: Isolation }): Promise<T>;
 
   /**
    * Runs reads that must agree with each other in one read-only snapshot.
@@ -34,5 +35,7 @@ export interface UnitOfWork {
    */
   afterCommit(effect: () => Promise<void> | void): void;
 }
+
+export type Isolation = 'read committed' | 'repeatable read';
 
 export const UNIT_OF_WORK = Symbol('UnitOfWork');
