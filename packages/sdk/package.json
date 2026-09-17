@@ -1,5 +1,5 @@
 {
-  "name": "@ingot/sdk",
+  "name": "@ingotdb/sdk",
   "version": "0.1.0",
   "description": "TypeScript client for Ingot, the agent memory server.",
   "license": "MIT",
@@ -35,6 +35,9 @@
     "dist",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },

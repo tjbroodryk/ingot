@@ -13,7 +13,7 @@ import { type World, makeWorld } from '../support/world.js';
 /**
  * A table rebuilt outside the service answers as the service does.
  *
- * `@ingot/sdk/duckdb` hands a caller the statements that reassemble a table in
+ * `@ingotdb/sdk/duckdb` hands a caller the statements that reassemble a table in
  * their own DuckDB from `/parquet` and `/pending` — which is only worth having
  * if the result is the one `/query` gives. This is `rollup-equivalence.test.ts`
  * with the second session built by somebody else: every declared type, rows in

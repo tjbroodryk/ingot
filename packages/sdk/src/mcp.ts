@@ -130,7 +130,7 @@ export class McpConnection {
       {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: '@ingot/sdk', version: SDK_VERSION },
+        clientInfo: { name: '@ingotdb/sdk', version: SDK_VERSION },
       },
       true,
       signal,

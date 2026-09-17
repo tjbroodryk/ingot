@@ -1,4 +1,4 @@
-# @ingot/sdk
+# @ingotdb/sdk
 
 A TypeScript client for [Ingot](../../README.md), the agent memory server: store tool results and
 documents in a memory, query them back as SQL, hand an agent the tools to do it itself, and read
@@ -8,13 +8,13 @@ No runtime dependencies. It uses `fetch`, `FormData` and `Blob`, so it runs on N
 and in browsers, and ships ESM, CommonJS and type declarations.
 
 ```bash
-npm install @ingot/sdk
+npm install @ingotdb/sdk
 ```
 
 ## Connecting
 
 ```ts
-import { Ingot } from '@ingot/sdk';
+import { Ingot } from '@ingotdb/sdk';
 
 const ingot = new Ingot({
   url: 'https://ingot.example.com', // the service root; a trailing /api is fine
@@ -30,7 +30,7 @@ and `version`.
 ## A memory per conversation
 
 ```ts
-import { ReceiptKind, col, table } from '@ingot/sdk';
+import { ReceiptKind, col, table } from '@ingotdb/sdk';
 
 // Idempotent on externalId: two workers opening the same conversation get the same memory.
 const memory = await ingot.memories.create({
@@ -154,7 +154,7 @@ const snapshot = await tickets.snapshot();
 `cursor` is the last `seq` read, for `pending({ after })` later.
 
 ```ts
-import { sessionSql } from '@ingot/sdk/duckdb';
+import { sessionSql } from '@ingotdb/sdk/duckdb';
 
 for (const statement of sessionSql(snapshot, {
   as: 'dataset',
@@ -189,7 +189,7 @@ await memory.configure({
 ```
 
 ```ts
-import { DeliveryEvent, UnknownDeliveryEventError, parseDelivery } from '@ingot/sdk';
+import { DeliveryEvent, UnknownDeliveryEventError, parseDelivery } from '@ingotdb/sdk';
 
 try {
   const delivery = parseDelivery(request.body);
