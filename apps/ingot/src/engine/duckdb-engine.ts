@@ -18,6 +18,7 @@ import type {
   QueryOutcome,
   QueryRequest,
 } from './analytical-engine.port.js';
+import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
 
@@ -65,6 +66,7 @@ export class DuckDbEngine implements AnalyticalEngine {
       async (connection) => {
         await this.lockDown(connection);
         await this.assertPlainSelect(connection, request.sql);
+        await this.assertNoEmbeddingEscape(connection, request);
 
         const sql = request.queryVector
           ? bindQueryVector(request.sql, request.queryVector)
@@ -581,6 +583,37 @@ export class DuckDbEngine implements AnalyticalEngine {
         `Only SELECT is allowed here, and this is ${StatementType[type] ?? 'something else'}. ` +
           'An ingot is written through /add and /delete, never through the query endpoint.',
       );
+    }
+  }
+
+  /**
+   * Step 6b: nothing that could turn a vector into something the result filter
+   * would let through. See `embedding-guard.ts`.
+   *
+   * Parsed by the same DuckDB that will run the statement, before `$q` is
+   * substituted, so the parameter is still visible as one.
+   */
+  private async assertNoEmbeddingEscape(
+    connection: DuckDBConnection,
+    request: QueryRequest,
+  ): Promise<void> {
+    const reader = await connection.runAndReadAll(
+      `SELECT json_serialize_sql(${literal(request.sql)}) AS tree`,
+    );
+    const [row] = reader.getRowObjectsJson();
+
+    try {
+      assertNoEmbeddingEscape(JSON.parse(String(row?.tree)), {
+        vectors: new Set(request.tables.flatMap((table) => vectorColumns(table))),
+        columns: new Set(
+          request.tables.flatMap((table) => table.columns.map((column) => column.name)),
+        ),
+      });
+    } catch (error) {
+      if (error instanceof EmbeddingEscape) {
+        throw new Refused(RefusalReason.EmbeddingEscape, error.message);
+      }
+      throw error;
     }
   }
 

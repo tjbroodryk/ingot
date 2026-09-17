@@ -17,4 +17,10 @@ export class CreateIngotDto {
     message: 'retainFor must be a whole number and a unit: 30m, 12h, 14d, 4w',
   })
   retainFor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  externalId?: string;
 }

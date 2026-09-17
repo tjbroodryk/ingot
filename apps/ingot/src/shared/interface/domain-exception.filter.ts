@@ -15,6 +15,7 @@ import {
   DependencyUnavailable,
   DomainError,
   InvariantViolation,
+  ResourceGone,
 } from '../domain/index.js';
 
 /**
@@ -62,6 +63,7 @@ function statusFor(error: DomainError): number {
   if (error instanceof AggregateNotFound) return HttpStatus.NOT_FOUND;
   if (error instanceof ActionNotPermitted) return HttpStatus.FORBIDDEN;
   if (error instanceof ConflictingState) return HttpStatus.CONFLICT;
+  if (error instanceof ResourceGone) return HttpStatus.GONE;
   if (error instanceof InvariantViolation) return HttpStatus.UNPROCESSABLE_ENTITY;
   // Nothing is wrong *here*: the request was well formed and we could not
   // carry it out because something we depend on would not play its part.

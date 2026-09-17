@@ -38,6 +38,7 @@ apps/ingot            @ingot/server   NestJS. The API, the engine, the sweepers.
 apps/ingot-app        @ingot/app      Next.js, statically exported. Landing, docs, dashboard.
 packages/shared       @ingot/shared   The v1 wire contract. Types only, no runtime.
 packages/versioning   @ingot/versioning  Wire versioning for Nest — changesets and an interceptor.
+packages/sdk          @ingotdb/sdk    The TypeScript client. Published; bundles the v1 contract.
 packages/bench        @ingot/bench    The retrieval benchmark. Not built; run by hand.
 
 charts/ingot                          The Helm chart. Not a workspace, and not built.

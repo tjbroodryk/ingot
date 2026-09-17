@@ -12,6 +12,7 @@ import {
   type IngotRepository,
   type IngotTableRepository,
 } from '../../domain/index.js';
+import { summarise } from '../ingot-summary.js';
 
 /** `GET /api/v1/:account/ingots` */
 export class ListIngots extends Query<readonly IngotSummary[]> {
@@ -31,23 +32,6 @@ export class ListIngotsHandler implements IQueryHandler<ListIngots> {
   async execute(query: ListIngots): Promise<readonly IngotSummary[]> {
     const ingots = await this.ingots.listForAccount(query.accountId);
 
-    return Promise.all(
-      ingots.map(async (ingot) => {
-        const tables = await this.tables.listForIngot(ingot.id.value);
-        const pending = await Promise.all(
-          tables.map((table) => this.overlay.count(table.id.value)),
-        );
-        return {
-          id: ingot.id.value,
-          name: ingot.name,
-          tables: tables.length,
-          rows:
-            tables.reduce((total, table) => total + table.baseRows, 0) +
-            pending.reduce((total, rows) => total + rows, 0),
-          createdAt: ingot.createdAt.toISOString(),
-          expiresAt: ingot.expiresAt?.toISOString() ?? null,
-        };
-      }),
-    );
+    return Promise.all(ingots.map((ingot) => summarise(ingot, this.tables, this.overlay)));
   }
 }

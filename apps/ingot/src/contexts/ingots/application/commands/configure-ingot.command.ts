@@ -7,7 +7,7 @@ import {
   unavailable,
 } from '../../../../delivery/delivery-settings.js';
 import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
-import { InvariantViolation } from '../../../../shared/domain/index.js';
+import { CLOCK, type Clock, InvariantViolation } from '../../../../shared/domain/index.js';
 import { Delivery, INGOT_REPOSITORY, type IngotRepository } from '../../domain/index.js';
 import { IngotAccess } from '../ingot-access.js';
 
@@ -22,15 +22,15 @@ export class ConfigureIngot extends Command<IngotConfig> {
      * on both. Typed as unparsed rather than as the union, because claiming
      * the union here would be a cast dressed as a signature.
      */
-    readonly settings: { readonly delivery?: unknown },
+    readonly settings: { readonly delivery?: unknown; readonly retainFor?: unknown },
   ) {
     super();
   }
 }
 
 /**
- * Sets where a memory's receipts are delivered, and returns everything it is
- * now set to.
+ * Sets where a memory's receipts are delivered and how long it is kept, and
+ * returns everything it is now set to.
  *
  * Returns the whole config rather than an acknowledgement, for the reason
  * `ConfigureTable` does: the body is a patch, so a caller who sent one field
@@ -52,6 +52,7 @@ export class ConfigureIngotHandler implements ICommandHandler<ConfigureIngot> {
     private readonly access: IngotAccess,
     @Inject(INGOT_REPOSITORY) private readonly ingots: IngotRepository,
     @Inject(DELIVERY_SETTINGS) private readonly delivery: DeliverySettings,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   async execute(command: ConfigureIngot): Promise<IngotConfig> {
@@ -68,7 +69,7 @@ export class ConfigureIngotHandler implements ICommandHandler<ConfigureIngot> {
     // `configure` reports whether anything moved, and a no-op is not written:
     // saving would take the memory's version for a patch that changed nothing,
     // making whatever is writing to it right now retry for no reason.
-    if (ingot.configure(command.settings)) {
+    if (ingot.configure(command.settings, this.clock.now())) {
       await this.ingots.save(ingot);
     }
 

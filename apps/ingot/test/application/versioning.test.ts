@@ -210,6 +210,36 @@ describe('the changeset', () => {
     );
   });
 
+  it('renders handles, retention, events and base files away for a caller from before them', () => {
+    const delivery = { t: 'webhook', endpoint: 'https://e.dev/h', events: ['receipt.ready'] };
+    const config = { delivery, expiresAt: '2026-10-01T00:00:00.000Z' };
+    const before = { delivery: { t: 'webhook', endpoint: 'https://e.dev/h' } };
+
+    expect(INGOT_VERSIONS.backward(WireShape.IngotConfig, config, '2026-09-15')).toEqual(before);
+
+    const info = { id: 'i', name: 'm', externalId: 'chat_1', config, tables: [] };
+    expect(INGOT_VERSIONS.backward(WireShape.IngotInfo, info, '2026-09-15')).toEqual({
+      id: 'i',
+      name: 'm',
+      config: before,
+      tables: [],
+    });
+
+    const summary = { id: 'i', name: 'm', externalId: null, tables: 0, rows: 0 };
+    const { externalId: _handle, ...summaryBefore } = summary;
+    expect(INGOT_VERSIONS.backward(WireShape.IngotSummary, summary, '2026-09-15')).toEqual(
+      summaryBefore,
+    );
+
+    const pending = { table: 't', generation: 1, base: [{ part: 1 }], rows: [], next: null };
+    const { base: _base, ...pendingBefore } = pending;
+    expect(INGOT_VERSIONS.backward(WireShape.PendingOperations, pending, '2026-09-15')).toEqual(
+      pendingBefore,
+    );
+
+    expect(INGOT_VERSIONS.backward(WireShape.IngotInfo, info, INGOT_VERSIONS.latest)).toEqual(info);
+  });
+
   it('round-trips every shape it touches, at every version', () => {
     // A forward/backward pair that is not the identity is a version that
     // silently rewrites what a caller sent them.

@@ -1,4 +1,4 @@
-import { type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
+import { DeliveryEvent, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
 import { Guard, InvariantViolation, ValueObject } from '../../../shared/domain/index.js';
 
 /** Long enough for a signed callback URL, short enough not to be a payload. */
@@ -17,6 +17,15 @@ const MAX_QUEUE = 255;
  * queue nobody can debug.
  */
 const QUEUE_PATTERN = /^[a-zA-Z0-9_.:-]+$/;
+
+/**
+ * What a strategy pushes when it does not say.
+ *
+ * Receipts only, because that is all delivery ever sent before `events`
+ * existed — a receiver written then must not start getting bodies it has never
+ * seen because the service learned to send them.
+ */
+const DEFAULT_EVENTS: readonly DeliveryEvent[] = [DeliveryEvent.ReceiptReady];
 
 /**
  * Hostnames that resolve, by convention, to a cloud instance's own credentials.
@@ -51,16 +60,20 @@ export class Delivery extends ValueObject {
   readonly endpoint: string | null;
   /** Set for `rmq` and null otherwise. */
   readonly queue: string | null;
+  /** What is pushed, in a fixed order so two equal sets compare equal. Empty for `none`. */
+  readonly events: readonly DeliveryEvent[];
 
   private constructor(props: {
     kind: DeliveryKind;
     endpoint?: string | null;
     queue?: string | null;
+    events?: readonly DeliveryEvent[];
   }) {
     super();
     this.kind = props.kind;
     this.endpoint = props.endpoint ?? null;
     this.queue = props.queue ?? null;
+    this.events = props.kind === DeliveryKind.None ? [] : (props.events ?? DEFAULT_EVENTS);
     this.seal();
   }
 
@@ -77,18 +90,31 @@ export class Delivery extends ValueObject {
   }
 
   /** A parsed endpoint. `Delivery.of` is the way in from the wire. */
-  static webhook(endpoint: string): Delivery {
-    return new Delivery({ kind: DeliveryKind.Webhook, endpoint: parseEndpoint(endpoint) });
+  static webhook(endpoint: string, events?: unknown): Delivery {
+    return new Delivery({
+      kind: DeliveryKind.Webhook,
+      endpoint: parseEndpoint(endpoint),
+      events: parseEvents(events),
+    });
   }
 
   /** A parsed queue name. `Delivery.of` is the way in from the wire. */
-  static rmq(queue: string): Delivery {
-    return new Delivery({ kind: DeliveryKind.Rmq, queue: parseQueue(queue) });
+  static rmq(queue: string, events?: unknown): Delivery {
+    return new Delivery({
+      kind: DeliveryKind.Rmq,
+      queue: parseQueue(queue),
+      events: parseEvents(events),
+    });
   }
 
   /** Whether anything is delivered at all. False for `none`. */
   get configured(): boolean {
     return this.kind !== DeliveryKind.None;
+  }
+
+  /** Whether this strategy pushes `event`. Always false for `none`. */
+  wants(event: DeliveryEvent): boolean {
+    return this.events.includes(event);
   }
 
   static of(raw: unknown): Delivery {
@@ -112,9 +138,13 @@ export class Delivery extends ValueObject {
     switch (this.kind) {
       case DeliveryKind.Webhook:
         // Non-null by construction: `webhook` cannot be built without one.
-        return { t: DeliveryKind.Webhook, endpoint: this.endpoint as string };
+        return {
+          t: DeliveryKind.Webhook,
+          endpoint: this.endpoint as string,
+          events: [...this.events],
+        };
       case DeliveryKind.Rmq:
-        return { t: DeliveryKind.Rmq, queue: this.queue as string };
+        return { t: DeliveryKind.Rmq, queue: this.queue as string, events: [...this.events] };
       case DeliveryKind.None:
         return { t: DeliveryKind.None };
     }
@@ -125,10 +155,31 @@ export class Delivery extends ValueObject {
 const PARSERS: Record<DeliveryKind, (raw: Record<string, unknown>) => Delivery> = {
   [DeliveryKind.None]: () => Delivery.none(),
 
-  [DeliveryKind.Webhook]: (raw) => Delivery.webhook(String(raw.endpoint ?? '')),
+  [DeliveryKind.Webhook]: (raw) => Delivery.webhook(String(raw.endpoint ?? ''), raw.events),
 
-  [DeliveryKind.Rmq]: (raw) => Delivery.rmq(String(raw.queue ?? '')),
+  [DeliveryKind.Rmq]: (raw) => Delivery.rmq(String(raw.queue ?? ''), raw.events),
 };
+
+/**
+ * The events a strategy asks for, deduplicated and in enum order.
+ *
+ * Undefined is the default, receipts only. An empty list is refused rather than
+ * read as "nothing": a target that pushes nothing is `{ "t": "none" }`, and two
+ * spellings of off would be two things to compare.
+ */
+function parseEvents(raw: unknown): readonly DeliveryEvent[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new InvariantViolation(
+      `delivery.events must be a non-empty list of: ${Object.values(DeliveryEvent).join(', ')}. ` +
+        'Omit it for receipts only, or use { "t": "none" } to push nothing.',
+    );
+  }
+  const wanted = new Set(
+    raw.map((event) => Guard.oneOf(String(event), Object.values(DeliveryEvent), 'delivery.events')),
+  );
+  return Object.values(DeliveryEvent).filter((event) => wanted.has(event));
+}
 
 /**
  * A URL this service is willing to post to.

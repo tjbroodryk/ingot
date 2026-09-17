@@ -3,7 +3,7 @@ import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import type pg from 'pg';
 import * as schema from '../../src/database/schema.js';
-import { closeDatabase, openDatabase } from '../support/database.js';
+import { TABLES, closeDatabase, openDatabase } from '../support/database.js';
 
 /**
  * Two hand-written descriptions of the same schema, held to each other.
@@ -66,5 +66,17 @@ describe('the Drizzle schema and the database', () => {
     // A table nothing maps is either a migration nobody finished or a schema
     // export somebody forgot — both worth knowing about.
     expect(orphans).toEqual([]);
+  });
+
+  it('is emptied between tests, every table of it', () => {
+    // A table the suite does not truncate is state one test file leaves for the
+    // next. `file_queue` went unlisted for a while, and nothing failed — which
+    // is the problem.
+    const truncated = new Set<string>(TABLES);
+    const missed = tables
+      .map((table) => getTableName(table))
+      .filter((name) => !truncated.has(name));
+
+    expect(missed).toEqual([]);
   });
 });

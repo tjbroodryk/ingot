@@ -1,6 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
-import { DeliveryKind } from '@ingot/shared/ingot-v1';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+import { DeliveryEvent, DeliveryKind } from '@ingot/shared/ingot-v1';
 
 /**
  * The delivery half of a config patch, shape-checked only.
@@ -33,6 +42,12 @@ export class DeliveryStrategyDto {
   @IsString()
   @MaxLength(255)
   queue?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(Object.values(DeliveryEvent).length)
+  @IsIn(Object.values(DeliveryEvent), { each: true })
+  events?: DeliveryEvent[];
 }
 
 export class ConfigureIngotDto {
@@ -40,4 +55,12 @@ export class ConfigureIngotDto {
   @ValidateNested()
   @Type(() => DeliveryStrategyDto)
   delivery?: DeliveryStrategyDto;
+
+  /** `null` keeps the memory indefinitely; `@IsOptional` lets it through unchecked. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+[mhdw]$/i, {
+    message: 'retainFor must be a whole number and a unit: 30m, 12h, 14d, 4w, or null',
+  })
+  retainFor?: string | null;
 }

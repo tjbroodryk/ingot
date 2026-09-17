@@ -99,7 +99,11 @@ export class DeliveryWorker {
       // `attempt` is the row's, not the payload's: the body was rendered when
       // the receipt was written and could not know this. A receiver reading it
       // wants to know whether it has seen this batch before.
-      await this.transport.deliver(job.target, { ...job.payload, attempt: job.attempts });
+      await this.transport.deliver(
+        job.target,
+        { ...job.payload, attempt: job.attempts },
+        job.batch,
+      );
       await this.dispatcher.send(new CompleteDelivery(job.batch));
       this.measure(job, Outcome.Ok, started);
     } catch (error) {

@@ -14,6 +14,17 @@ export interface UnitOfWork {
   run<T>(work: () => Promise<T>): Promise<T>;
 
   /**
+   * Runs reads that must agree with each other in one read-only snapshot.
+   *
+   * A query gets no transaction, and for a single read that is right. It is
+   * wrong for a read of a table's manifest followed by a read of its overlay: a
+   * roll-up committing between the two moves rows from the second into a
+   * generation the first never saw, and they are in neither. Keep network calls
+   * out of `work` — it holds a connection. Joins a transaction already open.
+   */
+  snapshot<T>(work: () => Promise<T>): Promise<T>;
+
+  /**
    * Defers a side effect until after the transaction commits — or runs it now
    * if there is no transaction open.
    *

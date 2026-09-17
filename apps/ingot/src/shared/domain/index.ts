@@ -8,6 +8,7 @@ export {
   DependencyUnavailable,
   DomainError,
   InvariantViolation,
+  ResourceGone,
 } from './domain-error.js';
 export { Entity } from './entity.js';
 export { Guard } from './guard.js';

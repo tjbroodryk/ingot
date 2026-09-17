@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
-import type { ObjectStore, PendingWrite } from './object-store.port.js';
+import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
 
 /**
  * The base tier on local disk.
@@ -58,8 +58,8 @@ export class FilesystemObjectStore implements ObjectStore {
     return readFile(this.pathFor(key));
   }
 
-  async open(key: string): Promise<Readable> {
-    return createReadStream(this.pathFor(key));
+  async open(key: string, range?: ByteRange): Promise<Readable> {
+    return createReadStream(this.pathFor(key), range);
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {

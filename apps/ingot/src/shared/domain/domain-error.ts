@@ -79,3 +79,8 @@ export class DependencyUnavailable extends DomainError {
 export class ConflictingState extends DomainError {
   readonly code = 'conflicting_state';
 }
+
+/** Something that existed and was deliberately removed, and will not come back. */
+export class ResourceGone extends DomainError {
+  readonly code = 'resource_gone';
+}

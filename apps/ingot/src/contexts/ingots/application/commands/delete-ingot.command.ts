@@ -10,6 +10,10 @@ import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../../../records/application/ports/overlay-store.port.js';
+import {
+  RETIRED_GENERATIONS,
+  type RetiredGenerations,
+} from '../../../records/application/ports/retired-generations.port.js';
 import { FILE_QUEUE, type FileQueue } from '../../../files/application/ports/file-queue.port.js';
 import { Keys, OBJECT_STORE, type ObjectStore } from '../../../../storage/object-store.port.js';
 import { INGOT_REPOSITORY, type IngotRepository } from '../../domain/index.js';
@@ -54,6 +58,7 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     @Inject(FILE_QUEUE) private readonly files: FileQueue,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(RETIRED_GENERATIONS) private readonly retired: RetiredGenerations,
   ) {}
 
   async execute(command: DeleteIngot): Promise<void> {
@@ -74,6 +79,8 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
      * derived from it, for ever, pointing at an object that is already gone.
      */
     await this.files.purgeIngot(ingot.id.value);
+    // The objects go with the prefix below; the rows would only point at nothing.
+    await this.retired.purgeIngot(ingot.id.value);
     await this.ingots.remove(ingot.id);
 
     const prefix = Keys.ingot(ingot.accountId, ingot.id.value);

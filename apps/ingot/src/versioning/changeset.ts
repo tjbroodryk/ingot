@@ -116,7 +116,65 @@ const RELEASES: readonly Release[] = [
       },
     ],
   },
+  {
+    version: '2026-09-17',
+    summary:
+      'Memories take a caller’s `externalId`, which makes create idempotent, and `/config` ' +
+      'takes `retainFor` to push a memory’s deletion out. Delivery strategies name the ' +
+      '`events` they push — table writes, roll-ups and drops as well as receipts. `/pending` ' +
+      'lists the Parquet `base` it is pending against, and `/parquet` serves any retained ' +
+      'generation and part, by range.',
+    changes: [
+      {
+        shape: WireShape.IngotSummary,
+        note: 'Gained `externalId`.',
+        backward: (value) => {
+          const { externalId: _dropped, ...rest } = value;
+          return rest;
+        },
+      },
+      {
+        shape: WireShape.IngotInfo,
+        note: 'Gained `externalId`; its `config` gained `expiresAt` and delivery `events`.',
+        backward: (value) => {
+          const { externalId: _dropped, ...rest } = value;
+          const config = asObject(rest.config);
+          return config ? { ...rest, config: configBefore0917(config) } : rest;
+        },
+      },
+      {
+        shape: WireShape.IngotConfig,
+        note: 'Gained `expiresAt`, and delivery `events`.',
+        backward: configBefore0917,
+      },
+      {
+        shape: WireShape.PendingOperations,
+        note: 'Gained `base`, the files of the generation the rows are pending against.',
+        // The envelope only: `rows[].values` are the caller's own.
+        backward: (value) => {
+          const { base: _dropped, ...rest } = value;
+          return rest;
+        },
+      },
+    ],
+  },
 ];
+
+/**
+ * An `IngotConfig` as it was before retention and delivery events were in it.
+ *
+ * `events` is removed rather than checked: a caller on the older version was
+ * only ever pushed receipts, and still is unless someone configured otherwise
+ * on a newer one.
+ */
+function configBefore0917(config: Payload): Payload {
+  const { expiresAt: _expiry, ...rest } = config;
+  const delivery = asObject(rest.delivery);
+  if (!delivery) return rest;
+
+  const { events: _events, ...target } = delivery;
+  return { ...rest, delivery: target };
+}
 
 /**
  * A `TableInfo` as it was before it had settings.

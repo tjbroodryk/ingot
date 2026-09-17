@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
+import { type Delivered, DeliveryEvent, type DeliveryStrategy } from '@ingot/shared/ingot-v1';
 import type { DeliveryTransport } from './delivery-transport.port.js';
 
 /**
@@ -20,10 +20,14 @@ import type { DeliveryTransport } from './delivery-transport.port.js';
 export class LoggingTransport implements DeliveryTransport {
   private readonly logger = new Logger(LoggingTransport.name);
 
-  async deliver(_target: DeliveryStrategy, payload: DeliveredReceipt): Promise<void> {
-    this.logger.debug(
-      `Receipt ready for ${payload.batch} on "${payload.sourceTable}" ` +
-        `(${payload.model}), delivered nowhere: ${payload.searchTerm}`,
-    );
+  async deliver(_target: DeliveryStrategy, payload: Delivered, id: string): Promise<void> {
+    if (payload.event === DeliveryEvent.ReceiptReady) {
+      this.logger.debug(
+        `Receipt ready for ${payload.batch} on "${payload.sourceTable}" ` +
+          `(${payload.model}), delivered nowhere: ${payload.searchTerm}`,
+      );
+      return;
+    }
+    this.logger.debug(`${payload.event} on "${payload.table}" (${id}), delivered nowhere`);
   }
 }

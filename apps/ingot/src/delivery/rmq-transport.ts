@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { type DeliveredReceipt, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
+import { type Delivered, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
 import type * as amqp from 'amqplib';
 import { upstream } from '../observability/index.js';
 import { AMQP_CONNECT, type AmqpConnect } from './amqp.port.js';
@@ -77,7 +77,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
     @Inject(AMQP_CONNECT) private readonly connector: AmqpConnect,
   ) {}
 
-  async deliver(target: DeliveryStrategy, payload: DeliveredReceipt): Promise<void> {
+  async deliver(target: DeliveryStrategy, payload: Delivered, id: string): Promise<void> {
     if (target.t !== DeliveryKind.Rmq) {
       throw new DeliveryRefused('rmq', `cannot deliver a "${target.t}" target`);
     }
@@ -93,7 +93,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
     // unbounded label and, with credentials in it, a secret in the metrics.
     await upstream('rabbitmq', 'publish', async (span) => {
       span.set({
-        'delivery.batch': payload.batch,
+        'delivery.id': id,
         'delivery.attempt': payload.attempt,
         'delivery.queue': target.queue,
       });
@@ -118,8 +118,8 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
             persistent: true,
             type: payload.event,
             // What a consumer deduplicates on. At-least-once is the contract, so
-            // the receipt's batch has to be on the envelope as well as in it.
-            messageId: payload.batch,
+            // the id has to be on the envelope — for a receipt, its batch.
+            messageId: id,
             appId: this.settings.userAgent,
           },
         );

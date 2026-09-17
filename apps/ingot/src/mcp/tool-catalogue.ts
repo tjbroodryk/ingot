@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { DeliveryKind, FtsStemmer, FtsStopwords, ReceiptKind } from '@ingot/shared/ingot-v1';
+import {
+  DeliveryEvent,
+  DeliveryKind,
+  FtsStemmer,
+  FtsStopwords,
+  ReceiptKind,
+} from '@ingot/shared/ingot-v1';
 import type { Command, Query } from '../shared/application/index.js';
 import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
@@ -284,6 +290,13 @@ export const TOOLS: readonly ToolDefinition[] = [
             .string()
             .optional()
             .describe('For rmq: the queue name. The broker is the deployment’s, not yours.'),
+          events: z
+            .array(z.enum(DeliveryEvent))
+            .optional()
+            .describe(
+              'Which events to push. Only receipt.ready unless given; operations.appended, ' +
+                'table.rolled_up and table.dropped announce changes to the tables.',
+            ),
         })
         .describe('Where receipts go. Omit to leave the current target alone.')
         .optional(),
@@ -316,6 +329,13 @@ export const TOOLS: readonly ToolDefinition[] = [
         .string()
         .optional()
         .describe('Delete it after this long: 30m, 12h, 14d, 4w. Omit to keep it indefinitely.'),
+      externalId: z
+        .string()
+        .optional()
+        .describe(
+          'Your own id for what this memory is for. Creating again with the same one returns ' +
+            'the existing memory instead of a second.',
+        ),
     },
     resolvesTo: CreateIngot,
     readOnly: false,

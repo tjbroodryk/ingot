@@ -90,7 +90,7 @@ export interface Endpoint {
  * releases it. Typed rather than imported, since this app cannot reach the
  * service's code — bump it with a release.
  */
-export const API_VERSION = '2026-09-15';
+export const API_VERSION = '2026-09-17';
 
 export const GROUPS: Record<EndpointGroup, GroupHeading> = {
   [EndpointGroup.Service]: { title: 'Service · version-neutral', nav: 'Service' },
@@ -137,9 +137,10 @@ export const ENDPOINTS: readonly Endpoint[] = [
 { "header": "Ingot-Version",
   "latest": "${API_VERSION}",
   "versions": ["2026-08-26", "2026-08-27",
-               "2026-09-06", "2026-09-15"],
+               "2026-09-06", "2026-09-15",
+               "2026-09-17"],
   "changelog": [
-    { "version": "2026-09-15",
+    { "version": "2026-09-17",
       "summary": "…",
       "changes": ["…"] } ] }`,
   },
@@ -201,14 +202,16 @@ export const ENDPOINTS: readonly Endpoint[] = [
     path: '/api/v1/:account/create',
     auth: Auth.Key,
     summary:
-      'Cast a new ingot — one memory. Takes a `name` and an optional `retainFor`: a duration, because the question you are asking is "how long".',
-    note: 'Expiry deletes the memory and everything in it, and that is not reversible. Omit it and the memory is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — a memory is addressed by id, never by name.',
+      'Cast a new ingot — one memory. Takes a `name`, an optional `retainFor`: a duration, because the question you are asking is "how long", and an optional `externalId` of your own.',
+    note: 'Expiry deletes the memory and everything in it, and that is not reversible. Omit it and the memory is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — a memory is addressed by id, never by name. With an `externalId` — a conversation id, a job id — create is idempotent: asking again answers 200 with the memory that handle already names, and changes nothing about it.',
     chips: ['30m', '12h', '14d', '4w'],
     sample: `{ "name": "crm-notes",
-  "retainFor": "14d" }
+  "retainFor": "14d",
+  "externalId": "chat_8f2c" }
 
 201 Created
 { "id": "ing_01H8Z…", "name": "crm-notes",
+  "externalId": "chat_8f2c",
   "tables": 0, "rows": 0,
   "expiresAt": "2026-09-10T11:02:00Z" }`,
   },
@@ -257,14 +260,22 @@ export const ENDPOINTS: readonly Endpoint[] = [
   {
     id: 'ingot-config',
     group: EndpointGroup.Memories,
-    nav: 'Deliver receipts',
+    nav: 'Configure a memory',
     method: HttpMethod.Post,
     path: '/api/v1/:account/:ingot/config',
     auth: Auth.Key,
     summary:
-      'Where this memory’s receipts are pushed as they land. By default nothing is pushed and `receiptQuery` is the contract — set a target when whatever wanted the summary will have moved on by the time a model writes it.',
-    note: 'One strategy per memory, not per `/add`: the thing that wants telling is the system holding the memory. A patch, so an omitted `delivery` leaves the current target alone — turning it off is `{ "t": "none" }`. Endpoints must be absolute `http`/`https`; loopback, link-local and private addresses are refused, because this service would be reaching them from inside its own network.',
+      'Where this memory’s receipts and table changes are pushed as they land, and how long it is kept. By default nothing is pushed and `receiptQuery` is the contract — set a target when whatever wanted the summary will have moved on by the time a model writes it.',
+    note: 'One strategy per memory, not per `/add`: the thing that wants telling is the system holding the memory. A patch, so an omitted field leaves the current value alone — turning delivery off is `{ "t": "none" }`. Endpoints must be absolute `http`/`https`; loopback, link-local and private addresses are refused, because this service would be reaching them from inside its own network. Table events are signals to read `/pending`, not the rows: writes that land while one is queued fold into it.',
     fields: [
+      {
+        name: 'retainFor',
+        doc: 'Delete this memory that long from now — `30m`, `12h`, `14d`, `4w` — or `null` to keep it. Call it on each use to keep a memory alive while it is.',
+      },
+      {
+        name: 'delivery.events',
+        doc: 'What to push: `receipt.ready` (the default), `operations.appended`, `table.rolled_up`, `table.dropped`.',
+      },
       {
         name: 'delivery.t',
         doc: '`none`, `webhook` or `rmq`. The discriminant — the other fields follow from it.',
@@ -285,7 +296,9 @@ export const ENDPOINTS: readonly Endpoint[] = [
 200 OK
 { "delivery": {
     "t": "webhook",
-    "endpoint": "https://acme.dev/hooks/ingot" } }
+    "endpoint": "https://acme.dev/hooks/ingot",
+    "events": ["receipt.ready"] },
+  "expiresAt": null }
 
 # each receipt then arrives as
 POST https://acme.dev/hooks/ingot
@@ -519,11 +532,13 @@ Ingot-Batch: batch_1508c8…
     auth: Auth.Key,
     summary:
       'What the next roll-up will fold in: rows still in the Postgres overlay, oldest first, and rows forgotten since the last roll-up. All of it is already visible to `/query`.',
-    note: 'Rows are paged by sequence — pass `next` back as `after`, with `limit` up to 10,000 (1,000 by default). Tombstones are never paged: they apply to the Parquet as well, and applying some of them is wrong.',
+    note: 'Rows are paged by sequence — pass `next` back as `after`, with `limit` up to 10,000 (1,000 by default). Tombstones are never paged: they apply to the Parquet as well, and applying some of them is wrong. Each page is one snapshot, and `base` names the files of the `generation` it is pending against; if the generation changes between pages, a roll-up happened — start again.',
     sample: `GET …/tables/contacts/pending?limit=500
 
 200 OK
 { "table": "contacts", "generation": 9,
+  "base": [ { "part": 1, "rows": 40210,
+              "bytes": 1893044 } ],
   "rows": [ { "rowId": "…", "seq": "80412",
       "ingestedAt": "2026-09-15T09:12:03.114Z",
       "values": { "id": "c_91",
@@ -540,13 +555,17 @@ Ingot-Batch: batch_1508c8…
     path: '/api/v1/:account/:ingot/tables/:table/parquet',
     auth: Auth.Key,
     summary:
-      'The table’s base tier as the Parquet file itself, streamed from the bucket rather than rebuilt.',
-    note: 'The file is the last roll-up and nothing since: overlay rows are not in it, and rows forgotten after it was written still are. `Ingot-Tombstones` says how many; `/pending` lists them. A 404 until the table has been rolled up once.',
-    sample: `200 OK
+      'The table’s base tier as the Parquet file itself, streamed from the bucket rather than rebuilt. `?generation=&part=` names one; the current generation’s first part otherwise.',
+    note: 'The file is the last roll-up and nothing since: overlay rows are not in it, and rows forgotten after it was written still are. `Ingot-Tombstones` says how many; `/pending` lists them. A 404 until the table has been rolled up once. Honours `Range`, so a DuckDB can read it remotely. A replaced generation stays readable for `INGOT_GENERATION_GRACE_MS` (an hour) and is then a 410 — read `/pending` again.',
+    sample: `GET …/tables/contacts/parquet?generation=9&part=1
+Range: bytes=-65536
+
+206 Partial Content
 Content-Type: application/vnd.apache.parquet
-Content-Disposition: attachment;
-  filename="contacts-gen-9.parquet"
+Content-Range: bytes 1827508-1893043/1893044
+Accept-Ranges: bytes
 Ingot-Generation: 9
+Ingot-Part: 1
 Ingot-Tombstones: 17`,
   },
 

@@ -1,5 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { index, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingot-v1';
 
 /**
@@ -18,6 +18,8 @@ export const ingot = pgTable(
     id: text('id').primaryKey(),
     accountId: text('account_id').notNull(),
     name: text('name').notNull(),
+    /** The caller's own handle. Unique per account where set; see `0011`. */
+    externalId: text('external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     /**
@@ -45,6 +47,9 @@ export const ingot = pgTable(
     index('ingot_expiring')
       .on(table.expiresAt)
       .where(sql`${table.expiresAt} IS NOT NULL`),
+    uniqueIndex('ingot_account_external_id')
+      .on(table.accountId, table.externalId)
+      .where(sql`${table.externalId} IS NOT NULL`),
   ],
 );
 

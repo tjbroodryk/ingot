@@ -1,6 +1,8 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { configureHttp, maxBodyBytes } from './http/body-limit.js';
 import { AppModule } from './app.module.js';
 import { authSettings, fileBackedReader } from './auth/auth-settings.js';
 import { startTelemetry } from './observability/index.js';
@@ -22,15 +24,12 @@ async function bootstrap(): Promise<void> {
    * environment variables. `ConfigModule` still reads everything else.
    */
   const auth = authSettings(fileBackedReader((key) => process.env[key]));
+  // Read here for the same reason: a bad value refuses to boot before listening.
+  const bodyLimit = maxBodyBytes((key) => process.env[key]);
 
-  const app = await NestFactory.create(AppModule.forRoot(auth));
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(auth));
 
-  app.setGlobalPrefix('api');
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-  app.enableCors({ origin: process.env.CORS_ORIGIN?.split(',') ?? true, credentials: true });
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-  );
+  configureHttp(app, { bodyLimit, corsOrigin: process.env.CORS_ORIGIN?.split(',') });
   app.enableShutdownHooks();
 
   const port = Number(process.env.PORT ?? 3002);

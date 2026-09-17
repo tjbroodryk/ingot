@@ -365,4 +365,5 @@ export enum RefusalReason {
   TooManyRows = 'too_many_rows',
   IngotTooLarge = 'ingot_too_large',
   EmbeddingOnly = 'embedding_only',
+  EmbeddingEscape = 'embedding_escape',
 }

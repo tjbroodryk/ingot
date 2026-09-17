@@ -418,6 +418,8 @@ export interface TableInfo {
 export interface IngotSummary {
   readonly id: string;
   readonly name: string;
+  /** The caller's own handle it was created under, or null if none was given. */
+  readonly externalId: string | null;
   readonly tables: number;
   readonly rows: number;
   readonly createdAt: string;
@@ -444,6 +446,7 @@ export interface EmbeddingInfo {
 export interface IngotInfo {
   readonly id: string;
   readonly name: string;
+  readonly externalId: string | null;
   readonly account: string;
   readonly createdAt: string;
   /** When this memory will be deleted, or null if it is kept indefinitely. */
@@ -471,6 +474,15 @@ export interface CreateIngotBody {
    * reversible.** It is opt-in for that reason.
    */
   readonly retainFor?: string;
+  /**
+   * The caller's own handle for this memory — a conversation id, a job id.
+   *
+   * Makes create idempotent: a second create with the same `externalId` on the
+   * same account answers with the memory the first one made (200, not 201) and
+   * changes nothing about it. Without it, two workers racing to open the memory
+   * for one conversation make two, and one of them is an orphan.
+   */
+  readonly externalId?: string;
 }
 
 // ── delivery ──────────────────────────────────────────────────────────────
@@ -510,18 +522,24 @@ export enum DeliveryKind {
  */
 export type DeliveryStrategy =
   | { readonly t: DeliveryKind.None }
-  | { readonly t: DeliveryKind.Webhook; readonly endpoint: string }
-  | { readonly t: DeliveryKind.Rmq; readonly queue: string };
+  | {
+      readonly t: DeliveryKind.Webhook;
+      readonly endpoint: string;
+      /** Which events to push. `["receipt.ready"]` unless given; always reported. */
+      readonly events?: readonly DeliveryEvent[];
+    }
+  | {
+      readonly t: DeliveryKind.Rmq;
+      readonly queue: string;
+      /** Which events to push. `["receipt.ready"]` unless given; always reported. */
+      readonly events?: readonly DeliveryEvent[];
+    };
 
-/**
- * Everything configurable about a memory as a whole.
- *
- * An envelope around a single member, for the reason `TableConfig` is one: the
- * next memory-wide setting should be a field here rather than a second
- * endpoint and a second migration.
- */
+/** Everything configurable about a memory as a whole. */
 export interface IngotConfig {
   readonly delivery: DeliveryStrategy;
+  /** When this memory will be deleted, or null if it is kept indefinitely. */
+  readonly expiresAt: string | null;
 }
 
 /**
@@ -534,11 +552,31 @@ export interface IngotConfig {
  */
 export interface ConfigureIngotBody {
   readonly delivery?: DeliveryStrategy;
+  /**
+   * Restart the expiry clock: delete this memory this long from now. `null`
+   * keeps it indefinitely. Omitted, the current expiry stands.
+   *
+   * Measured from the call, not from creation, so a conversation that is picked
+   * up again can push its memory's deletion out by calling this on each use.
+   */
+  readonly retainFor?: string | null;
 }
 
-/** What a delivery announces. One member today; a receiver should switch on it. */
+/**
+ * What a delivery announces. A receiver should switch on it, and ignore what
+ * it does not recognise.
+ *
+ * Only `receipt.ready` is pushed unless a strategy names others in `events`,
+ * so a receiver written before the rest existed is never sent them.
+ */
 export enum DeliveryEvent {
   ReceiptReady = 'receipt.ready',
+  /** Rows were stored or forgotten in a table. Read them from `/pending`. */
+  OperationsAppended = 'operations.appended',
+  /** A table's overlay was folded into a new Parquet generation. */
+  TableRolledUp = 'table.rolled_up',
+  /** A table and everything in it was dropped. */
+  TableDropped = 'table.dropped',
 }
 
 /**
@@ -578,6 +616,64 @@ export interface DeliveredReceipt {
   readonly attempt: number;
 }
 
+/**
+ * Writes landed in a table: a signal to read `/pending`, not the rows.
+ *
+ * Deliveries are at least once and can arrive out of order after a retry, so
+ * rows carried here would have to be deduplicated and re-sequenced by every
+ * receiver. A receiver that reads `/pending` from its own cursor instead gets
+ * them in order, once, and recovers from a lost delivery on the next one.
+ *
+ * Coalesced: writes that land while a delivery is still queued widen that
+ * delivery rather than adding another, so `rows` and `tombstones` count every
+ * write it covers.
+ */
+export interface DeliveredOperations {
+  readonly event: DeliveryEvent.OperationsAppended;
+  readonly ingot: string;
+  readonly table: string;
+  /** The generation these writes are pending against. */
+  readonly generation: number;
+  /** The highest overlay `seq` this covers. Null when it covers only deletes. */
+  readonly throughSeq: string | null;
+  readonly rows: number;
+  readonly tombstones: number;
+  /** When the latest write it covers landed. */
+  readonly at: string;
+  readonly attempt: number;
+}
+
+/**
+ * A table's overlay became Parquet. Any cursor into `/pending` from before
+ * `generation` is spent: re-read the base file and page `/pending` from the start.
+ */
+export interface DeliveredRollUp {
+  readonly event: DeliveryEvent.TableRolledUp;
+  readonly ingot: string;
+  readonly table: string;
+  readonly generation: number;
+  readonly previousGeneration: number;
+  /** Rows in the new generation. */
+  readonly rows: number;
+  readonly at: string;
+  readonly attempt: number;
+}
+
+export interface DeliveredTableDrop {
+  readonly event: DeliveryEvent.TableDropped;
+  readonly ingot: string;
+  readonly table: string;
+  readonly at: string;
+  readonly attempt: number;
+}
+
+/** Every body a webhook is posted or a queue is sent. Discriminated on `event`. */
+export type Delivered =
+  | DeliveredReceipt
+  | DeliveredOperations
+  | DeliveredRollUp
+  | DeliveredTableDrop;
+
 // ── forgetting ────────────────────────────────────────────────────────────
 
 /**
@@ -615,11 +711,34 @@ export interface PendingTombstone {
   readonly at: string;
 }
 
-/** What `GET /:account/:ingot/tables/:table/pending` returns. */
+/**
+ * One Parquet object of a table's base tier.
+ *
+ * Fetch it from `…/parquet?generation=&part=`. A generation stays readable for
+ * a grace period after it is replaced (`INGOT_GENERATION_GRACE`); after that
+ * the route answers 410 and the caller should read `/pending` again.
+ */
+export interface BaseFile {
+  /** 1-based, in the order the parts are meant to be read. */
+  readonly part: number;
+  readonly rows: number;
+  readonly bytes: number;
+}
+
+/**
+ * What `GET /:account/:ingot/tables/:table/pending` returns.
+ *
+ * Every page is read in one snapshot: `generation`, `base`, the rows and the
+ * tombstones agree with each other. Pages are not a snapshot together — if
+ * `generation` changes between two of them, a roll-up happened in between, and
+ * the caller should start again from the first page.
+ */
 export interface PendingOperations {
   readonly table: string;
   /** The generation of the Parquet these are pending against. */
   readonly generation: number;
+  /** That generation's files. Empty before the first roll-up. */
+  readonly base: readonly BaseFile[];
   /** Oldest first, one page of them. */
   readonly rows: readonly PendingRow[];
   /** Every tombstone, never paged. They apply to the Parquet as much as the overlay. */

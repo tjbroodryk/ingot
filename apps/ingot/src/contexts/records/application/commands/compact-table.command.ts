@@ -1,12 +1,7 @@
 import { Inject, Logger } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
-import { AggregateNotFound } from '../../../../shared/domain/index.js';
-import {
-  Command,
-  UNIT_OF_WORK,
-  type ICommandHandler,
-  type UnitOfWork,
-} from '../../../../shared/application/index.js';
+import { AggregateNotFound, CLOCK, type Clock } from '../../../../shared/domain/index.js';
+import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
 import { Metrics, Outcome, observe } from '../../../../observability/index.js';
 import {
   ANALYTICAL_ENGINE,
@@ -22,6 +17,9 @@ import {
   type IngotRepository,
   type IngotTableRepository,
 } from '../../../ingots/domain/index.js';
+import { GENERATION_GRACE } from '../generation-grace.js';
+import { CHANGE_NOTIFIER, type ChangeNotifier } from '../ports/change-notifier.port.js';
+import { RETIRED_GENERATIONS, type RetiredGenerations } from '../ports/retired-generations.port.js';
 import { OVERLAY_STORE, type OverlayStore } from '../ports/overlay-store.port.js';
 
 export interface CompactionReport {
@@ -55,7 +53,10 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(ANALYTICAL_ENGINE) private readonly engine: AnalyticalEngine,
-    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(RETIRED_GENERATIONS) private readonly retired: RetiredGenerations,
+    @Inject(GENERATION_GRACE) private readonly grace: number,
     private readonly sessions: SessionBuilder,
   ) {}
 
@@ -155,22 +156,43 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
       view.overlayVectors.map((vector) => ({ rowId: vector.rowId, column: vector.column })),
     );
 
+    // With the manifest flip, so a receiver told to re-read finds the new
+    // generation there. No wake: this runs on the sweeper, which drains
+    // deliveries on its own tick.
+    await this.changes.rolledUp({
+      ingot,
+      tableId: table.id.value,
+      table: table.name.value,
+      generation,
+      rows: outcome.rows,
+      at: this.clock.now(),
+    });
+
     /*
-     * Reap the generation two behind, after the commit.
+     * Retire the generation this one replaced, rather than deleting it.
      *
-     * Generation n-1 stays, because a query that resolved the manifest just
-     * before this flip is still reading it. Two generations of grace against a
-     * fifteen-second query timeout and a five-minute sweep is a wide margin,
-     * and the cost of being wrong in this direction is an object that lingers
-     * rather than a query that fails.
-     *
-     * No listing is needed: the path is derived, and removing a prefix that is
-     * not there is a no-op, which makes this safe to run every time.
+     * A query that resolved the manifest a moment ago is still reading it, and
+     * so is a caller who downloaded it through `/parquet` and is paging
+     * `/pending` against it. `ReapGenerations` deletes it once the grace has
+     * passed. Its vectors go with it — they are the same generation.
      */
-    const stale = generation - 2;
-    if (stale > 0) {
-      const prefix = Keys.generation(ingot.accountId, ingot.id.value, table.name.value, stale);
-      this.uow.afterCommit(() => this.store.removePrefix(prefix));
+    const replaced = generation - 1;
+    if (replaced > 0) {
+      const at = this.clock.now();
+      const account = ingot.accountId;
+      const name = table.name.value;
+      await this.retired.retire(
+        [
+          Keys.generation(account, ingot.id.value, name, replaced),
+          Keys.vectorGeneration(account, ingot.id.value, name, replaced),
+        ].map((prefix) => ({
+          prefix,
+          ingotId: ingot.id.value,
+          tableId: table.id.value,
+          generation: replaced,
+        })),
+        new Date(at.getTime() + this.grace),
+      );
     }
 
     Metrics.RowsCompacted.inc({}, pending);

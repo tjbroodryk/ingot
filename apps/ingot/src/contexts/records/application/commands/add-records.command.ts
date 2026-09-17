@@ -25,6 +25,7 @@ import { TableRegistry } from '../../../ingots/application/table-registry.js';
 import { sizeOf } from '../../domain/payload-size.js';
 import { RowMapping } from '../../domain/row-mapping.vo.js';
 import { ReceiptBuilder } from '../receipt-builder.js';
+import { CHANGE_NOTIFIER, type ChangeNotifier } from '../ports/change-notifier.port.js';
 import { OVERLAY_STORE, type OverlayStore } from '../ports/overlay-store.port.js';
 
 /** `POST /api/v1/:account/:ingot/add` */
@@ -58,6 +59,7 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
     private readonly registry: TableRegistry,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
+    @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     private readonly receipts: ReceiptBuilder,
@@ -160,6 +162,17 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
       });
     }
 
+    const announced = await this.changes.appended({
+      ingot,
+      tableId: table.id.value,
+      table: table.name.value,
+      generation: table.generation,
+      throughSeq: () => this.overlay.watermark(table.id.value),
+      rows: applied.rows.length,
+      tombstones: 0,
+      at: now,
+    });
+
     Metrics.RowsIngested.inc({ outcome: Outcome.Ok }, applied.rows.length);
 
     // Told, rather than left to be found. See `background.ts`: a sweep every
@@ -167,6 +180,7 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     // known about the instant it is queued. The tick stays as the floor.
     if (queued > 0) this.after(() => this.background.wakeEmbeddings());
     if (receipt === ReceiptKind.Full) this.after(() => this.background.wakeReceipts());
+    if (announced) this.after(() => this.background.wakeDeliveries());
 
     return {
       table: table.name.value,

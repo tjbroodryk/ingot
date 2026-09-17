@@ -92,6 +92,43 @@ describe('embeddings', () => {
     );
   });
 
+  it.each([
+    ['cast to a LIST', 'SELECT author, body_vec::FLOAT[] AS v FROM notes'],
+    ['cast to text', 'SELECT author, body_vec::VARCHAR AS v FROM notes'],
+    ['rendered as JSON', 'SELECT author, to_json(body_vec) AS v FROM notes'],
+    ['read one component at a time', 'SELECT author, body_vec[1] AS v FROM notes'],
+    ['unnested', 'SELECT unnest(body_vec::FLOAT[]) AS v FROM notes'],
+    [
+      'joined into a string',
+      "SELECT list_aggr(body_vec::FLOAT[], 'string_agg', ',') AS v FROM notes",
+    ],
+    ['hidden in a subquery', 'SELECT v::VARCHAR AS v FROM (SELECT body_vec AS v FROM notes)'],
+    ['hidden in a CTE', 'WITH x AS (SELECT body_vec AS v FROM notes) SELECT v[2] AS v FROM x'],
+    ['carried in a whole row', 'SELECT n::VARCHAR AS v FROM notes n'],
+    ['carried in a star', 'SELECT to_json(COLUMNS(*)) FROM notes'],
+    ['made text by a union', "SELECT * FROM notes UNION ALL BY NAME SELECT 'x' AS body_vec"],
+    ['run as a string', "SELECT * FROM query('SELECT body_vec::VARCHAR AS v FROM notes')"],
+    ['summarised', 'SELECT * FROM (SUMMARIZE notes)'],
+    ['the query vector itself', 'SELECT $q::VARCHAR AS v'],
+    [
+      'compared to something other than $q or a vector',
+      'SELECT array_cosine_similarity(body_vec, (SELECT body_vec FROM notes LIMIT 1)) FROM notes',
+    ],
+  ])('are refused when %s', async (_, sql) => {
+    // The type check above only sees what a column *is* at the end. Anything
+    // that turns the array into something else gets past it, so these are
+    // refused from the statement instead.
+    await expect(world.query(ingot, { sql })).rejects.toThrow(/embeddings/i);
+  });
+
+  it('may be compared to each other, which returns a score and not a vector', async () => {
+    const found = await world.query(ingot, {
+      sql: 'SELECT array_cosine_similarity(a.body_vec, b.body_vec) AS s FROM notes a, notes b',
+    });
+
+    expect(found.columns).toEqual(['s']);
+  });
+
   it('are still usable by a query that ranks with them', async () => {
     // The column stays in the catalogue. Not returning it is a rule about the
     // result, not a rule about the SQL — the hybrid search in the README has
