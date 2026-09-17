@@ -158,7 +158,7 @@ export const overlayReceiptQueue = pgTable(
 /**
  * Receipts announced and not yet delivered. The outbox.
  *
- * One row per receipt whose memory has a delivery strategy, written **in the
+ * One row per receipt whose ingot has a delivery strategy, written **in the
  * same transaction as the receipt itself**. That is the entire reason it is a
  * table and not a `fetch` in the command: a push sent from inside a transaction
  * is a claim about state that may still be rolled back, and nothing outside the
@@ -168,7 +168,7 @@ export const overlayReceiptQueue = pgTable(
  * where neither can happen.
  *
  * `target` is resolved at enqueue rather than read from `ingot.delivery` when
- * the delivery goes out. A memory whose endpoint changes while a delivery is in
+ * the delivery goes out. An ingot whose endpoint changes while a delivery is in
  * flight should not have that delivery silently retargeted: the row records
  * where it was going when it was announced.
  *

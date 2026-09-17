@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { CreateAccount } from '../../src/contexts/accounts/application/commands/create-account.command.js';
-import { CreateIngot } from '../../src/contexts/ingots/application/commands/create-ingot.command.js';
+import { CastIngot } from '../../src/contexts/ingots/application/commands/cast-ingot.command.js';
 import { ListIngots } from '../../src/contexts/ingots/application/queries/list-ingots.query.js';
 import { INGOT_REPOSITORY, type IngotRepository } from '../../src/contexts/ingots/domain/index.js';
 import { ExpirySweeper } from '../../src/sweepers/expiry.sweeper.js';
@@ -12,7 +12,7 @@ import { closeDatabase, openDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * Memories that delete themselves.
+ * Ingots that delete themselves.
  *
  * This is the only thing in the service that destroys data nobody asked it to
  * destroy right now, so the assertions worth having are the ones about what it
@@ -44,10 +44,10 @@ const later = (ms: number) => new Date(Date.now() + ms);
 
 const create = (name: string, retainFor?: string) =>
   world.dispatcher
-    .send(new CreateIngot(world.accountId, name, retainFor))
+    .send(new CastIngot(world.accountId, name, retainFor))
     .then((created) => created.ingot);
 
-describe('creating a memory with a retention', () => {
+describe('casting an ingot with a retention', () => {
   it('reports when it will be deleted', async () => {
     const summary = await create('a fortnight', '14d');
 
@@ -57,7 +57,7 @@ describe('creating a memory with a retention', () => {
     expect(Math.abs(due - expected)).toBeLessThan(1000);
   });
 
-  it('keeps a memory indefinitely when no retention is given', async () => {
+  it('keeps an ingot indefinitely when no retention is given', async () => {
     const summary = await create('forever');
     expect(summary.expiresAt).toBeNull();
   });
@@ -79,7 +79,7 @@ describe('creating a memory with a retention', () => {
 });
 
 describe('the reaper', () => {
-  it('deletes a memory past its retention, and everything in it', async () => {
+  it('deletes an ingot past its retention, and everything in it', async () => {
     const doomed = await create('short-lived', '1m');
     await world.add(doomed.id, {
       table: 'notes',
@@ -97,7 +97,7 @@ describe('the reaper', () => {
     await expect(world.info(doomed.id)).rejects.toThrow();
   });
 
-  it('leaves a memory that has not expired', async () => {
+  it('leaves an ingot that has not expired', async () => {
     const keeping = await create('patient', '4w');
 
     await sweeperAt(later(60_000)).tick();
@@ -106,12 +106,12 @@ describe('the reaper', () => {
     expect(remaining.map((ingot) => ingot.id)).toContain(keeping.id);
   });
 
-  it('never touches a memory with no retention at all', async () => {
+  it('never touches an ingot with no retention at all', async () => {
     const forever = await create('permanent');
 
     // A decade on, and it is still there. `expires_at IS NULL` is not a date
     // in the past, and a reaper that treated it as one would delete every
-    // memory in the service on its first tick.
+    // ingot in the service on its first tick.
     await sweeperAt(later(3650 * 86_400_000)).tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
@@ -167,7 +167,7 @@ describe('extending a retention', () => {
     expect((await world.info(summary.id)).expiresAt).toBe(config.expiresAt);
   });
 
-  it('keeps a memory indefinitely when given null', async () => {
+  it('keeps an ingot indefinitely when given null', async () => {
     const summary = await create('reprieved', '1h');
 
     expect((await world.configureIngot(summary.id, { retainFor: null })).expiresAt).toBeNull();
@@ -189,24 +189,24 @@ describe('extending a retention', () => {
   });
 });
 
-describe('creating a memory under a handle of your own', () => {
+describe('casting an ingot under a handle of your own', () => {
   const withHandle = (name: string, externalId: string, retainFor?: string) =>
-    world.dispatcher.send(new CreateIngot(world.accountId, name, retainFor, externalId));
+    world.dispatcher.send(new CastIngot(world.accountId, name, retainFor, externalId));
 
-  it('answers a second create with the memory the first one made', async () => {
-    const first = await withHandle('conversation memory', 'chat_1');
+  it('answers a second create with the ingot the first one made', async () => {
+    const first = await withHandle('conversation ingot', 'chat_1');
     const second = await withHandle('a different name', 'chat_1', '1h');
 
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.ingot.id).toBe(first.ingot.id);
-    // Nothing about the existing memory moved because somebody asked again.
-    expect(second.ingot.name).toBe('conversation memory');
+    // Nothing about the existing ingot moved because somebody asked again.
+    expect(second.ingot.name).toBe('conversation ingot');
     expect(second.ingot.expiresAt).toBeNull();
     expect(second.ingot.externalId).toBe('chat_1');
   });
 
-  it('makes one memory for concurrent creates with the same handle', async () => {
+  it('makes one ingot for concurrent creates with the same handle', async () => {
     const results = await Promise.all(
       Array.from({ length: 6 }, () => withHandle('raced', 'chat_race')),
     );
@@ -220,14 +220,14 @@ describe('creating a memory under a handle of your own', () => {
 
     const here = await withHandle('mine', 'chat_shared');
     const there = await world.dispatcher.send(
-      new CreateIngot(other.account.id, 'theirs', undefined, 'chat_shared'),
+      new CastIngot(other.account.id, 'theirs', undefined, 'chat_shared'),
     );
 
     expect(there.created).toBe(true);
     expect(there.ingot.id).not.toBe(here.ingot.id);
   });
 
-  it('makes a new memory when the one holding the handle has expired', async () => {
+  it('makes a new ingot when the one holding the handle has expired', async () => {
     const stale = await withHandle('past its time', 'chat_stale', '1h');
     const { pool } = await openDatabase();
     await pool.query(`UPDATE ingot SET expires_at = now() - interval '1 minute' WHERE id = $1`, [

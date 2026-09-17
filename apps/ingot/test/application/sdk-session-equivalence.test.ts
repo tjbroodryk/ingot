@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { ColumnType, type PendingOperations } from '@ingot/shared/ingot-v1';
 import { sessionSql } from '../../../../packages/sdk/src/duckdb/index.js';
-import type { TableSnapshot } from '../../../../packages/sdk/src/memory.js';
+import type { TableSnapshot } from '../../../../packages/sdk/src/ingot.js';
 import { GetPendingOperations } from '../../src/contexts/records/application/queries/get-pending-operations.query.js';
 import { Keys } from '../../src/storage/object-store.port.js';
 import { closeDatabase } from '../support/database.js';
@@ -100,7 +100,7 @@ describe('a session built from a snapshot', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory mirrored elsewhere');
+    ingot = await world.ingot('an ingot mirrored elsewhere');
   });
 
   afterAll(async () => {

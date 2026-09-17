@@ -20,7 +20,7 @@ import type { Account } from '../../accounts/domain/index.js';
 import { CloneIngot } from '../application/commands/clone-ingot.command.js';
 import { ConfigureIngot } from '../application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../application/commands/configure-table.command.js';
-import { CreateIngot } from '../application/commands/create-ingot.command.js';
+import { CastIngot } from '../application/commands/cast-ingot.command.js';
 import { DeleteIngot } from '../application/commands/delete-ingot.command.js';
 import { DropTable } from '../application/commands/drop-table.command.js';
 import { GetIngotInfo } from '../application/queries/get-ingot-info.query.js';
@@ -28,10 +28,10 @@ import { ListIngots } from '../application/queries/list-ingots.query.js';
 import { CloneIngotDto } from './dto/clone-ingot.dto.js';
 import { ConfigureIngotDto } from './dto/configure-ingot.dto.js';
 import { ConfigureTableDto } from './dto/configure-table.dto.js';
-import { CreateIngotDto } from './dto/create-ingot.dto.js';
+import { CastIngotDto } from './dto/cast-ingot.dto.js';
 
 /**
- * The memory itself: casting one, describing it, destroying it.
+ * The ingot itself: casting one, describing it, destroying it.
  *
  * Literal segments are declared before the parameterised ones. Express matches
  * in registration order, so `@Get('ingots')` after `@Get(':ingot/info')` would
@@ -42,19 +42,19 @@ import { CreateIngotDto } from './dto/create-ingot.dto.js';
 export class IngotsController {
   constructor(private readonly dispatcher: Dispatcher) {}
 
-  @Post('create')
+  @Post('cast')
   @AccountScope()
-  @Wire({ accepts: WireShape.CreateIngotBody, returns: WireShape.IngotSummary })
+  @Wire({ accepts: WireShape.CastIngotBody, returns: WireShape.IngotSummary })
   @HttpCode(HttpStatus.CREATED)
-  async create(
+  async cast(
     @CurrentAccount() account: Account,
-    @Body() body: CreateIngotDto,
+    @Body() body: CastIngotDto,
     @Res({ passthrough: true }) response: Response,
   ): Promise<IngotSummary> {
     const { ingot, created } = await this.dispatcher.send(
-      new CreateIngot(account.id.value, body.name, body.retainFor, body.externalId),
+      new CastIngot(account.id.value, body.name, body.retainFor, body.externalId),
     );
-    // 200 when `externalId` named a memory that already existed.
+    // 200 when `externalId` named an ingot that already existed.
     if (!created) response.status(HttpStatus.OK);
     return ingot;
   }
@@ -81,8 +81,8 @@ export class IngotsController {
   }
 
   /**
-   * A copy of this memory, under a new id. 201, or 200 when `externalId`
-   * named a memory that already existed — exactly as `create` answers.
+   * A copy of this ingot, under a new id. 201, or 200 when `externalId`
+   * named an ingot that already existed — exactly as `cast` answers.
    */
   @Post(':ingot/clone')
   @AccountScope()
@@ -106,7 +106,7 @@ export class IngotsController {
   }
 
   /**
-   * Where this memory's receipts are delivered.
+   * Where this ingot's receipts are delivered.
    *
    * Declared before `:ingot/config/:table`, because Express matches in
    * registration order and the two differ only by a trailing segment — the

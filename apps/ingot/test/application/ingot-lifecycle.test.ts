@@ -5,7 +5,7 @@ import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * One memory, from empty to destroyed, through the commands a caller uses.
+ * One ingot, from empty to destroyed, through the commands a caller uses.
  *
  * Written as a sequence rather than as independent cases because the thing
  * under test is the sequence: a row is stored, becomes queryable, survives a
@@ -41,7 +41,7 @@ describe('an ingot, end to end', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('pull request memory');
+    ingot = await world.ingot('pull request ingot');
   });
 
   afterAll(async () => {

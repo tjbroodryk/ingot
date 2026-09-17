@@ -28,7 +28,7 @@ describe('the query sandbox', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory to attack');
+    ingot = await world.ingot('an ingot to attack');
     await world.add(ingot, {
       table: 'notes',
       columns: { body: { from: '$.body', type: ColumnType.Varchar } },
@@ -43,7 +43,7 @@ describe('the query sandbox', () => {
 
   // Each of these is a way out of the session: onto the filesystem, onto the
   // network, into another tenant's data, into the configuration, or into more
-  // memory than the caller is entitled to.
+  // ingot than the caller is entitled to.
   const attacks: ReadonlyArray<readonly [string, string]> = [
     ['writing a file', `COPY (SELECT 1) TO '/tmp/ingot-escaped.csv'`],
     ['reading a local file', `SELECT * FROM read_csv('/etc/passwd')`],
@@ -56,7 +56,7 @@ describe('the query sandbox', () => {
     ['loading an extension', 'LOAD spatial'],
     ['attaching a database file', `ATTACH 'smuggled.db' AS other`],
     // The one the lockdown misses. See the note on this describe block.
-    ['attaching memory', `ATTACH ':memory:' AS smuggled`],
+    ['attaching ingot', `ATTACH ':memory:' AS smuggled`],
     ['detaching', 'DETACH notes'],
     ['restoring external access', 'SET enable_external_access = true'],
     ['releasing the lock', 'SET lock_configuration = false'],

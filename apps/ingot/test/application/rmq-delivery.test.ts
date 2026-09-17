@@ -199,7 +199,7 @@ describe('delivering to a broker', () => {
   });
 
   /**
-   * Queue names come from callers — one per memory that asked for `rmq` — so
+   * Queue names come from callers — one per ingot that asked for `rmq` — so
    * this is unbounded input and something has to cap it. A cold start every
    * `MAX_DECLARED` distinct queues costs one round trip per queue, which is
    * what the cache was saving; a Set that grows without limit costs a pod.
@@ -235,9 +235,9 @@ describe('delivering to a broker', () => {
   });
 
   /**
-   * Reachable only for a memory configured while a broker was set and delivered
+   * Reachable only for an ingot configured while a broker was set and delivered
    * after it was unset. Refused rather than dropped: the row stays in the
-   * outbox, and the gauge says somebody took the broker away from memories
+   * outbox, and the gauge says somebody took the broker away from ingots
    * still pointed at it.
    */
   it('refuses when the broker has been taken away', async () => {

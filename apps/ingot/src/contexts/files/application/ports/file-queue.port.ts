@@ -125,7 +125,7 @@ export interface FileQueue {
   /** Queued and still winnable. The gauge that says parsing is behind. */
   pending(maxAttempts: number): Promise<number>;
 
-  /** The same, for one memory. A clone waits for these rather than copying them. */
+  /** The same, for one ingot. A clone waits for these rather than copying them. */
   pendingFor(ingotId: string, maxAttempts: number): Promise<number>;
 
   /**
@@ -137,7 +137,7 @@ export interface FileQueue {
    */
   abandoned(maxAttempts: number): Promise<number>;
 
-  /** Drops a memory's unparsed uploads, when the memory itself goes. */
+  /** Drops an ingot's unparsed uploads, when the ingot itself goes. */
   purgeIngot(ingotId: string): Promise<void>;
 }
 

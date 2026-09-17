@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { Retention, RetentionUnit } from '../../src/contexts/ingots/domain/retention.vo.js';
 
 /**
- * How long a memory is kept.
+ * How long an ingot is kept.
  *
  * The thing on the other end of a mistake here is an irreversible delete, so
  * the interesting assertions are all about what this *refuses* — a retention
@@ -22,7 +22,7 @@ describe('a retention', () => {
     expect(Retention.of(raw).milliseconds).toBe(milliseconds);
   });
 
-  it('computes the instant a memory falls due', () => {
+  it('computes the instant an ingot falls due', () => {
     expect(Retention.of('14d').from(start).toISOString()).toBe('2026-09-09T09:00:00.000Z');
     expect(Retention.of('12h').from(start).toISOString()).toBe('2026-08-26T21:00:00.000Z');
   });
@@ -46,7 +46,7 @@ describe('a retention', () => {
 
   /**
    * Both bounds exist because both mistakes are plausible and neither is
-   * recoverable: `0d` deletes a memory before anything can be written to it,
+   * recoverable: `0d` deletes an ingot before anything can be written to it,
    * and a century is a typo rather than a plan.
    */
   it('refuses a retention shorter than a minute', () => {

@@ -10,7 +10,7 @@ import type { Command, Query } from '../shared/application/index.js';
 import { CloneIngot } from '../contexts/ingots/application/commands/clone-ingot.command.js';
 import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
-import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
+import { CastIngot } from '../contexts/ingots/application/commands/cast-ingot.command.js';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
 import { DropTable } from '../contexts/ingots/application/commands/drop-table.command.js';
 import { GetIngotInfo } from '../contexts/ingots/application/queries/get-ingot-info.query.js';
@@ -31,10 +31,10 @@ export enum McpTool {
   ConfigureTable = 'configure_table',
   ConfigureDelivery = 'configure_delivery',
   DropTable = 'drop_table',
-  CreateMemory = 'create_memory',
-  CloneMemory = 'clone_memory',
-  ListMemories = 'list_memories',
-  DeleteMemory = 'delete_memory',
+  CastIngot = 'cast_ingot',
+  CloneIngot = 'clone_ingot',
+  ListIngots = 'list_ingots',
+  DeleteIngot = 'delete_ingot',
 }
 
 /** Whether a tool operates on one ingot or on the account as a whole. */
@@ -81,7 +81,7 @@ const columnMapping = z.object({
 /**
  * The tools, named for what a model is trying to do rather than for our nouns.
  *
- * A model reaching for memory is thinking "remember this" and "what do I know
+ * A model reaching for ingot is thinking "remember this" and "what do I know
  * about…", not "POST /add" — and the name is most of the prompt. `describe` is
  * listed first because it is the one that should be called first: a model
  * asked to write SQL against a schema it cannot see will invent column names.
@@ -90,9 +90,9 @@ export const TOOLS: readonly ToolDefinition[] = [
   {
     name: McpTool.Describe,
     scope: McpScope.Ingot,
-    title: 'Describe this memory',
+    title: 'Describe this ingot',
     description:
-      'List the tables in this memory, their columns and types, and how many rows each holds. ' +
+      'List the tables in this ingot, their columns and types, and how many rows each holds. ' +
       'Call this before writing SQL — the schema is decided by what has been stored, not fixed in advance.',
     inputSchema: {},
     resolvesTo: GetIngotInfo,
@@ -149,9 +149,9 @@ export const TOOLS: readonly ToolDefinition[] = [
   {
     name: McpTool.Query,
     scope: McpScope.Ingot,
-    title: 'Query this memory with SQL',
+    title: 'Query this ingot with SQL',
     description:
-      'Run a DuckDB SELECT against this memory. One statement, SELECT only — writing happens ' +
+      'Run a DuckDB SELECT against this ingot. One statement, SELECT only — writing happens ' +
       'through remember and forget. Every row carries _row_id, _ingested_at and _batch.',
     inputSchema: {
       sql: z.string().describe('A single DuckDB SELECT statement'),
@@ -175,7 +175,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     scope: McpScope.Ingot,
     title: 'Recall by meaning',
     description:
-      'Search this memory in plain language. Ranks rows of one table by how close an embedded ' +
+      'Search this ingot in plain language. Ranks rows of one table by how close an embedded ' +
       'column is to your question. Use query instead when you know the columns you want to filter on.',
     inputSchema: {
       text: z.string().describe('What you are looking for, in plain language'),
@@ -270,10 +270,10 @@ export const TOOLS: readonly ToolDefinition[] = [
   {
     name: McpTool.ConfigureDelivery,
     scope: McpScope.Ingot,
-    title: 'Configure where this memory’s receipts are delivered',
+    title: 'Configure where this ingot’s receipts are delivered',
     description:
       'Receipts are collected by polling by default: remember hands back a SELECT and you run ' +
-      'it when you want the summary. Set a delivery target and this memory will also push each ' +
+      'it when you want the summary. Set a delivery target and this ingot will also push each ' +
       'receipt as it lands — one POST per receipt to a webhook, or one message onto a queue. ' +
       'Use it when whatever wants the summary will have moved on by the time it is written. ' +
       'Turn it off again with { "t": "none" }. The whole configuration comes back, and describe ' +
@@ -318,15 +318,16 @@ export const TOOLS: readonly ToolDefinition[] = [
     readOnly: false,
   },
   {
-    name: McpTool.CreateMemory,
+    name: McpTool.CastIngot,
     scope: McpScope.Account,
-    title: 'Create a memory',
+    title: 'Cast an ingot',
     description:
-      'Start a new, empty memory. Returns its id, which addresses it from then on. ' +
+      'Start a new, empty ingot — a memory: a set of SQL tables your tool results are stored ' +
+      'in. Returns its id, which addresses it from then on. ' +
       'Give retainFor to have it deleted automatically once it is no longer useful — ' +
       'worth doing for anything scoped to a single piece of work.',
     inputSchema: {
-      name: z.string().describe('What this memory is for'),
+      name: z.string().describe('What this ingot is for'),
       retainFor: z
         .string()
         .optional()
@@ -335,23 +336,23 @@ export const TOOLS: readonly ToolDefinition[] = [
         .string()
         .optional()
         .describe(
-          'Your own id for what this memory is for. Creating again with the same one returns ' +
-            'the existing memory instead of a second.',
+          'Your own id for what this ingot is for. Creating again with the same one returns ' +
+            'the existing ingot instead of a second.',
         ),
     },
-    resolvesTo: CreateIngot,
+    resolvesTo: CastIngot,
     readOnly: false,
   },
   {
-    name: McpTool.CloneMemory,
+    name: McpTool.CloneIngot,
     scope: McpScope.Account,
-    title: 'Clone a memory',
+    title: 'Clone an ingot',
     description:
-      'Copy a memory — every table, row and embedding — into a new one, and return the new ' +
+      'Copy an ingot — every table, row and embedding — into a new one, and return the new ' +
       'id. Writes to either afterwards do not reach the other, so this is how to try ' +
-      'something against a memory without risking it. Delivery settings are not copied.',
+      'something against an ingot without risking it. Delivery settings are not copied.',
     inputSchema: {
-      ingot: z.string().describe('The id of the memory to copy'),
+      ingot: z.string().describe('The id of the ingot to copy'),
       name: z.string().optional().describe('What the copy is for. Omit to keep the source’s name.'),
       retainFor: z
         .string()
@@ -370,20 +371,20 @@ export const TOOLS: readonly ToolDefinition[] = [
     readOnly: false,
   },
   {
-    name: McpTool.ListMemories,
+    name: McpTool.ListIngots,
     scope: McpScope.Account,
-    title: 'List memories',
-    description: 'Every memory on this account, with how much each holds.',
+    title: 'List ingots',
+    description: 'Every ingot on this account, with how much each holds.',
     inputSchema: {},
     resolvesTo: ListIngots,
     readOnly: true,
   },
   {
-    name: McpTool.DeleteMemory,
+    name: McpTool.DeleteIngot,
     scope: McpScope.Account,
-    title: 'Delete a memory',
-    description: 'Destroy a memory and everything in it. Not reversible.',
-    inputSchema: { ingot: z.string().describe('The id of the memory to destroy') },
+    title: 'Delete an ingot',
+    description: 'Destroy an ingot and everything in it. Not reversible.',
+    inputSchema: { ingot: z.string().describe('The id of the ingot to destroy') },
     resolvesTo: DeleteIngot,
     readOnly: false,
   },

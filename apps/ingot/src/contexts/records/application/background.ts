@@ -18,7 +18,7 @@ export enum BackgroundKind {
   Embeddings = 'embeddings',
   Receipts = 'receipts',
   /**
-   * Receipts announced to a memory's delivery target and not yet sent.
+   * Receipts announced to an ingot's delivery target and not yet sent.
    *
    * Woken by the receipt's own write rather than by `/add`, because that is
    * when there is something to deliver — a receipt is queued at `/add` and

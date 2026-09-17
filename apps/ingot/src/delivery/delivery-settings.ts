@@ -5,7 +5,7 @@ import { tooLongForLease } from '../shared/claim-lease.js';
  * What a deployment decides about delivery, as opposed to what a caller does.
  *
  * The split is the point, and it is a security boundary as much as a
- * configuration one. A memory's owner chooses *where among their own things* a
+ * configuration one. An ingot's owner chooses *where among their own things* a
  * receipt goes — an endpoint, a queue name. The operator chooses what this
  * service is willing to connect to at all: which broker, how long to wait, how
  * many times to try. A tenant naming a broker URL would be a tenant choosing
@@ -28,7 +28,7 @@ export interface DeliverySettings {
   /**
    * The AMQP exchange to publish through. Empty is the default exchange, which
    * routes a message to the queue named by the routing key — which is exactly
-   * what a per-memory queue name is. A deployment that wants its own topology
+   * what a per-ingot queue name is. A deployment that wants its own topology
    * points this at an exchange and binds the queues itself.
    */
   readonly exchange: string;
@@ -87,7 +87,7 @@ export function deliverySettings(read: Setting): DeliverySettings {
 /**
  * Whether a deployment can deliver by a given strategy at all.
  *
- * Asked when a memory is configured, not when a delivery goes out. A caller who
+ * Asked when an ingot is configured, not when a delivery goes out. A caller who
  * names a transport this deployment has not been given is told so on the call
  * that names it, which is the only moment they can do anything about it —
  * accepting the configuration and failing every delivery afterwards would put

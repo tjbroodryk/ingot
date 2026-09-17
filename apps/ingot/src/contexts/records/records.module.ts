@@ -86,7 +86,7 @@ import { RecordsController } from './interface/records.controller.js';
     ReceiptWorker,
 
     // The outbox itself is bound in `OverlayModule` with the other queue
-    // tables, because `ingots/` empties it when a memory is destroyed and
+    // tables, because `ingots/` empties it when an ingot is destroyed and
     // binding it here would make the two contexts import each other. These are
     // the things that drain it.
     ClaimDeliveryHandler,

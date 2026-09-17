@@ -5,7 +5,7 @@ import type { Account } from '../contexts/accounts/domain/index.js';
 import { ConfigureIngot } from '../contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../contexts/ingots/application/commands/configure-table.command.js';
 import { CloneIngot } from '../contexts/ingots/application/commands/clone-ingot.command.js';
-import { CreateIngot } from '../contexts/ingots/application/commands/create-ingot.command.js';
+import { CastIngot } from '../contexts/ingots/application/commands/cast-ingot.command.js';
 import { DeleteIngot } from '../contexts/ingots/application/commands/delete-ingot.command.js';
 import { DropTable } from '../contexts/ingots/application/commands/drop-table.command.js';
 import { GetIngotInfo } from '../contexts/ingots/application/queries/get-ingot-info.query.js';
@@ -51,7 +51,7 @@ interface ToolReply {
  *
  * Scoping a connection to one ingot is deliberate. The tools then take no ids,
  * which is one less thing for a model to get wrong, and a client pointed at
- * one memory cannot address another.
+ * one ingot cannot address another.
  */
 @Injectable()
 export class IngotMcpServer {
@@ -92,7 +92,7 @@ export class IngotMcpServer {
       'schema',
       `ingot://${ingotId}/info`,
       {
-        title: 'This memory’s schema',
+        title: 'This ingot’s schema',
         description: 'Tables, columns and types. Read this before writing SQL.',
         mimeType: 'application/json',
       },
@@ -220,10 +220,10 @@ export class IngotMcpServer {
           .send(new DropTable(ingotId, accountId, String(args.table)))
           .then(() => ({ dropped: String(args.table) }));
 
-      case McpTool.CreateMemory:
+      case McpTool.CastIngot:
         return this.dispatcher
           .send(
-            new CreateIngot(
+            new CastIngot(
               accountId,
               String(args.name),
               args.retainFor === undefined ? undefined : String(args.retainFor),
@@ -232,7 +232,7 @@ export class IngotMcpServer {
           )
           .then((result) => result.ingot);
 
-      case McpTool.CloneMemory:
+      case McpTool.CloneIngot:
         return this.dispatcher
           .send(
             new CloneIngot(String(args.ingot), accountId, {
@@ -243,10 +243,10 @@ export class IngotMcpServer {
           )
           .then((result) => result.ingot);
 
-      case McpTool.ListMemories:
+      case McpTool.ListIngots:
         return this.dispatcher.ask(new ListIngots(accountId));
 
-      case McpTool.DeleteMemory:
+      case McpTool.DeleteIngot:
         return this.dispatcher
           .send(new DeleteIngot(String(args.ingot), accountId))
           .then(() => ({ deleted: String(args.ingot) }));
@@ -270,7 +270,7 @@ function message(error: unknown): string {
  */
 export function schemaSummary(info: IngotInfo): string {
   if (info.tables.length === 0) {
-    return 'This memory is empty. Use remember to store something first.';
+    return 'This ingot is empty. Use remember to store something first.';
   }
   const tables = info.tables
     .map((table) => {
@@ -284,5 +284,5 @@ export function schemaSummary(info: IngotInfo): string {
       return `  ${table.name} (${table.rows} rows${searchable}): ${columns}`;
     })
     .join('\n');
-  return `Tables in this memory:\n${tables}`;
+  return `Tables in this ingot:\n${tables}`;
 }

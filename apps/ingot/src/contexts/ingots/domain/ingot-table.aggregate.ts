@@ -76,7 +76,7 @@ function systemColumns(withRaw: boolean): ColumnSpec[] {
  * A table's schema and where its data lives — the manifest, per table.
  *
  * This is the aggregate the write path contends on, which is why it is not
- * part of `Ingot`: two tools writing two tables of one memory should never
+ * part of `Ingot`: two tools writing two tables of one ingot should never
  * make each other retry. The version guard is per table for the same reason.
  *
  * `generation` counts roll-ups. It is not a version — a compaction bumps both,
@@ -149,7 +149,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
   }
 
   /**
-   * This table, as a table of another memory.
+   * This table, as a table of another ingot.
    *
    * Same schema, settings and generation, so `/parquet?generation=n` means the
    * same thing on both. The files are the caller's to copy; `rekey` only says

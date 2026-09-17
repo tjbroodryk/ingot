@@ -3,7 +3,7 @@ import { ColumnSpec, IngotTable } from '../../ingots/domain/index.js';
 import { ident, literal } from '../../../engine/sql.js';
 
 /**
- * Where receipts live: one ordinary table per memory, written by this service.
+ * Where receipts live: one ordinary table per ingot, written by this service.
  *
  * Ordinary is the whole design. A receipt could have been a Postgres side table
  * with an endpoint in front of it, and then it would need its own reader, its
@@ -12,7 +12,7 @@ import { ident, literal } from '../../../engine/sql.js';
  * those from machinery that already exists and is already tested: the overlay
  * accepts its rows, the embedding sweeper embeds its columns, the roll-up
  * folds it into Parquet beside everything else, `/query` unions the two tiers,
- * a tombstone forgets one, and destroying the memory destroys it too.
+ * a tombstone forgets one, and destroying the ingot destroys it too.
  *
  * The name carries the reserved prefix, so `SqlName.table` refuses it and no
  * caller's mapping can write here. `SqlName.systemTable` is the one way in and

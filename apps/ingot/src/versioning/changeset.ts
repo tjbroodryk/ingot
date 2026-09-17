@@ -80,13 +80,13 @@ const RELEASES: readonly Release[] = [
   {
     version: '2026-09-06',
     summary:
-      'Memories carry settings: `POST /:ingot/config` sets where a receipt is ' +
+      'Ingots carry settings: `POST /:ingot/config` sets where a receipt is ' +
       'delivered — a webhook or a queue — and `IngotInfo` reports what it is ' +
       'set to. Receipts are still collected by their query; delivery is opt-in.',
     changes: [
       {
         shape: WireShape.IngotInfo,
-        note: 'The memory gained `config`, its delivery settings.',
+        note: 'The ingot gained `config`, its delivery settings.',
         // Removed rather than nulled, for the reason `withoutConfig` gives: a
         // caller on the older version was written against a shape with no such
         // field, and a null is still a field. The tables' own `config` is not
@@ -119,8 +119,8 @@ const RELEASES: readonly Release[] = [
   {
     version: '2026-09-17',
     summary:
-      'Memories take a caller’s `externalId`, which makes create idempotent, and `/config` ' +
-      'takes `retainFor` to push a memory’s deletion out. Delivery strategies name the ' +
+      'Ingots take a caller’s `externalId`, which makes create idempotent, and `/config` ' +
+      'takes `retainFor` to push an ingot’s deletion out. Delivery strategies name the ' +
       '`events` they push — table writes, roll-ups and drops as well as receipts. `/pending` ' +
       'lists the Parquet `base` it is pending against, and `/parquet` serves any retained ' +
       'generation and part, by range.',

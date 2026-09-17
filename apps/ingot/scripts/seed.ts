@@ -1,18 +1,18 @@
 /**
- * Casts a memory into a running Ingot.
+ * Casts an ingot into a running Ingot.
  *
  * It used to open the account too, back when `POST /accounts` was a route
  * anybody could call. The account now comes from `INGOT_AUTH` — sealed mode
  * opens `INGOT_ACCOUNT` at boot — so the one thing the service could not do
  * for itself is now the first thing it does, and what is left here is the
- * memory: `/:account/:ingot/add` answers 404 rather than 401 for one that does
+ * ingot: `/:account/:ingot/add` answers 404 rather than 401 for one that does
  * not exist, which reads exactly like a broken route when it is really an
  * empty database.
  *
  * `load/lib.js` does the same in k6's HTTP client, which cannot be run from a
  * shell. This is the dev-loop version.
  *
- *   bun run seed                 one memory in the configured account
+ *   bun run seed                 one ingot in the configured account
  *   bun run seed --sample        also store a record, so /query has an answer
  *
  * The account and key are read from the same environment the server reads, so
@@ -24,7 +24,7 @@ const BASE = process.env.INGOT_URL ?? 'http://localhost:3002';
 const V1 = `${BASE}/api/v1`;
 
 const args = process.argv.slice(2);
-const name = valueOf('--name') ?? 'a development memory';
+const name = valueOf('--name') ?? 'a development ingot';
 const sample = args.includes('--sample');
 
 const slug = valueOf('--account') ?? process.env.INGOT_ACCOUNT;
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const ingot = (await post(`/${slug}/create`, { name }, key)) as unknown as { id: string };
+  const ingot = (await post(`/${slug}/cast`, { name }, key)) as unknown as { id: string };
 
   if (sample) {
     await post(

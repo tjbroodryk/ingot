@@ -24,7 +24,7 @@ import { FilesModule } from '../../src/contexts/files/files.module.js';
 import { CreateAccount } from '../../src/contexts/accounts/application/commands/create-account.command.js';
 import { ConfigureIngot } from '../../src/contexts/ingots/application/commands/configure-ingot.command.js';
 import { ConfigureTable } from '../../src/contexts/ingots/application/commands/configure-table.command.js';
-import { CreateIngot } from '../../src/contexts/ingots/application/commands/create-ingot.command.js';
+import { CastIngot } from '../../src/contexts/ingots/application/commands/cast-ingot.command.js';
 import { DeleteIngot } from '../../src/contexts/ingots/application/commands/delete-ingot.command.js';
 import { GetIngotInfo } from '../../src/contexts/ingots/application/queries/get-ingot-info.query.js';
 import { IngotsModule } from '../../src/contexts/ingots/ingots.module.js';
@@ -103,14 +103,14 @@ export interface World {
   ): Promise<FileResult>;
   /** Reads the documents in the queue, which the sweeper would do on a tick. */
   parseAll(): Promise<number>;
-  /** Destroys a memory, the way `DELETE /:account/:ingot` does. */
+  /** Destroys an ingot, the way `DELETE /:account/:ingot` does. */
   destroy(ingotId: string): Promise<void>;
   query(ingotId: string, body: QueryBody): Promise<QueryResult>;
   /** A SQL query, for the common case of asserting on the rows it returns. */
   sql(ingotId: string, statement: string): Promise<QueryResult['rows']>;
   info(ingotId: string): Promise<IngotInfo>;
   configure(ingotId: string, table: string, body: ConfigureTableBody): Promise<TableConfig>;
-  /** Sets where this memory's receipts are delivered. */
+  /** Sets where this ingot's receipts are delivered. */
   configureIngot(ingotId: string, body: ConfigureIngotBody): Promise<IngotConfig>;
   forget(ingotId: string, table: string, where: string): Promise<number>;
   embedAll(): Promise<number>;
@@ -228,8 +228,8 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
     dataDir,
     wakes,
 
-    async ingot(name = 'a memory') {
-      const summary = await dispatcher.send(new CreateIngot(created.account.id, name));
+    async ingot(name = 'an ingot') {
+      const summary = await dispatcher.send(new CastIngot(created.account.id, name));
       return summary.ingot.id;
     },
 

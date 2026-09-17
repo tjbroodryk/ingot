@@ -38,7 +38,7 @@ function toIngot(row: IngotRow): Ingot {
         row.embeddingModel !== null && row.embeddingDims !== null
           ? { model: row.embeddingModel, dimensions: row.embeddingDims }
           : null,
-      // Null for every memory written before delivery existed, and for every
+      // Null for every ingot written before delivery existed, and for every
       // one nobody has configured since. Both read as `none`.
       delivery: Delivery.rehydrate(row.delivery),
     },
@@ -92,7 +92,7 @@ function rowOf(aggregate: Ingot) {
     embeddingModel: aggregate.embedding?.model ?? null,
     embeddingDims: aggregate.embedding?.dimensions ?? null,
     // Written as null when nothing is configured rather than as `{"t":"none"}`,
-    // so an unconfigured memory keeps reading the code's default instead of a
+    // so an unconfigured ingot keeps reading the code's default instead of a
     // document claiming a value the code could since have moved on from.
     delivery: aggregate.delivery.configured ? aggregate.delivery.toWire() : null,
   };
@@ -167,7 +167,7 @@ export class PgIngotRepository implements IngotRepository {
   }
 
   /**
-   * Memories past their retention, oldest first.
+   * Ingots past their retention, oldest first.
    *
    * The account id comes back with each one so the reaper can dispatch the
    * ordinary `DeleteIngot` — the same command the endpoint uses, with the same

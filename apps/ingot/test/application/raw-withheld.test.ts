@@ -28,7 +28,7 @@ describe('_raw', () => {
   beforeAll(async () => {
     world = await makeWorld();
 
-    withRaw = await world.ingot('a memory that keeps the blob');
+    withRaw = await world.ingot('an ingot that keeps the blob');
     await world.add(withRaw, {
       table: 'results',
       raw: true,
@@ -39,7 +39,7 @@ describe('_raw', () => {
       result: { output: 'the migration broke on a missing index', tool: 'Bash' },
     });
 
-    withoutRaw = await world.ingot('a memory that does not');
+    withoutRaw = await world.ingot('an ingot that does not');
     await world.add(withoutRaw, {
       table: 'results',
       columns: { output: { from: '$.output', type: ColumnType.Varchar, embed: true } },

@@ -1,8 +1,8 @@
--- The manifest: what a memory is, and what shape its tables are.
+-- The manifest: what an ingot is, and what shape its tables are.
 --
--- `ingot` is thin on purpose. Everything interesting about a memory belongs to
+-- `ingot` is thin on purpose. Everything interesting about an ingot belongs to
 -- its tables, because that is the granularity writes contend at — two tools
--- writing two tables of one memory must never make each other retry, so the
+-- writing two tables of one ingot must never make each other retry, so the
 -- optimistic-concurrency version lives on `ingot_table` and not here.
 --
 -- `generation` counts roll-ups and is not the same thing as `version`: a
@@ -44,6 +44,6 @@ ALTER TABLE ingot_table ADD CONSTRAINT ingot_table_name UNIQUE (ingot_id, name);
 
 CREATE INDEX IF NOT EXISTS ingot_table_ingot ON ingot_table (ingot_id);
 
--- No foreign key from ingot_table to ingot. Deleting a memory deletes its
+-- No foreign key from ingot_table to ingot. Deleting an ingot deletes its
 -- tables in the same transaction, and a cascade would make that implicit
 -- rather than something the repository is seen to do.

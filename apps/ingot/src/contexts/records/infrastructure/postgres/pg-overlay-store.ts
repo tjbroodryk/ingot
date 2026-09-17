@@ -320,7 +320,7 @@ export class PgOverlayStore implements OverlayStore {
     for (const table of tables) await this.purgeTable(table.tableId);
     await this.uow.queryable.delete(overlayRow).where(eq(overlayRow.ingotId, ingotId));
     // Keyed on the ingot rather than the table, and swept here rather than in
-    // `purgeTable`: a queued receipt names the *source* table, so a memory
+    // `purgeTable`: a queued receipt names the *source* table, so an ingot
     // destroyed before its sweeper ran would otherwise leave work behind that
     // resolves to a table that no longer exists.
     await this.uow.queryable

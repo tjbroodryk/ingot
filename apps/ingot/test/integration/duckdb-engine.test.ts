@@ -105,7 +105,7 @@ describe('the sandbox', () => {
 
   // The one the lockdown does not close. An in-memory ATTACH touches no
   // filesystem and no network, so nothing in the recipe has an opinion about
-  // it — and once attached you can allocate as much memory as you like. This
+  // it — and once attached you can allocate as much ingot as you like. This
   // is why the statement allowlist below is load-bearing rather than a nicety.
   it('does NOT contain an in-memory ATTACH', async () => {
     await connection.run(`ATTACH ':memory:' AS smuggled`);
@@ -263,12 +263,12 @@ describe('vector search', () => {
   });
 
   it('orders by similarity to a bound query vector', async () => {
-    await connection.run(`CREATE TABLE memories (body VARCHAR, vec FLOAT[3])`);
-    await connection.run(`INSERT INTO memories VALUES
+    await connection.run(`CREATE TABLE ingots (body VARCHAR, vec FLOAT[3])`);
+    await connection.run(`INSERT INTO ingots VALUES
       ('a near miss', [0.9, 0.1, 0.0]), ('unrelated', [0.0, 0.0, 1.0]), ('the match', [1.0, 0.0, 0.0])`);
     const ranked = await rowsOf(
       connection,
-      `SELECT body FROM memories
+      `SELECT body FROM ingots
        ORDER BY array_cosine_similarity(vec, [1.0, 0.0, 0.0]::FLOAT[3]) DESC`,
     );
     expect(ranked.map((r) => r.body)).toEqual(['the match', 'a near miss', 'unrelated']);

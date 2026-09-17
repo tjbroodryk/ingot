@@ -20,10 +20,10 @@ import {
 } from '../../domain/index.js';
 import { IngotAccess } from '../ingot-access.js';
 import { summarise } from '../ingot-summary.js';
-import type { CreatedIngot } from './create-ingot.command.js';
+import type { CastIngotResult } from './cast-ingot.command.js';
 
 /** `POST /api/v1/:account/:ingot/clone` */
-export class CloneIngot extends Command<CreatedIngot> {
+export class CloneIngot extends Command<CastIngotResult> {
   /**
    * The manifest, the overlay, the vectors and the embedding queue are read
    * by a dozen statements, and a roll-up or an embedding committing between
@@ -42,7 +42,7 @@ export class CloneIngot extends Command<CreatedIngot> {
 }
 
 /**
- * Copies a memory: its tables, their current Parquet, and everything in the
+ * Copies an ingot: its tables, their current Parquet, and everything in the
  * overlay, under a new id.
  *
  * The source is read as of the snapshot this transaction opened. A roll-up
@@ -73,7 +73,7 @@ export class CloneIngotHandler implements ICommandHandler<CloneIngot> {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async execute(command: CloneIngot): Promise<CreatedIngot> {
+  async execute(command: CloneIngot): Promise<CastIngotResult> {
     try {
       return await this.clone(command);
     } catch (error) {
@@ -81,13 +81,13 @@ export class CloneIngotHandler implements ICommandHandler<CloneIngot> {
       // Only a keyed clone writes anything a concurrent transaction can also
       // write: the `externalId`. Asking again answers with whichever won.
       throw new ConflictingState(
-        `a memory with externalId "${command.body.externalId}" was being created at the ` +
+        `an ingot with externalId "${command.body.externalId}" was being created at the ` +
           'same time. Try again.',
       );
     }
   }
 
-  private async clone(command: CloneIngot): Promise<CreatedIngot> {
+  private async clone(command: CloneIngot): Promise<CastIngotResult> {
     const source = await this.access.ingot(command.ingotId, command.accountId);
     const now = this.clock.now();
     const clone = Ingot.cloneOf(source, { ...command.body, now });
@@ -107,7 +107,7 @@ export class CloneIngotHandler implements ICommandHandler<CloneIngot> {
     if (parsing > 0) {
       throw new ConflictingState(
         `${parsing} document${parsing === 1 ? ' is' : 's are'} still being parsed into this ` +
-          'memory. Clone it once they have finished — waitForDocument, or the query /file ' +
+          'ingot. Clone it once they have finished — waitForDocument, or the query /file ' +
           'returned, says when.',
       );
     }
@@ -116,7 +116,7 @@ export class CloneIngotHandler implements ICommandHandler<CloneIngot> {
       await this.ingots.save(clone);
     } else if (!(await this.ingots.claim(clone))) {
       throw new ConflictingState(
-        `a memory with externalId "${clone.externalId}" was being created at the same time. ` +
+        `an ingot with externalId "${clone.externalId}" was being created at the same time. ` +
           'Try again.',
       );
     }
@@ -125,7 +125,7 @@ export class CloneIngotHandler implements ICommandHandler<CloneIngot> {
     const to = Keys.ingot(clone.accountId, clone.id.value);
     const rekey = (key: string): string => {
       if (!key.startsWith(`${from}/`)) {
-        throw new Error(`"${key}" is not under the prefix of the memory it belongs to`);
+        throw new Error(`"${key}" is not under the prefix of the ingot it belongs to`);
       }
       return `${to}${key.slice(from.length)}`;
     };

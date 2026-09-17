@@ -3,7 +3,7 @@ import { ColumnSpec, IngotTable } from '../../ingots/domain/index.js';
 import { ident, literal } from '../../../engine/sql.js';
 
 /**
- * Where documents live: two ordinary tables per memory, written by this service.
+ * Where documents live: two ordinary tables per ingot, written by this service.
  *
  * Ordinary is the whole design, and the argument is `receipt-table.ts`'s
  * verbatim because it is the same argument. A chunk store could have been a
@@ -13,7 +13,7 @@ import { ident, literal } from '../../../engine/sql.js';
  * Making chunks a table instead means they get every one of those from
  * machinery that already exists and is already tested: the overlay accepts
  * them, the embedding sweeper embeds them, the roll-up folds them into Parquet,
- * `/query` unions the tiers, a tombstone forgets one, and destroying the memory
+ * `/query` unions the tiers, a tombstone forgets one, and destroying the ingot
  * destroys them too.
  *
  * It also buys the thing this feature exists for. Because a chunk is a row and
@@ -37,7 +37,7 @@ export const FILES_TABLE = 'ingot_files';
 /**
  * Named for what it holds rather than for the shorter word.
  *
- * `ingot_chunks` read as though a memory had one kind of chunk in it. These are
+ * `ingot_chunks` read as though an ingot had one kind of chunk in it. These are
  * chunks *of a file*, they only ever arrive through `/file`, and every row joins
  * back to `ingot_files` — so the name says so and the pair reads together.
  *
@@ -114,7 +114,7 @@ export const CHUNK_TOKENS = 'tokens';
  * What machine-read this chunk, for the pages a PDF had no text layer for.
  *
  * Null for everything the document actually carried, which is almost every
- * chunk in almost every memory — and that is what makes the column worth
+ * chunk in almost every ingot — and that is what makes the column worth
  * having: `WHERE ocr IS NULL` is the text this service only had to decode, and
  * a value is a page some engine looked at a picture of. OCR drops characters
  * and a vision model can invent them, so a figure read off a scan is evidence
@@ -206,7 +206,7 @@ export function declareChunksTable(ingotId: string, now: Date): IngotTable {
  *
  * The rule everywhere else is off-by-default, and the reason is real: an index
  * is built inside the query session over the whole table, so switching it on
- * for every table would put that cost on memories storing no prose at all.
+ * for every table would put that cost on ingots storing no prose at all.
  *
  * Two things make this the exception. It is the only table where prose is
  * *guaranteed* — a chunk is text or it is nothing — and the index is built only
