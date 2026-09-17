@@ -1,9 +1,14 @@
 import 'reflect-metadata';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Readable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { GetBaseFile } from '../../src/contexts/records/application/queries/get-base-file.query.js';
 import { GetPendingOperations } from '../../src/contexts/records/application/queries/get-pending-operations.query.js';
+import {
+  OVERLAY_STORE,
+  type OverlayStore,
+} from '../../src/contexts/records/application/ports/overlay-store.port.js';
 import { AggregateNotFound, InvariantViolation } from '../../src/shared/domain/index.js';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
@@ -105,6 +110,43 @@ describe('pending writes and the Parquet beneath them', () => {
     await drain(file.body);
     expect(file.rows).toBe(3);
     expect(file.tombstones).toBe(1);
+  });
+
+  it('lists the files of the generation it is pending against', async () => {
+    const found = await pending();
+
+    expect(found.base).toEqual([{ part: 1, rows: 3, bytes: expect.any(Number) }]);
+    expect(found.base[0]?.bytes).toBeGreaterThan(0);
+  });
+
+  it('reads the manifest and the overlay as of one moment, whenever a roll-up lands', async () => {
+    await world.add(ingot, events(10, 2));
+
+    // The roll-up is made to commit after the manifest is read and before the
+    // overlay is — on its own connection, outside the read's transaction.
+    const overlay = world.app.get<OverlayStore>(OVERLAY_STORE, { strict: false });
+    const page = overlay.page.bind(overlay);
+    const outside = AsyncLocalStorage.snapshot();
+    let rolledUp = false;
+    overlay.page = async (...args) => {
+      if (!rolledUp) {
+        rolledUp = true;
+        await outside(() => world.compact(ingot, 'events'));
+      }
+      return page(...args);
+    };
+
+    try {
+      const found = await pending();
+      expect(found.generation).toBe(1);
+      expect(found.rows.map((row) => row.values.n)).toEqual([10, 11]);
+
+      const after = await pending();
+      expect(after.generation).toBe(2);
+      expect(after.rows).toEqual([]);
+    } finally {
+      overlay.page = page;
+    }
   });
 });
 

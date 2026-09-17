@@ -2,7 +2,12 @@ import { Inject } from '@nestjs/common';
 import { QueryHandler } from '@nestjs/cqrs';
 import type { QueryBody, QueryResult } from '@ingot/shared/ingot-v1';
 import { InvariantViolation } from '../../../../shared/domain/index.js';
-import { Query, type IQueryHandler } from '../../../../shared/application/index.js';
+import {
+  Query,
+  UNIT_OF_WORK,
+  type IQueryHandler,
+  type UnitOfWork,
+} from '../../../../shared/application/index.js';
 import { Metrics, Outcome, observe } from '../../../../observability/index.js';
 import { EMBEDDER, type Embedder } from '../../../../ai/embedder.port.js';
 import {
@@ -50,8 +55,8 @@ export class QueryIngot extends Query<QueryResult> {
  * than a similarity search followed by a filter in the client.
  *
  * A query is emphatically not a command even though it arrives as a POST: it
- * changes nothing, so it gets no transaction. The POST is because SQL does not
- * belong in a URL.
+ * changes nothing, so it gets no write transaction — only a read snapshot
+ * around loading the tables. The POST is because SQL does not belong in a URL.
  */
 @QueryHandler(QueryIngot)
 export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
@@ -60,6 +65,7 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
     @Inject(ANALYTICAL_ENGINE) private readonly engine: AnalyticalEngine,
     @Inject(EMBEDDER) private readonly embedder: Embedder,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     private readonly sessions: SessionBuilder,
   ) {}
 
@@ -73,12 +79,6 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
     }
 
     const ingot = await this.access.ingot(query.ingotId, query.accountId);
-    const tables = await this.tables.listForIngot(ingot.id.value);
-    if (tables.length === 0) {
-      throw new InvariantViolation(
-        'This ingot has no tables yet. Store something with /add before querying it.',
-      );
-    }
 
     const rowCap = Math.min(body.limit ?? DEFAULT_ROW_CAP, MAX_ROW_CAP);
     const offset = QueryCursor.offset(body);
@@ -114,19 +114,30 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
         )
       : undefined;
 
-    let sql: string;
-    if (wantsSql) {
-      sql = body.sql as string;
-    } else {
-      const target = pickTable(tables, body);
-      // One past the page, or `truncated` could never be true for a search.
-      sql = rankingSql(target, pickColumn(target, body), offset + rowCap + 1);
-    }
+    // The manifest and the overlay in one snapshot, after the embedding call so
+    // no connection is held across it. See `UnitOfWork.snapshot`.
+    const { sql, available } = await this.uow.snapshot(async () => {
+      const tables = await this.tables.listForIngot(ingot.id.value);
+      if (tables.length === 0) {
+        throw new InvariantViolation(
+          'This ingot has no tables yet. Store something with /add before querying it.',
+        );
+      }
 
-    // Every table is offered; the engine narrows to the ones the statement
-    // actually names. That decision belongs inside the session, where the
-    // connection that can read the statement lives — see `narrow()` there.
-    const available = await this.sessions.all(tables);
+      let sql: string;
+      if (wantsSql) {
+        sql = body.sql as string;
+      } else {
+        const target = pickTable(tables, body);
+        // One past the page, or `truncated` could never be true for a search.
+        sql = rankingSql(target, pickColumn(target, body), offset + rowCap + 1);
+      }
+
+      // Every table is offered; the engine narrows to the ones the statement
+      // actually names. That decision belongs inside the session, where the
+      // connection that can read the statement lives — see `narrow()` there.
+      return { sql, available: await this.sessions.all(tables) };
+    });
 
     const outcome = await observe('ingot.query', { 'ingot.mode': mode(wantsSql, wantsText) }, () =>
       this.engine.run({

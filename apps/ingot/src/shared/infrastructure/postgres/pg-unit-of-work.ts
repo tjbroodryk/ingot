@@ -64,6 +64,16 @@ export class PgUnitOfWork implements UnitOfWork {
     return result;
   }
 
+  async snapshot<T>(work: () => Promise<T>): Promise<T> {
+    if (this.scopes.getStore()) return work();
+
+    // Nothing is written, so there are no effects to run and nothing to keep.
+    return this.database.transaction((tx) => this.scopes.run({ tx, effects: [] }, work), {
+      isolationLevel: 'repeatable read',
+      accessMode: 'read only',
+    });
+  }
+
   afterCommit(effect: () => Promise<void> | void): void {
     const scope = this.scopes.getStore();
     if (!scope) {
