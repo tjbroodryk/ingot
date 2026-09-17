@@ -12,6 +12,7 @@ import { ClaimDeliveryHandler } from './application/commands/claim-delivery.comm
 import { ClaimReceiptHandler } from './application/commands/claim-receipt.command.js';
 import { ClaimEmbeddingsHandler } from './application/commands/claim-embeddings.command.js';
 import { CompactTableHandler } from './application/commands/compact-table.command.js';
+import { ReapGenerationsHandler } from './application/commands/reap-generations.command.js';
 import { CompleteDeliveryHandler } from './application/commands/complete-delivery.command.js';
 import { DeleteRecordsHandler } from './application/commands/delete-records.command.js';
 import { FailDeliveryHandler } from './application/commands/fail-delivery.command.js';
@@ -70,6 +71,7 @@ import { RecordsController } from './interface/records.controller.js';
     { provide: DELIVERY_TRIGGER, useExisting: BackgroundWork },
     DeleteRecordsHandler,
     CompactTableHandler,
+    ReapGenerationsHandler,
     GetPendingOperationsHandler,
     GetBaseFileHandler,
 

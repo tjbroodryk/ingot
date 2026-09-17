@@ -9,8 +9,14 @@ import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../../src/contexts/records/application/ports/overlay-store.port.js';
-import { AggregateNotFound, InvariantViolation } from '../../src/shared/domain/index.js';
-import { closeDatabase } from '../support/database.js';
+import { DropTable } from '../../src/contexts/ingots/application/commands/drop-table.command.js';
+import { ReapGenerations } from '../../src/contexts/records/application/commands/reap-generations.command.js';
+import {
+  AggregateNotFound,
+  InvariantViolation,
+  ResourceGone,
+} from '../../src/shared/domain/index.js';
+import { closeDatabase, openDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
@@ -35,7 +41,8 @@ describe('pending writes and the Parquet beneath them', () => {
   const pending = (page: { after?: string; limit?: number } = {}) =>
     world.dispatcher.ask(new GetPendingOperations(ingot, world.accountId, 'events', page));
 
-  const parquet = () => world.dispatcher.ask(new GetBaseFile(ingot, world.accountId, 'events'));
+  const parquet = (at: { generation?: number; part?: number } = {}) =>
+    world.dispatcher.ask(new GetBaseFile(ingot, world.accountId, 'events', at));
 
   beforeAll(async () => {
     world = await makeWorld();
@@ -90,7 +97,7 @@ describe('pending writes and the Parquet beneath them', () => {
     expect(after.generation).toBe(1);
 
     const file = await parquet();
-    const bytes = await drain(file.body);
+    const bytes = await drain(await file.open());
     expect(file.generation).toBe(1);
     expect(file.rows).toBe(3);
     expect(bytes.length).toBe(file.bytes);
@@ -107,7 +114,6 @@ describe('pending writes and the Parquet beneath them', () => {
     expect(found.tombstones.length).toBe(1);
 
     const file = await parquet();
-    await drain(file.body);
     expect(file.rows).toBe(3);
     expect(file.tombstones).toBe(1);
   });
@@ -147,6 +153,61 @@ describe('pending writes and the Parquet beneath them', () => {
     } finally {
       overlay.page = page;
     }
+  });
+
+  it('keeps the generation it replaced readable, by number', async () => {
+    const current = await parquet();
+    const replaced = await parquet({ generation: 1 });
+
+    expect(current.generation).toBe(2);
+    expect(replaced.generation).toBe(1);
+    // Its manifest entry and the tombstones that applied to it are both spent.
+    expect(replaced.rows).toBeNull();
+    expect(replaced.tombstones).toBeNull();
+    expect((await drain(await replaced.open())).length).toBe(replaced.bytes);
+  });
+
+  it('refuses a generation or a part that never existed', async () => {
+    await expect(parquet({ generation: 99 })).rejects.toBeInstanceOf(AggregateNotFound);
+    await expect(parquet({ part: 2 })).rejects.toBeInstanceOf(AggregateNotFound);
+  });
+
+  it('reads a range of a file, which is how Parquet is read from a distance', async () => {
+    const file = await parquet();
+
+    expect((await drain(await file.open({ start: 0, end: 3 }))).toString()).toBe('PAR1');
+    const tail = await drain(await file.open({ start: file.bytes - 4, end: file.bytes - 1 }));
+    expect(tail.toString()).toBe('PAR1');
+  });
+
+  it('deletes a replaced generation only once its grace has passed', async () => {
+    const reap = () => world.dispatcher.send(new ReapGenerations());
+
+    expect(await reap()).toBe(0);
+    expect((await parquet({ generation: 1 })).generation).toBe(1);
+
+    const { pool } = await openDatabase();
+    await pool.query(`UPDATE retired_generation SET reap_after = now() - interval '1 second'`);
+
+    // The data and the vectors of generation one.
+    expect(await reap()).toBe(2);
+    await expect(parquet({ generation: 1 })).rejects.toBeInstanceOf(ResourceGone);
+    expect((await parquet()).generation).toBe(2);
+  });
+
+  it('forgets retirements when the table is dropped, so a new table of that name keeps its files', async () => {
+    await world.add(ingot, events(20, 1));
+    await world.compact(ingot, 'events');
+
+    const { pool } = await openDatabase();
+    const retired = () =>
+      pool
+        .query<{ n: string }>('SELECT count(*) AS n FROM retired_generation')
+        .then((result) => Number(result.rows[0]?.n));
+    expect(await retired()).toBeGreaterThan(0);
+
+    await world.dispatcher.send(new DropTable(ingot, world.accountId, 'events'));
+    expect(await retired()).toBe(0);
   });
 });
 

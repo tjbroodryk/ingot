@@ -1,5 +1,11 @@
 import type { Readable } from 'node:stream';
 
+/** Bytes `start` through `end`, both included. */
+export interface ByteRange {
+  readonly start: number;
+  readonly end: number;
+}
+
 /**
  * The base tier: Parquet objects, addressed by key.
  *
@@ -77,8 +83,12 @@ export interface ObjectStore {
    *
    * A store may not notice a missing object until the first read, which is
    * after the response headers have gone — `stat` first.
+   *
+   * `range` is inclusive at both ends, as HTTP's is, and already checked against
+   * the object's size: a reader of Parquet asks for the footer and then the
+   * column chunks it needs, rather than the whole file.
    */
-  open(key: string): Promise<Readable>;
+  open(key: string, range?: ByteRange): Promise<Readable>;
 
   stat(key: string): Promise<{ bytes: number } | null>;
 
@@ -144,7 +154,15 @@ export const Keys = {
 
   /** Vectors live beside the data, keyed by `_row_id`, never inside it. */
   vectors: (accountId: string, ingotId: string, table: string, generation: number): string =>
-    `${Keys.ingot(accountId, ingotId)}/vectors/${table}/gen-${String(generation).padStart(6, '0')}/part-0000.parquet`,
+    `${Keys.vectorGeneration(accountId, ingotId, table, generation)}/part-0000.parquet`,
+
+  vectorGeneration: (
+    accountId: string,
+    ingotId: string,
+    table: string,
+    generation: number,
+  ): string =>
+    `${Keys.ingot(accountId, ingotId)}/vectors/${table}/gen-${String(generation).padStart(6, '0')}`,
 
   /**
    * An uploaded document, as it arrived.

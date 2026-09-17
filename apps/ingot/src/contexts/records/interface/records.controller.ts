@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import type { AddResult, DeleteResult, PendingOperations } from '@ingot/shared/ingot-v1';
 import { Wire } from '@ingot/versioning/nest';
@@ -13,7 +24,8 @@ import { GetBaseFile } from '../application/queries/get-base-file.query.js';
 import { GetPendingOperations } from '../application/queries/get-pending-operations.query.js';
 import { AddDto } from './dto/add.dto.js';
 import { DeleteDto } from './dto/delete.dto.js';
-import { PendingDto } from './dto/pending.dto.js';
+import { ParquetDto, PendingDto } from './dto/pending.dto.js';
+import { byteRange } from './byte-range.js';
 
 @Controller({ path: ':account/:ingot', version: '1' })
 export class RecordsController {
@@ -72,14 +84,39 @@ export class RecordsController {
     @CurrentAccount() account: Account,
     @Param('ingot') ingot: string,
     @Param('table') table: string,
+    @Query() at: ParquetDto,
+    @Headers('range') range: string | undefined,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<StreamableFile> {
-    const file = await this.dispatcher.ask(new GetBaseFile(ingot, account.id.value, table));
+  ): Promise<StreamableFile | undefined> {
+    const file = await this.dispatcher.ask(new GetBaseFile(ingot, account.id.value, table, at));
 
     response.setHeader('Ingot-Generation', String(file.generation));
-    response.setHeader('Ingot-Tombstones', String(file.tombstones));
-    return new StreamableFile(file.body, {
-      type: 'application/vnd.apache.parquet',
+    response.setHeader('Ingot-Part', String(file.part));
+    if (file.tombstones !== null) response.setHeader('Ingot-Tombstones', String(file.tombstones));
+    // A generation's object is written once and never changed, so its identity
+    // is its address — which is what lets a proxy cache ranges of it.
+    response.setHeader('ETag', `"${file.table}.${file.generation}.${file.part}.${file.bytes}"`);
+    response.setHeader('Accept-Ranges', 'bytes');
+
+    const type = 'application/vnd.apache.parquet';
+    const wanted = byteRange(range, file.bytes);
+
+    if (wanted === 'unsatisfiable') {
+      response.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
+      response.setHeader('Content-Range', `bytes */${file.bytes}`);
+      return undefined;
+    }
+    if (wanted) {
+      response.status(HttpStatus.PARTIAL_CONTENT);
+      response.setHeader('Content-Range', `bytes ${wanted.start}-${wanted.end}/${file.bytes}`);
+      return new StreamableFile(await file.open(wanted), {
+        type,
+        length: wanted.end - wanted.start + 1,
+      });
+    }
+
+    return new StreamableFile(await file.open(), {
+      type,
       length: file.bytes,
       // Table names are SQL identifiers, so nothing here needs escaping.
       disposition: `attachment; filename="${file.table}-gen-${file.generation}.parquet"`,

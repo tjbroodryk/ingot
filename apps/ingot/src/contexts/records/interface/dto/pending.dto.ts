@@ -15,3 +15,17 @@ export class PendingDto {
   @Max(MAX_PENDING_PAGE)
   limit?: number;
 }
+
+export class ParquetDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  generation?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  part?: number;
+}

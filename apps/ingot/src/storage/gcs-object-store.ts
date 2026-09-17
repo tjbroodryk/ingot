@@ -7,7 +7,7 @@ import { Storage } from '@google-cloud/storage';
 import { Injectable, Logger } from '@nestjs/common';
 import { DependencyUnavailable } from '../shared/domain/index.js';
 import { upstream } from '../observability/index.js';
-import type { ObjectStore, PendingWrite } from './object-store.port.js';
+import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
 import { quote } from './secret-sql.js';
 import { GCS_ENDPOINT, type GcsSettings } from './storage-settings.js';
 
@@ -138,10 +138,10 @@ export class GcsObjectStore implements ObjectStore {
     });
   }
 
-  async open(key: string): Promise<Readable> {
+  async open(key: string, range?: ByteRange): Promise<Readable> {
     // Lazy: nothing is requested until the first read, so a missing object
     // surfaces as a stream error. The port says to `stat` first for that reason.
-    return this.storage.bucket(this.settings.bucket).file(key).createReadStream();
+    return this.storage.bucket(this.settings.bucket).file(key).createReadStream(range);
   }
 
   async stat(key: string): Promise<{ bytes: number } | null> {

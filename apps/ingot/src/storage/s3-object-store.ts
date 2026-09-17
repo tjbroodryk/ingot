@@ -9,7 +9,7 @@ import {
 import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { upstream } from '../observability/index.js';
-import type { ObjectStore, PendingWrite } from './object-store.port.js';
+import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
 import { quote, stripScheme } from './secret-sql.js';
 import type { S3Settings } from './storage-settings.js';
 
@@ -118,10 +118,14 @@ export class S3ObjectStore implements ObjectStore {
     });
   }
 
-  async open(key: string): Promise<Readable> {
+  async open(key: string, range?: ByteRange): Promise<Readable> {
     return upstream('s3', 'get_object', async () => {
       const object = await this.client.send(
-        new GetObjectCommand({ Bucket: this.settings.bucket, Key: key }),
+        new GetObjectCommand({
+          Bucket: this.settings.bucket,
+          Key: key,
+          ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+        }),
       );
       if (!object.Body) throw new Error(`Object "${key}" came back with no body`);
 

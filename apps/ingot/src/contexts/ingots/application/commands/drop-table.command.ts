@@ -11,6 +11,10 @@ import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../../../records/application/ports/overlay-store.port.js';
+import {
+  RETIRED_GENERATIONS,
+  type RetiredGenerations,
+} from '../../../records/application/ports/retired-generations.port.js';
 import { Keys, OBJECT_STORE, type ObjectStore } from '../../../../storage/object-store.port.js';
 import { INGOT_TABLE_REPOSITORY, type IngotTableRepository } from '../../domain/index.js';
 import { IngotAccess } from '../ingot-access.js';
@@ -43,6 +47,7 @@ export class DropTableHandler implements ICommandHandler<DropTable> {
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(RETIRED_GENERATIONS) private readonly retired: RetiredGenerations,
   ) {}
 
   async execute(command: DropTable): Promise<void> {
@@ -50,6 +55,9 @@ export class DropTableHandler implements ICommandHandler<DropTable> {
     const table = await this.access.table(command.ingotId, command.accountId, command.table);
 
     await this.overlay.purgeTable(table.id.value);
+    // A table recreated under this name counts generations from one again, and
+    // a retirement left behind would delete its files when it fell due.
+    await this.retired.purgeTable(table.id.value);
     await this.tables.remove(table.id);
     // The sweeper delivers it; this context has no handle on the worker to wake.
     await this.changes.dropped({

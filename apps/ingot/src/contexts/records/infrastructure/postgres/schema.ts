@@ -207,4 +207,25 @@ export const receiptDeliveryQueue = pgTable(
   ],
 );
 
+/**
+ * Replaced Parquet generations, deleted once their grace has passed. See
+ * `drizzle/0013_retired_generations.sql` for why a roll-up no longer deletes
+ * them itself.
+ */
+export const retiredGeneration = pgTable(
+  'retired_generation',
+  {
+    prefix: text('prefix').primaryKey(),
+    ingotId: text('ingot_id').notNull(),
+    tableId: text('table_id').notNull(),
+    generation: integer('generation').notNull(),
+    reapAfter: timestamp('reap_after', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('retired_generation_due').on(table.reapAfter),
+    index('retired_generation_table').on(table.tableId),
+    index('retired_generation_ingot').on(table.ingotId),
+  ],
+);
+
 export type OverlayRowRecord = typeof overlayRow.$inferSelect;

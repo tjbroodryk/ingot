@@ -39,6 +39,7 @@ const TABLES = [
   'overlay_embed_queue',
   'overlay_receipt_queue',
   'receipt_delivery_queue',
+  'retired_generation',
 ];
 
 export interface TestDatabase {

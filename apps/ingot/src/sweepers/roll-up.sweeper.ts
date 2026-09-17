@@ -4,6 +4,7 @@ import {
   type OverlayStore,
 } from '../contexts/records/application/ports/overlay-store.port.js';
 import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
+import { ReapGenerations } from '../contexts/records/application/commands/reap-generations.command.js';
 import { Cron, minutes } from './cron.js';
 import { Dispatcher } from '../shared/application/index.js';
 
@@ -92,6 +93,17 @@ export class RollUpSweeper {
             `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
         );
       }
+    }
+
+    // Here rather than a sweep of its own: it deletes what a roll-up retired,
+    // and wants the same one-replica-at-a-time lock.
+    try {
+      await this.dispatcher.send(new ReapGenerations());
+    } catch (error) {
+      this.logger.error(
+        `Reaping replaced generations failed: ` +
+          `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+      );
     }
   }
 }
