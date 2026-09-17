@@ -59,24 +59,24 @@ self-hosting answer, and currently the only one — opens the single account
 named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 `INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
 
-| Route                                        |                                                                       |
-| -------------------------------------------- | --------------------------------------------------------------------- |
-| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                        |
-| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                     |
-| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention.                          |
-| `GET /:account/ingots`                       | List them.                                                            |
-| `POST /:account/:ingot/add`                  | Store a tool result.                                                  |
-| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                  |
-| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                  |
-| `GET /:account/:ingot/info`                  | The information schema, settings included.                            |
-| `POST /:account/:ingot/config`               | Set where receipts are delivered. A patch; returns the whole config.  |
-| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.       |
-| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                     |
-| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`. |
-| `GET /:account/:ingot/tables/:table/parquet` | The table's Parquet file, streamed. 404 until its first roll-up.      |
-| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                         |
-| `DELETE /:account/:ingot`                    | Destroy the memory.                                                   |
-| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                           |
+| Route                                        |                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                           |
+| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                        |
+| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent. |
+| `GET /:account/ingots`                       | List them.                                                               |
+| `POST /:account/:ingot/add`                  | Store a tool result.                                                     |
+| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                     |
+| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                     |
+| `GET /:account/:ingot/info`                  | The information schema, settings included.                               |
+| `POST /:account/:ingot/config`               | Delivery and retention. A patch; returns the whole config.               |
+| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.          |
+| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                        |
+| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`.    |
+| `GET /:account/:ingot/tables/:table/parquet` | A generation's Parquet, streamed, by range. 410 once reaped.             |
+| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                            |
+| `DELETE /:account/:ingot`                    | Destroy the memory.                                                      |
+| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                              |
 
 Minted keys are stored as a SHA-256 digest and nothing else, and are returned
 once, in the response that created them; there is no way to read one back. The
@@ -121,11 +121,14 @@ Two things a change may not do, both asserted by `versioning.test.ts`:
   release that made the service _do_ something different would be a second
   product wearing the same name.
 
-`GET /api/versions` lists what exists. Four releases: the baseline;
+`GET /api/versions` lists what exists. Five releases: the baseline;
 `2026-08-27`, where every `TableInfo` gained a `config` — rendered away again
 for a caller pinned to the baseline, in `/info` and in an `/add` receipt alike;
 `2026-09-06`, where the memory itself gained one, holding where its receipts
-are delivered; and `2026-09-15`, where a query result gained `next` for paging.
+are delivered; `2026-09-15`, where a query result gained `next` for paging; and
+`2026-09-17`, where memories gained an `externalId`, their config an
+`expiresAt` and delivery `events`, and `/pending` the `base` files it is pending
+against.
 
 ## The mapping
 
@@ -681,6 +684,33 @@ for a request that finished an hour ago still reaches it.
 The whole config comes back, and `/info` reports it, because a patch that
 changed one field leaves you no way to see the rest. `configure_delivery` is the
 same thing over MCP.
+
+A strategy pushes receipts and nothing else unless it names its `events`:
+
+```jsonc
+{
+  "delivery": {
+    "t": "webhook",
+    "endpoint": "https://acme.dev/hooks/ingot",
+    "events": ["receipt.ready", "operations.appended", "table.rolled_up", "table.dropped"],
+  },
+}
+```
+
+The three table events are how something mirroring a memory keeps up without
+polling. They are **signals, not rows**: `operations.appended` says a table has
+writes through `throughSeq`, and the receiver reads them from `/pending` with
+its own cursor. Delivery is at least once and a retry can land out of order, so
+rows carried in the body would have to be deduplicated and re-sequenced by
+every receiver; a cursor read is in order by construction and heals a lost
+delivery on the next one. For the same reason they fold — writes that land while
+an announcement is still queued widen it rather than queuing another, so a
+table written in a loop is one delivery, not a thousand. `table.rolled_up` means
+any cursor from before `generation` is spent: download the new base and page
+`/pending` from the start. `receipt.ready` never folds.
+
+The same call extends a memory's life: `{ "retainFor": "14d" }` restarts the
+clock from now, and `null` keeps it indefinitely.
 
 **A `webhook` endpoint is the one place a caller chooses where this service
 opens a connection**, so it is a boundary rather than a format check. Absolute

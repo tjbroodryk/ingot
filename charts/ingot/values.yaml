@@ -360,6 +360,11 @@ config:
     # Sent as User-Agent on every webhook. Empty keeps the service's own.
     userAgent: ''
 
+  # How long a Parquet generation stays readable after a roll-up replaces it.
+  # Readers downloading a table through /parquet, or reading it by range from
+  # behind a proxy, need it to outlive their read. A minute to a week.
+  generationGraceMs: 3600000
+
   # ── the query engine ─────────────────────────────────────────────────────
   # The ceiling on what one caller's question can cost. See the note on
   # `server.resources` before raising `memoryLimit`.
