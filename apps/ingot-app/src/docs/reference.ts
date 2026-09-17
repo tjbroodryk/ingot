@@ -127,14 +127,18 @@ export const ENDPOINTS: readonly Endpoint[] = [
       'The changelog of the wire contract: the header name, the latest release, every version, and what each one changed.',
     note: 'Public, because deciding whether to integrate with a service is something you do before you have a key.',
     sample: `200 OK
-{ "header": "Ingot-Version",
+{
+  "header": "Ingot-Version",
   "latest": "2026-09-06",
-  "versions": ["2026-08-26", "2026-08-27",
-               "2026-09-06"],
+  "versions": ["2026-08-26", "2026-08-27", "2026-09-06"],
   "changelog": [
-    { "version": "2026-09-06",
+    {
+      "version": "2026-09-06",
       "summary": "…",
-      "changes": ["…"] } ] }`,
+      "changes": ["…"]
+    }
+  ]
+}`,
   },
 
   // ── accounts ────────────────────────────────────────────────────────────
@@ -152,12 +156,19 @@ export const ENDPOINTS: readonly Endpoint[] = [
     summary:
       'The account and the keys on it — metadata only. `prefix` is the non-secret head of a key, which is what tells two of them apart.',
     sample: `200 OK
-{ "slug": "acme", "name": "Acme Inc",
-  "keys": [{ "id": "key_01H…",
-             "label": "ci",
-             "prefix": "ing_sk_7f2c…",
-             "lastUsedAt": "2026-08-27T09:14:02Z",
-             "revokedAt": null }] }`,
+{
+  "slug": "acme",
+  "name": "Acme Inc",
+  "keys": [
+    {
+      "id": "key_01H…",
+      "label": "ci",
+      "prefix": "ing_sk_7f2c…",
+      "lastUsedAt": "2026-08-27T09:14:02Z",
+      "revokedAt": null
+    }
+  ]
+}`,
   },
   {
     id: 'key-mint',
@@ -170,9 +181,12 @@ export const ENDPOINTS: readonly Endpoint[] = [
     sample: `{ "label": "staging-agent" }
 
 201 Created
-{ "id": "key_01J…", "label": "staging-agent",
+{
+  "id": "key_01J…",
+  "label": "staging-agent",
   "prefix": "ing_sk_91ab…",
-  "secret": "ing_sk_…" }`,
+  "secret": "ing_sk_…"
+}`,
   },
   {
     id: 'key-revoke',
@@ -197,13 +211,19 @@ export const ENDPOINTS: readonly Endpoint[] = [
       'Cast a new ingot — one memory. Takes a `name` and an optional `retainFor`: a duration, because the question you are asking is "how long".',
     note: 'Expiry deletes the memory and everything in it, and that is not reversible. Omit it and the memory is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — a memory is addressed by id, never by name.',
     chips: ['30m', '12h', '14d', '4w'],
-    sample: `{ "name": "crm-notes",
-  "retainFor": "14d" }
+    sample: `{
+  "name": "crm-notes",
+  "retainFor": "14d"
+}
 
 201 Created
-{ "id": "ing_01H8Z…", "name": "crm-notes",
-  "tables": 0, "rows": 0,
-  "expiresAt": "2026-09-10T11:02:00Z" }`,
+{
+  "id": "ing_01H8Z…",
+  "name": "crm-notes",
+  "tables": 0,
+  "rows": 0,
+  "expiresAt": "2026-09-10T11:02:00Z"
+}`,
   },
   {
     id: 'ingot-list',
@@ -216,12 +236,22 @@ export const ENDPOINTS: readonly Endpoint[] = [
       "The account's memories, as an array. A literal segment, registered before the `:ingot` routes so a listing is not read as a memory called “ingots”.",
     note: 'This is how you get an `id` back if you did not keep the one `create` handed you.',
     sample: `200 OK
-[ { "id": "ing_01H8Z…", "name": "crm-notes",
-    "tables": 3, "rows": 412,
-    "expiresAt": "2026-09-10T…" },
-  { "id": "ing_01J2Q…", "name": "session-42",
-    "tables": 1, "rows": 18,
-    "expiresAt": null } ]`,
+[
+  {
+    "id": "ing_01H8Z…",
+    "name": "crm-notes",
+    "tables": 3,
+    "rows": 412,
+    "expiresAt": "2026-09-10T…"
+  },
+  {
+    "id": "ing_01J2Q…",
+    "name": "session-42",
+    "tables": 1,
+    "rows": 18,
+    "expiresAt": null
+  }
+]`,
   },
   {
     id: 'ingot-info',
@@ -233,19 +263,24 @@ export const ENDPOINTS: readonly Endpoint[] = [
     summary: 'The information schema — what a model reads before it writes SQL.',
     note: 'Answered entirely from Postgres: no bucket read, no DuckDB session. `pending` is the rows still in the overlay, which a query already sees.',
     sample: `200 OK
-{ "name": "crm-notes",
-  "embedding": { "model": "text-embedding-3-small",
-                 "dimensions": 1536 },
+{
+  "name": "crm-notes",
+  "embedding": { "model": "text-embedding-3-small", "dimensions": 1536 },
   "config": { "delivery": { "t": "none" } },
-  "tables": [{
-    "name": "contacts",
-    "rows": 412, "pending": 27, "generation": 9,
-    "key": ["id"],
-    "columns": [
-      { "name": "company", "type": "VARCHAR",
-        "embedded": false, "required": true },
-      { "name": "arr", "type": "DOUBLE",
-        "embedded": false, "required": true } ] }] }`,
+  "tables": [
+    {
+      "name": "contacts",
+      "rows": 412,
+      "pending": 27,
+      "generation": 9,
+      "key": ["id"],
+      "columns": [
+        { "name": "company", "type": "VARCHAR", "embedded": false, "required": true },
+        { "name": "arr", "type": "DOUBLE", "embedded": false, "required": true }
+      ]
+    }
+  ]
+}`,
   },
   {
     id: 'ingot-config',
@@ -271,19 +306,26 @@ export const ENDPOINTS: readonly Endpoint[] = [
         doc: 'For `rmq`: the queue name. The broker is the deployment’s (`INGOT_RABBITMQ_URL`), never the caller’s.',
       },
     ],
-    sample: `{ "delivery": {
+    sample: `{
+  "delivery": {
     "t": "webhook",
-    "endpoint": "https://acme.dev/hooks/ingot" } }
+    "endpoint": "https://acme.dev/hooks/ingot"
+  }
+}
 
 200 OK
-{ "delivery": {
+{
+  "delivery": {
     "t": "webhook",
-    "endpoint": "https://acme.dev/hooks/ingot" } }
+    "endpoint": "https://acme.dev/hooks/ingot"
+  }
+}
 
 # each receipt then arrives as
 POST https://acme.dev/hooks/ingot
 Ingot-Batch: batch_1508c8…
-{ "event": "receipt.ready",
+{
+  "event": "receipt.ready",
   "ingot": "ing_01H8Z…",
   "batch": "batch_1508c8…",
   "externalId": "call_42",
@@ -294,7 +336,8 @@ Ingot-Batch: batch_1508c8…
   "query": "SELECT external_id, summary, …",
   "model": "gpt-4.1-mini",
   "readyAt": "2026-09-06T11:02:04Z",
-  "attempt": 1 }`,
+  "attempt": 1
+}`,
   },
   {
     id: 'table-config',
@@ -306,17 +349,27 @@ Ingot-Batch: batch_1508c8…
     summary:
       'How a table is read, not what is in it: the stemmer, the stopwords, which columns are indexed, what is stripped before tokenising.',
     note: 'A patch, so sending one setting leaves the other six alone — and the whole `TableConfig` comes back, defaults included, because a caller who changed one field otherwise has no way to see the rest.',
-    sample: `{ "fts": { "stemmer": "english",
-          "stopwords": "none",
-          "ignore": "[^a-z0-9]+",
-          "columns": ["body"] } }
+    sample: `{
+  "fts": {
+    "stemmer": "english",
+    "stopwords": "none",
+    "ignore": "[^a-z0-9]+",
+    "columns": ["body"]
+  }
+}
 
 200 OK
-{ "fts": { "enabled": true, "stemmer": "english",
-           "stopwords": "none",
-           "ignore": "[^a-z0-9]+",
-           "stripAccents": true, "lowercase": true,
-           "columns": ["body"] } }`,
+{
+  "fts": {
+    "enabled": true,
+    "stemmer": "english",
+    "stopwords": "none",
+    "ignore": "[^a-z0-9]+",
+    "stripAccents": true,
+    "lowercase": true,
+    "columns": ["body"]
+  }
+}`,
   },
   {
     id: 'table-drop',
@@ -372,39 +425,51 @@ Ingot-Batch: batch_1508c8…
       },
       { name: 'result', doc: 'The tool result itself. Anything JSON, `null` included.' },
     ],
-    sample: `{ "table": "contacts",
+    sample: `{
+  "table": "contacts",
   "rows": "$.contacts[*]",
   "columns": {
     "id":      { "from": "$.id",       "type": "VARCHAR" },
     "company": { "from": "$.org.name", "type": "VARCHAR" },
-    "arr":     { "from": "$.deal.arr", "type": "DOUBLE" },
-    "notes":   { "from": "$.notes",    "type": "VARCHAR",
-                 "embed": true } },
+    "arr":     { "from": "$.deal.arr", "type": "DOUBLE"  },
+    "notes":   { "from": "$.notes",    "type": "VARCHAR", "embed": true }
+  },
   "key": ["id"],
   "receipt": "full",
-  "result": toolResult }
+  "result": toolResult
+}
 
 201 Created
-{ "table": "contacts", "rowsAdded": 412,
+{
+  "table": "contacts",
+  "rowsAdded": 412,
   "columnsAdded": ["notes"],
   "queuedForEmbedding": 412,
-  "payload": { "kilobytes": 84.2,
-               "estimatedTokens": 21507 },
+  "payload": { "kilobytes": 84.2, "estimatedTokens": 21507 },
   "receipt": {
     "status": "pending",
     "model": "gpt-4.1-mini",
-    "summary": null, "searchTerm": null,
+    "summary": null,
+    "searchTerm": null,
     "batch": "batch_1508c8…",
     "receiptQuery": "SELECT … FROM ingot_receipts
-       WHERE source_batch = 'batch_1508c8…'",
+                     WHERE source_batch = 'batch_1508c8…'",
     "key": ["id"],
-    "items": [ { "key": { "id": "c_91" },
-                 "query": "SELECT * FROM contacts
-                           WHERE id = 'c_91'" } ] } }
+    "items": [
+      {
+        "key": { "id": "c_91" },
+        "query": "SELECT * FROM contacts
+                  WHERE id = 'c_91'"
+      }
+    ]
+  }
+}
 
 # seconds later, receiptQuery answers
-{ "summary": "412 EMEA accounts, 17 at risk",
-  "search_term": "EMEA renewal risk" }`,
+{
+  "summary": "412 EMEA accounts, 17 at risk",
+  "search_term": "EMEA renewal risk"
+}`,
   },
   {
     id: 'query',
@@ -417,17 +482,25 @@ Ingot-Batch: batch_1508c8…
       'Read it back. `sql` is run as written — exactly one SELECT, in a locked-down DuckDB session, over a view unioning the overlay with the Parquet base. `text` is embedded and ranks a table by similarity.',
     note: 'Given both, the embedding is bound as `$q` and your SQL may use it, which is how a hybrid search is one round trip rather than two. A POST that changes nothing, hence the explicit 200.',
     sample: `# structured
-{ "sql": "SELECT company, arr FROM contacts
-          WHERE stage = 'won' ORDER BY arr DESC" }
+{
+  "sql": "SELECT company, arr FROM contacts
+          WHERE stage = 'won' ORDER BY arr DESC"
+}
 
 # or in words
-{ "text": "renewal risk in EMEA",
-  "table": "notes", "column": "body" }
+{
+  "text": "renewal risk in EMEA",
+  "table": "notes",
+  "column": "body"
+}
 
 200 OK
-{ "columns": ["company", "arr"],
-  "rows": [ { "company": "Northwind", "arr": 84000 } ],
-  "truncated": false, "elapsedMs": 34 }`,
+{
+  "columns": ["company", "arr"],
+  "rows": [{ "company": "Northwind", "arr": 84000 }],
+  "truncated": false,
+  "elapsedMs": 34
+}`,
   },
   {
     id: 'delete',
@@ -439,12 +512,17 @@ Ingot-Batch: batch_1508c8…
     summary:
       'Forget the rows matching a `where` predicate. It is resolved to row ids and those are written as tombstones, so a later query filters against a finite set rather than a growing list of predicates.',
     note: 'A POST rather than a DELETE because it carries a body, and a body on a DELETE is a thing intermediaries drop.',
-    sample: `{ "table": "contacts",
-  "where": "stage = 'lost'" }
+    sample: `{
+  "table": "contacts",
+  "where": "stage = 'lost'"
+}
 
 200 OK
-{ "table": "contacts", "rowsForgotten": 17,
-  "truncated": false }`,
+{
+  "table": "contacts",
+  "rowsForgotten": 17,
+  "truncated": false
+}`,
   },
 
   // ── mcp ─────────────────────────────────────────────────────────────────
@@ -481,11 +559,14 @@ Ingot-Batch: batch_1508c8…
     ],
     sampleTone: SampleTone.Ink,
     sample: `# claude_desktop_config.json
-{ "mcpServers": { "ingot": {
-    "url": "http://localhost:3002/api/v1/
-           acme/ing_01H8Z…/mcp",
-    "headers": { "Authorization":
-      "Bearer ing_sk_…" } } } }`,
+{
+  "mcpServers": {
+    "ingot": {
+      "url": "http://localhost:3002/api/v1/acme/ing_01H8Z…/mcp",
+      "headers": { "Authorization": "Bearer ing_sk_…" }
+    }
+  }
+}`,
   },
 ];
 
