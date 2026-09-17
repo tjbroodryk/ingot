@@ -12,7 +12,7 @@ import {
 } from '../../src/delivery/delivery-settings.js';
 
 /**
- * Where a memory's receipts are allowed to go.
+ * Where an ingot's receipts are allowed to go.
  *
  * The refusals are the interesting half, and they are not stylistic. A webhook
  * endpoint is **the one place a caller chooses where this service opens a
@@ -136,7 +136,7 @@ describe('a delivery strategy', () => {
 
     /**
      * The SSRF cases, and the reason this check exists at all: without it, a
-     * tenant can point a memory at an address only this service can reach and
+     * tenant can point an ingot at an address only this service can reach and
      * have it POST there on their behalf.
      */
     it.each([
@@ -273,7 +273,7 @@ describe('what a deployment decides about delivery', () => {
   });
 
   /**
-   * The check that runs when somebody *configures* a memory, not when a
+   * The check that runs when somebody *configures* an ingot, not when a
    * delivery goes out. Accepting a queue on a deployment with no broker would
    * put the answer in a worker's log, hours later, where the person who made
    * the call cannot see it.

@@ -1,14 +1,14 @@
 import type { Ingot } from '../../../ingots/domain/index.js';
 
 /**
- * Tells a memory's delivery target that a table changed.
+ * Tells an ingot's delivery target that a table changed.
  *
  * Called **inside the transaction that made the change**, like
  * `ReceiptNotifier`, so an announcement exists exactly when the change does.
- * Each call is a no-op for a memory whose strategy does not ask for the event,
- * which is every memory that has not named it in `events`.
+ * Each call is a no-op for an ingot whose strategy does not ask for the event,
+ * which is every ingot that has not named it in `events`.
  *
- * The memory is passed in rather than looked up: every caller has just loaded
+ * The ingot is passed in rather than looked up: every caller has just loaded
  * it to check the tenancy, and its delivery strategy is what decides whether
  * there is anything to do. Each method says whether it announced anything, so
  * the caller knows whether to wake the delivery worker after the commit.

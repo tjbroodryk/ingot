@@ -8,7 +8,7 @@
  */
 export interface ReceiptReady {
   /**
-   * The memory, not the account. The delivery target is registered against one
+   * The ingot, not the account. The delivery target is registered against one
    * of these, and an adapter that needs the tenant can resolve it — where
    * carrying an account id through the queue would be a column written for a
    * feature that does not exist.

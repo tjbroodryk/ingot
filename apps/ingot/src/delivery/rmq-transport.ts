@@ -56,7 +56,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
    * Queues already declared on the connection currently open.
    *
    * `assertQueue` is idempotent and cheap, but it is still a round trip to the
-   * broker — and it was one *per message*, so a memory under load paid two
+   * broker — and it was one *per message*, so an ingot under load paid two
    * round trips to deliver one receipt and every replica paid them separately.
    * Declaring is a fact about the connection, not about the message, so it is
    * remembered for as long as that connection is.
@@ -82,10 +82,10 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
       throw new DeliveryRefused('rmq', `cannot deliver a "${target.t}" target`);
     }
     if (this.settings.brokerUrl === null) {
-      // Reachable only for a memory configured while a broker was set and
+      // Reachable only for an ingot configured while a broker was set and
       // delivered after it was unset. Refused rather than dropped: the row
       // stays in the queue, and the gauge says somebody has taken the broker
-      // away from memories that are still pointed at it.
+      // away from ingots that are still pointed at it.
       throw new DeliveryRefused('rmq', 'no broker is configured (INGOT_RABBITMQ_URL is unset)');
     }
 
@@ -209,7 +209,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
  * How many declared queues are remembered before the cache starts again.
  *
  * A bound rather than an LRU, and the crudeness is deliberate. Queue names come
- * from callers — one per memory that asked for `rmq` — so this is unbounded
+ * from callers — one per ingot that asked for `rmq` — so this is unbounded
  * input, and something has to cap it. What an LRU would buy is avoiding a cold
  * start every `MAX_DECLARED` distinct queues; what a cold start costs is one
  * extra round trip per queue, which is what this whole cache was saving in the

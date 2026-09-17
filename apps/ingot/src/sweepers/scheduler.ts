@@ -54,7 +54,7 @@ const OVERRUN_FACTOR = 3;
  * starts again from the top. That is safe for every sweeper here and it is
  * worth saying why rather than trusting it: the queue row is the truth, so an
  * embed batch that already committed is not claimed again, a receipt already
- * written is not re-summarised, a memory already reaped is not found, and a
+ * written is not re-summarised, an ingot already reaped is not found, and a
  * compaction that already flipped the manifest finds no watermark to fold.
  * Re-running a tick costs a wasted pass, never a wrong answer.
  *

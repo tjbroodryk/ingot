@@ -1,5 +1,5 @@
 import { type ColumnInfo, ColumnType } from '../contract.js';
-import type { TableSnapshot } from '../memory.js';
+import type { TableSnapshot } from '../ingot.js';
 
 export interface BaseFileRef {
   readonly table: string;

@@ -23,7 +23,7 @@ import { PgOverlayStore } from './infrastructure/postgres/pg-overlay-store.js';
  *
  * The delivery outbox is here for exactly that reason and not because it is
  * part of the overlay. It is written by `records/` and emptied by `ingots/`
- * when a memory is destroyed — announcing a receipt from a memory that no
+ * when an ingot is destroyed — announcing a receipt from an ingot that no
  * longer exists would hand a receiver a query that can only come back empty —
  * and binding it in `RecordsModule` would make those two contexts import each
  * other.

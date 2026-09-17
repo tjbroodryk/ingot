@@ -97,7 +97,7 @@ export const REQUIRED: readonly Dependency[] = [
     kicker: 'Required · postgres:17',
     title: 'The database, and the coordinator',
     body: [
-      'Postgres holds the catalogue and the overlay — never the Parquet. A memory is written to the database when it arrives and folded into a Parquet generation later, so what is in Postgres is the rows that have not been folded yet, plus the manifest saying where the folded ones went.',
+      'Postgres holds the catalogue and the overlay — never the Parquet. A row is written to the database when it arrives and folded into a Parquet generation later, so what is in Postgres is the rows that have not been folded yet, plus the manifest saying where the folded ones went.',
       'It is also how the replicas agree. The embedding queue, the receipt queue and the delivery outbox are ordinary tables, claimed with `FOR UPDATE SKIP LOCKED` under a lease, and each sweep that drains one takes a Postgres advisory lock so that exactly one replica is sweeping while the rest serve traffic. Nothing else in the deployment holds a timer, a journal or a lock.',
       'The migrations in `apps/ingot/drizzle` define the entire schema.'
     ],
@@ -190,7 +190,7 @@ export const OPTIONAL: readonly Dependency[] = [
     kicker: 'Optional · embeddings and summaries',
     title: 'Expensive bits are opt-in.',
     body: [
-      'Embedding is a per-row cost paid once and a summary is an LLM call paid once per memory, every time a caller asks for `receipt: "full"`.',
+      'Embedding is a per-row cost paid once and a summary is an LLM call paid once per ingot, every time a caller asks for `receipt: "full"`.',
       'They work independantly of each other, but when both enabled, they work well together. Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, key or bill. Not appropriate for prod however, so each announces itself at boot.',
       'When using either you must supply the provider credentials and a provider without its credentials refuses to boot.'
     ],
@@ -275,7 +275,7 @@ config:
     title: 'Get notified when embeddings and/or receipts are ready',
     body: [
       'You can either collect a receipt by polling the SELECT and /add call handed back or specify a channel to get a notification pushed to.',
-      'So a memory can nominate a target with `POST /:account/:ingot/config`, and each receipt is pushed as it lands: a `webhook`, which needs nothing set here, or an `rmq` queue, which needs a broker. The split is deliberate. A memory’s owner chooses where among their own things a receipt goes — an endpoint, a queue name — and the operator chooses what this service will connect to at all. A tenant naming a broker URL would be a tenant choosing where this service opens an authenticated connection.',
+      'So an ingot can nominate a target with `POST /:account/:ingot/config`, and each receipt is pushed as it lands: a `webhook`, which needs nothing set here, or an `rmq` queue, which needs a broker. The split is deliberate. An ingot’s owner chooses where among their own things a receipt goes — an endpoint, a queue name — and the operator chooses what this service will connect to at all. A tenant naming a broker URL would be a tenant choosing where this service opens an authenticated connection.',
       'A queue named on a deployment with no broker is refused at the call that configures it, naming the variable, rather than accepted and then failing every delivery afterwards in a worker log the caller cannot see. Webhook endpoints are checked the same way and at the same moment: absolute `http`/`https`, no credentials in the URL, and loopback, link-local and private literals refused — this service would be reaching them from inside its own network, on somebody else’s behalf.',
       'Delivery is at least once via an outbox mechanism. The intention to deliver is a row gets written in the same transaction as the receipt it announces, and a worker sends it afterwards. The aim is to make a receipt impossible to announce and then lose, or lose and never announce. `ingot_deliveries_pending` says whether a receiver is keeping up; `ingot_deliveries_abandoned` should sit at zero.',
     ],
@@ -287,12 +287,12 @@ INGOT_RABBITMQ_URL=
       {
         name: 'INGOT_RABBITMQ_URL',
         fallback: 'unset',
-        note: 'The broker, with its credentials. Unset, `{ "t": "rmq" }` is refused when a memory is configured for it — webhooks are unaffected.',
+        note: 'The broker, with its credentials. Unset, `{ "t": "rmq" }` is refused when an ingot is configured for it — webhooks are unaffected.',
       },
       {
         name: 'INGOT_RABBITMQ_EXCHANGE',
         fallback: 'the default exchange',
-        note: 'Which routes by queue name, and is what a per-memory queue name already is. Set it only for your own topology.',
+        note: 'Which routes by queue name, and is what a per-ingot queue name already is. Set it only for your own topology.',
       },
       {
         name: 'INGOT_DELIVERY_TIMEOUT_MS',

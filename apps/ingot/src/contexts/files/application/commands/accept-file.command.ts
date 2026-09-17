@@ -171,13 +171,13 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
      * Neither half is transactional with the other — an object store has no
      * rollback — so one of the two failure modes has to be chosen deliberately.
      * Writing the object first risks an orphan if the transaction then rolls
-     * back: bytes nobody references, under the memory's own prefix, removed
+     * back: bytes nobody references, under the ingot's own prefix, removed
      * with it by the `removePrefix` that already removes the Parquet. Writing
      * the row first risks a queue entry pointing at an object that is not
      * there, which is a parse that fails four times and a document the caller
      * was told had been accepted.
      *
-     * An orphan costs storage until the memory is deleted. The other costs a
+     * An orphan costs storage until the ingot is deleted. The other costs a
      * caller a document they believe they uploaded. That is not a close call.
      */
     await this.objects.put(objectKey, upload.content);

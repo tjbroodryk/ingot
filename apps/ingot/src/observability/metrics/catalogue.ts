@@ -98,7 +98,7 @@ export const Metrics = {
   /**
    * Split by phase because the two fail differently and are fixed differently.
    * Materialising is bounded by how much of the base tier a query drags into
-   * memory; executing is the caller's own SQL.
+   * ingot; executing is the caller's own SQL.
    */
   SessionDuration: defineHistogram({
     name: 'ingot_query_session_duration_seconds',
@@ -243,7 +243,7 @@ export const Metrics = {
   DeliveriesPending: defineGauge({
     name: 'ingot_deliveries_pending',
     help:
-      'Receipts announced to a memory’s delivery target and not yet sent. ' +
+      'Receipts announced to an ingot’s delivery target and not yet sent. ' +
       'Deployment-wide: aggregate with max(), never sum().',
     labels: [],
   }),
@@ -269,7 +269,7 @@ export const Metrics = {
    */
   DeliveryDuration: defineHistogram({
     name: 'ingot_delivery_duration_seconds',
-    help: 'Time to deliver one receipt to a memory’s target.',
+    help: 'Time to deliver one receipt to an ingot’s target.',
     labels: ['kind', 'outcome'],
     buckets: Buckets.Upstream,
   }),

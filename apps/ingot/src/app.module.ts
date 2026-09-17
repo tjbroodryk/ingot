@@ -37,7 +37,7 @@ import { INGOT_VERSIONS, VERSION_HEADER } from './versioning/changeset.js';
  * - `AccountsModule` **before** `IngotsModule`, and this one is load bearing.
  *   Express matches routes in registration order, and `/:account/:ingot` is as
  *   greedy as a pattern gets: registered first, it would swallow
- *   `/accounts/acme/keys` and route key management into the memory API.
+ *   `/accounts/acme/keys` and route key management into the ingot API.
  *   `AccountSlug` refuses to mint an account named `accounts` as the second
  *   half of that defence, and `route-collision.test.ts` asserts both.
  * - `SweepersModule` last, since it only makes sense once the commands it

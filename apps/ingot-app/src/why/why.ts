@@ -19,7 +19,7 @@
 export const WHY_TITLE = 'Similarity is not a join';
 
 export const WHY_DESCRIPTION =
-  'Why Ingot is a query engine rather than a vector store: models write SQL, tool results are tables, and the questions worth asking are joins across them. What a memory is scoped to, what it costs to keep, and who owns what is in it.';
+  'Why Ingot is a query engine rather than a vector store: models write SQL, tool results are tables, and the questions worth asking are joins across them. What an ingot is scoped to, what it costs to keep, and who owns what is in it.';
 
 /**
  * The paragraph under the title, and the page's `description`.
@@ -29,7 +29,7 @@ export const WHY_DESCRIPTION =
  * first — and two copies drift on the edit that only remembers one.
  */
 export const WHY_LEDE =
-  'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think a memory’s job is to hold tool results as tables and then get out of the way.';
+  'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think an ingot’s job is to hold tool results as tables and then get out of the way.';
 
 /* ── 01 · what happens to a tool result today ────────────────────────────── */
 
@@ -77,14 +77,14 @@ export const LOSS_CLAIM =
 /* ── 02 · why SQL ────────────────────────────────────────────────────────── */
 
 /**
- * Three tools that have never heard of each other, writing into one memory.
+ * Three tools that have never heard of each other, writing into one ingot.
  *
  * The point of the sample is the `"table"` line in each block and nothing
  * else: three calls, three tables, one ingot. Each is a real `/add` — a JSON
  * path per column, a `type` per column, and `key` only on the one that has an
  * identity worth upserting on.
  */
-export const THREE_TOOLS = `# three tools. one memory. three tables.
+export const THREE_TOOLS = `# three tools. one ingot. three tables.
 POST /api/v1/acme/ing_01H8Z…/add
 {
   "table": "contacts",
@@ -126,7 +126,7 @@ POST /api/v1/acme/ing_01H8Z…/add
  * The question none of the three tools could have answered.
  *
  * Three tables in one FROM clause, which works because a query is offered
- * every table its memory holds and the engine narrows to the ones the
+ * every table its ingot holds and the engine narrows to the ones the
  * statement names — `sessions.all(tables)` in
  * `apps/ingot/src/contexts/query/application/queries/query-ingot.query.ts`.
  *
@@ -171,13 +171,13 @@ export interface SqlNote {
  * What the sample above is standing on. Each is a fact about a named file
  * rather than a property of SQL in general, because the interesting half of
  * this argument is that the guard rails exist — a model writing SQL against a
- * memory is only a good idea if the worst statement it can write is a slow
+ * ingot is only a good idea if the worst statement it can write is a slow
  * SELECT.
  */
 export const SQL_NOTES: readonly SqlNote[] = [
   {
     kicker: 'Scope',
-    title: 'Every table of the memory is in scope',
+    title: 'Every table of the ingot is in scope',
     body: 'A statement gets offered every table its ingot holds, and the engine narrows to the ones it actually names. Three tools that have never heard of each other are three tables in one FROM clause.',
     source: 'sessions.all(tables)',
   },
@@ -225,9 +225,9 @@ POST /api/v1/acme/ing_01H8Z…/query
           LIMIT 10"
 }`;
 
-/* ── 04 · what a memory is scoped to ─────────────────────────────────────── */
+/* ── 04 · what an ingot is scoped to ─────────────────────────────────────── */
 
-/** One of the four cells under "One memory per whatever you say". */
+/** One of the four cells under "One ingot per whatever you say". */
 export interface Grain {
   /** The `retainFor` it implies, or the fact that there is none. */
   readonly retention: string;
@@ -239,7 +239,7 @@ export interface Grain {
  * Four scopes, and the point is that Ingot has an opinion about none of them.
  *
  * The retentions are real: `retainFor` takes a whole number and a unit from
- * one minute to ten years, or is omitted to keep a memory until something
+ * one minute to ten years, or is omitted to keep an ingot until something
  * deletes it — `apps/ingot/src/contexts/ingots/domain/retention.vo.ts`. The
  * four below are the shapes people actually have, not the four the grammar
  * allows.
@@ -248,7 +248,7 @@ export const GRAINS: readonly Grain[] = [
   {
     retention: 'retainFor: "30m"',
     title: 'Per chat',
-    body: 'A scratch memory for one conversation. This session’s tool results, joinable to each other and to nothing else, gone half an hour after the last one lands. Nobody has to run a cleanup.',
+    body: 'A scratch ingot for one conversation. This session’s tool results, joinable to each other and to nothing else, gone half an hour after the last one lands. Nobody has to run a cleanup.',
   },
   {
     retention: 'retainFor: "12h"',
@@ -276,17 +276,17 @@ export const GRAINS: readonly Grain[] = [
  * spans two.
  */
 export const GRAIN_LIMIT =
-  'A statement sees the tables of one memory, and there is no query across two. So this is the one decision worth making deliberately: **the grain you pick is the grain you can join across**. Casting a memory is one POST, though, so it is also a decision you are allowed to change your mind about.';
+  'A statement sees the tables of one ingot, and there is no query across two. So this is the one decision worth making deliberately: **the grain you pick is the grain you can join across**. Casting an ingot is one POST, though, so it is also a decision you are allowed to change your mind about.';
 
-/** How the memories themselves are managed, at the account scope. */
+/** How the ingots themselves are managed, at the account scope. */
 export const GRAIN_CHIPS: readonly string[] = [
-  'POST /:account/create',
+  'POST /:account/cast',
   'POST /:account/:ingot/clone',
   'GET /:account/ingots',
-  'create_memory',
-  'clone_memory',
-  'list_memories',
-  'delete_memory',
+  'cast_ingot',
+  'clone_ingot',
+  'list_ingots',
+  'delete_ingot',
 ];
 
 /* ── 05 · what it costs to keep ──────────────────────────────────────────── */
@@ -337,17 +337,17 @@ export interface Cost {
 }
 
 /**
- * What a memory actually costs, including the three lines that are zero.
+ * What an ingot actually costs, including the three lines that are zero.
  *
  * The zeroes are the argument. A vector database is priced on being resident —
  * an index sized to the corpus, kept warm whether or not anybody is asking —
- * and none of the three tiers above is resident, so the bill for a memory
+ * and none of the three tiers above is resident, so the bill for an ingot
  * nobody is querying is the bytes it occupies.
  */
 export const COSTS: readonly Cost[] = [
   {
     item: 'Bucket bytes',
-    body: 'Parquet, columnar and compressed. This is the memory at rest, and the only thing an idle one costs.',
+    body: 'Parquet, columnar and compressed. This is the ingot at rest, and the only thing an idle one costs.',
   },
   {
     item: 'A Postgres',
@@ -355,23 +355,23 @@ export const COSTS: readonly Cost[] = [
   },
   {
     item: 'CPU, while a query runs',
-    body: 'A DuckDB session is built from the manifest, used once, and dropped. Between two queries a memory is consuming nothing you could scale up even if you wanted to.',
+    body: 'A DuckDB session is built from the manifest, used once, and dropped. Between two queries an ingot is consuming nothing you could scale up even if you wanted to.',
   },
   {
     item: 'Nothing per vector',
     body: 'Embeddings are Parquet in the same bucket, keyed by `_row_id` beside the rows they belong to. There is no per-dimension price and no index node.',
   },
   {
-    item: 'Nothing per memory',
-    body: 'Casting an ingot writes a row. Ten thousand scratch memories that expire tonight are ten thousand rows tonight and nothing tomorrow.',
+    item: 'Nothing per ingot',
+    body: 'Casting an ingot writes a row. Ten thousand scratch ingots that expire tonight are ten thousand rows tonight and nothing tomorrow.',
   },
   {
     item: 'Nothing while idle',
-    body: 'No index to keep warm, no cluster sized to the corpus, no minimum. A memory nobody is querying is some Parquet in a bucket.',
+    body: 'No index to keep warm, no cluster sized to the corpus, no minimum. An ingot nobody is querying is some Parquet in a bucket.',
   },
 ];
 
-/* ── 06 · whose memory it is ─────────────────────────────────────────────── */
+/* ── 06 · whose ingot it is ─────────────────────────────────────────────── */
 
 /**
  * The base tier, read without Ingot in the picture.
@@ -382,7 +382,7 @@ export const COSTS: readonly Cost[] = [
  * have to reassemble. And the last few minutes of writes are not in it, which
  * the sample says out loud rather than leaving to be found.
  */
-export const OWN_IT = `# ingot is not running. the memory still is.
+export const OWN_IT = `# ingot is not running. the ingot still is.
 # the highest gen- directory is the whole table.
 
 $ duckdb

@@ -10,7 +10,7 @@ import type { ReceiptNotifier, ReceiptReady } from '../application/ports/receipt
  * Two decisions worth stating, because both are about what happens when
  * somebody changes their mind halfway through.
  *
- * **The target is resolved here, and stored on the row.** A memory whose
+ * **The target is resolved here, and stored on the row.** An ingot whose
  * endpoint is changed while a delivery is queued should not have that delivery
  * silently retargeted at the new one: the row records where it was going when
  * the promise was made. It also means the worker never has to load an
@@ -21,7 +21,7 @@ import type { ReceiptNotifier, ReceiptReady } from '../application/ports/receipt
  * have moved since, and a delivery should say what was true when the receipt
  * landed — not what is true whenever a receiver happens to come back up.
  *
- * A memory with no delivery configured enqueues nothing at all. That is the
+ * An ingot with no delivery configured enqueues nothing at all. That is the
  * default and the overwhelming majority: the receipt's own SELECT is the
  * contract, and writing an outbox row for a target that is `none` would be a
  * queue that fills up as fast as receipts are written and drains into a log
@@ -40,7 +40,7 @@ export class OutboxReceiptNotifier implements ReceiptNotifier {
     const ingot = await this.ingots.findById(IngotId.of(receipt.ingotId));
 
     // Null is not reachable through `/add` — the receipt was queued against a
-    // memory that existed — but a memory destroyed between the queue and the
+    // ingot that existed — but an ingot destroyed between the queue and the
     // summariser is. Nothing to deliver to and nothing to complain about: the
     // receipt row is going the same way. A strategy that names its events and
     // leaves this one out has asked not to be told.

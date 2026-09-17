@@ -359,7 +359,7 @@ export class DuckDbEngine implements AnalyticalEngine {
         RefusalReason.IngotTooLarge,
         `Table "${table.name}" holds more than ${this.limits.maxMaterialisedRows} rows, ` +
           'which is more than one query session will hold in memory. ' +
-          'Narrow the memory, or split it across ingots.',
+          'Narrow the ingot, or split it across ingots.',
       );
     }
 

@@ -2,7 +2,7 @@ import type { IngotSummary } from '@ingot/shared/ingot-v1';
 import type { OverlayStore } from '../../records/application/ports/overlay-store.port.js';
 import type { Ingot, IngotTableRepository } from '../domain/index.js';
 
-/** One memory as a listing reports it. Rows count both tiers. */
+/** One ingot as a listing reports it. Rows count both tiers. */
 export async function summarise(
   ingot: Ingot,
   tables: IngotTableRepository,

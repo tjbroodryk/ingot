@@ -14,10 +14,10 @@ export const RESERVED_PREFIX = '_';
  * The table prefix this service keeps for itself.
  *
  * `ingot_receipts` and `ingot_embeddings` are ordinary tables in a caller's
- * memory — that is the whole design, because being ordinary is what gets them
+ * ingot — that is the whole design, because being ordinary is what gets them
  * the overlay, the roll-up into Parquet, tombstones and `/query` without any
  * of it being written twice. Ordinary also means a caller's mapping could
- * write to one, and a memory where that is possible is a memory where a
+ * write to one, and an ingot where that is possible is an ingot where a
  * receipt can hand back a summary somebody else wrote.
  *
  * So the namespace is reserved rather than the individual names: reserving
@@ -27,7 +27,7 @@ export const RESERVED_PREFIX = '_';
 export const RESERVED_TABLE_PREFIX = 'ingot_';
 
 /**
- * The tables this service writes into a caller's memory.
+ * The tables this service writes into a caller's ingot.
  *
  * Named here for the error message rather than for the check — the check is
  * the prefix, so this list can grow without anything else moving. `records/`

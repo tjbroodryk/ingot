@@ -21,7 +21,7 @@ export class IngotError extends Error {
 export class AuthenticationError extends IngotError {}
 /** 403: the key is valid, but not for this account. */
 export class PermissionError extends IngotError {}
-/** 404: no such memory, table or key — or it expired. */
+/** 404: no such ingot, table or key — or it expired. */
 export class NotFoundError extends IngotError {}
 /** 409: the request raced something, or the state it expects moved on. */
 export class ConflictError extends IngotError {}

@@ -93,7 +93,7 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
     /*
      * A question is only comparable to the vectors it is ranked against.
      *
-     * This memory recorded the model that wrote its embeddings, and if the
+     * This ingot recorded the model that wrote its embeddings, and if the
      * process is now configured for a different one, the honest answer is to
      * refuse. Ranking anyway would produce a number for every row — cosine
      * similarity between two unrelated vector spaces is perfectly well
@@ -170,7 +170,7 @@ function mode(sql: boolean, text: boolean): string {
  * Which table a plaintext question ranks.
  *
  * Named explicitly when there is more than one, because guessing would mean
- * silently searching the wrong memory — and the caller has `/info`, which
+ * silently searching the wrong ingot — and the caller has `/info`, which
  * tells them exactly what there is to choose from.
  */
 function pickTable(tables: readonly IngotTable[], body: QueryBody): IngotTable {

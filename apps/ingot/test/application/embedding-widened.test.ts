@@ -35,7 +35,7 @@ describe('turning embedding on after the fact', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory that changed its mind');
+    ingot = await world.ingot('an ingot that changed its mind');
   });
 
   afterAll(async () => {

@@ -37,7 +37,7 @@ export enum Auth {
 export enum EndpointGroup {
   Service = 'service',
   Accounts = 'accounts',
-  Memories = 'memories',
+  Ingots = 'ingots',
   Data = 'data',
   Mcp = 'mcp',
 }
@@ -95,7 +95,7 @@ export const API_VERSION = '2026-09-17';
 export const GROUPS: Record<EndpointGroup, GroupHeading> = {
   [EndpointGroup.Service]: { title: 'Service · version-neutral', nav: 'Service' },
   [EndpointGroup.Accounts]: { title: 'Accounts & keys', nav: 'Accounts & keys' },
-  [EndpointGroup.Memories]: { title: 'Memories', nav: 'Memories' },
+  [EndpointGroup.Ingots]: { title: 'Ingots', nav: 'Ingots' },
   [EndpointGroup.Data]: { title: 'Data', nav: 'Data' },
   [EndpointGroup.Mcp]: { title: 'MCP over streamable HTTP', nav: 'MCP' },
 };
@@ -104,7 +104,7 @@ export const GROUPS: Record<EndpointGroup, GroupHeading> = {
 export const GROUP_ORDER: readonly EndpointGroup[] = [
   EndpointGroup.Service,
   EndpointGroup.Accounts,
-  EndpointGroup.Memories,
+  EndpointGroup.Ingots,
   EndpointGroup.Data,
   EndpointGroup.Mcp,
 ];
@@ -193,17 +193,17 @@ export const ENDPOINTS: readonly Endpoint[] = [
     sample: '204 No Content',
   },
 
-  // ── memories ────────────────────────────────────────────────────────────
+  // ── ingots ────────────────────────────────────────────────────────────
   {
-    id: 'ingot-create',
-    group: EndpointGroup.Memories,
-    nav: 'Cast a memory',
+    id: 'ingot-cast',
+    group: EndpointGroup.Ingots,
+    nav: 'Cast an ingot',
     method: HttpMethod.Post,
-    path: '/api/v1/:account/create',
+    path: '/api/v1/:account/cast',
     auth: Auth.Key,
     summary:
-      'Cast a new ingot — one memory. Takes a `name`, an optional `retainFor`: a duration, because the question you are asking is "how long", and an optional `externalId` of your own.',
-    note: 'Expiry deletes the memory and everything in it, and that is not reversible. Omit it and the memory is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — a memory is addressed by id, never by name. With an `externalId` — a conversation id, a job id — create is idempotent: asking again answers 200 with the memory that handle already names, and changes nothing about it.',
+      'Cast a new ingot. Takes a `name`, an optional `retainFor`: a duration, because the question you are asking is "how long", and an optional `externalId` of your own.',
+    note: 'Expiry deletes the ingot and everything in it, and that is not reversible. Omit it and the ingot is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — an ingot is addressed by id, never by name. With an `externalId` — a conversation id, a job id — cast is idempotent: asking again answers 200 with the ingot that handle already names, and changes nothing about it.',
     chips: ['30m', '12h', '14d', '4w'],
     sample: `{ "name": "crm-notes",
   "retainFor": "14d",
@@ -217,14 +217,14 @@ export const ENDPOINTS: readonly Endpoint[] = [
   },
   {
     id: 'ingot-list',
-    group: EndpointGroup.Memories,
-    nav: 'List memories',
+    group: EndpointGroup.Ingots,
+    nav: 'List ingots',
     method: HttpMethod.Get,
     path: '/api/v1/:account/ingots',
     auth: Auth.Key,
     summary:
-      "The account's memories, as an array. A literal segment, registered before the `:ingot` routes so a listing is not read as a memory called “ingots”.",
-    note: 'This is how you get an `id` back if you did not keep the one `create` handed you.',
+      "The account's ingots, as an array. A literal segment, registered before the `:ingot` routes so a listing is not read as an ingot called “ingots”.",
+    note: 'This is how you get an `id` back if you did not keep the one `cast` handed you.',
     sample: `200 OK
 [ { "id": "ing_01H8Z…", "name": "crm-notes",
     "tables": 3, "rows": 412,
@@ -235,13 +235,13 @@ export const ENDPOINTS: readonly Endpoint[] = [
   },
   {
     id: 'ingot-clone',
-    group: EndpointGroup.Memories,
-    nav: 'Clone a memory',
+    group: EndpointGroup.Ingots,
+    nav: 'Clone an ingot',
     method: HttpMethod.Post,
     path: '/api/v1/:account/:ingot/clone',
     auth: Auth.Key,
     summary:
-      'Copy a memory under a new id: every table, its current Parquet, the overlay, tombstones and vectors, read as of one instant. Takes what create takes, all of it optional.',
+      'Copy an ingot under a new id: every table, its current Parquet, the overlay, tombstones and vectors, read as of one instant. Takes what cast takes, all of it optional.',
     note: 'Afterwards the two share nothing — writes, roll-ups and deletes on one never reach the other. `name` defaults to the source’s and, without `retainFor`, the clone expires when the source does. Delivery settings are not copied. Refused with 409 while a document is still being parsed. With an `externalId`, asking again answers 200 with the clone already made.',
     sample: `{ "name": "crm-notes-experiment",
   "externalId": "exp_42" }
@@ -254,7 +254,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
   },
   {
     id: 'ingot-info',
-    group: EndpointGroup.Memories,
+    group: EndpointGroup.Ingots,
     nav: 'Schema · /info',
     method: HttpMethod.Get,
     path: '/api/v1/:account/:ingot/info',
@@ -278,18 +278,18 @@ export const ENDPOINTS: readonly Endpoint[] = [
   },
   {
     id: 'ingot-config',
-    group: EndpointGroup.Memories,
-    nav: 'Configure a memory',
+    group: EndpointGroup.Ingots,
+    nav: 'Configure an ingot',
     method: HttpMethod.Post,
     path: '/api/v1/:account/:ingot/config',
     auth: Auth.Key,
     summary:
-      'Where this memory’s receipts and table changes are pushed as they land, and how long it is kept. By default nothing is pushed and `receiptQuery` is the contract — set a target when whatever wanted the summary will have moved on by the time a model writes it.',
-    note: 'One strategy per memory, not per `/add`: the thing that wants telling is the system holding the memory. A patch, so an omitted field leaves the current value alone — turning delivery off is `{ "t": "none" }`. Endpoints must be absolute `http`/`https`; loopback, link-local and private addresses are refused, because this service would be reaching them from inside its own network. Table events are signals to read `/pending`, not the rows: writes that land while one is queued fold into it.',
+      'Where this ingot’s receipts and table changes are pushed as they land, and how long it is kept. By default nothing is pushed and `receiptQuery` is the contract — set a target when whatever wanted the summary will have moved on by the time a model writes it.',
+    note: 'One strategy per ingot, not per `/add`: the thing that wants telling is the system holding the ingot. A patch, so an omitted field leaves the current value alone — turning delivery off is `{ "t": "none" }`. Endpoints must be absolute `http`/`https`; loopback, link-local and private addresses are refused, because this service would be reaching them from inside its own network. Table events are signals to read `/pending`, not the rows: writes that land while one is queued fold into it.',
     fields: [
       {
         name: 'retainFor',
-        doc: 'Delete this memory that long from now — `30m`, `12h`, `14d`, `4w` — or `null` to keep it. Call it on each use to keep a memory alive while it is.',
+        doc: 'Delete this ingot that long from now — `30m`, `12h`, `14d`, `4w` — or `null` to keep it. Call it on each use to keep an ingot alive while it is.',
       },
       {
         name: 'delivery.events',
@@ -337,7 +337,7 @@ Ingot-Batch: batch_1508c8…
   },
   {
     id: 'table-config',
-    group: EndpointGroup.Memories,
+    group: EndpointGroup.Ingots,
     nav: 'Configure a table',
     method: HttpMethod.Post,
     path: '/api/v1/:account/:ingot/config/:table',
@@ -359,22 +359,22 @@ Ingot-Batch: batch_1508c8…
   },
   {
     id: 'table-drop',
-    group: EndpointGroup.Memories,
+    group: EndpointGroup.Ingots,
     nav: 'Drop a table',
     method: HttpMethod.Delete,
     path: '/api/v1/:account/:ingot/tables/:table',
     auth: Auth.Key,
-    summary: 'Drop one table from the memory, its Parquet and its overlay rows with it.',
+    summary: 'Drop one table from the ingot, its Parquet and its overlay rows with it.',
     sample: '204 No Content',
   },
   {
     id: 'ingot-destroy',
-    group: EndpointGroup.Memories,
-    nav: 'Destroy a memory',
+    group: EndpointGroup.Ingots,
+    nav: 'Destroy an ingot',
     method: HttpMethod.Delete,
     path: '/api/v1/:account/:ingot',
     auth: Auth.Key,
-    summary: 'Destroy the memory and everything in it.',
+    summary: 'Destroy the ingot and everything in it.',
     sample: '204 No Content',
   },
 
@@ -597,18 +597,18 @@ Ingot-Tombstones: 17`,
     path: '/api/v1/:account/mcp',
     auth: Auth.Key,
     summary:
-      'Account-wide MCP, for a client that has not been handed a memory yet. Cast one, then reconnect to the scoped path below.',
-    asideChips: ['create_memory', 'clone_memory', 'list_memories', 'delete_memory'],
+      'Account-wide MCP, for a client that has not been handed an ingot yet. Cast one, then reconnect to the scoped path below.',
+    asideChips: ['cast_ingot', 'clone_ingot', 'list_ingots', 'delete_ingot'],
   },
   {
     id: 'mcp-ingot',
     group: EndpointGroup.Mcp,
-    nav: 'Scoped to a memory',
+    nav: 'Scoped to an ingot',
     method: HttpMethod.All,
     path: '/api/v1/:account/:ingot/mcp',
     auth: Auth.Key,
     summary:
-      'MCP scoped to one memory: the tools take no ids and cannot reach another. Stateless — a fresh server per request, no session pinned to a replica.',
+      'MCP scoped to one ingot: the tools take no ids and cannot reach another. Stateless — a fresh server per request, no session pinned to a replica.',
     note: 'The same bearer key and the same two guards as every other route; there is no MCP-specific auth path, which is the point. The schema is handed over as the server’s instructions at `initialize`, so writing SQL costs no tool call.',
     chips: [
       'describe',

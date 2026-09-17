@@ -101,7 +101,7 @@ export class IngotAdapter implements MemoryAdapter {
     try {
       const created = json<{ id: string }>(
         await account.callTool({
-          name: 'create_memory',
+          name: 'cast_ingot',
           arguments: { name: `bench ${this.options.runId}`, retainFor: '12h' },
         }),
       );
@@ -252,12 +252,12 @@ export class IngotAdapter implements MemoryAdapter {
     this.client = null;
     if (!client) return;
     try {
-      // The memory carries `retainFor: 12h`, so this is tidiness rather than
+      // The ingot carries `retainFor: 12h`, so this is tidiness rather than
       // correctness — a failed delete must not fail the run.
       const account = await this.connect(`${this.base()}/${this.options.account}/mcp`);
       try {
         if (this.ingotId) {
-          await account.callTool({ name: 'delete_memory', arguments: { ingot: this.ingotId } });
+          await account.callTool({ name: 'delete_ingot', arguments: { ingot: this.ingotId } });
         }
       } finally {
         await account.close();

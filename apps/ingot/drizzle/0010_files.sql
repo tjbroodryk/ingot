@@ -1,12 +1,12 @@
 -- Documents, and the queue that turns them into rows.
 --
 -- `/file` takes a PDF, a deck or a spreadsheet and makes it two things a
--- memory already knows how to hold: chunks in `ingot_chunks`, and — when the
+-- ingot already knows how to hold: chunks in `ingot_chunks`, and — when the
 -- caller asks — typed rows in a table of their own. Neither of those needs a
 -- table here, and that is the design rather than an omission: both are
--- ORDINARY tables in the caller's memory, so they get the overlay, the
+-- ORDINARY tables in the caller's ingot, so they get the overlay, the
 -- embedding sweeper, the roll-up into Parquet, tombstones, `/query` over both
--- tiers and deletion with the memory, none of it written a second time. The
+-- tiers and deletion with the ingot, none of it written a second time. The
 -- same argument `ingot_receipts` made, applied to a bigger payload.
 --
 -- What does need a table is the work in between, and it needs one for a reason
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS file_queue (
 CREATE INDEX IF NOT EXISTS file_queue_age
   ON file_queue (attempts, claimed_at, queued_at);
 
--- Destroying a memory destroys its unparsed uploads with it. The objects go
+-- Destroying an ingot destroys its unparsed uploads with it. The objects go
 -- the same way the Parquet does: `removePrefix` after the transaction commits.
 CREATE INDEX IF NOT EXISTS file_queue_ingot
   ON file_queue (ingot_id);

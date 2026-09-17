@@ -18,7 +18,7 @@ import {
  *
  * This is a regression test with a story. `ocr` was added to
  * `ingot_file_chunks`, and `TableRegistry.ensure` returns an existing table
- * untouched — so every memory created before the release kept the schema it
+ * untouched — so every ingot created before the release kept the schema it
  * was made with, while `/file` went on handing back a `chunksQuery` naming the
  * new column. The promissory note answered `Binder Error: Referenced column
  * "ocr" not found in FROM clause` for every document in every one of them, and
@@ -127,7 +127,7 @@ describe('a system table declared by an older release', () => {
 
   /**
    * The steady state, which is every write after the first one following a
-   * release. `save` contends on the table's version, and a memory under load
+   * release. `save` contends on the table's version, and an ingot under load
    * writes chunks constantly — so a reconcile that found nothing to do must
    * not touch the row.
    */

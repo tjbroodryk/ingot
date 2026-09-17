@@ -9,7 +9,7 @@ import { type World, makeWorld } from '../support/world.js';
  * A clone holds what its source held at one instant, in both tiers, and from
  * then on the two share nothing — not rows, not Parquet, not queued work.
  */
-describe('cloning a memory', () => {
+describe('cloning an ingot', () => {
   let world: World;
   let source: string;
 
@@ -136,7 +136,7 @@ describe('cloning a memory', () => {
     expect(file).toEqual({ filename: 'a.txt', status: 'ready' });
   });
 
-  it('will not clone another account’s memory', async () => {
+  it('will not clone another account’s ingot', async () => {
     await expect(clone(source, {}, 'acc_000000000000000000000000')).rejects.toThrow(
       /does not exist/,
     );

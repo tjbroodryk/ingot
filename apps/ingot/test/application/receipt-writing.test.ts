@@ -50,9 +50,9 @@ describe('a receipt', () => {
   });
 
   beforeEach(async () => {
-    ingot = await world.ingot('a memory that summarises');
+    ingot = await world.ingot('an ingot that summarises');
     // One world across the file, and both queues are service-wide rather than
-    // per-memory. Draining what earlier tests left keeps the counts below
+    // per-ingot. Draining what earlier tests left keeps the counts below
     // about this test's own writes.
     await world.summariseAll();
     await world.embedAll();

@@ -16,7 +16,7 @@ import type { PendingDelivery } from './ports/delivery-outbox.port.js';
  * Deliveries one drain will send.
  *
  * Larger than the receipt worker's four, because these are not model calls:
- * one is an HTTP POST or an AMQP publish, and a memory under load produces one
+ * one is an HTTP POST or an AMQP publish, and an ingot under load produces one
  * per receipt. Still bounded, so one pass cannot run for ever against a
  * receiver that is slow but not failing.
  */
@@ -118,7 +118,7 @@ export class DeliveryWorker {
   /**
    * The whole attempt, not just the call.
    *
-   * Labelled by transport rather than by memory or endpoint: `kind` is a closed
+   * Labelled by transport rather than by ingot or endpoint: `kind` is a closed
    * set of three, and an endpoint would be an unbounded label carrying a
    * caller's URL — possibly with a token in it — into the metrics.
    */

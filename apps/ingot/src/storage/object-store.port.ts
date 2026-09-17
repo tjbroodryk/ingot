@@ -95,7 +95,7 @@ export interface ObjectStore {
   /**
    * Copies one object to another key, inside the store.
    *
-   * For cloning a memory. The bytes never pass through this process, so a
+   * For cloning an ingot. The bytes never pass through this process, so a
    * table's Parquet is copied at whatever the store charges for a copy rather
    * than at the price of a download and an upload.
    */
@@ -176,7 +176,7 @@ export const Keys = {
   /**
    * An uploaded document, as it arrived.
    *
-   * Under the memory's own prefix, so destroying a memory takes its documents
+   * Under the ingot's own prefix, so destroying an ingot takes its documents
    * with it through the `removePrefix` that already removes the Parquet — one
    * deletion path rather than two that can disagree about what was covered.
    *

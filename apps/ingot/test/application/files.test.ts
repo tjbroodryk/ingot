@@ -144,7 +144,7 @@ describe('storing a document', () => {
       // Drains everything queued, not only this document — one world is shared
       // across the file, and asserting a count here would be asserting on what
       // the tests above happened to leave behind. Every assertion below is
-      // scoped to this memory, which is where the property actually lives.
+      // scoped to this ingot, which is where the property actually lives.
       expect(await world.parseAll()).toBeGreaterThan(0);
 
       const chunks = await world.sql(
@@ -533,7 +533,7 @@ describe('storing a document', () => {
   });
 
   /**
-   * Destroying a memory has to destroy everything keyed on it, and the queue is
+   * Destroying an ingot has to destroy everything keyed on it, and the queue is
    * the piece that leaks quietly if it is forgotten.
    *
    * Nothing else ever visits a `file_queue` row, so an omission here has no
@@ -543,7 +543,7 @@ describe('storing a document', () => {
    * the document itself. This was genuinely broken until somebody asked what
    * gets stored.
    */
-  it('destroys queued uploads along with the memory', async () => {
+  it('destroys queued uploads along with the ingot', async () => {
     // `abandoned(0)` is every row in the queue: attempts are never negative, so
     // a threshold of zero counts the whole thing. It is deployment-wide, and one
     // world is shared across this file — so the assertion is on the delta rather

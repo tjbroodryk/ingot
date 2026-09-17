@@ -43,7 +43,7 @@ export class DeleteRecords extends Command<DeleteResult> {
  *
  * Resolving to ids rather than storing the predicate is the decision worth
  * defending. A stored predicate has to be evaluated by every future query, and
- * they accumulate — a memory deleted from a hundred times would carry a
+ * they accumulate — an ingot deleted from a hundred times would carry a
  * hundred WHERE clauses forever. A set of ids is finite, and it shrinks at the
  * next compaction.
  *

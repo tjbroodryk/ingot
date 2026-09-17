@@ -57,7 +57,7 @@ export const whyMetadata: Metadata = {
  *                tool call could have answered
  *   #vectors     where the embeddings went, so that this does not read as an
  *                argument against them
- *   #grain       what one memory is scoped to, which is the caller's decision
+ *   #grain       what one ingot is scoped to, which is the caller's decision
  *                and the page says so, limit included
  *   #cost        why keeping it all is affordable, which is what makes the
  *                grain a free choice rather than a budget
@@ -171,7 +171,7 @@ export function WhyPage(): ReactNode {
               <div className="panel-bar">
                 <span className="panel-glyph">≡ ×</span>
                 <span className="panel-rule" />
-                <span>Ingot · one memory, three tools</span>
+                <span>Ingot · one ingot, three tools</span>
                 <span className="panel-rule" />
               </div>
               <div className="panel-split">
@@ -248,14 +248,14 @@ export function WhyPage(): ReactNode {
         */}
         <section className="landblock" id="grain">
           <div className="landhead">
-            <span className="label kicker kicker-n">One memory per what</span>
+            <span className="label kicker kicker-n">One ingot per what</span>
             <h2 className="landtitle">
-              One memory per
+              One ingot per
               <br />
               <span className="mark">whatever you say</span>
             </h2>
             <p>
-              Ingot has no opinion about what a memory is for. Casting one is a POST with a name and
+              Ingot has no opinion about what an ingot is for. Casting one is a POST with a name and
               a retention, so the boundary can just be the boundary your system already has — a
               chat, a run, a project, a tenant.
             </p>
@@ -292,8 +292,8 @@ export function WhyPage(): ReactNode {
         </section>
 
         {/*
-          Why the section above is a free choice. Keeping a memory per chat is
-          only reasonable if a memory per chat is nearly free, so the storage
+          Why the section above is a free choice. Keeping an ingot per chat is
+          only reasonable if an ingot per chat is nearly free, so the storage
           model has to be on this page rather than only on `/deployment`.
         */}
         <section className="landblock" id="cost">
@@ -330,7 +330,7 @@ export function WhyPage(): ReactNode {
             <table className="table">
               <thead>
                 <tr>
-                  <th className="cost-item-col">What a memory costs</th>
+                  <th className="cost-item-col">What an ingot costs</th>
                   <th>What that is</th>
                 </tr>
               </thead>
@@ -374,7 +374,7 @@ export function WhyPage(): ReactNode {
               Which means there is no export step, because there is no second format to export from.
               A table&rsquo;s current generation is one file, and anything that reads Parquet reads
               it — DuckDB on your laptop, pandas, Spark, whatever you already pay for. If Ingot
-              stops, the memory does not.
+              stops, the ingot does not.
             </p>
             <div className="chips">
               {OWNERSHIP_CHIPS.map((chip) => (

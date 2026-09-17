@@ -37,7 +37,7 @@ const MIN_MAX_UPLOAD = 64 * 1024;
  * Past this, one upload can exhaust a pod on its own. A typo guard, as ever.
  *
  * The failure it prevents is the ugly kind: a 2 GiB upload is accepted, held in
- * memory, and takes the process down with an OOM that kills every in-flight
+ * ingot, and takes the process down with an OOM that kills every in-flight
  * query with it — a whole replica lost to one caller's mistake, presenting as
  * an unexplained restart.
  */

@@ -42,7 +42,7 @@ describe('a large JSON body', () => {
   });
 
   it('is accepted up to the limit, well past 100 KiB', async () => {
-    const created = await post('create', JSON.stringify({ name: 'large results' }));
+    const created = await post('cast', JSON.stringify({ name: 'large results' }));
     const { id } = (await created.json()) as { id: string };
 
     const result = { output: 'x'.repeat(600 * 1024) };
@@ -60,7 +60,7 @@ describe('a large JSON body', () => {
   });
 
   it('is refused past it, with a 413', async () => {
-    const response = await post('create', JSON.stringify({ name: 'y'.repeat(2 * 1024 * 1024) }));
+    const response = await post('cast', JSON.stringify({ name: 'y'.repeat(2 * 1024 * 1024) }));
     expect(response.status).toBe(413);
   });
 });

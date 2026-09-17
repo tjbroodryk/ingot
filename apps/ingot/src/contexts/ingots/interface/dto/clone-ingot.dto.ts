@@ -1,6 +1,6 @@
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
-/** `CreateIngotDto` with every field optional. */
+/** `CastIngotDto` with every field optional. */
 export class CloneIngotDto {
   @IsOptional()
   @IsString()

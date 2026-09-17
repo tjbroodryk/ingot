@@ -20,11 +20,11 @@ const SHORTEST = MILLISECONDS[RetentionUnit.Minutes];
 const LONGEST = 520 * MILLISECONDS[RetentionUnit.Weeks]; // ten years
 
 /**
- * How long a memory is kept — `30m`, `12h`, `14d`, `4w`.
+ * How long an ingot is kept — `30m`, `12h`, `14d`, `4w`.
  *
  * A duration rather than a timestamp because the question a caller is asking is
  * "how long", and making them do date arithmetic to express it is a way to get
- * a memory that expires in 1970. A short grammar rather than a count of seconds
+ * an ingot that expires in 1970. A short grammar rather than a count of seconds
  * because `14d` cannot be misread by three orders of magnitude and `1209600`
  * can — and the thing on the other end of this mistake is an irreversible
  * delete.
@@ -59,20 +59,20 @@ export class Retention extends ValueObject {
 
     if (milliseconds < SHORTEST) {
       throw new InvariantViolation(
-        `"${raw}" is shorter than a minute. A memory deleted before anything can ` +
+        `"${raw}" is shorter than a minute. An ingot deleted before anything can ` +
           'be written to it is not one worth creating.',
       );
     }
     if (milliseconds > LONGEST) {
       throw new InvariantViolation(
-        `"${raw}" is longer than ten years. Omit retainFor to keep a memory indefinitely.`,
+        `"${raw}" is longer than ten years. Omit retainFor to keep an ingot indefinitely.`,
       );
     }
 
     return new Retention(value, milliseconds);
   }
 
-  /** When a memory created at `from` under this retention falls due. */
+  /** When an ingot created at `from` under this retention falls due. */
   from(start: Date): Date {
     return new Date(start.getTime() + this.milliseconds);
   }

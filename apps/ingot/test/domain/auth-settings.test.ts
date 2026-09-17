@@ -19,7 +19,7 @@ import { ApiKey, KEY_PREFIX } from '../../src/contexts/accounts/domain/index.js'
  * the one setting where a quiet fallback would be worst. A bucket that falls
  * back loses data; a model that falls back makes search lexical; an
  * authentication mode that fell back would let the wrong people read the
- * memories. So there is no fallback, and this is what refusal looks like.
+ * ingots. So there is no fallback, and this is what refusal looks like.
  *
  * Pure throughout: settings are parsed from a reader, so the whole matrix is
  * covered without a boot, a database or a request. The one impure corner —

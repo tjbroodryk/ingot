@@ -37,7 +37,7 @@ describe('the clone route', () => {
   });
 
   it('answers 201 for a new clone and 200 for one its externalId already names', async () => {
-    const created = await post('create', { name: 'source' });
+    const created = await post('cast', { name: 'source' });
     const { id } = (await created.json()) as { id: string };
 
     const first = await post(`${id}/clone`, { externalId: 'copy-1' });
@@ -54,7 +54,7 @@ describe('the clone route', () => {
   });
 
   it('refuses a retention it cannot read, and an id that is not there', async () => {
-    const created = await post('create', { name: 'source' });
+    const created = await post('cast', { name: 'source' });
     const { id } = (await created.json()) as { id: string };
 
     expect((await post(`${id}/clone`, { retainFor: 'soon' })).status).toBe(400);

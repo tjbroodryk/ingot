@@ -14,7 +14,7 @@ unqueryable, gone at the end of the turn. There is no way to ask "which files
 did I read in this repo last week" or "what did the CI check say the last four
 times it failed", because nothing structured was ever written down.
 
-An **ingot** is one memory: a block of refined material that tool calls are
+An **ingot** is where they go instead: a block of refined material that tool calls are
 poured into and that cools into something queryable.
 
 ## The shape
@@ -33,7 +33,7 @@ An LSM tree, and everything else follows from it.
 ```
 
 - **Parquet in bucket storage is the base.** Cold, columnar, cheap, and
-  portable — a memory is a directory of files somebody can download and open in
+  portable — an ingot is a directory of files somebody can download and open in
   any DuckDB, with or without this service.
 - **Writes land in an overlay in Postgres.** A row is queryable the instant it
   is accepted. Nothing waits on a file being rewritten.
@@ -54,30 +54,30 @@ Everything is under `/api/v1`. Authentication is an API key —
 
 **There is no sign-up route.** Which accounts exist is decided by `INGOT_AUTH`
 at boot, and there is no default: a service that guessed how to authenticate
-would be guessing who may read the memories in it. Sealed mode — the
+would be guessing who may read the ingots in it. Sealed mode — the
 self-hosting answer, and currently the only one — opens the single account
 named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 `INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
 
-| Route                                        |                                                                            |
-| -------------------------------------------- | -------------------------------------------------------------------------- |
-| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                             |
-| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                          |
-| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent.   |
-| `GET /:account/ingots`                       | List them.                                                                 |
-| `POST /:account/:ingot/add`                  | Store a tool result.                                                       |
-| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                       |
-| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                       |
-| `GET /:account/:ingot/info`                  | The information schema, settings included.                                 |
-| `POST /:account/:ingot/clone`                | Copy the memory under a new id. Same body as create, every field optional. |
-| `POST /:account/:ingot/config`               | Delivery and retention. A patch; returns the whole config.                 |
-| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.            |
-| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                          |
-| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`.      |
-| `GET /:account/:ingot/tables/:table/parquet` | A generation's Parquet, streamed, by range. 410 once reaped.               |
-| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                              |
-| `DELETE /:account/:ingot`                    | Destroy the memory.                                                        |
-| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                                |
+| Route                                        |                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                           |
+| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                        |
+| `POST /:account/cast`                        | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent. |
+| `GET /:account/ingots`                       | List them.                                                               |
+| `POST /:account/:ingot/add`                  | Store a tool result.                                                     |
+| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                     |
+| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                     |
+| `GET /:account/:ingot/info`                  | The information schema, settings included.                               |
+| `POST /:account/:ingot/clone`                | Copy the ingot under a new id. Same body as cast, every field optional.  |
+| `POST /:account/:ingot/config`               | Delivery and retention. A patch; returns the whole config.               |
+| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.          |
+| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                        |
+| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`.    |
+| `GET /:account/:ingot/tables/:table/parquet` | A generation's Parquet, streamed, by range. 410 once reaped.             |
+| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                            |
+| `DELETE /:account/:ingot`                    | Destroy the ingot.                                                       |
+| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this ingot.                                               |
 
 Minted keys are stored as a SHA-256 digest and nothing else, and are returned
 once, in the response that created them; there is no way to read one back. The
@@ -92,8 +92,8 @@ revoking any of the others safe.
 # The account and the key are the ones the server was started with.
 export KEY=$(grep '^INGOT_API_KEY=' .env | cut -d= -f2)
 
-curl -sX POST localhost:3002/api/v1/dev/create -H "authorization: Bearer $KEY" \
-  -H 'content-type: application/json' -d '{"name":"pull request memory"}'
+curl -sX POST localhost:3002/api/v1/dev/cast -H "authorization: Bearer $KEY" \
+  -H 'content-type: application/json' -d '{"name":"pull request ingot"}'
 # → { "id": "ing_7f2c…" }
 ```
 
@@ -125,9 +125,9 @@ Two things a change may not do, both asserted by `versioning.test.ts`:
 `GET /api/versions` lists what exists. Five releases: the baseline;
 `2026-08-27`, where every `TableInfo` gained a `config` — rendered away again
 for a caller pinned to the baseline, in `/info` and in an `/add` receipt alike;
-`2026-09-06`, where the memory itself gained one, holding where its receipts
+`2026-09-06`, where the ingot itself gained one, holding where its receipts
 are delivered; `2026-09-15`, where a query result gained `next` for paging; and
-`2026-09-17`, where memories gained an `externalId`, their config an
+`2026-09-17`, where ingots gained an `externalId`, their config an
 `expiresAt` and delivery `events`, and `/pending` the `base` files it is pending
 against.
 
@@ -184,7 +184,7 @@ curl -sX POST $A/$ING/file -H "authorization: Bearer $KEY" \
   -F 'file=@handbook.md;type=text/markdown'
 ```
 
-The dashboard has a panel for the same thing — pick a memory, choose a file,
+The dashboard has a panel for the same thing — pick an ingot, choose a file,
 and it watches the row until the document is `ready` or `failed`.
 
 ```jsonc
@@ -215,10 +215,10 @@ rows are append-only.
 ### Two more ordinary tables
 
 `ingot_files` is a row per document; `ingot_file_chunks` is a row per chunk, keyed on
-`(file_id, ordinal)`. Both are **ordinary tables in your memory**, which is the
+`(file_id, ordinal)`. Both are **ordinary tables in your ingot**, which is the
 same argument `ingot_receipts` makes and the reason this feature is small: they
 get the overlay, the embedding sweeper, the roll-up into Parquet, tombstones,
-`/query` over both tiers and deletion with the memory, none of it written a
+`/query` over both tiers and deletion with the ingot, none of it written a
 second time.
 
 A row in `ingot_files` only ever holds a terminal status — `ready` or `failed`.
@@ -523,7 +523,7 @@ Two things are worth writing down before anyone relies on this at volume:
   to be fed by tool results a few rows at a time. `INGOT_EMBEDDINGS_CONCURRENCY`
   times the replica count is currently the only thing between a document dump
   and an unbounded bill, and the HPA scales on CPU — so a bulk upload adds pods
-  and multiplies the fan-out exactly when it is worst. A per-memory in-flight
+  and multiplies the fan-out exactly when it is worst. A per-ingot in-flight
   bound is the obvious next thing.
 - **A chunks table is the first table here that will realistically hit the
   no-index ceiling.** Brute-force cosine stops being a good trade somewhere in
@@ -567,7 +567,7 @@ call** wrote — keyed on the batch, which is our id: useful immediately and
 meaningless a week later. `items` finds each row on **your** key, which still
 means something next week and still matches after the same item is stored
 again. Without a declared key, `items` falls back to `_row_id` — exact, but
-opaque and only as durable as your memory of it.
+opaque and only as durable as your ingot of it.
 
 Opt-in (`"receipt": "schema"`, default `"none"`) because it costs a read the
 write does not need. `items` is capped at 100 with `itemsTruncated` saying so;
@@ -623,10 +623,10 @@ back is a promissory note, which is the same promise the rest of a receipt
 makes: here is how to find this later. `status` is always `pending` here;
 running the query is what tells you it arrived.
 
-A receipt lands in `ingot_receipts`, **an ordinary table in your memory**, and that is
+A receipt lands in `ingot_receipts`, **an ordinary table in your ingot**, and that is
 the whole design rather than an implementation detail. Being ordinary is what
 gets it the overlay, the embedding sweeper, the roll-up into Parquet,
-tombstones, `/query` over both tiers, and deletion with the memory — none of it
+tombstones, `/query` over both tiers, and deletion with the ingot — none of it
 written a second time. The name carries the reserved prefix, so `SqlName.table`
 refuses it and no caller's mapping can write there.
 
@@ -666,9 +666,9 @@ it when you want the answer. That is the right default — it needs no
 registration, no retry policy and no endpoint of yours to be up — but it is a
 poor fit for an agent that has moved on and would rather be told.
 
-So a memory can nominate somewhere to push each receipt as it lands. One
-strategy per memory rather than per `/add`, because the thing that wants telling
-is the system holding the memory, not the individual call — a receipt written
+So an ingot can nominate somewhere to push each receipt as it lands. One
+strategy per ingot rather than per `/add`, because the thing that wants telling
+is the system holding the ingot, not the individual call — a receipt written
 for a request that finished an hour ago still reaches it.
 
 ```jsonc
@@ -698,7 +698,7 @@ A strategy pushes receipts and nothing else unless it names its `events`:
 }
 ```
 
-The three table events are how something mirroring a memory keeps up without
+The three table events are how something mirroring an ingot keeps up without
 polling. They are **signals, not rows**: `operations.appended` says a table has
 writes through `throughSeq`, and the receiver reads them from `/pending` with
 its own cursor. Delivery is at least once and a retry can land out of order, so
@@ -710,7 +710,7 @@ table written in a loop is one delivery, not a thousand. `table.rolled_up` means
 any cursor from before `generation` is spent: download the new base and page
 `/pending` from the start. `receipt.ready` never folds.
 
-The same call extends a memory's life: `{ "retainFor": "14d" }` restarts the
+The same call extends an ingot's life: `{ "retainFor": "14d" }` restarts the
 clock from now, and `null` keeps it indefinitely.
 
 **A `webhook` endpoint is the one place a caller chooses where this service
@@ -891,7 +891,7 @@ Four things worth knowing:
 
 - **Off by default, with one exception.** The index is built inside the session,
   over the whole table, on the query that searches it. Building one for every
-  table of every memory would put that cost on queries that store no prose at
+  table of every ingot would put that cost on queries that store no prose at
   all, so a caller asks for it once. `ingot_file_chunks` is the exception and is
   on out of the box: it is the only table where prose is _guaranteed_, and by
   the next rule a query that does not search still pays nothing.
@@ -930,7 +930,7 @@ ATTACH case in the sandbox test first.
 
 The leading-keyword half of it carries more weight now that `fts` is loaded:
 `PRAGMA create_fts_index` is a statement a caller can otherwise reach, and it
-builds tables over a whole column. What a memory indexes is decided through
+builds tables over a whole column. What an ingot indexes is decided through
 `/config`, which knows what it is agreeing to; not through a query.
 
 A query is bounded by a row cap, a byte cap, a memory limit, and a timeout the
@@ -939,11 +939,11 @@ statement-timeout setting.
 
 ## Expiry
 
-A memory scoped to one piece of work should not outlive it. Say how long at
+An ingot scoped to one piece of work should not outlive it. Say how long at
 creation and it deletes itself:
 
 ```jsonc
-POST /:account/create
+POST /:account/cast
 { "name": "reviewing PR 42", "retainFor": "14d" }
 
 → { "id": "ing_7f2c…", "expiresAt": "2026-09-09T09:00:00.000Z" }
@@ -952,24 +952,24 @@ POST /:account/create
 `30m`, `12h`, `14d`, `4w` — a whole number and a unit, bounded at a minute and
 ten years. A duration rather than a timestamp because the question you are
 actually asking is _how long_, and making you do date arithmetic to express it
-is a way to get a memory that expires in 1970. A short grammar rather than a
+is a way to get an ingot that expires in 1970. A short grammar rather than a
 count of seconds because `14d` cannot be misread by three orders of magnitude
 and `1209600` can — and what is on the other end of that mistake is
 irreversible.
 
-Omit it and the memory is kept until something deletes it. `expiresAt` is
-reported by `/create`, `/info` and the listing, so what you asked for is always
+Omit it and the ingot is kept until something deletes it. `expiresAt` is
+reported by `/cast`, `/info` and the listing, so what you asked for is always
 visible.
 
 `reap-expired-ingots` does the deleting, every ten minutes. It is the only
 thing in the service that destroys data nobody asked it to destroy right now,
 and it is written accordingly: it dispatches the ordinary `DeleteIngot` rather
-than a second delete path, caps itself at 25 memories a tick so a mistake stays
+than a second delete path, caps itself at 25 ingots a tick so a mistake stays
 small and visible for several ticks, re-reads and re-checks each one
-immediately before deleting, and logs a line per memory — deleting somebody's
+immediately before deleting, and logs a line per ingot — deleting somebody's
 data is not a thing to do quietly.
 
-There is no way to extend a retention yet. A memory you want to keep should be
+There is no way to extend a retention yet. An ingot you want to keep should be
 created without one; changing your mind means creating another and writing to
 it. That is the obvious next thing to build.
 
@@ -981,15 +981,15 @@ it. That is the obvious next thing to build.
   resolved to `_row_id`s _now_ and those ids are recorded as tombstones. Every
   read filters them out; the next roll-up drops them for good. Resolving to ids
   rather than storing the predicate is what keeps the filter set finite — a
-  memory deleted from a hundred times would otherwise carry a hundred WHERE
+  ingot deleted from a hundred times would otherwise carry a hundred WHERE
   clauses forever.
 - **A table** — schema and all, which is how a mapping decision is undone.
-- **A memory** — everything, including the bucket objects, which are removed
+- **An ingot** — everything, including the bucket objects, which are removed
   after the transaction commits. An orphaned object costs money; a manifest
   pointing at files that are gone costs every future query.
 
 Rows are append-only. An agent correcting a stored fact appends a new row and
-tombstones the old one, which is the right constraint for a memory — what was
+tombstones the old one, which is the right constraint for an ingot — what was
 believed at the time is often the interesting part.
 
 ## Cloning
@@ -1001,7 +1001,7 @@ POST /:account/:ingot/clone
 → 201 { "id": "ing_91d0…", "name": "reviewing PR 42, second attempt", … }
 ```
 
-A clone is a new memory holding what the source held at one instant: every
+A clone is a new ingot holding what the source held at one instant: every
 table and its settings, the current Parquet generation, the overlay, the
 tombstones, the vectors and the texts still waiting for one. After that the two
 share nothing — a write, a roll-up or a delete on one never reaches the other,
@@ -1014,7 +1014,7 @@ and destroying the source leaves the clone whole.
 - Parquet is copied inside the bucket, not through the service.
 - Every field is optional. `name` defaults to the source's. Without
   `retainFor` the clone expires when the source does. `externalId` makes it
-  idempotent, exactly as it does `create`.
+  idempotent, exactly as it does `cast`.
 - **Delivery is not copied.** A receiver configured for the source has never
   heard of the clone.
 - **Documents still being parsed are refused (409)**, not copied. Their rows do
@@ -1034,7 +1034,7 @@ one-sided.
 
 Two details do most of the work:
 
-- The connection is **scoped to one memory**, so the tools take no ids and a
+- The connection is **scoped to one ingot**, so the tools take no ids and a
   client pointed at one cannot address another.
 - The **schema is read per connection and handed over as the server's
   instructions**, and also exposed as the `ingot://…/info` resource. A model
@@ -1388,9 +1388,9 @@ is why the image bakes both extensions in rather than fetching them per pod.
 | `ai-settings`         | The same, for a model — plus a provider added without an adapter.       |
 | `receipt-writing`     | A receipt promising a summary that never arrives.                       |
 | `receipt-transaction` | A model called while a pooled connection is held.                       |
-| `embedding-space`     | One memory's vectors written by two different models.                   |
+| `embedding-space`     | One ingot's vectors written by two different models.                    |
 | `payload-size`        | A token estimate that makes a large `/add` slow.                        |
-| `bucket`              | `removePrefix` leaving most of a destroyed memory in the bucket.        |
+| `bucket`              | `removePrefix` leaving most of a destroyed ingot in the bucket.         |
 | `metric-catalogue`    | A metric labelled by tenant — a slow, expensive leak.                   |
 
 That last one matters more here than in a single-tenant service: a label

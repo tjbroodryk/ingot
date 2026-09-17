@@ -7,10 +7,10 @@
 --
 -- Two things arrive together here, and they are two halves of one property.
 --
--- `ingot.delivery` is WHERE. A strategy per memory, as the document the caller
+-- `ingot.delivery` is WHERE. A strategy per ingot, as the document the caller
 -- sent — {"t":"webhook","endpoint":"…"} or {"t":"rmq","queue":"…"} — because
--- the thing that wants telling is the system holding the memory, not the
--- individual /add. Nullable with no default: a memory nobody has configured
+-- the thing that wants telling is the system holding the ingot, not the
+-- individual /add. Nullable with no default: an ingot nobody has configured
 -- reads the code's default (`none`), and a default written into the row is one
 -- that goes on claiming a value the code has since moved on from.
 --
@@ -44,7 +44,7 @@
 --   webhook never arrived.
 --
 -- `target` is resolved AT ENQUEUE and stored on the row rather than read from
--- `ingot.delivery` at delivery time. A memory whose endpoint is changed while
+-- `ingot.delivery` at delivery time. An ingot whose endpoint is changed while
 -- a delivery is in flight should not have that delivery silently retargeted at
 -- the new one — the row records where it was going when it was announced.
 
@@ -77,6 +77,6 @@ CREATE TABLE IF NOT EXISTS receipt_delivery_queue (
 CREATE INDEX IF NOT EXISTS receipt_delivery_queue_age
   ON receipt_delivery_queue (attempts, claimed_at, queued_at);
 
--- Destroying a memory destroys its undelivered announcements with it.
+-- Destroying an ingot destroys its undelivered announcements with it.
 CREATE INDEX IF NOT EXISTS receipt_delivery_queue_ingot
   ON receipt_delivery_queue (ingot_id);
