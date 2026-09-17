@@ -1,15 +1,15 @@
 export {
-  Ingot,
-  type CreateMemoryOptions,
-  type IngotOptions,
+  IngotFoundry,
+  type CastIngotOptions,
+  type IngotFoundryOptions,
   type VersionsResponse,
 } from './client.js';
 export {
-  Memory,
+  Ingot,
   Table,
   TypedTable,
   type AddOptions,
-  type CloneMemoryOptions,
+  type CloneIngotOptions,
   type DocumentRow,
   type ParquetOptions,
   type PendingOptions,
@@ -20,7 +20,7 @@ export {
   type TableSnapshot,
   type TypedQueryResult,
   type WaitOptions,
-} from './memory.js';
+} from './ingot.js';
 export {
   Column,
   TableDef,

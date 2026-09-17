@@ -69,13 +69,13 @@ describe('table definitions', () => {
     // @ts-expect-error — key names must be declared columns
     base.key('nope');
 
-    const { ingot } = client(() => json({}));
-    const memory = ingot.memory('ing_1');
+    const { foundry } = client(() => json({}));
+    const ingot = foundry.ingot('ing_1');
     const extractOnly = table('contracts').columns({ notice: col.integer().describe('days') });
     // @ts-expect-error — a model-only column cannot be filled by /add
-    void memory.add(extractOnly, {}).catch(() => {});
+    void ingot.add(extractOnly, {}).catch(() => {});
 
-    const typed = memory.table(base.columns({ title: col.varchar('$.t').embed() }));
+    const typed = ingot.table(base.columns({ title: col.varchar('$.t').embed() }));
     // @ts-expect-error — `priority` is not embedded
     void typed.search('x', { column: 'priority' }).catch(() => {});
     void typed.search('x', { column: 'title' }).catch(() => {});

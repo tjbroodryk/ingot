@@ -46,11 +46,11 @@ const info = {
   ],
 };
 
-describe('Memory', () => {
+describe('Ingot', () => {
   it('adds through a table definition', async () => {
-    const { ingot, requests } = client(() => json({ table: 'tickets', rowsAdded: 1 }));
-    await ingot
-      .memory('ing_1')
+    const { foundry, requests } = client(() => json({ table: 'tickets', rowsAdded: 1 }));
+    await foundry
+      .ingot('ing_1')
       .add(
         tickets,
         { items: [{ id: 'T-1' }] },
@@ -74,11 +74,11 @@ describe('Memory', () => {
   });
 
   it('uploads a document as multipart, options as one JSON part', async () => {
-    const { ingot, requests } = client(() => json({ fileId: 'file_1' }, 201));
+    const { foundry, requests } = client(() => json({ fileId: 'file_1' }, 201));
     const contracts = table('contracts').columns({
       notice: col.integer().describe('Notice period in days'),
     });
-    await ingot.memory('ing_1').uploadDocument(new Uint8Array([37, 80, 68, 70]), {
+    await foundry.ingot('ing_1').uploadDocument(new Uint8Array([37, 80, 68, 70]), {
       filename: 'msa.pdf',
       mediaType: 'application/pdf',
       extract: contracts,
@@ -98,15 +98,15 @@ describe('Memory', () => {
   });
 
   it('leaves the body part out when there are no options', async () => {
-    const { ingot, requests } = client(() => json({ fileId: 'file_1' }, 201));
-    await ingot.memory('ing_1').uploadDocument(new File(['# hi'], 'notes.md'));
+    const { foundry, requests } = client(() => json({ fileId: 'file_1' }, 201));
+    await foundry.ingot('ing_1').uploadDocument(new File(['# hi'], 'notes.md'));
     const form = requests[0]?.body as FormData;
     expect(form.has('body')).toBe(false);
-    expect(() => ingot.memory('ing_1').uploadDocument(new Uint8Array([1]))).toThrow(TypeError);
+    expect(() => foundry.ingot('ing_1').uploadDocument(new Uint8Array([1]))).toThrow(TypeError);
   });
 
   it('follows query cursors to the end', async () => {
-    const { ingot, requests } = client((_r, index) =>
+    const { foundry, requests } = client((_r, index) =>
       json({
         columns: ['n'],
         rows: [{ n: index }],
@@ -116,7 +116,7 @@ describe('Memory', () => {
       }),
     );
     const pages = [];
-    for await (const page of ingot.memory('ing_1').queryPages<{ n: number }>('SELECT n FROM t')) {
+    for await (const page of foundry.ingot('ing_1').queryPages<{ n: number }>('SELECT n FROM t')) {
       pages.push(page.rows[0]?.n);
     }
     expect(pages).toEqual([0, 1, 2]);
@@ -128,10 +128,10 @@ describe('Memory', () => {
   });
 
   it('searches a typed table by one of its embedded columns', async () => {
-    const { ingot, requests } = client(() =>
+    const { foundry, requests } = client(() =>
       json({ columns: [], rows: [], truncated: false, next: null, elapsedMs: 1 }),
     );
-    await ingot.memory('ing_1').table(tickets).search('refund', { column: 'title', limit: 5 });
+    await foundry.ingot('ing_1').table(tickets).search('refund', { column: 'title', limit: 5 });
     expect(bodyOf(requests[0] as never)).toEqual({
       text: 'refund',
       column: 'title',
@@ -141,15 +141,15 @@ describe('Memory', () => {
   });
 
   it('passes a range read through and hands back the response untouched', async () => {
-    const { ingot, requests } = client(
+    const { foundry, requests } = client(
       () =>
         new Response(new Uint8Array([1, 2, 3]), {
           status: 206,
           headers: { 'content-range': 'bytes 0-2/10' },
         }),
     );
-    const response = await ingot
-      .memory('ing_1')
+    const response = await foundry
+      .ingot('ing_1')
       .table('tickets')
       .parquet({ generation: 3, part: 1, range: 'bytes=0-2' });
     expect(response.status).toBe(206);
@@ -162,7 +162,7 @@ describe('Memory', () => {
 
   it('snapshots every pending page against one generation, then the columns', async () => {
     const row = (seq: string) => ({ rowId: `r${seq}`, seq, ingestedAt: '', values: { id: seq } });
-    const { ingot, requests } = client((request) => {
+    const { foundry, requests } = client((request) => {
       if (request.url.endsWith('/info')) return json(info);
       if (!request.url.includes('after=')) {
         return json(pendingPage({ rows: [row('1')], next: '1' }));
@@ -170,7 +170,7 @@ describe('Memory', () => {
       return json(pendingPage({ rows: [row('2')], tombstones: [{ rowId: 'r0', at: '' }] }));
     });
 
-    const snapshot = await ingot.memory('ing_1').table('tickets').snapshot();
+    const snapshot = await foundry.ingot('ing_1').table('tickets').snapshot();
     expect(snapshot.generation).toBe(3);
     expect(snapshot.rows.map((r) => r.seq)).toEqual(['1', '2']);
     expect(snapshot.tombstones).toEqual([{ rowId: 'r0', at: '' }]);
@@ -181,14 +181,14 @@ describe('Memory', () => {
 
   it('starts a snapshot over when a roll-up lands between pages, and gives up eventually', async () => {
     let generation = 3;
-    const { ingot } = client((request) => {
+    const { foundry } = client((request) => {
       if (request.url.endsWith('/info')) return json(info);
       if (!request.url.includes('after=')) return json(pendingPage({ generation, next: '1' }));
       generation += 1;
       return json(pendingPage({ generation }));
     });
-    const error = await ingot
-      .memory('ing_1')
+    const error = await foundry
+      .ingot('ing_1')
       .table('tickets')
       .snapshot({ maxRestarts: 2 })
       .catch((e) => e);
@@ -202,11 +202,11 @@ describe('Memory', () => {
       if (calls === 2) return json(pendingPage({ generation: 4 }));
       return json(pendingPage({ generation: 4 }));
     });
-    expect((await settles.ingot.memory('ing_1').table('tickets').snapshot()).generation).toBe(4);
+    expect((await settles.foundry.ingot('ing_1').table('tickets').snapshot()).generation).toBe(4);
   });
 
   it('waits for a document, treating a table that does not exist yet as not ready', async () => {
-    const { ingot } = client((_r, index) => {
+    const { foundry } = client((_r, index) => {
       if (index === 0) {
         return json({ message: 'Catalog Error: Table with name ingot_files does not exist!' }, 422);
       }
@@ -220,19 +220,19 @@ describe('Memory', () => {
         elapsedMs: 1,
       });
     });
-    const row = await ingot
-      .memory('ing_1')
+    const row = await foundry
+      .ingot('ing_1')
       .waitForDocument({ fileId: 'file_1', query: 'SELECT 1' }, { intervalMs: 1 });
     expect(row.status).toBe('ready');
   });
 
   it('gives up waiting for a receipt that never lands', async () => {
-    const { ingot } = client(() =>
+    const { foundry } = client(() =>
       json({ columns: [], rows: [], truncated: false, next: null, elapsedMs: 1 }),
     );
     const added = { receipt: { receiptQuery: 'SELECT 1', batch: 'b' } } as never;
-    const error = await ingot
-      .memory('ing_1')
+    const error = await foundry
+      .ingot('ing_1')
       .waitForReceipt(added, { intervalMs: 5, timeoutMs: 20 })
       .catch((e) => e);
     expect(error).toBeInstanceOf(TimeoutError);
@@ -240,11 +240,11 @@ describe('Memory', () => {
 
   it('clones into a handle on the copy, retrying only when keyed', async () => {
     const copy = { ...info, id: 'ing_2', name: 'fork', tables: 1, rows: 10 };
-    const { ingot, requests } = client((_, index) =>
+    const { foundry, requests } = client((_, index) =>
       index === 0 ? json({ message: 'down' }, 503) : json(copy, 201),
     );
 
-    const clone = await ingot.memory('ing_1').clone({ name: 'fork', externalId: 'fork-1' });
+    const clone = await foundry.ingot('ing_1').clone({ name: 'fork', externalId: 'fork-1' });
     expect(clone.id).toBe('ing_2');
     expect(clone.summary?.name).toBe('fork');
     expect(requests).toHaveLength(2);
@@ -252,14 +252,14 @@ describe('Memory', () => {
     expect(bodyOf(requests[1] as never)).toEqual({ name: 'fork', externalId: 'fork-1' });
 
     const unkeyed = client(() => json({ message: 'down' }, 503));
-    await expect(unkeyed.ingot.memory('ing_1').clone()).rejects.toThrow();
+    await expect(unkeyed.foundry.ingot('ing_1').clone()).rejects.toThrow();
     expect(unkeyed.requests).toHaveLength(1);
     expect(bodyOf(unkeyed.requests[0] as never)).toEqual({});
   });
 
   it('configures expiry and delivery in one patch', async () => {
-    const { ingot, requests } = client(() => json({ delivery: { t: 'none' }, expiresAt: null }));
-    await ingot.memory('ing_1').configure({ retainFor: null });
+    const { foundry, requests } = client(() => json({ delivery: { t: 'none' }, expiresAt: null }));
+    await foundry.ingot('ing_1').configure({ retainFor: null });
     expect(bodyOf(requests[0] as never)).toEqual({ retainFor: null });
     expect(ColumnType.Varchar).toBe('VARCHAR' as never);
   });
