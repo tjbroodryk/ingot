@@ -3,20 +3,20 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { count, timeLeft } from './format';
 
 /**
- * The left pane: which memory, and what is in it.
+ * The left pane: which ingot, and what is in it.
  *
- * A list rather than a `<select>`, because accounts collect memories — one
+ * A list rather than a `<select>`, because accounts collect ingots — one
  * holding seventeen is ordinary — and a closed menu hides both how many there
  * are and which of them are empty. The filter is there for the same reason.
  */
-export function MemoryPane({
-  memories,
+export function IngotPane({
+  ingots,
   selected,
   onSelect,
   info,
   onPick,
 }: {
-  memories: readonly IngotSummary[] | null;
+  ingots: readonly IngotSummary[] | null;
   selected: string | null;
   onSelect: (id: string) => void;
   info: IngotInfo | null;
@@ -32,7 +32,10 @@ export function MemoryPane({
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) {
+      if (
+        target &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      ) {
         return;
       }
       event.preventDefault();
@@ -44,17 +47,17 @@ export function MemoryPane({
   }, []);
 
   const needle = filter.trim().toLowerCase();
-  const current = memories?.find((memory) => memory.id === selected) ?? null;
+  const current = ingots?.find((ingot) => ingot.id === selected) ?? null;
 
   return (
     <aside className="wb-pane wb-left">
       <div className="bhead">
-        <span>[ Memory ]</span>
-        <span>{memories ? memories.length : '…'}</span>
+        <span>[ Ingot ]</span>
+        <span>{ingots ? ingots.length : '…'}</span>
       </div>
 
       <label className="wb-filter">
-        <span className="sr-only">Filter memories by name</span>
+        <span className="sr-only">Filter ingots by name</span>
         <input
           ref={box}
           value={filter}
@@ -65,13 +68,13 @@ export function MemoryPane({
         <kbd>/</kbd>
       </label>
 
-      {memories === null ? (
-        <p className="wb-quiet">[ reading memories ]</p>
-      ) : memories.length === 0 ? (
-        <p className="wb-quiet">[ no memories on this account ]</p>
+      {ingots === null ? (
+        <p className="wb-quiet">[ reading ingots ]</p>
+      ) : ingots.length === 0 ? (
+        <p className="wb-quiet">[ no ingots on this account ]</p>
       ) : (
-        <MemoryList
-          memories={memories.filter((memory) => memory.name.toLowerCase().includes(needle))}
+        <IngotList
+          ingots={ingots.filter((ingot) => ingot.name.toLowerCase().includes(needle))}
           selected={selected}
           onSelect={onSelect}
         />
@@ -89,36 +92,36 @@ export function MemoryPane({
   );
 }
 
-function MemoryList({
-  memories,
+function IngotList({
+  ingots,
   selected,
   onSelect,
 }: {
-  memories: readonly IngotSummary[];
+  ingots: readonly IngotSummary[];
   selected: string | null;
   onSelect: (id: string) => void;
 }): ReactNode {
-  if (memories.length === 0) return <p className="wb-quiet">[ nothing matches ]</p>;
+  if (ingots.length === 0) return <p className="wb-quiet">[ nothing matches ]</p>;
 
   return (
     <ul className="wb-memlist">
-      {memories.map((memory) => (
-        <li key={memory.id}>
+      {ingots.map((ingot) => (
+        <li key={ingot.id}>
           {/*
-            An empty memory stays in the list at lower contrast rather than
+            An empty ingot stays in the list at lower contrast rather than
             being filtered out: it is still somewhere a document can go, and
             the one somebody just cast is always empty.
           */}
           <button
-            className={memory.tables === 0 ? 'wb-mem wb-mem-empty' : 'wb-mem'}
+            className={ingot.tables === 0 ? 'wb-mem wb-mem-empty' : 'wb-mem'}
             type="button"
-            aria-current={memory.id === selected ? 'true' : undefined}
-            onClick={() => onSelect(memory.id)}
-            title={`${count(memory.tables, 'table')} · ${count(memory.rows, 'row')}`}
+            aria-current={ingot.id === selected ? 'true' : undefined}
+            onClick={() => onSelect(ingot.id)}
+            title={`${count(ingot.tables, 'table')} · ${count(ingot.rows, 'row')}`}
           >
-            <span className="wb-mem-name">{memory.name}</span>
+            <span className="wb-mem-name">{ingot.name}</span>
             <span className="wb-mem-meta">
-              {memory.tables} · {memory.rows.toLocaleString()}
+              {ingot.tables} · {ingot.rows.toLocaleString()}
             </span>
           </button>
         </li>
@@ -130,11 +133,17 @@ function MemoryList({
 /**
  * What there is to query, as a tree.
  *
- * Collapsed to names by default with the first table open, because a memory
+ * Collapsed to names by default with the first table open, because an ingot
  * made from documents has three tables and a column list per table, and
  * showing all of it at once is a pane you scroll to find the one you wanted.
  */
-function Schema({ info, onPick }: { info: IngotInfo | null; onPick: (sql: string) => void }): ReactNode {
+function Schema({
+  info,
+  onPick,
+}: {
+  info: IngotInfo | null;
+  onPick: (sql: string) => void;
+}): ReactNode {
   // `null` until somebody toggles something, which is what lets the default —
   // the first table open — be computed from an `info` that arrives after this
   // component has mounted.

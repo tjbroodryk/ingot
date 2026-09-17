@@ -24,7 +24,7 @@ export interface DeliveryTransport {
    * Delivers, or throws saying why.
    *
    * `target` is the strategy as it was when the receipt was announced, read off
-   * the outbox row rather than off the memory — a memory reconfigured mid-flight
+   * the outbox row rather than off the ingot — an ingot reconfigured mid-flight
    * does not retarget deliveries already in the queue.
    *
    * `id` is the outbox row's, stable across attempts: a receipt's batch, or a
@@ -39,7 +39,7 @@ export const DELIVERY_TRANSPORT = Symbol('DeliveryTransport');
  * A delivery that was refused rather than lost.
  *
  * Carries the status so the worker's log says whether anybody should act: a
- * 404 on a webhook is a memory pointing at an endpoint that no longer exists
+ * 404 on a webhook is an ingot pointing at an endpoint that no longer exists
  * and no number of retries will fix it, which is a different conversation from
  * a 503.
  */

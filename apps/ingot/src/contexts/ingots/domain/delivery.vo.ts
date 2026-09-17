@@ -11,7 +11,7 @@ const MAX_QUEUE = 255;
  * The character set a queue name is held to.
  *
  * Narrower than AMQP allows, which permits almost any UTF-8. This name is
- * published to as a routing key on a broker shared by every memory in the
+ * published to as a routing key on a broker shared by every ingot in the
  * deployment, so it is worth being the sort of string that cannot be confused
  * with anything — and a queue somebody cannot type into `rabbitmqctl` is a
  * queue nobody can debug.
@@ -42,7 +42,7 @@ const METADATA_HOSTS = new Set([
 ]);
 
 /**
- * Where a memory's receipts are delivered, and what a caller may ask for.
+ * Where an ingot's receipts are delivered, and what a caller may ask for.
  *
  * Parsed here rather than at the controller, because the MCP surface builds the
  * same command straight from a tool call and never passes through a validation
@@ -78,9 +78,9 @@ export class Delivery extends ValueObject {
   }
 
   /**
-   * What a memory gets before anybody configures one: nothing is pushed.
+   * What an ingot gets before anybody configures one: nothing is pushed.
    *
-   * Off rather than on, and not because pushing is expensive. A memory with no
+   * Off rather than on, and not because pushing is expensive. An ingot with no
    * delivery configured is one whose receipts are collected by the SELECT
    * `/add` handed back — which needs no endpoint to be up and no registration —
    * and that is the contract every caller already has.
@@ -126,7 +126,7 @@ export class Delivery extends ValueObject {
   /**
    * Rehydration from the stored document — the same parsing, off our own row.
    *
-   * Null for every memory written before delivery existed, and for every one
+   * Null for every ingot written before delivery existed, and for every one
    * nobody has configured since. Both read as `none`.
    */
   static rehydrate(stored: unknown): Delivery {
@@ -234,7 +234,7 @@ function parseEndpoint(raw: unknown): string {
     throw new InvariantViolation(
       `delivery.endpoint may not point at "${url.hostname}". Loopback, link-local and ` +
         'private addresses are refused because this service would be reaching them from ' +
-        'inside its own network, on behalf of whoever configured the memory.',
+        'inside its own network, on behalf of whoever configured the ingot.',
     );
   }
 

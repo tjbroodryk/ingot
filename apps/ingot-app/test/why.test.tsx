@@ -74,7 +74,7 @@ describe('the why page', () => {
    * The limit under the scopes, which is the one claim on this page somebody
    * could build on and be disappointed by later — a query resolves the tables
    * of one ingot, and there is no statement that spans two. A section that
-   * offered four ways to scope a memory without saying that would be selling
+   * offered four ways to scope an ingot without saying that would be selling
    * a decision while hiding what it decides.
    */
   it('says what choosing a grain costs you', () => {

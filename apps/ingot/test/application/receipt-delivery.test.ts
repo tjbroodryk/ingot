@@ -16,7 +16,7 @@ import { type World, makeWorld } from '../support/world.js';
 const ENDPOINT = 'https://example.com/hooks/ingot';
 
 /**
- * A receipt reaches the target its memory nominated, and cannot be lost on the
+ * A receipt reaches the target its ingot nominated, and cannot be lost on the
  * way.
  *
  * The property under test is the outbox, and it is worth naming precisely
@@ -104,12 +104,12 @@ describe('delivering a receipt', () => {
   /**
    * The default, and the one that must stay cheap.
    *
-   * A memory nobody has configured writes no outbox row at all. Queueing one
+   * An ingot nobody has configured writes no outbox row at all. Queueing one
    * and draining it into a log line would be a table that fills as fast as
    * receipts are written, for every deployment that never asked for delivery.
    */
-  it('queues nothing for a memory with no target', async () => {
-    const ingot = await world.ingot('an unconfigured memory');
+  it('queues nothing for an ingot with no target', async () => {
+    const ingot = await world.ingot('an unconfigured ingot');
     const batch = await store(ingot, 'quiet');
 
     expect(await world.summariseAll()).toBe(1);
@@ -119,8 +119,8 @@ describe('delivering a receipt', () => {
     expect(sent).toEqual([]);
   });
 
-  it('reports where a memory delivers, defaults included', async () => {
-    const ingot = await world.ingot('a configured memory');
+  it('reports where an ingot delivers, defaults included', async () => {
+    const ingot = await world.ingot('a configured ingot');
 
     expect((await world.info(ingot)).config).toEqual({
       delivery: { t: DeliveryKind.None },
@@ -148,7 +148,7 @@ describe('delivering a receipt', () => {
    * inside `WriteReceipt`, `sent` is non-empty here and this fails.
    */
   it('announces into the outbox when the receipt is written, and sends afterwards', async () => {
-    const ingot = await world.ingot('a delivering memory');
+    const ingot = await world.ingot('a delivering ingot');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -173,7 +173,7 @@ describe('delivering a receipt', () => {
    * for finding the same thing, and the two would drift.
    */
   it('sends the receipt, and the query the caller was already given', async () => {
-    const ingot = await world.ingot('a memory that describes itself');
+    const ingot = await world.ingot('an ingot that describes itself');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -243,7 +243,7 @@ describe('delivering a receipt', () => {
    * cost the attempt, keep the reason, and leave the row exactly where it was.
    */
   it('keeps a refused delivery, counts the attempt, and marks the retry', async () => {
-    const ingot = await world.ingot('a memory with a flaky receiver');
+    const ingot = await world.ingot('an ingot with a flaky receiver');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -263,7 +263,7 @@ describe('delivering a receipt', () => {
   });
 
   it('leaves the receipt written and queryable when delivery never succeeds', async () => {
-    const ingot = await world.ingot('a memory nobody is listening to');
+    const ingot = await world.ingot('an ingot nobody is listening to');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -294,7 +294,7 @@ describe('delivering a receipt', () => {
    * promised somewhere, and the row is the record of where.
    */
   it('does not retarget a delivery that was already announced', async () => {
-    const ingot = await world.ingot('a memory that moved');
+    const ingot = await world.ingot('an ingot that moved');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -313,8 +313,8 @@ describe('delivering a receipt', () => {
     });
   });
 
-  it('drops undelivered announcements when the memory is destroyed', async () => {
-    const ingot = await world.ingot('a memory about to go');
+  it('drops undelivered announcements when the ingot is destroyed', async () => {
+    const ingot = await world.ingot('an ingot about to go');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -332,7 +332,7 @@ describe('delivering a receipt', () => {
 
   /** The fast path: a written receipt wakes delivery rather than waiting a tick. */
   it('wakes the delivery worker when a receipt commits', async () => {
-    const ingot = await world.ingot('a memory in a hurry');
+    const ingot = await world.ingot('an ingot in a hurry');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -352,7 +352,7 @@ describe('delivering a receipt', () => {
    * person making the call is the one who can set it.
    */
   it('refuses a transport this deployment cannot honour', async () => {
-    const ingot = await world.ingot('a memory wanting a queue');
+    const ingot = await world.ingot('an ingot wanting a queue');
 
     expect(
       world.configureIngot(ingot, { delivery: { t: DeliveryKind.Rmq, queue: 'receipts' } }),
@@ -366,7 +366,7 @@ describe('delivering a receipt', () => {
   });
 
   it('refuses an endpoint inside its own network', async () => {
-    const ingot = await world.ingot('a memory pointed inwards');
+    const ingot = await world.ingot('an ingot pointed inwards');
 
     expect(
       world.configureIngot(ingot, {
@@ -376,7 +376,7 @@ describe('delivering a receipt', () => {
   });
 
   it('turns delivery off without disturbing anything else', async () => {
-    const ingot = await world.ingot('a memory that changed its mind');
+    const ingot = await world.ingot('an ingot that changed its mind');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
@@ -391,7 +391,7 @@ describe('delivering a receipt', () => {
 
   /** An empty patch is not an instruction to reset anything. */
   it('leaves the target alone when the patch does not mention it', async () => {
-    const ingot = await world.ingot('a memory sent an empty patch');
+    const ingot = await world.ingot('an ingot sent an empty patch');
     await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });

@@ -1,6 +1,6 @@
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
-export class CreateIngotDto {
+export class CastIngotDto {
   @IsString()
   @MinLength(1)
   @MaxLength(120)

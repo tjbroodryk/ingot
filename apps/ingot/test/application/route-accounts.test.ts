@@ -126,7 +126,7 @@ describe('route registration order', () => {
   /**
    * `/:account/:ingot` is as greedy as a pattern gets. Registered before the
    * accounts controller it would swallow `/accounts/acme/keys` and route key
-   * management into the memory API — an authenticated caller managing
+   * management into the ingot API — an authenticated caller managing
    * credentials would instead be told there is no ingot called "acme".
    *
    * Two things prevent it, and this asserts the first. The second is

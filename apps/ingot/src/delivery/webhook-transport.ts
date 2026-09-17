@@ -13,7 +13,7 @@ import { DeliveryRefused, type DeliveryTransport } from './delivery-transport.po
 const MAX_ERROR_CHARS = 500;
 
 /**
- * One POST per receipt, to an endpoint the memory's owner nominated.
+ * One POST per receipt, to an endpoint the ingot's owner nominated.
  *
  * Deliberately plain: a JSON body, a content type, and a deadline. No signing
  * scheme, because there is nowhere for a caller to have registered a secret —

@@ -33,7 +33,7 @@ export interface TypedQueryResult<R> extends Omit<QueryResult, 'rows'> {
   readonly rows: readonly R[];
 }
 
-export interface CloneMemoryOptions extends CloneIngotBody {
+export interface CloneIngotOptions extends CloneIngotBody {
   readonly signal?: AbortSignal;
 }
 
@@ -130,15 +130,15 @@ const DEFAULT_WAIT_TIMEOUT_MS = 120_000;
 const DEFAULT_WAIT_INTERVAL_MS = 1_000;
 
 /**
- * One memory. Constructing one makes no request; the id is not checked until
+ * One ingot. Constructing one makes no request; the id is not checked until
  * something is asked of it.
  */
-export class Memory {
+export class Ingot {
   constructor(
     private readonly transport: Transport,
     private readonly account: string,
     readonly id: string,
-    /** The listing `memories.create` answered with, when this came from one. */
+    /** The listing `ingots.cast` answered with, when this came from one. */
     readonly summary: IngotSummary | null = null,
   ) {}
 
@@ -256,11 +256,11 @@ export class Memory {
   }
 
   /**
-   * Copies this memory — tables, rows, tombstones and vectors — into a new one,
+   * Copies this ingot — tables, rows, tombstones and vectors — into a new one,
    * and hands back a handle on the copy. Writes to either afterwards do not
-   * reach the other. With `externalId`, idempotent, as `memories.create` is.
+   * reach the other. With `externalId`, idempotent, as `ingots.cast` is.
    */
-  async clone(options: CloneMemoryOptions = {}): Promise<Memory> {
+  async clone(options: CloneIngotOptions = {}): Promise<Ingot> {
     const { signal, ...body } = options;
     const summary = await this.transport.json<IngotSummary>({
       method: 'POST',
@@ -270,10 +270,10 @@ export class Memory {
       safe: body.externalId !== undefined,
       signal,
     });
-    return new Memory(this.transport, this.account, summary.id, summary);
+    return new Ingot(this.transport, this.account, summary.id, summary);
   }
 
-  /** Deletes this memory and everything in it. Not reversible. */
+  /** Deletes this ingot and everything in it. Not reversible. */
   async destroy(options: { signal?: AbortSignal } = {}): Promise<void> {
     await this.transport.json({
       method: 'DELETE',
@@ -348,7 +348,7 @@ export class Memory {
     );
   }
 
-  /** Tools for an agent, scoped to this memory: they take no ids and reach nothing else. */
+  /** Tools for an agent, scoped to this ingot: they take no ids and reach nothing else. */
   mcp(options: McpOptions = {}): Promise<IngotMcpTool[]> {
     return new McpConnection(this.transport, this.path('mcp')).tools(options);
   }
@@ -401,7 +401,7 @@ export class Memory {
 /** A table by name: reads and the overlay, but no typed rows and no mapping to add with. */
 export class Table {
   constructor(
-    protected readonly memory: Memory,
+    protected readonly ingot: Ingot,
     protected readonly transport: Transport,
     protected readonly account: string,
     readonly name: string,
@@ -412,33 +412,33 @@ export class Table {
     options: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
   ) {
     const { signal, ...page } = options;
-    return this.memory.query<R>({ sql, ...page }, { signal });
+    return this.ingot.query<R>({ sql, ...page }, { signal });
   }
 
   search<R = Row>(text: string, options: Omit<SearchOptions, 'table'> = {}) {
-    return this.memory.search<R>(text, { ...options, table: this.name });
+    return this.ingot.search<R>(text, { ...options, table: this.name });
   }
 
   forget(where: string, options: { signal?: AbortSignal } = {}): Promise<DeleteResult> {
-    return this.memory.forget({ table: this.name, where }, options);
+    return this.ingot.forget({ table: this.name, where }, options);
   }
 
   configure(
     body: ConfigureTableBody,
     options: { signal?: AbortSignal } = {},
   ): Promise<TableConfig> {
-    return this.memory.configureTable(this.name, body, options);
+    return this.ingot.configureTable(this.name, body, options);
   }
 
   drop(options: { signal?: AbortSignal } = {}): Promise<void> {
-    return this.memory.dropTable(this.name, options);
+    return this.ingot.dropTable(this.name, options);
   }
 
   /** One page of writes not yet rolled up, and every tombstone. */
   pending(options: PendingOptions = {}): Promise<PendingOperations> {
     return this.transport.json<PendingOperations>({
       method: 'GET',
-      path: this.memory.path(`tables/${segment(this.name)}/pending`),
+      path: this.ingot.path(`tables/${segment(this.name)}/pending`),
       query: { after: options.after, limit: options.limit },
       safe: true,
       signal: options.signal,
@@ -466,7 +466,7 @@ export class Table {
   parquet(options: ParquetOptions = {}): Promise<Response> {
     return this.transport.response({
       method: 'GET',
-      path: this.memory.path(`tables/${segment(this.name)}/parquet`),
+      path: this.ingot.path(`tables/${segment(this.name)}/parquet`),
       query: { generation: options.generation, part: options.part },
       headers: options.range === undefined ? {} : { range: options.range },
       safe: true,
@@ -477,7 +477,7 @@ export class Table {
   /** The whole overlay against one generation, with the table's columns. */
   async snapshot(options: SnapshotOptions = {}): Promise<TableSnapshot> {
     const read = await this.readPending(options);
-    return withColumns(read, await this.memory.info({ signal: options.signal }));
+    return withColumns(read, await this.ingot.info({ signal: options.signal }));
   }
 
   /** @internal */
@@ -525,19 +525,19 @@ export class Table {
 /** A table typed by its definition: rows, embedded columns and `add` all follow from it. */
 export class TypedTable<D extends TableDef> extends Table {
   constructor(
-    memory: Memory,
+    ingot: Ingot,
     transport: Transport,
     account: string,
     readonly definition: D,
   ) {
-    super(memory, transport, account, definition.name);
+    super(ingot, transport, account, definition.name);
   }
 
   add(
     result: unknown,
     options: AddOptions & { signal?: AbortSignal } = {},
   ): D extends AddableTable ? Promise<AddResult> : never {
-    return this.memory.add(this.definition as unknown as AddableTable, result, options) as never;
+    return this.ingot.add(this.definition as unknown as AddableTable, result, options) as never;
   }
 
   override query<R = Infer<D>>(
@@ -562,7 +562,7 @@ function isTableDef(value: AddBody | AddableTable): value is AddableTable {
 function withColumns(snapshot: Omit<TableSnapshot, 'columns'>, info: IngotInfo): TableSnapshot {
   const table = info.tables.find((candidate) => candidate.name === snapshot.table);
   if (!table) {
-    throw new NotFoundError(`Table "${snapshot.table}" is no longer in this memory`, {
+    throw new NotFoundError(`Table "${snapshot.table}" is no longer in this ingot`, {
       status: 404,
       code: 'table_dropped',
     });

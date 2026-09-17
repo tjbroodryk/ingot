@@ -399,7 +399,7 @@ export interface ConfigureTableBody {
   readonly fts?: Partial<FtsConfig>;
 }
 
-// ── the memory itself ─────────────────────────────────────────────────────
+// ── the ingot itself ─────────────────────────────────────────────────────
 
 export interface TableInfo {
   readonly name: string;
@@ -423,20 +423,20 @@ export interface IngotSummary {
   readonly tables: number;
   readonly rows: number;
   readonly createdAt: string;
-  /** When this memory will be deleted, or null if it is kept indefinitely. */
+  /** When this ingot will be deleted, or null if it is kept indefinitely. */
   readonly expiresAt: string | null;
 }
 
 /** What `GET /:account/:ingot/info` returns: the information schema. */
 /**
- * The vector space a memory's embeddings live in.
+ * The vector space an ingot's embeddings live in.
  *
  * Claimed by the first embedding written and fixed from then on, because
  * vectors from two models cannot be compared — a similarity between them is a
- * number that means nothing. Reported so that "which model is this memory
+ * number that means nothing. Reported so that "which model is this ingot
  * embedded with" has an answer that does not involve reading a deployment's
  * environment, and so a caller can tell an empty result from an incompatible
- * one. Null for a memory that has never embedded anything.
+ * one. Null for an ingot that has never embedded anything.
  */
 export interface EmbeddingInfo {
   readonly model: string;
@@ -449,7 +449,7 @@ export interface IngotInfo {
   readonly externalId: string | null;
   readonly account: string;
   readonly createdAt: string;
-  /** When this memory will be deleted, or null if it is kept indefinitely. */
+  /** When this ingot will be deleted, or null if it is kept indefinitely. */
   readonly expiresAt: string | null;
   /** Null until the first embedding is written. See `EmbeddingInfo`. */
   readonly embedding: EmbeddingInfo | null;
@@ -458,28 +458,28 @@ export interface IngotInfo {
   readonly tables: readonly TableInfo[];
 }
 
-export interface CreateIngotBody {
+export interface CastIngotBody {
   readonly name: string;
   /**
-   * How long to keep this memory before deleting it — `30m`, `12h`, `14d`,
+   * How long to keep this ingot before deleting it — `30m`, `12h`, `14d`,
    * `4w`. Omitted, it is kept until something deletes it.
    *
    * A duration rather than a timestamp because the question a caller is
    * actually asking is "how long", and making them do date arithmetic to
-   * express it is a way to get a memory that expires in 1970. A short grammar
+   * express it is a way to get an ingot that expires in 1970. A short grammar
    * rather than seconds because `14d` cannot be misread by three orders of
    * magnitude, and `1209600` can.
    *
-   * **Expiry deletes the memory and everything in it, and that is not
+   * **Expiry deletes the ingot and everything in it, and that is not
    * reversible.** It is opt-in for that reason.
    */
   readonly retainFor?: string;
   /**
-   * The caller's own handle for this memory — a conversation id, a job id.
+   * The caller's own handle for this ingot — a conversation id, a job id.
    *
-   * Makes create idempotent: a second create with the same `externalId` on the
-   * same account answers with the memory the first one made (200, not 201) and
-   * changes nothing about it. Without it, two workers racing to open the memory
+   * Makes cast idempotent: a second cast with the same `externalId` on the
+   * same account answers with the ingot the first one made (200, not 201) and
+   * changes nothing about it. Without it, two workers racing to open the ingot
    * for one conversation make two, and one of them is an orphan.
    */
   readonly externalId?: string;
@@ -488,7 +488,7 @@ export interface CreateIngotBody {
 /**
  * What `POST /:account/:ingot/clone` takes. Every field is optional.
  *
- * A clone is a new memory holding the source's tables, rows, tombstones and
+ * A clone is a new ingot holding the source's tables, rows, tombstones and
  * vectors as of one instant, under a new id. Writes to either afterwards are
  * not seen by the other. Delivery settings are not copied.
  */
@@ -497,36 +497,36 @@ export interface CloneIngotBody {
   readonly name?: string;
   /** Omitted, the clone expires when the source does. */
   readonly retainFor?: string;
-  /** Makes the clone idempotent, exactly as it does `create`. */
+  /** Makes the clone idempotent, exactly as it does `cast`. */
   readonly externalId?: string;
 }
 
 // ── delivery ──────────────────────────────────────────────────────────────
 
 /**
- * How a memory is told that a receipt has been written.
+ * How an ingot is told that a receipt has been written.
  *
  * A receipt is collected by polling by default: `/add` hands back a SELECT and
  * the caller runs it when it wants the answer. That needs no registration, no
  * retry policy and no endpoint to be up — but it is a poor fit for an agent
  * that has moved on and would rather be told.
  *
- * Configured per memory rather than per `/add`, because the thing that wants
- * telling is the *system* holding the memory, not the individual call. A
- * strategy set once applies to every receipt the memory ever writes, including
+ * Configured per ingot rather than per `/add`, because the thing that wants
+ * telling is the *system* holding the ingot, not the individual call. A
+ * strategy set once applies to every receipt the ingot ever writes, including
  * ones written by a caller who knows nothing about the endpoint.
  */
 export enum DeliveryKind {
   /** The default: nothing is pushed, and the receipt's query is the contract. */
   None = 'none',
-  /** One POST per receipt, to an endpoint the memory's owner nominates. */
+  /** One POST per receipt, to an endpoint the ingot's owner nominates. */
   Webhook = 'webhook',
   /** One message per receipt, onto a queue on the deployment's broker. */
   Rmq = 'rmq',
 }
 
 /**
- * Where a memory's receipts are delivered.
+ * Where an ingot's receipts are delivered.
  *
  * A discriminated union rather than a bag of optional fields, so a webhook
  * without an endpoint and a queue without a name are shapes that cannot be
@@ -551,10 +551,10 @@ export type DeliveryStrategy =
       readonly events?: readonly DeliveryEvent[];
     };
 
-/** Everything configurable about a memory as a whole. */
+/** Everything configurable about an ingot as a whole. */
 export interface IngotConfig {
   readonly delivery: DeliveryStrategy;
-  /** When this memory will be deleted, or null if it is kept indefinitely. */
+  /** When this ingot will be deleted, or null if it is kept indefinitely. */
   readonly expiresAt: string | null;
 }
 
@@ -562,18 +562,18 @@ export interface IngotConfig {
  * What `POST /:account/:ingot/config` accepts.
  *
  * A patch, like the table config it sits beside: an omitted field keeps what
- * the memory already has. Turning delivery off is `{ delivery: { t: "none" } }`
+ * the ingot already has. Turning delivery off is `{ delivery: { t: "none" } }`
  * and not an omission, so a caller who sends a partial body cannot silently
  * disconnect a webhook somebody else configured.
  */
 export interface ConfigureIngotBody {
   readonly delivery?: DeliveryStrategy;
   /**
-   * Restart the expiry clock: delete this memory this long from now. `null`
+   * Restart the expiry clock: delete this ingot this long from now. `null`
    * keeps it indefinitely. Omitted, the current expiry stands.
    *
    * Measured from the call, not from creation, so a conversation that is picked
-   * up again can push its memory's deletion out by calling this on each use.
+   * up again can push its ingot's deletion out by calling this on each use.
    */
   readonly retainFor?: string | null;
 }
@@ -614,7 +614,7 @@ export enum DeliveryEvent {
  */
 export interface DeliveredReceipt {
   readonly event: DeliveryEvent.ReceiptReady;
-  /** The memory, not the account. */
+  /** The ingot, not the account. */
   readonly ingot: string;
   readonly batch: string;
   /** The caller's own handle for the result, or null if they gave none. */

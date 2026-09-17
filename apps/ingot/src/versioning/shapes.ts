@@ -20,7 +20,7 @@ export enum WireShape {
 
   IngotSummary = 'IngotSummary',
   IngotInfo = 'IngotInfo',
-  CreateIngotBody = 'CreateIngotBody',
+  CastIngotBody = 'CastIngotBody',
   CloneIngotBody = 'CloneIngotBody',
 
   TableConfig = 'TableConfig',

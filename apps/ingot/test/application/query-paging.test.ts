@@ -32,7 +32,7 @@ describe('paging a query', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory worth paging');
+    ingot = await world.ingot('an ingot worth paging');
     await world.add(ingot, {
       table: 'events',
       rows: '$.items[*]',

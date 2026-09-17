@@ -79,7 +79,7 @@ export interface ReadDocument {
  * again. A chunk table is keyed on `(file_id, ordinal)` and **nothing in this
  * service enforces a key** — declaring one says "this is what identifies the
  * thing", not "refuse a second" — so the duplicates would simply sit there,
- * both ranking, in every search over that memory afterwards. One transaction is
+ * both ranking, in every search over that ingot afterwards. One transaction is
  * what makes a retry a retry rather than a doubling.
  */
 export class WriteFile extends Command<void> {
@@ -143,7 +143,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
     Metrics.ChunksWritten.inc({ media_type: job.mediaType }, read.chunks.length);
   }
 
-  /** The memory's document table, created on its first upload. */
+  /** The ingot's document table, created on its first upload. */
   private async writeFileRow(
     job: PendingFile,
     now: Date,

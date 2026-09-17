@@ -8,7 +8,7 @@ export interface PendingDelivery {
    */
   readonly batch: string;
   readonly ingotId: string;
-  /** Where this was going when it was announced, not where the memory points now. */
+  /** Where this was going when it was announced, not where the ingot points now. */
   readonly target: DeliveryStrategy;
   /** The body, as it was rendered when it was announced. */
   readonly payload: Delivered;
@@ -38,7 +38,7 @@ export interface PendingDelivery {
  * network call in between.
  *
  * There is no method for "where should this go" on purpose. The target is
- * resolved once, at enqueue, and stored on the row: a memory whose endpoint is
+ * resolved once, at enqueue, and stored on the row: an ingot whose endpoint is
  * changed while a delivery is in flight should not have that delivery silently
  * retargeted at the new one.
  */
@@ -117,9 +117,9 @@ export interface DeliveryOutbox {
   abandoned(maxAttempts: number): Promise<number>;
 
   /**
-   * Drops a memory's undelivered announcements, when the memory itself goes.
+   * Drops an ingot's undelivered announcements, when the ingot itself goes.
    *
-   * Announcing a receipt from a memory that no longer exists would hand a
+   * Announcing a receipt from an ingot that no longer exists would hand a
    * receiver a query that can only ever come back empty.
    */
   purgeIngot(ingotId: string): Promise<void>;

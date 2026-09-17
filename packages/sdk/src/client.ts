@@ -1,13 +1,13 @@
 import type {
   AccountDetail,
-  CreateIngotBody,
+  CastIngotBody,
   IngotSummary,
   MintedKey,
   MintKeyBody,
 } from './contract.js';
 import { ConfigurationError } from './errors.js';
 import { McpConnection, type IngotMcpTool, type McpOptions } from './mcp.js';
-import { Memory } from './memory.js';
+import { Ingot } from './ingot.js';
 import {
   DEFAULT_MAX_RETRIES,
   DEFAULT_TIMEOUT_MS,
@@ -18,7 +18,7 @@ import {
   segment,
 } from './transport.js';
 
-export interface IngotOptions {
+export interface IngotFoundryOptions {
   /** The service root, e.g. `https://ingot.example.com`. Falls back to `INGOT_URL`. */
   readonly url?: string;
   /** The account slug. Falls back to `INGOT_ACCOUNT`. */
@@ -36,7 +36,7 @@ export interface IngotOptions {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-export interface CreateMemoryOptions extends CreateIngotBody {
+export interface CastIngotOptions extends CastIngotBody {
   readonly signal?: AbortSignal;
 }
 
@@ -54,19 +54,19 @@ export interface VersionsResponse {
 type Signal = { readonly signal?: AbortSignal };
 
 /** A client for one account on one Ingot deployment. */
-export class Ingot {
+export class IngotFoundry {
   /** The account slug every request is made against. */
   readonly accountSlug: string;
   private readonly transport: Transport;
 
-  readonly memories: {
+  readonly ingots: {
     /**
-     * Creates a memory. With `externalId`, idempotent: a second create with the
-     * same id answers with the memory the first one made, unchanged.
+     * Casts an ingot. With `externalId`, idempotent: a second cast with the
+     * same id answers with the ingot the first one made, unchanged.
      */
-    create(options: CreateMemoryOptions): Promise<Memory>;
+    cast(options: CastIngotOptions): Promise<Ingot>;
     list(options?: Signal): Promise<IngotSummary[]>;
-    /** Deletes a memory and everything in it. Not reversible. */
+    /** Deletes an ingot and everything in it. Not reversible. */
     delete(id: string, options?: Signal): Promise<void>;
   };
 
@@ -76,7 +76,7 @@ export class Ingot {
     revoke(keyId: string, options?: Signal): Promise<void>;
   };
 
-  constructor(options: IngotOptions = {}) {
+  constructor(options: IngotFoundryOptions = {}) {
     const env = environment();
     const url = options.url ?? env.INGOT_URL;
     const account = options.account ?? env.INGOT_ACCOUNT;
@@ -114,17 +114,17 @@ export class Ingot {
 
     const accountPath = segment(this.accountSlug);
 
-    this.memories = {
-      create: async ({ signal, ...body }) => {
+    this.ingots = {
+      cast: async ({ signal, ...body }) => {
         const summary = await this.transport.json<IngotSummary>({
           method: 'POST',
-          path: `${accountPath}/create`,
+          path: `${accountPath}/cast`,
           json: body,
           // Repeating a create is only harmless when it is keyed.
           safe: body.externalId !== undefined,
           signal,
         });
-        return new Memory(this.transport, this.accountSlug, summary.id, summary);
+        return new Ingot(this.transport, this.accountSlug, summary.id, summary);
       },
       list: (options = {}) =>
         this.transport.json<IngotSummary[]>({
@@ -163,9 +163,9 @@ export class Ingot {
     };
   }
 
-  /** A handle on a memory by id. Makes no request. */
-  memory(id: string): Memory {
-    return new Memory(this.transport, this.accountSlug, id);
+  /** A handle on an ingot by id. Makes no request. */
+  ingot(id: string): Ingot {
+    return new Ingot(this.transport, this.accountSlug, id);
   }
 
   /** The account and its keys. Also the cheapest way to check a key works. */
@@ -197,7 +197,7 @@ export class Ingot {
     });
   }
 
-  /** Account-level tools for an agent: creating, listing and deleting memories. */
+  /** Account-level tools for an agent: casting, listing and deleting ingots. */
   mcp(options: McpOptions = {}): Promise<IngotMcpTool[]> {
     return new McpConnection(this.transport, `${segment(this.accountSlug)}/mcp`).tools(options);
   }

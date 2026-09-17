@@ -12,18 +12,18 @@ import { Dispatcher } from '../shared/application/index.js';
 const EVERY = minutes(10);
 
 /**
- * How many memories one tick will destroy.
+ * How many ingots one tick will destroy.
  *
  * Low on purpose. This is the only thing in the service that deletes data
  * nobody asked it to delete right now, and a bug here is not a slow queue — it
- * is somebody's memory, gone. A small cap means a mistake is small and visible
+ * is somebody's ingot, gone. A small cap means a mistake is small and visible
  * for several ticks before it is large, and the log line below is what makes
  * it visible.
  */
 const PER_TICK = 25;
 
 /**
- * Deletes memories past their retention.
+ * Deletes ingots past their retention.
  *
  * A caller who said `retainFor: '14d'` at creation gets exactly that, and this
  * is what makes the promise true. Everything else in the service only deletes
@@ -35,7 +35,7 @@ const PER_TICK = 25;
  * "the thing the caller could have done themselves, done on time".
  *
  * Safe to run twice, which is what a scheduler without a journal requires: a
- * memory reaped by an interrupted tick is not found by the next one, and the
+ * ingot reaped by an interrupted tick is not found by the next one, and the
  * re-read below is what makes that a checked fact rather than a hope.
  */
 @Cron({
@@ -46,11 +46,11 @@ const PER_TICK = 25;
    * correct. `PER_TICK` is a blast-radius bound on the only thing in the
    * service that deletes data nobody asked it to delete, and per replica it
    * would quietly become twenty-five times however many pods are running. A
-   * ten-minute sweep over expired memories has no throughput problem worth
+   * ten-minute sweep over expired ingots has no throughput problem worth
    * trading that for.
    */
   exclusive: true,
-  description: 'Deletes memories whose retention has run out',
+  description: 'Deletes ingots whose retention has run out',
 })
 export class ExpirySweeper {
   private readonly logger = new Logger(ExpirySweeper.name);
@@ -70,7 +70,7 @@ export class ExpirySweeper {
 
     if (due.length > PER_TICK) {
       this.logger.log(
-        `${due.length} memories are past their retention; this tick takes ${PER_TICK}. ` +
+        `${due.length} ingots are past their retention; this tick takes ${PER_TICK}. ` +
           'The rest go in the next one.',
       );
     }
@@ -82,7 +82,7 @@ export class ExpirySweeper {
        * The listing already filtered on `expires_at <= now` in SQL, so this
        * is belt and braces — and it is worth having precisely because the
        * thing on the other side is irreversible. It costs one indexed read
-       * per memory at a cap of twenty-five, and it means the decision to
+       * per ingot at a cap of twenty-five, and it means the decision to
        * destroy something is made against the row as it is now rather than
        * as it was when a query ran.
        */
@@ -95,7 +95,7 @@ export class ExpirySweeper {
       }
 
       await this.dispatcher.send(new DeleteIngot(target.id, target.accountId));
-      // Loud, and one line per memory. Deleting somebody's data is not a
+      // Loud, and one line per ingot. Deleting somebody's data is not a
       // thing to do quietly, and this is the only record that it happened.
       this.logger.log(`Reaped "${target.name}" (${target.id}): retention ran out`);
     }

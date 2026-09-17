@@ -56,7 +56,7 @@ export class ConfigureIngotDto {
   @Type(() => DeliveryStrategyDto)
   delivery?: DeliveryStrategyDto;
 
-  /** `null` keeps the memory indefinitely; `@IsOptional` lets it through unchecked. */
+  /** `null` keeps the ingot indefinitely; `@IsOptional` lets it through unchecked. */
   @IsOptional()
   @IsString()
   @Matches(/^\d+[mhdw]$/i, {

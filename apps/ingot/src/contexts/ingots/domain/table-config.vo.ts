@@ -65,7 +65,7 @@ export class FtsSettings extends ValueObject {
    *
    * Off rather than on because an index is built per session over the whole
    * table, so switching it on for every table would put that cost on every
-   * query of every memory, including the ones storing no prose at all. A
+   * query of every ingot, including the ones storing no prose at all. A
    * caller who wants search says so once.
    */
   static default(): FtsSettings {

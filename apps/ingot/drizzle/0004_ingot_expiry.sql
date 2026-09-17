@@ -1,6 +1,6 @@
--- When a memory falls due for deletion.
+-- When an ingot falls due for deletion.
 --
--- Null for the overwhelming majority: a memory is kept until something deletes
+-- Null for the overwhelming majority: an ingot is kept until something deletes
 -- it, and expiry is opt-in because what it does is irreversible. A caller sets
 -- it by saying how long — `14d` — rather than by naming a timestamp, so that
 -- the arithmetic that turns "two weeks" into an instant happens once, here,

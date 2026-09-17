@@ -41,7 +41,7 @@ export class TableRegistry {
    * `declare` is a thunk rather than a value because the overwhelmingly common
    * case is the table already existing, and building a declaration — parsing
    * every column name and type — to then throw it away is work done on every
-   * write of a memory's life to cover the first one.
+   * write of an ingot's life to cover the first one.
    */
   async ensure(
     ingotId: string,
@@ -75,11 +75,11 @@ export class TableRegistry {
    * ones already out there as well.
    *
    * The failure this exists to stop is not theoretical; it shipped once. `ocr`
-   * was added to the chunk table, and every memory created before it kept the
+   * was added to the chunk table, and every ingot created before it kept the
    * nine columns it was made with — so `/file` handed back a `chunksQuery`
    * naming a column that was not there, and the promissory note answered
    * `Binder Error: Referenced column "ocr" not found` for every document in
-   * every memory that predated the release.
+   * every ingot that predated the release.
    *
    * Widening only, on the same terms as `/add`: a new column arrives optional
    * because the Parquet already written lacks it, and a changed type is still

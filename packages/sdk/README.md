@@ -1,7 +1,7 @@
 # @ingotdb/sdk
 
 A TypeScript client for [Ingot](../../README.md), the agent memory server: store tool results and
-documents in a memory, query them back as SQL, hand an agent the tools to do it itself, and read
+documents in an ingot, query them back as SQL, hand an agent the tools to do it itself, and read
 a table's Parquet and uncompacted writes into a DuckDB of your own.
 
 No runtime dependencies. It uses `fetch`, `FormData` and `Blob`, so it runs on Node 18+, Bun, Deno
@@ -14,9 +14,9 @@ npm install @ingotdb/sdk
 ## Connecting
 
 ```ts
-import { Ingot } from '@ingotdb/sdk';
+import { IngotFoundry } from '@ingotdb/sdk';
 
-const ingot = new Ingot({
+const foundry = new IngotFoundry({
   url: 'https://ingot.example.com', // the service root; a trailing /api is fine
   account: 'acme',
   apiKey: process.env.INGOT_API_KEY,
@@ -27,20 +27,20 @@ With nothing passed, `url`, `account` and `apiKey` are read from `INGOT_URL`, `I
 `INGOT_API_KEY`. Also accepted: `fetch`, `timeoutMs` (30s, per attempt), `maxRetries` (2), `headers`
 and `version`.
 
-## A memory per conversation
+## An ingot per conversation
 
 ```ts
 import { ReceiptKind, col, table } from '@ingotdb/sdk';
 
-// Idempotent on externalId: two workers opening the same conversation get the same memory.
-const memory = await ingot.memories.create({
+// Idempotent on externalId: two workers opening the same conversation get the same ingot.
+const ingot = await foundry.ingots.cast({
   name: `chat-${chatId}`,
   externalId: chatId,
   retainFor: '30d',
 });
 
 // Each time the conversation is used again, push its deletion out.
-await memory.configure({ retainFor: '30d' });
+await ingot.configure({ retainFor: '30d' });
 
 const toolResults = table('tool_results')
   .columns({
@@ -50,23 +50,23 @@ const toolResults = table('tool_results')
   })
   .raw();
 
-const added = await memory.add(toolResults, output, {
+const added = await ingot.add(toolResults, output, {
   receipt: ReceiptKind.Full,
   externalId: toolCallId,
 });
-const receipt = await memory.waitForReceipt(added); // summary and search_term, once written
+const receipt = await ingot.waitForReceipt(added); // summary and search_term, once written
 
-const upload = await memory.uploadDocument(file, { filename: 'contract.pdf' });
-const document = await memory.waitForDocument(upload); // status: 'ready' | 'failed'
+const upload = await ingot.uploadDocument(file, { filename: 'contract.pdf' });
+const document = await ingot.waitForDocument(upload); // status: 'ready' | 'failed'
 ```
 
-`ingot.memory(id)` makes a handle without a request. `memories.list()`, `memories.delete(id)`,
-`memory.info()`, `memory.destroy()`, `memory.configureTable()` and `memory.dropTable()` do what
+`foundry.ingot(id)` makes a handle without a request. `ingots.list()`, `ingots.delete(id)`,
+`ingot.info()`, `ingot.destroy()`, `ingot.configureTable()` and `ingot.dropTable()` do what
 they say.
 
 ```ts
 // Tables, rows and embeddings as of now, under a new id. Neither sees the other's writes after.
-const fork = await memory.clone({ name: `chat-${chatId}-retry`, externalId: `${chatId}-retry` });
+const fork = await ingot.clone({ name: `chat-${chatId}-retry`, externalId: `${chatId}-retry` });
 ```
 
 `clone` takes `name` (defaults to the source's), `retainFor` (defaults to expiring with the source)
@@ -76,27 +76,27 @@ is still being parsed.
 ## Querying
 
 ```ts
-const result = await memory.query<{ tool: string; n: string }>(
+const result = await ingot.query<{ tool: string; n: string }>(
   'SELECT tool, count(*) AS n FROM tool_results GROUP BY 1',
 );
 
 // Hybrid: `text` is embedded and bound as $q.
-await memory.query({
+await ingot.query({
   sql: 'SELECT title FROM tool_results ORDER BY array_cosine_similarity(title_vec, $q) DESC',
   text: 'refund',
 });
 
-await memory.search('termination clause', { table: 'ingot_file_chunks', column: 'text' });
+await ingot.search('termination clause', { table: 'ingot_file_chunks', column: 'text' });
 
 // Every page, following `next`.
-for await (const page of memory.queryPages({ sql: 'SELECT * FROM tool_results', limit: 500 })) {
+for await (const page of ingot.queryPages({ sql: 'SELECT * FROM tool_results', limit: 500 })) {
 }
 ```
 
 A typed handle takes its row type, and its embedded columns, from the definition:
 
 ```ts
-const results = memory.table(toolResults);
+const results = ingot.table(toolResults);
 const { rows } = await results.query('SELECT * FROM tool_results'); // Infer<typeof toolResults>[]
 await results.search('refund', { column: 'title' }); // 'title' is the only embedded column
 ```
@@ -124,7 +124,7 @@ to `uploadDocument(file, { extract })` instead.
 ## Tools for an agent
 
 ```ts
-const tools = await memory.mcp({ readOnly: true }); // describe, query, recall, pending
+const tools = await ingot.mcp({ readOnly: true }); // describe, query, recall, pending
 
 for (const tool of tools) {
   agent.registerTool({
@@ -136,9 +136,9 @@ for (const tool of tools) {
 }
 ```
 
-`memory.mcp()` connects to the memory's own MCP endpoint, so the tools take no ids and cannot reach
-another memory. `ingot.mcp()` is the account-level set: `create_memory`, `clone_memory`,
-`list_memories`, `delete_memory`. Filter with `{ only: ['query', 'recall'] }` or `{ readOnly: true }`. A tool that
+`ingot.mcp()` connects to the ingot's own MCP endpoint, so the tools take no ids and cannot reach
+another ingot. `foundry.mcp()` is the account-level set: `cast_ingot`, `clone_ingot`,
+`list_ingots`, `delete_ingot`. Filter with `{ only: ['query', 'recall'] }` or `{ readOnly: true }`. A tool that
 fails rejects with `McpToolError`, whose message is written for the model to act on.
 
 ## Datasets: the base tier and the overlay
@@ -146,7 +146,7 @@ fails rejects with `McpToolError`, whose message is written for the model to act
 A table is the Parquet of its last roll-up plus the writes since. Both are readable.
 
 ```ts
-const tickets = memory.table('tickets');
+const tickets = ingot.table('tickets');
 
 const page = await tickets.pending({ after: cursor, limit: 1000 }); // rows, tombstones, generation, base
 for await (const page of tickets.pendingPages({ after: cursor })) {
@@ -181,10 +181,10 @@ There are no vector columns: embeddings never leave the server, so similarity se
 
 ### Deliveries
 
-A memory can push events to a webhook or queue:
+An ingot can push events to a webhook or queue:
 
 ```ts
-await memory.configure({
+await ingot.configure({
   delivery: {
     t: DeliveryKind.Webhook,
     endpoint: 'https://api.example.com/hooks/ingot?token=…',
@@ -237,7 +237,7 @@ Everything thrown on purpose is an `IngotError` with `status` (0 when there was 
 | `ConfigurationError`              | the client was built without url, account or key       |
 
 Requests that are safe to repeat are retried on connection errors, timeouts and 503: reads,
-`query`, `configure`, `pending`, and `memories.create` or `memory.clone` with an `externalId`.
+`query`, `configure`, `pending`, and `ingots.cast` or `ingot.clone` with an `externalId`.
 Writes that could store twice (`add`, `uploadDocument`, `forget`, an unkeyed create or clone) are
 never retried.
 

@@ -18,7 +18,7 @@ import { type World, makeWorld } from '../support/world.js';
  *
  * If this test ever fails, the failure it is reporting is not "compaction has
  * a bug". It is "the answers this service gives depend on when you ask", which
- * is the one thing a memory may not do.
+ * is the one thing an ingot may not do.
  */
 describe('a roll-up', () => {
   let world: World;
@@ -68,7 +68,7 @@ describe('a roll-up', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('an events memory');
+    ingot = await world.ingot('an events ingot');
   });
 
   afterAll(async () => {

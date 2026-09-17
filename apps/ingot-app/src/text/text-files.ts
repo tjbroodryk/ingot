@@ -98,7 +98,7 @@ function link(path: string): string {
 function llmsTxt(pages: readonly (Article & { readonly path: string })[]): string {
   return `${blocks(
     heading(1, 'Ingot'),
-    '> Durable, typed memory for LLM agents. A tool result is stored as typed columns and read back as SQL or as search, so it outlives the turn without ever entering the context window. Self-hosted: one process, a Postgres, and somewhere to put Parquet.',
+    '> Durable, typed ingot for LLM agents. A tool result is stored as typed columns and read back as SQL or as search, so it outlives the turn without ever entering the context window. Self-hosted: one process, a Postgres, and somewhere to put Parquet.',
     'There is no hosted Ingot — you run it — so every address in these documents is `localhost` or your own. What follows is the site, without the site.',
 
     heading(2, 'Docs'),

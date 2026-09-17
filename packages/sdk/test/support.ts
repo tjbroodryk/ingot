@@ -1,4 +1,4 @@
-import { Ingot, type IngotOptions } from '../src/index.js';
+import { IngotFoundry, type IngotFoundryOptions } from '../src/index.js';
 
 export interface Recorded {
   readonly url: string;
@@ -39,16 +39,16 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   });
 }
 
-export function client(responder: Responder, options: IngotOptions = {}) {
+export function client(responder: Responder, options: IngotFoundryOptions = {}) {
   const fake = fakeFetch(responder);
-  const ingot = new Ingot({
+  const foundry = new IngotFoundry({
     url: 'https://ingot.test',
     account: 'acme',
     apiKey: 'ing_sk_test',
     fetch: fake.fetch,
     ...options,
   });
-  return { ingot, requests: fake.requests };
+  return { foundry, requests: fake.requests };
 }
 
 export function bodyOf(request: Recorded): unknown {

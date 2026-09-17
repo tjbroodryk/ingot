@@ -15,9 +15,9 @@ export enum SweptKind {
   Embeddings = 'embeddings',
   /** Writes that asked for a summary and have not been given one. */
   Receipts = 'receipts',
-  /** Receipts announced to a memory's delivery target and not yet sent. */
+  /** Receipts announced to an ingot's delivery target and not yet sent. */
   Deliveries = 'deliveries',
-  /** Memories past the retention their creator asked for. */
+  /** Ingots past the retention their creator asked for. */
   Expiry = 'expiry',
   /** Documents accepted by `/file` and not yet turned into chunks. */
   Files = 'files',

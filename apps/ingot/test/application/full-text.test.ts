@@ -29,7 +29,7 @@ describe('full text search', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory to search');
+    ingot = await world.ingot('an ingot to search');
 
     for (const row of rows) {
       await world.add(ingot, {

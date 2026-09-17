@@ -10,7 +10,7 @@ import { V1, addBody, createIngot, headers, ok, account as configuredAccount } f
  * with a read after each, and occasionally a semantic recall — because the
  * interesting failure is contention between them, not either alone. Writes
  * hold a Postgres connection; reads hold a DuckDB instance and a chunk of
- * memory. The pool is sized at ten.
+ * ingot. The pool is sized at ten.
  */
 const READ_EVERY = Number(__ENV.READ_EVERY || 3);
 const RECALL_EVERY = Number(__ENV.RECALL_EVERY || 20);

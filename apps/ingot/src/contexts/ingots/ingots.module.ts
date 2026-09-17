@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { CloneIngotHandler } from './application/commands/clone-ingot.command.js';
 import { ConfigureIngotHandler } from './application/commands/configure-ingot.command.js';
 import { ConfigureTableHandler } from './application/commands/configure-table.command.js';
-import { CreateIngotHandler } from './application/commands/create-ingot.command.js';
+import { CastIngotHandler } from './application/commands/cast-ingot.command.js';
 import { DeleteIngotHandler } from './application/commands/delete-ingot.command.js';
 import { DropTableHandler } from './application/commands/drop-table.command.js';
 import { GetIngotInfoHandler } from './application/queries/get-ingot-info.query.js';
@@ -22,7 +22,7 @@ import { IngotsController } from './interface/ingots.controller.js';
     CloneIngotHandler,
     ConfigureIngotHandler,
     ConfigureTableHandler,
-    CreateIngotHandler,
+    CastIngotHandler,
     DeleteIngotHandler,
     DropTableHandler,
     GetIngotInfoHandler,

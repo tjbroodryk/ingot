@@ -1,7 +1,7 @@
 # @ingot/app
 
 The public site for [`apps/ingot`](../ingot): a landing page, the API
-reference, and a small dashboard for putting a document into a memory you hold
+reference, and a small dashboard for putting a document into an ingot you hold
 a key to, and running a query against it.
 
 ```bash
@@ -56,7 +56,7 @@ Which mode goes where:
 | `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
 | `/why`        | The argument: why a query engine and not a vector store. Landing only. |
 | `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
-| `/dashboard`  | Paste a key; then memories and their schema, one SELECT and its grid, and this tab's uploads and queries. |
+| `/dashboard`  | Paste a key; then ingots and their schema, one SELECT and its grid, and this tab's uploads and queries. |
 
 `/why` is the only page on the site that argues rather than describes, and it
 is held to a stricter standard for it: every claim on it is a fact about a
@@ -103,7 +103,7 @@ in `apps/api` rather than repeating it.
 Until then the samples are checked by hand against
 `@ingot/shared/ingot-v1` and the DTOs under `apps/ingot/src/contexts/`. Two
 things the canvas design had wrong and this fixes, as a taste of what drifts:
-`:ingot` is an `ing_…` id and not a memory's name, and `/add` takes its blob as
+`:ingot` is an `ing_…` id and not an ingot's name, and `/add` takes its blob as
 `result` with `columns` mapping to `{ from, type }` objects rather than bare
 path strings.
 

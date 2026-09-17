@@ -3,7 +3,7 @@ import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'dr
 import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingot-v1';
 
 /**
- * How a memory's delivery strategy is stored: the wire shape, unchanged.
+ * How an ingot's delivery strategy is stored: the wire shape, unchanged.
  *
  * The same document a caller sent and the same one `/info` reports, so there is
  * no third representation to keep in step. `Delivery` parses it on the way in
@@ -11,7 +11,7 @@ import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingo
  */
 export type StoredDelivery = DeliveryStrategy;
 
-/** One memory. Thin on purpose — the shape of the data lives on the tables. */
+/** One ingot. Thin on purpose — the shape of the data lives on the tables. */
 export const ingot = pgTable(
   'ingot',
   {
@@ -23,16 +23,16 @@ export const ingot = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     /**
-     * The vector space this memory's embeddings live in, claimed by the first
-     * one written and held to from then on. Null for a memory that has never
+     * The vector space this ingot's embeddings live in, claimed by the first
+     * one written and held to from then on. Null for an ingot that has never
      * embedded anything — which is most of them, since `embed` is opt-in per
      * column. Both or neither; `useEmbedding` is what keeps them together.
      */
     embeddingModel: text('embedding_model'),
     embeddingDims: integer('embedding_dims'),
     /**
-     * Where this memory's receipts are pushed, as a `DeliveryStrategy`
-     * document. Null for every memory written before delivery existed and for
+     * Where this ingot's receipts are pushed, as a `DeliveryStrategy`
+     * document. Null for every ingot written before delivery existed and for
      * every one nobody has configured since; `Delivery.rehydrate` reads both as
      * `none`. A document rather than a column per kind, so the next transport
      * is a variant in the code rather than two more nullable columns.
@@ -42,7 +42,7 @@ export const ingot = pgTable(
   },
   (table) => [
     index('ingot_account').on(table.accountId, table.createdAt),
-    // Partial, because the overwhelming majority of memories never expire and
+    // Partial, because the overwhelming majority of ingots never expire and
     // the reaper's query is only ever interested in the ones that do.
     index('ingot_expiring')
       .on(table.expiresAt)

@@ -24,7 +24,7 @@ import { CurrentAccount } from './current-account.decorator.js';
  *
  * Registered before `IngotController` in `AppModule`, and that order is load
  * bearing: `/:account/:ingot` would otherwise match `/accounts/acme/keys` and
- * route key management into the memory API. `AccountSlug` refuses to mint an
+ * route key management into the ingot API. `AccountSlug` refuses to mint an
  * account named `accounts` as the second half of that defence, and
  * `route-accounts.test.ts` asserts both still hold.
  */

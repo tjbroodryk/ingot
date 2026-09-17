@@ -43,7 +43,7 @@ export function account() {
 
 export function createIngot(account, name) {
   const response = http.post(
-    `${V1}/${account.slug}/create`,
+    `${V1}/${account.slug}/cast`,
     JSON.stringify({ name }),
     headers(account.key),
   );

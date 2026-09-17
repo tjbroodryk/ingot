@@ -45,7 +45,7 @@ describe('a receipt', () => {
   });
 
   beforeAll(async () => {
-    ingot = await world.ingot('a memory with receipts');
+    ingot = await world.ingot('an ingot with receipts');
   });
 
   it('is not produced unless asked for', async () => {
@@ -157,7 +157,7 @@ describe('declaring a key', () => {
   let ingot: string;
 
   beforeAll(async () => {
-    ingot = await world.ingot('a memory to key');
+    ingot = await world.ingot('an ingot to key');
     await world.add(ingot, {
       table: 'notes',
       key: ['slug'],

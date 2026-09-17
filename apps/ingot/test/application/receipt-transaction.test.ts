@@ -73,7 +73,7 @@ describe('writing a receipt', () => {
 
   beforeAll(async () => {
     world = await makeWorld({ summariser: watcher });
-    ingot = await world.ingot('a watched memory');
+    ingot = await world.ingot('a watched ingot');
   });
 
   beforeEach(() => {

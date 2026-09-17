@@ -126,7 +126,7 @@ function mode(read: Setting): AuthMode {
   if (named === undefined) {
     throw new AuthMisconfigured(
       'INGOT_AUTH is not set, and there is no default: a service that guessed how to ' +
-        'authenticate would be guessing who may read the memories in it. ' +
+        'authenticate would be guessing who may read the ingots in it. ' +
         `Choose one of: ${Object.values(AuthMode).join(', ')}.`,
     );
   }

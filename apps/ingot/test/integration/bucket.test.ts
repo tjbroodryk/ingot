@@ -12,7 +12,7 @@ import { S3ObjectStore } from '../../src/storage/s3-object-store.js';
  *
  * `removePrefix` is why this file exists. It is what runs when an ingot or a
  * table is destroyed, and a bug in it is not a failure — it is a *success*
- * that leaves most of a deleted memory sitting in somebody's bucket. The
+ * that leaves most of a deleted ingot sitting in somebody's bucket. The
  * listing is paginated, so the loop is driven here over several pages against
  * a server that is allowed to disagree with what we assumed about it.
  *

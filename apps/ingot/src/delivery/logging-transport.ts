@@ -7,12 +7,12 @@ import type { DeliveryTransport } from './delivery-transport.port.js';
  *
  * A real transport rather than a branch in the router, so `none` is a member of
  * the same closed record as the other two and the router has one code path. It
- * is reached only by a memory that has no delivery configured — and only then
+ * is reached only by an ingot that has no delivery configured — and only then
  * because something enqueued for one that did and was reconfigured to `none`
  * before the worker got to it, which is a race worth draining rather than
  * leaving in the queue for ever.
  *
- * Debug rather than log: a memory under load produces a receipt per `/add` that
+ * Debug rather than log: an ingot under load produces a receipt per `/add` that
  * asked for one, and an info line each would drown the log for a fact nobody is
  * waiting on.
  */

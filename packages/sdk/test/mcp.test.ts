@@ -52,9 +52,9 @@ function server(sse = false) {
 }
 
 describe('mcp()', () => {
-  it('lists every page of tools for a memory, and runs one', async () => {
-    const { ingot, requests } = server();
-    const listed = await ingot.memory('ing_1').mcp();
+  it('lists every page of tools for an ingot, and runs one', async () => {
+    const { foundry, requests } = server();
+    const listed = await foundry.ingot('ing_1').mcp();
     expect(listed.map((tool) => [tool.name, tool.readOnly])).toEqual([
       ['query', true],
       ['forget', false],
@@ -73,11 +73,11 @@ describe('mcp()', () => {
   });
 
   it('filters to read-only or named tools, over an event stream too', async () => {
-    const { ingot, requests } = server(true);
-    expect((await ingot.mcp({ readOnly: true })).map((t) => t.name)).toEqual(['query']);
+    const { foundry, requests } = server(true);
+    expect((await foundry.mcp({ readOnly: true })).map((t) => t.name)).toEqual(['query']);
     expect(requests[0]?.url).toBe('https://ingot.test/api/v1/acme/mcp');
     expect(requests[0]?.headers.accept).toBe('application/json, text/event-stream');
-    expect((await ingot.memory('ing_1').mcp({ only: ['forget'] })).map((t) => t.name)).toEqual([
+    expect((await foundry.ingot('ing_1').mcp({ only: ['forget'] })).map((t) => t.name)).toEqual([
       'forget',
     ]);
   });

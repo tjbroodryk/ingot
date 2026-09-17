@@ -46,7 +46,7 @@ describe('a roll-up that outruns the embedder', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory rolled up in a hurry');
+    ingot = await world.ingot('an ingot rolled up in a hurry');
   });
 
   afterAll(async () => {
