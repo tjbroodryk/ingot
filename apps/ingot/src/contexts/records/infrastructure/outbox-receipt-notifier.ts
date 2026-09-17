@@ -42,8 +42,9 @@ export class OutboxReceiptNotifier implements ReceiptNotifier {
     // Null is not reachable through `/add` — the receipt was queued against a
     // memory that existed — but a memory destroyed between the queue and the
     // summariser is. Nothing to deliver to and nothing to complain about: the
-    // receipt row is going the same way.
-    if (!ingot?.delivery.configured) {
+    // receipt row is going the same way. A strategy that names its events and
+    // leaves this one out has asked not to be told.
+    if (!ingot?.delivery.wants(DeliveryEvent.ReceiptReady)) {
       this.logger.debug(
         `Receipt ready for ${receipt.batch} on "${receipt.sourceTable}" ` +
           `(${receipt.model}): ${receipt.searchTerm}`,

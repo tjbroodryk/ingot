@@ -230,7 +230,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
     async ingot(name = 'a memory') {
       const summary = await dispatcher.send(new CreateIngot(created.account.id, name));
-      return summary.id;
+      return summary.ingot.id;
     },
 
     async add(ingotId, body) {

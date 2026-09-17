@@ -1,4 +1,4 @@
-import type { DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
+import type { Delivered, DeliveryStrategy } from '@ingot/shared/ingot-v1';
 
 /**
  * Sends one delivery, somewhere outside this process.
@@ -26,8 +26,11 @@ export interface DeliveryTransport {
    * `target` is the strategy as it was when the receipt was announced, read off
    * the outbox row rather than off the memory — a memory reconfigured mid-flight
    * does not retarget deliveries already in the queue.
+   *
+   * `id` is the outbox row's, stable across attempts: a receipt's batch, or a
+   * generated id for the table events. What a receiver deduplicates on.
    */
-  deliver(target: DeliveryStrategy, payload: DeliveredReceipt): Promise<void>;
+  deliver(target: DeliveryStrategy, payload: Delivered, id: string): Promise<void>;
 }
 
 export const DELIVERY_TRANSPORT = Symbol('DeliveryTransport');

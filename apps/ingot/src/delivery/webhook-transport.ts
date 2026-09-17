@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type DeliveredReceipt, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
+import {
+  type Delivered,
+  DeliveryEvent,
+  type DeliveryStrategy,
+  DeliveryKind,
+} from '@ingot/shared/ingot-v1';
 import { upstream } from '../observability/index.js';
 import { DELIVERY_SETTINGS, type DeliverySettings } from './delivery-settings.js';
 import { DeliveryRefused, type DeliveryTransport } from './delivery-transport.port.js';
@@ -31,7 +36,7 @@ const MAX_ERROR_CHARS = 500;
 export class WebhookTransport implements DeliveryTransport {
   constructor(@Inject(DELIVERY_SETTINGS) private readonly settings: DeliverySettings) {}
 
-  async deliver(target: DeliveryStrategy, payload: DeliveredReceipt): Promise<void> {
+  async deliver(target: DeliveryStrategy, payload: Delivered, id: string): Promise<void> {
     if (target.t !== DeliveryKind.Webhook) {
       throw new DeliveryRefused('webhook', `cannot deliver a "${target.t}" target`);
     }
@@ -41,7 +46,7 @@ export class WebhookTransport implements DeliveryTransport {
     // an endpoint with a token in its query string would be a secret in the
     // metrics. The URL goes on the span, where it is free and not aggregated.
     await upstream('webhook', 'deliver', async (span) => {
-      span.set({ 'delivery.batch': payload.batch, 'delivery.attempt': payload.attempt });
+      span.set({ 'delivery.id': id, 'delivery.attempt': payload.attempt });
 
       const response = await fetch(target.endpoint, {
         method: 'POST',
@@ -50,7 +55,9 @@ export class WebhookTransport implements DeliveryTransport {
           'user-agent': this.settings.userAgent,
           // Enough for a receiver to be idempotent without parsing the body,
           // which is what makes at-least-once delivery liveable.
-          'ingot-batch': payload.batch,
+          'ingot-delivery': id,
+          // Kept for receipts, whose receivers were written against it.
+          ...(payload.event === DeliveryEvent.ReceiptReady ? { 'ingot-batch': payload.batch } : {}),
           'ingot-event': payload.event,
           'ingot-attempt': String(payload.attempt),
         },

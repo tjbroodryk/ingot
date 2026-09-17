@@ -29,6 +29,7 @@ function toIngot(row: IngotRow): Ingot {
     {
       accountId: row.accountId,
       name: row.name,
+      externalId: row.externalId,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
       // Both or neither: a width with no model is not a vector space, and a
@@ -80,6 +81,23 @@ function toTable(row: IngotTableRow): IngotTable {
   );
 }
 
+function rowOf(aggregate: Ingot) {
+  return {
+    id: aggregate.id.value,
+    accountId: aggregate.accountId,
+    name: aggregate.name,
+    externalId: aggregate.externalId,
+    createdAt: aggregate.createdAt,
+    expiresAt: aggregate.expiresAt,
+    embeddingModel: aggregate.embedding?.model ?? null,
+    embeddingDims: aggregate.embedding?.dimensions ?? null,
+    // Written as null when nothing is configured rather than as `{"t":"none"}`,
+    // so an unconfigured memory keeps reading the code's default instead of a
+    // document claiming a value the code could since have moved on from.
+    delivery: aggregate.delivery.configured ? aggregate.delivery.toWire() : null,
+  };
+}
+
 function storedColumns(table: IngotTable): StoredColumn[] {
   return table.columns.map((column) => ({
     name: column.name.value,
@@ -94,19 +112,7 @@ export class PgIngotRepository implements IngotRepository {
   constructor(private readonly uow: PgUnitOfWork) {}
 
   async save(aggregate: Ingot): Promise<void> {
-    const row = {
-      id: aggregate.id.value,
-      accountId: aggregate.accountId,
-      name: aggregate.name,
-      createdAt: aggregate.createdAt,
-      expiresAt: aggregate.expiresAt,
-      embeddingModel: aggregate.embedding?.model ?? null,
-      embeddingDims: aggregate.embedding?.dimensions ?? null,
-      // Written as null when nothing is configured rather than as `{"t":"none"}`,
-      // so an unconfigured memory keeps reading the code's default instead of a
-      // document claiming a value the code could since have moved on from.
-      delivery: aggregate.delivery.configured ? aggregate.delivery.toWire() : null,
-    };
+    const row = rowOf(aggregate);
     await writeAggregate(aggregate, ({ next, expected }) =>
       this.uow.queryable
         .insert(ingot)
@@ -120,11 +126,34 @@ export class PgIngotRepository implements IngotRepository {
     );
   }
 
+  async claim(aggregate: Ingot): Promise<boolean> {
+    // No conflict target: the one that can fire for a new id is the partial
+    // unique index on the handle, which a target cannot name with its WHERE.
+    const written = await this.uow.queryable
+      .insert(ingot)
+      .values({ ...rowOf(aggregate), version: aggregate.version + 1 })
+      .onConflictDoNothing()
+      .returning({ id: ingot.id });
+    if (written.length === 0) return false;
+
+    aggregate.markPersisted(aggregate.version + 1);
+    return true;
+  }
+
   async findById(id: IngotId): Promise<Ingot | null> {
     const [row] = await this.uow.queryable
       .select()
       .from(ingot)
       .where(eq(ingot.id, id.value))
+      .limit(1);
+    return row ? toIngot(row) : null;
+  }
+
+  async findByExternalId(accountId: string, externalId: string): Promise<Ingot | null> {
+    const [row] = await this.uow.queryable
+      .select()
+      .from(ingot)
+      .where(and(eq(ingot.accountId, accountId), eq(ingot.externalId, externalId)))
       .limit(1);
     return row ? toIngot(row) : null;
   }

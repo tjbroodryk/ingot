@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { DeliveryKind } from '@ingot/shared/ingot-v1';
+import { DeliveryEvent, DeliveryKind } from '@ingot/shared/ingot-v1';
 import { Delivery } from '../../src/contexts/ingots/domain/delivery.vo.js';
 import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 import {
@@ -40,13 +40,55 @@ describe('a delivery strategy', () => {
     expect(delivery.toWire()).toEqual({
       t: DeliveryKind.Webhook,
       endpoint: 'https://example.com/hooks/ingot',
+      events: [DeliveryEvent.ReceiptReady],
     });
   });
 
   it('reads a queue', () => {
     const delivery = Delivery.of({ t: 'rmq', queue: 'agent.receipts' });
 
-    expect(delivery.toWire()).toEqual({ t: DeliveryKind.Rmq, queue: 'agent.receipts' });
+    expect(delivery.toWire()).toEqual({
+      t: DeliveryKind.Rmq,
+      queue: 'agent.receipts',
+      events: [DeliveryEvent.ReceiptReady],
+    });
+  });
+
+  /**
+   * Receipts only unless asked, because that is all a strategy stored before
+   * `events` existed pushed — and a document from then has no `events` key.
+   */
+  it('pushes receipts only unless it names its events', () => {
+    const legacy = Delivery.rehydrate({ t: 'webhook', endpoint: 'https://example.com/h' });
+
+    expect(legacy.wants(DeliveryEvent.ReceiptReady)).toBe(true);
+    expect(legacy.wants(DeliveryEvent.OperationsAppended)).toBe(false);
+    expect(Delivery.none().wants(DeliveryEvent.ReceiptReady)).toBe(false);
+  });
+
+  it('reads events in a fixed order, so the same set is the same strategy', () => {
+    const one = Delivery.of({
+      t: 'rmq',
+      queue: 'a',
+      events: ['table.rolled_up', 'operations.appended', 'table.rolled_up'],
+    });
+    const other = Delivery.of({
+      t: 'rmq',
+      queue: 'a',
+      events: ['operations.appended', 'table.rolled_up'],
+    });
+
+    expect(one.equals(other)).toBe(true);
+    expect(one.wants(DeliveryEvent.ReceiptReady)).toBe(false);
+    expect(one.events).toEqual([DeliveryEvent.OperationsAppended, DeliveryEvent.TableRolledUp]);
+  });
+
+  it.each([
+    ['an empty list', []],
+    ['an event that does not exist', ['receipt.written']],
+    ['something that is not a list', 'operations.appended'],
+  ])('refuses %s', (_, events) => {
+    expect(() => Delivery.of({ t: 'rmq', queue: 'a', events })).toThrow(/events/);
   });
 
   /**

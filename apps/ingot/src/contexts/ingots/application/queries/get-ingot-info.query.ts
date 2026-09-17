@@ -52,6 +52,7 @@ export class GetIngotInfoHandler implements IQueryHandler<GetIngotInfo> {
     return {
       id: ingot.id.value,
       name: ingot.name,
+      externalId: ingot.externalId,
       account: query.accountSlug,
       createdAt: ingot.createdAt.toISOString(),
       expiresAt: ingot.expiresAt?.toISOString() ?? null,

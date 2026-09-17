@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import type { IngotConfig, IngotInfo, IngotSummary, TableConfig } from '@ingot/shared/ingot-v1';
 import { Wire } from '@ingot/versioning/nest';
 import { Dispatcher } from '../../../shared/application/index.js';
@@ -33,8 +44,17 @@ export class IngotsController {
   @AccountScope()
   @Wire({ accepts: WireShape.CreateIngotBody, returns: WireShape.IngotSummary })
   @HttpCode(HttpStatus.CREATED)
-  create(@CurrentAccount() account: Account, @Body() body: CreateIngotDto): Promise<IngotSummary> {
-    return this.dispatcher.send(new CreateIngot(account.id.value, body.name, body.retainFor));
+  async create(
+    @CurrentAccount() account: Account,
+    @Body() body: CreateIngotDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<IngotSummary> {
+    const { ingot, created } = await this.dispatcher.send(
+      new CreateIngot(account.id.value, body.name, body.retainFor, body.externalId),
+    );
+    // 200 when `externalId` named a memory that already existed.
+    if (!created) response.status(HttpStatus.OK);
+    return ingot;
   }
 
   @Get('ingots')

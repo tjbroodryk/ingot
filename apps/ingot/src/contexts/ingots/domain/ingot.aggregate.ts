@@ -17,9 +17,14 @@ export interface EmbeddingSpace {
   readonly dimensions: number;
 }
 
+/** Long enough for any id a caller already has; short enough to index. */
+const MAX_EXTERNAL_ID = 200;
+
 interface IngotProps {
   accountId: string;
   name: string;
+  /** The caller's own handle, unique per account among memories that hold one. */
+  externalId: string | null;
   createdAt: Date;
   /** When this memory falls due for deletion. Null is kept indefinitely. */
   expiresAt: Date | null;
@@ -46,7 +51,13 @@ export class Ingot extends AggregateRoot<IngotId> {
     this.props = props;
   }
 
-  static cast(input: { accountId: string; name: string; retainFor?: string; now: Date }): Ingot {
+  static cast(input: {
+    accountId: string;
+    name: string;
+    retainFor?: string;
+    externalId?: string;
+    now: Date;
+  }): Ingot {
     // Parsed here rather than by the caller, so that both the HTTP surface and
     // the MCP one — which builds the same command without passing through a
     // validation pipe — get the same answer to what `14d` means.
@@ -55,6 +66,14 @@ export class Ingot extends AggregateRoot<IngotId> {
     return new Ingot(IngotId.generate(), {
       accountId: input.accountId,
       name: Guard.maxLength(Guard.notBlank(input.name, 'ingot.name'), 120, 'ingot.name'),
+      externalId:
+        input.externalId === undefined
+          ? null
+          : Guard.maxLength(
+              Guard.notBlank(input.externalId, 'externalId'),
+              MAX_EXTERNAL_ID,
+              'externalId',
+            ),
       createdAt: input.now,
       expiresAt: retention ? retention.from(input.now) : null,
       // Not chosen at creation. A memory that never embeds anything never
@@ -79,6 +98,9 @@ export class Ingot extends AggregateRoot<IngotId> {
   get name(): string {
     return this.props.name;
   }
+  get externalId(): string | null {
+    return this.props.externalId;
+  }
   get createdAt(): Date {
     return this.props.createdAt;
   }
@@ -99,6 +121,16 @@ export class Ingot extends AggregateRoot<IngotId> {
     return this.props.expiresAt !== null && this.props.expiresAt.getTime() <= now.getTime();
   }
 
+  /**
+   * Gives up the caller's handle, so a new memory can be created under it.
+   *
+   * For a memory that has expired and not yet been reaped: answering a create
+   * with it would hand back something the reaper is about to delete.
+   */
+  releaseExternalId(): void {
+    this.props.externalId = null;
+  }
+
   /** Whether this ingot is the given account's. The tenancy check, once. */
   belongsTo(accountId: string): boolean {
     return this.props.accountId === accountId;
@@ -111,7 +143,10 @@ export class Ingot extends AggregateRoot<IngotId> {
 
   /** Everything configurable about this memory, defaults included. */
   get config(): IngotConfig {
-    return { delivery: this.props.delivery.toWire() };
+    return {
+      delivery: this.props.delivery.toWire(),
+      expiresAt: this.props.expiresAt?.toISOString() ?? null,
+    };
   }
 
   /**
@@ -126,14 +161,32 @@ export class Ingot extends AggregateRoot<IngotId> {
    * for a patch that changed nothing makes whatever is writing to this memory
    * right now lose an optimistic-concurrency race for no reason at all.
    */
-  configure(patch: { readonly delivery?: unknown }): boolean {
-    if (patch.delivery === undefined) return false;
+  configure(
+    patch: { readonly delivery?: unknown; readonly retainFor?: unknown },
+    now: Date,
+  ): boolean {
+    let moved = false;
 
-    const delivery = Delivery.of(patch.delivery);
-    if (delivery.equals(this.props.delivery)) return false;
+    if (patch.retainFor !== undefined) {
+      // From now, not from creation: this is how a memory that is still in use
+      // pushes its deletion out. `null` keeps it indefinitely.
+      const expiresAt =
+        patch.retainFor === null ? null : Retention.of(String(patch.retainFor)).from(now);
+      if (expiresAt?.getTime() !== this.props.expiresAt?.getTime()) {
+        this.props.expiresAt = expiresAt;
+        moved = true;
+      }
+    }
 
-    this.props.delivery = delivery;
-    return true;
+    if (patch.delivery !== undefined) {
+      const delivery = Delivery.of(patch.delivery);
+      if (!delivery.equals(this.props.delivery)) {
+        this.props.delivery = delivery;
+        moved = true;
+      }
+    }
+
+    return moved;
   }
 
   /** The vector space this memory's embeddings live in. Null until the first. */

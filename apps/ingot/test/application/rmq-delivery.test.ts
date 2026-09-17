@@ -89,7 +89,13 @@ function to(queue: string): DeliveryStrategy {
 }
 
 let batches = 0;
-function receipt(): DeliveredReceipt {
+/** A receipt and its outbox id, spread straight into `deliver`. */
+function receipt(): [DeliveredReceipt, string] {
+  const body = receiptBody();
+  return [body, body.batch];
+}
+
+function receiptBody(): DeliveredReceipt {
   batches += 1;
   return {
     event: DeliveryEvent.ReceiptReady,
@@ -122,7 +128,7 @@ describe('delivering to a broker', () => {
    * receipt — on every replica, independently.
    */
   it('declares a queue once, however many receipts go to it', async () => {
-    for (let at = 0; at < 5; at++) await transport.deliver(to('receipts'), receipt());
+    for (let at = 0; at < 5; at++) await transport.deliver(to('receipts'), ...receipt());
 
     expect(broker.asserted).toEqual(['receipts']);
     expect(broker.published).toHaveLength(5);
@@ -130,9 +136,9 @@ describe('delivering to a broker', () => {
   });
 
   it('declares each queue it has not seen before', async () => {
-    await transport.deliver(to('one'), receipt());
-    await transport.deliver(to('two'), receipt());
-    await transport.deliver(to('one'), receipt());
+    await transport.deliver(to('one'), ...receipt());
+    await transport.deliver(to('two'), ...receipt());
+    await transport.deliver(to('one'), ...receipt());
 
     expect(broker.asserted).toEqual(['one', 'two']);
   });
@@ -148,33 +154,33 @@ describe('delivering to a broker', () => {
    * prevent, reached by another route.
    */
   it('forgets what it declared when amqplib reconnects', async () => {
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
     expect(broker.asserted).toEqual(['receipts']);
 
     broker.reconnect();
 
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
     expect(broker.asserted).toEqual(['receipts', 'receipts']);
   });
 
   it('forgets what it declared when a publish drops the channel', async () => {
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
 
     broker.failPublishes(true);
-    expect(transport.deliver(to('receipts'), receipt())).rejects.toThrow(DeliveryRefused);
+    expect(transport.deliver(to('receipts'), ...receipt())).rejects.toThrow(DeliveryRefused);
 
     // A new connection, and the queue declared on it before anything is sent.
     broker.failPublishes(false);
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
 
     expect(broker.connections()).toBe(2);
     expect(broker.asserted).toEqual(['receipts', 'receipts']);
   });
 
   it('forgets what it declared on shutdown', async () => {
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
     await transport.onModuleDestroy();
-    await transport.deliver(to('receipts'), receipt());
+    await transport.deliver(to('receipts'), ...receipt());
 
     expect(broker.asserted).toEqual(['receipts', 'receipts']);
   });
@@ -185,7 +191,7 @@ describe('delivering to a broker', () => {
    */
   it('opens one connection for a burst', async () => {
     await Promise.all(
-      Array.from({ length: 8 }, () => transport.deliver(to('receipts'), receipt())),
+      Array.from({ length: 8 }, () => transport.deliver(to('receipts'), ...receipt())),
     );
 
     expect(broker.connections()).toBe(1);
@@ -200,31 +206,31 @@ describe('delivering to a broker', () => {
    */
   it('starts the cache again rather than growing without a bound', async () => {
     for (let at = 0; at < MAX_DECLARED; at++) {
-      await transport.deliver(to(`queue-${at}`), receipt());
+      await transport.deliver(to(`queue-${at}`), ...receipt());
     }
     expect(broker.asserted).toHaveLength(MAX_DECLARED);
 
     // The first queue is still in the cache right up to the cap.
-    await transport.deliver(to('queue-0'), receipt());
+    await transport.deliver(to('queue-0'), ...receipt());
     expect(broker.asserted).toHaveLength(MAX_DECLARED);
 
     // One past it clears the lot, so the next repeat is declared again.
-    await transport.deliver(to('one-too-many'), receipt());
-    await transport.deliver(to('queue-0'), receipt());
+    await transport.deliver(to('one-too-many'), ...receipt());
+    await transport.deliver(to('queue-0'), ...receipt());
 
     expect(broker.asserted.slice(-2)).toEqual(['one-too-many', 'queue-0']);
   });
 
   it('puts the batch on the envelope, so a consumer can deduplicate', async () => {
-    const body = receipt();
-    await transport.deliver(to('receipts'), body);
+    const body = receiptBody();
+    await transport.deliver(to('receipts'), body, body.batch);
 
     expect(broker.published[0]).toEqual({ queue: 'receipts', messageId: body.batch });
   });
 
   it('refuses a target that is not a queue', async () => {
     expect(
-      transport.deliver({ t: DeliveryKind.Webhook, endpoint: 'https://e.dev/h' }, receipt()),
+      transport.deliver({ t: DeliveryKind.Webhook, endpoint: 'https://e.dev/h' }, ...receipt()),
     ).rejects.toThrow(DeliveryRefused);
   });
 
@@ -237,7 +243,7 @@ describe('delivering to a broker', () => {
   it('refuses when the broker has been taken away', async () => {
     const without = new RmqTransport({ ...SETTINGS, brokerUrl: null }, broker.connect);
 
-    expect(without.deliver(to('receipts'), receipt())).rejects.toThrow(/INGOT_RABBITMQ_URL/);
+    expect(without.deliver(to('receipts'), ...receipt())).rejects.toThrow(/INGOT_RABBITMQ_URL/);
     expect(broker.connections()).toBe(0);
   });
 });

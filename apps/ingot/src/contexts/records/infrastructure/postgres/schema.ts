@@ -10,6 +10,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 
 /**
@@ -183,12 +184,14 @@ export const overlayReceiptQueue = pgTable(
 export const receiptDeliveryQueue = pgTable(
   'receipt_delivery_queue',
   {
-    /** The receipt's batch: one delivery per receipt, and its identity. */
+    /** The receipt's batch, or a generated `dlv_` id for a table event. */
     batch: text('batch').primaryKey(),
+    /** What table events fold on while they wait. Null for receipts, which never fold. */
+    coalesceKey: text('coalesce_key'),
     ingotId: text('ingot_id').notNull(),
     /** A `DeliveryStrategy`: where this was going when it was announced. */
     target: jsonb('target').notNull(),
-    /** A `DeliveredReceipt`: the body, rendered when the receipt was written. */
+    /** A `Delivered`: the body, rendered when it was announced. */
     payload: jsonb('payload').notNull(),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
@@ -198,6 +201,9 @@ export const receiptDeliveryQueue = pgTable(
   (table) => [
     index('receipt_delivery_queue_age').on(table.attempts, table.claimedAt, table.queuedAt),
     index('receipt_delivery_queue_ingot').on(table.ingotId),
+    index('receipt_delivery_queue_coalesce')
+      .on(table.coalesceKey)
+      .where(sql`${table.coalesceKey} IS NOT NULL AND ${table.claimedAt} IS NULL`),
   ],
 );
 

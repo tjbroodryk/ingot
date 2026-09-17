@@ -2,6 +2,11 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../../shared/application/index.js';
 import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
+import { CLOCK, type Clock } from '../../../../shared/domain/index.js';
+import {
+  CHANGE_NOTIFIER,
+  type ChangeNotifier,
+} from '../../../records/application/ports/change-notifier.port.js';
 import {
   OVERLAY_STORE,
   type OverlayStore,
@@ -36,6 +41,8 @@ export class DropTableHandler implements ICommandHandler<DropTable> {
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   async execute(command: DropTable): Promise<void> {
@@ -44,6 +51,13 @@ export class DropTableHandler implements ICommandHandler<DropTable> {
 
     await this.overlay.purgeTable(table.id.value);
     await this.tables.remove(table.id);
+    // The sweeper delivers it; this context has no handle on the worker to wake.
+    await this.changes.dropped({
+      ingot,
+      tableId: table.id.value,
+      table: table.name.value,
+      at: this.clock.now(),
+    });
 
     // After the commit, for the same reason as DeleteIngot: an orphaned object
     // is cheaper to live with than a manifest pointing at nothing.

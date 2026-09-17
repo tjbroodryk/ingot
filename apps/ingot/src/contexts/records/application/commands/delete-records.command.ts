@@ -2,13 +2,20 @@ import { Inject } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
 import type { DeleteBody, DeleteResult } from '@ingot/shared/ingot-v1';
 import { CLOCK, type Clock } from '../../../../shared/domain/index.js';
-import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
+import {
+  Command,
+  UNIT_OF_WORK,
+  type ICommandHandler,
+  type UnitOfWork,
+} from '../../../../shared/application/index.js';
 import {
   ANALYTICAL_ENGINE,
   type AnalyticalEngine,
 } from '../../../../engine/analytical-engine.port.js';
 import { SessionBuilder } from '../../../../engine/session-builder.js';
 import { IngotAccess } from '../../../ingots/application/ingot-access.js';
+import { BackgroundWork } from '../background.js';
+import { CHANGE_NOTIFIER, type ChangeNotifier } from '../ports/change-notifier.port.js';
 import { OVERLAY_STORE, type OverlayStore } from '../ports/overlay-store.port.js';
 
 /** How many rows one `/delete` may forget. Run it again for more. */
@@ -49,11 +56,15 @@ export class DeleteRecordsHandler implements ICommandHandler<DeleteRecords> {
     private readonly access: IngotAccess,
     @Inject(ANALYTICAL_ENGINE) private readonly engine: AnalyticalEngine,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
+    @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     private readonly sessions: SessionBuilder,
+    private readonly background: BackgroundWork,
   ) {}
 
   async execute(command: DeleteRecords): Promise<DeleteResult> {
+    const ingot = await this.access.ingot(command.ingotId, command.accountId);
     const table = await this.access.table(command.ingotId, command.accountId, command.body.table);
 
     const resolved = await this.engine.resolveRows({
@@ -63,7 +74,22 @@ export class DeleteRecordsHandler implements ICommandHandler<DeleteRecords> {
       timeoutMs: RESOLVE_TIMEOUT_MS,
     });
 
-    await this.overlay.forget(table.id.value, resolved.rowIds, this.clock.now());
+    const now = this.clock.now();
+    await this.overlay.forget(table.id.value, resolved.rowIds, now);
+
+    if (resolved.rowIds.length > 0) {
+      const announced = await this.changes.appended({
+        ingot,
+        tableId: table.id.value,
+        table: table.name.value,
+        generation: table.generation,
+        throughSeq: async () => null,
+        rows: 0,
+        tombstones: resolved.rowIds.length,
+        at: now,
+      });
+      if (announced) this.uow.afterCommit(() => this.background.wakeDeliveries());
+    }
 
     return {
       table: table.name.value,

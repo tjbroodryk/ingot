@@ -220,13 +220,16 @@ export class IngotMcpServer {
           .then(() => ({ dropped: String(args.table) }));
 
       case McpTool.CreateMemory:
-        return this.dispatcher.send(
-          new CreateIngot(
-            accountId,
-            String(args.name),
-            args.retainFor === undefined ? undefined : String(args.retainFor),
-          ),
-        );
+        return this.dispatcher
+          .send(
+            new CreateIngot(
+              accountId,
+              String(args.name),
+              args.retainFor === undefined ? undefined : String(args.retainFor),
+              args.externalId === undefined ? undefined : String(args.externalId),
+            ),
+          )
+          .then((result) => result.ingot);
 
       case McpTool.ListMemories:
         return this.dispatcher.ask(new ListIngots(accountId));

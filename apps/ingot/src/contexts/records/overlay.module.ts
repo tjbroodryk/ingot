@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
+import { CHANGE_NOTIFIER } from './application/ports/change-notifier.port.js';
 import { DELIVERY_OUTBOX } from './application/ports/delivery-outbox.port.js';
+import { OutboxChangeNotifier } from './infrastructure/outbox-change-notifier.js';
 import { OVERLAY_STORE } from './application/ports/overlay-store.port.js';
 import { DeliveryCollectors } from './infrastructure/delivery-collectors.js';
 import { OverlayCollectors } from './infrastructure/overlay-collectors.js';
@@ -32,7 +34,12 @@ import { PgOverlayStore } from './infrastructure/postgres/pg-overlay-store.js';
     PgDeliveryOutbox,
     { provide: DELIVERY_OUTBOX, useExisting: PgDeliveryOutbox },
     DeliveryCollectors,
+
+    // Here for the outbox's reason: `records/` announces writes and roll-ups,
+    // and `ingots/` announces a dropped table.
+    OutboxChangeNotifier,
+    { provide: CHANGE_NOTIFIER, useExisting: OutboxChangeNotifier },
   ],
-  exports: [OVERLAY_STORE, DELIVERY_OUTBOX],
+  exports: [OVERLAY_STORE, DELIVERY_OUTBOX, CHANGE_NOTIFIER],
 })
 export class OverlayModule {}

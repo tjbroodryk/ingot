@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type DeliveredReceipt, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
+import { type Delivered, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
 import type { DeliveryTransport } from './delivery-transport.port.js';
 import { LoggingTransport } from './logging-transport.js';
 import { RmqTransport } from './rmq-transport.js';
@@ -30,7 +30,7 @@ export class RoutingTransport implements DeliveryTransport {
     };
   }
 
-  deliver(target: DeliveryStrategy, payload: DeliveredReceipt): Promise<void> {
-    return this.transports[target.t].deliver(target, payload);
+  deliver(target: DeliveryStrategy, payload: Delivered, id: string): Promise<void> {
+    return this.transports[target.t].deliver(target, payload, id);
   }
 }

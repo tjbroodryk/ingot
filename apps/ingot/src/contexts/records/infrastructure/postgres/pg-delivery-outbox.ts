@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { count, eq, gte, lt, sql } from 'drizzle-orm';
-import type { DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
+import type { Delivered, DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
+import { newIdValue } from '../../../../shared/domain/index.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type {
   DeliveryOutbox,
@@ -53,6 +54,46 @@ export class PgDeliveryOutbox implements DeliveryOutbox {
         queuedAt: input.queuedAt,
       })
       .onConflictDoNothing();
+  }
+
+  async announce(input: {
+    key: string;
+    ingotId: string;
+    target: DeliveryStrategy;
+    payload: Delivered;
+    queuedAt: Date;
+    maxAttempts: number;
+    merge: (queued: Delivered) => Delivered;
+  }): Promise<void> {
+    // SKIP LOCKED: a row another writer is folding into right now is one this
+    // writer does without, and a second delivery costs less than the wait.
+    const waiting = await this.uow.queryable.execute<{ batch: string; payload: Delivered }>(sql`
+      SELECT batch, payload FROM ${receiptDeliveryQueue}
+      WHERE coalesce_key = ${input.key}
+        AND claimed_at IS NULL
+        AND attempts < ${input.maxAttempts}
+      ORDER BY queued_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    `);
+    const [row] = waiting.rows;
+
+    if (row) {
+      await this.uow.queryable
+        .update(receiptDeliveryQueue)
+        .set({ target: input.target, payload: input.merge(row.payload) })
+        .where(eq(receiptDeliveryQueue.batch, row.batch));
+      return;
+    }
+
+    await this.uow.queryable.insert(receiptDeliveryQueue).values({
+      batch: newIdValue('dlv'),
+      coalesceKey: input.key,
+      ingotId: input.ingotId,
+      target: input.target,
+      payload: input.payload,
+      queuedAt: input.queuedAt,
+    });
   }
 
   /**

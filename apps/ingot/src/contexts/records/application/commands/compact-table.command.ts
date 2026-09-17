@@ -1,6 +1,6 @@
 import { Inject, Logger } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
-import { AggregateNotFound } from '../../../../shared/domain/index.js';
+import { AggregateNotFound, CLOCK, type Clock } from '../../../../shared/domain/index.js';
 import {
   Command,
   UNIT_OF_WORK,
@@ -22,6 +22,7 @@ import {
   type IngotRepository,
   type IngotTableRepository,
 } from '../../../ingots/domain/index.js';
+import { CHANGE_NOTIFIER, type ChangeNotifier } from '../ports/change-notifier.port.js';
 import { OVERLAY_STORE, type OverlayStore } from '../ports/overlay-store.port.js';
 
 export interface CompactionReport {
@@ -56,6 +57,8 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(ANALYTICAL_ENGINE) private readonly engine: AnalyticalEngine,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    @Inject(CHANGE_NOTIFIER) private readonly changes: ChangeNotifier,
+    @Inject(CLOCK) private readonly clock: Clock,
     private readonly sessions: SessionBuilder,
   ) {}
 
@@ -154,6 +157,18 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
       watermark,
       view.overlayVectors.map((vector) => ({ rowId: vector.rowId, column: vector.column })),
     );
+
+    // With the manifest flip, so a receiver told to re-read finds the new
+    // generation there. No wake: this runs on the sweeper, which drains
+    // deliveries on its own tick.
+    await this.changes.rolledUp({
+      ingot,
+      tableId: table.id.value,
+      table: table.name.value,
+      generation,
+      rows: outcome.rows,
+      at: this.clock.now(),
+    });
 
     /*
      * Reap the generation two behind, after the commit.

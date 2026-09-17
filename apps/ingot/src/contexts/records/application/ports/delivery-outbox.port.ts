@@ -1,14 +1,17 @@
-import type { DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
+import type { Delivered, DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
 
 /** A delivery that has been announced and not yet sent. */
 export interface PendingDelivery {
-  /** The receipt's batch. One delivery per receipt, and its identity. */
+  /**
+   * The row's identity: a receipt's batch, one delivery per receipt, or a
+   * generated id for a table event. Named for the first, which came first.
+   */
   readonly batch: string;
   readonly ingotId: string;
   /** Where this was going when it was announced, not where the memory points now. */
   readonly target: DeliveryStrategy;
-  /** The body, as it was rendered when the receipt was written. */
-  readonly payload: DeliveredReceipt;
+  /** The body, as it was rendered when it was announced. */
+  readonly payload: Delivered;
   /** Charged by the claim. 1 on the first attempt. */
   readonly attempts: number;
 }
@@ -54,6 +57,27 @@ export interface DeliveryOutbox {
     target: DeliveryStrategy;
     payload: DeliveredReceipt;
     queuedAt: Date;
+  }): Promise<void>;
+
+  /**
+   * Records a table event, **inside the transaction that caused it**, folded
+   * into one still waiting under the same `key` when there is one.
+   *
+   * A table written to a hundred times while its receiver is slow is one
+   * delivery, not a hundred — the events are signals to go and read, and the
+   * hundredth says everything the first did. Only a row nobody has claimed and
+   * that can still be sent is folded into: one in flight has already rendered
+   * its body, and one out of attempts will never go.
+   */
+  announce(input: {
+    key: string;
+    ingotId: string;
+    target: DeliveryStrategy;
+    payload: Delivered;
+    queuedAt: Date;
+    maxAttempts: number;
+    /** Combines what is already queued with `payload`. */
+    merge: (queued: Delivered) => Delivered;
   }): Promise<void>;
 
   /**

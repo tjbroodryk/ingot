@@ -122,13 +122,23 @@ describe('delivering a receipt', () => {
   it('reports where a memory delivers, defaults included', async () => {
     const ingot = await world.ingot('a configured memory');
 
-    expect((await world.info(ingot)).config).toEqual({ delivery: { t: DeliveryKind.None } });
+    expect((await world.info(ingot)).config).toEqual({
+      delivery: { t: DeliveryKind.None },
+      expiresAt: null,
+    });
 
     const config = await world.configureIngot(ingot, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
 
-    expect(config).toEqual({ delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT } });
+    expect(config).toEqual({
+      delivery: {
+        t: DeliveryKind.Webhook,
+        endpoint: ENDPOINT,
+        events: [DeliveryEvent.ReceiptReady],
+      },
+      expiresAt: null,
+    });
     expect((await world.info(ingot)).config).toEqual(config);
   });
 
@@ -296,7 +306,11 @@ describe('delivering a receipt', () => {
     });
     await world.deliverAll();
 
-    expect(sent[0]?.target).toEqual({ t: DeliveryKind.Webhook, endpoint: ENDPOINT });
+    expect(sent[0]?.target).toEqual({
+      t: DeliveryKind.Webhook,
+      endpoint: ENDPOINT,
+      events: [DeliveryEvent.ReceiptReady],
+    });
   });
 
   it('drops undelivered announcements when the memory is destroyed', async () => {
@@ -345,7 +359,10 @@ describe('delivering a receipt', () => {
     ).rejects.toThrow(/INGOT_RABBITMQ_URL/);
 
     // And nothing moved: a refusal must not half-apply.
-    expect((await world.info(ingot)).config).toEqual({ delivery: { t: DeliveryKind.None } });
+    expect((await world.info(ingot)).config).toEqual({
+      delivery: { t: DeliveryKind.None },
+      expiresAt: null,
+    });
   });
 
   it('refuses an endpoint inside its own network', async () => {
@@ -365,7 +382,7 @@ describe('delivering a receipt', () => {
     });
 
     const off = await world.configureIngot(ingot, { delivery: { t: DeliveryKind.None } });
-    expect(off).toEqual({ delivery: { t: DeliveryKind.None } });
+    expect(off).toEqual({ delivery: { t: DeliveryKind.None }, expiresAt: null });
 
     const batch = await store(ingot, 'silent');
     await world.summariseAll();
@@ -380,7 +397,12 @@ describe('delivering a receipt', () => {
     });
 
     expect(await world.configureIngot(ingot, {})).toEqual({
-      delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
+      delivery: {
+        t: DeliveryKind.Webhook,
+        endpoint: ENDPOINT,
+        events: [DeliveryEvent.ReceiptReady],
+      },
+      expiresAt: null,
     });
   });
 });

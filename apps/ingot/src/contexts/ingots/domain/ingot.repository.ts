@@ -4,7 +4,14 @@ import type { IngotTable } from './ingot-table.aggregate.js';
 
 export interface IngotRepository {
   save(ingot: Ingot): Promise<void>;
+  /**
+   * Inserts a new memory unless another already holds its `externalId`, and
+   * says which happened. Never throws on that conflict, so the transaction
+   * survives to read the memory that won.
+   */
+  claim(ingot: Ingot): Promise<boolean>;
   findById(id: IngotId): Promise<Ingot | null>;
+  findByExternalId(accountId: string, externalId: string): Promise<Ingot | null>;
   listForAccount(accountId: string): Promise<readonly Ingot[]>;
   /** Memories past their retention, with the account that owns each. */
   listExpired(
