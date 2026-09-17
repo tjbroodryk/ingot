@@ -502,7 +502,10 @@ export const MCP_CONFIG = `# claude_desktop_config.json
 
 /** The tools the MCP server exposes, at each of the two scopes it is mounted. */
 export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: string }[] = [
-  { scope: 'account-wide', tools: 'create_memory · list_memories · delete_memory' },
+  {
+    scope: 'account-wide',
+    tools: 'create_memory · clone_memory · list_memories · delete_memory',
+  },
   {
     scope: 'per memory',
     tools:

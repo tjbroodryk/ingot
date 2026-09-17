@@ -281,8 +281,10 @@ export const GRAIN_LIMIT =
 /** How the memories themselves are managed, at the account scope. */
 export const GRAIN_CHIPS: readonly string[] = [
   'POST /:account/create',
+  'POST /:account/:ingot/clone',
   'GET /:account/ingots',
   'create_memory',
+  'clone_memory',
   'list_memories',
   'delete_memory',
 ];

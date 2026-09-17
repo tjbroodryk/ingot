@@ -59,24 +59,25 @@ self-hosting answer, and currently the only one — opens the single account
 named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 `INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
 
-| Route                                        |                                                                          |
-| -------------------------------------------- | ------------------------------------------------------------------------ |
-| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                           |
-| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                        |
-| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent. |
-| `GET /:account/ingots`                       | List them.                                                               |
-| `POST /:account/:ingot/add`                  | Store a tool result.                                                     |
-| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                     |
-| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                     |
-| `GET /:account/:ingot/info`                  | The information schema, settings included.                               |
-| `POST /:account/:ingot/config`               | Delivery and retention. A patch; returns the whole config.               |
-| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.          |
-| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                        |
-| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`.    |
-| `GET /:account/:ingot/tables/:table/parquet` | A generation's Parquet, streamed, by range. 410 once reaped.             |
-| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                            |
-| `DELETE /:account/:ingot`                    | Destroy the memory.                                                      |
-| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                              |
+| Route                                        |                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                             |
+| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                          |
+| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent.   |
+| `GET /:account/ingots`                       | List them.                                                                 |
+| `POST /:account/:ingot/add`                  | Store a tool result.                                                       |
+| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                       |
+| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                       |
+| `GET /:account/:ingot/info`                  | The information schema, settings included.                                 |
+| `POST /:account/:ingot/clone`                | Copy the memory under a new id. Same body as create, every field optional. |
+| `POST /:account/:ingot/config`               | Delivery and retention. A patch; returns the whole config.                 |
+| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.            |
+| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                          |
+| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`.      |
+| `GET /:account/:ingot/tables/:table/parquet` | A generation's Parquet, streamed, by range. 410 once reaped.               |
+| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                              |
+| `DELETE /:account/:ingot`                    | Destroy the memory.                                                        |
+| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                                |
 
 Minted keys are stored as a SHA-256 digest and nothing else, and are returned
 once, in the response that created them; there is no way to read one back. The
@@ -990,6 +991,35 @@ it. That is the obvious next thing to build.
 Rows are append-only. An agent correcting a stored fact appends a new row and
 tombstones the old one, which is the right constraint for a memory — what was
 believed at the time is often the interesting part.
+
+## Cloning
+
+```jsonc
+POST /:account/:ingot/clone
+{ "name": "reviewing PR 42, second attempt", "externalId": "pr-42-b" }
+
+→ 201 { "id": "ing_91d0…", "name": "reviewing PR 42, second attempt", … }
+```
+
+A clone is a new memory holding what the source held at one instant: every
+table and its settings, the current Parquet generation, the overlay, the
+tombstones, the vectors and the texts still waiting for one. After that the two
+share nothing — a write, a roll-up or a delete on one never reaches the other,
+and destroying the source leaves the clone whole.
+
+- The copy is read in one repeatable-read snapshot, so a roll-up or an embedding
+  landing mid-clone cannot put a row in neither. Nothing is locked: the source
+  keeps taking writes, and the generation grace is what keeps a generation
+  replaced mid-copy in the bucket until the copy has it.
+- Parquet is copied inside the bucket, not through the service.
+- Every field is optional. `name` defaults to the source's. Without
+  `retainFor` the clone expires when the source does. `externalId` makes it
+  idempotent, exactly as it does `create`.
+- **Delivery is not copied.** A receiver configured for the source has never
+  heard of the clone.
+- **Documents still being parsed are refused (409)**, not copied. Their rows do
+  not exist yet. Clone once `/file`'s query says they are done.
+- Receipts still waiting for a summary stay with the source.
 
 ## MCP
 
