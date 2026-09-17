@@ -27,7 +27,7 @@ echo "ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
 
 Agents produce tool results all day and throw them away. What survives is
 whatever the model happened to keep in context — a summary of a summary,
-unqueryable, gone at the end of the turn. An **ingot** is one memory: a block
+unqueryable, gone at the end of the turn. An **ingot** is where they go instead: a block
 of refined material that tool calls are poured into and that cools into
 something queryable.
 
@@ -51,7 +51,7 @@ hand.
 Each app has its own README and it is the longer answer:
 [the server](apps/ingot/README.md), [the site](apps/ingot-app/README.md).
 
-`packages/bench` measures what an agent gets back out of a memory, and what it
+`packages/bench` measures what an agent gets back out of an ingot, and what it
 costs — Ingot against a local vector baseline, against Pinecone, turbopuffer
 and Hyperspell, and against its own embedding path with SQL taken away. It
 needs API keys and spends money, so it is deliberately not part of
@@ -79,7 +79,7 @@ An LSM tree, and everything else follows from it.
 is parsed into chunks and, if you asked, into typed rows — and both go through
 the same overlay, the same embedding queue and the same roll-up as a tool
 result. There is no document store. `ingot_files` and `ingot_file_chunks` are
-ordinary tables in your memory, which is what lets one SQL statement filter on a
+ordinary tables in your ingot, which is what lets one SQL statement filter on a
 number pulled out of a PDF and rank on the meaning of the paragraph beside it.
 A page with no text layer — a scan, a photocopy — can be read by an engine
 `INGOT_OCR` names, off unless you ask; every chunk that comes back that way
@@ -267,7 +267,7 @@ the lock is what keeps two pods from rolling the same table up into the same
 generation.
 
 A broker is optional and is only ever an _output_: set `INGOT_RABBITMQ_URL` and
-a memory can be pointed at a queue for its receipts to be delivered onto,
+an ingot can be pointed at a queue for its receipts to be delivered onto,
 alongside the webhook transport that needs no infrastructure at all. Nothing in
 the service reads from it, and the queue that decides what to send is a Postgres
 table like the rest.

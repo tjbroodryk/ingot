@@ -159,7 +159,7 @@ config:
   # ── authentication ───────────────────────────────────────────────────────
   # Who may call this service. Named rather than inferred, like the base tier,
   # and for a sharper reason: a wrong bucket loses data, and a wrong answer
-  # here hands somebody else's agent the memories.
+  # here hands somebody else's agent the ingots.
   #
   #   sealed   one account and one root key, both from configuration. Nothing
   #            to sign up for and no third party in the authentication path.
@@ -337,17 +337,17 @@ config:
 
   # ── delivering receipts ──────────────────────────────────────────────────
   # A receipt is collected by polling by default: /add hands back a SELECT and
-  # the caller runs it. A memory can also nominate somewhere to push each one
+  # the caller runs it. An ingot can also nominate somewhere to push each one
   # as it lands, and these decide what this deployment is willing to do about
   # that.
   #
   # Nothing here is required. Webhooks work with the chart as it ships, and a
-  # memory pointed at a queue is refused — naming the variable — until a broker
+  # ingot pointed at a queue is refused — naming the variable — until a broker
   # is configured. The broker URL itself is a *secret*, not a value: it carries
   # credentials, and `secrets.rabbitmqUrl` is where it goes.
   delivery:
     # The default exchange routes a message to the queue named by the routing
-    # key, which is exactly what a per-memory queue name is. Set this only for
+    # key, which is exactly what a per-ingot queue name is. Set this only for
     # your own topology, and bind the queues yourself.
     exchange: ''
     # A receiver that has not answered in this long is not going to.
@@ -430,8 +430,8 @@ secrets:
   openaiApiKey: ''
   # The AMQP broker receipts are delivered onto, if any. A secret rather than a
   # value because it carries credentials — and it is the operator's to set, not
-  # a caller's: a memory names only a queue on it. Leave it empty and
-  # { "t": "rmq" } is refused at the moment somebody configures a memory for
+  # a caller's: an ingot names only a queue on it. Leave it empty and
+  # { "t": "rmq" } is refused at the moment somebody configures an ingot for
   # it, which is the only moment they can do anything about it.
   rabbitmqUrl: ''
 

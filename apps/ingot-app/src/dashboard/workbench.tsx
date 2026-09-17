@@ -7,16 +7,16 @@ import {
   type Credentials,
   IngotError,
   fetchInfo,
-  listMemories,
+  listIngots,
   runQuery,
   uploadFile,
 } from './ingot-api';
-import { MemoryPane } from './memory-pane';
+import { IngotPane } from './ingot-pane';
 import { ResultGrid } from './result-grid';
 import { UploadForm } from './upload-form';
 
 /**
- * The console, as three panes: which memory and what is in it; one statement
+ * The console, as three panes: which ingot and what is in it; one statement
  * and its answer; and what this tab has put in and asked.
  *
  * The console does not parse the SQL and does not try to help beyond listing
@@ -35,7 +35,7 @@ export function Workbench({
   /** The key stopped working mid-session. The page reopens the gate. */
   onCredentialsRejected: () => void;
 }): ReactNode {
-  const [memories, setMemories] = useState<readonly IngotSummary[] | null>(null);
+  const [ingots, setIngots] = useState<readonly IngotSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [info, setInfo] = useState<IngotInfo | null>(null);
   /** Bumped when a document settles, which is when the schema has changed. */
@@ -79,10 +79,10 @@ export function Workbench({
   useEffect(() => {
     let live = true;
 
-    listMemories(credentials)
+    listIngots(credentials)
       .then((found) => {
         if (!live) return;
-        setMemories(found);
+        setIngots(found);
         setSelected((current) => current ?? found[0]?.id ?? null);
       })
       .catch(report);
@@ -94,7 +94,7 @@ export function Workbench({
     };
   }, [credentials, landed, report]);
 
-  // The `live` guard is what keeps a reply from landing on a memory the user
+  // The `live` guard is what keeps a reply from landing on an ingot the user
   // has since switched away from.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on `landed`, which is the point.
   useEffect(() => {
@@ -113,13 +113,13 @@ export function Workbench({
   }, [credentials, selected, landed, report]);
 
   const nameOf = useCallback(
-    (id: string): string => memories?.find((memory) => memory.id === id)?.name ?? id,
-    [memories],
+    (id: string): string => ingots?.find((ingot) => ingot.id === id)?.name ?? id,
+    [ingots],
   );
 
   /**
-   * Another memory's tables and answer are wrong to show, so they are cleared
-   * here rather than in the effect that re-reads them — the same memory's are
+   * Another ingot's tables and answer are wrong to show, so they are cleared
+   * here rather than in the effect that re-reads them — the same ingot's are
    * only stale, and blanking them on every re-read would make the panes
    * flicker each time a document lands.
    */
@@ -134,7 +134,7 @@ export function Workbench({
     [selected],
   );
 
-  /** A statement from the log, which may belong to a memory not on screen. */
+  /** A statement from the log, which may belong to an ingot not on screen. */
   const writeFor = useCallback(
     (ingotId: string, statement: string): void => {
       select(ingotId);
@@ -154,7 +154,7 @@ export function Workbench({
     if (!selected || running || sql.trim().length === 0) return;
 
     const statement = sql;
-    const memory = nameOf(selected);
+    const ingot = nameOf(selected);
     const started = performance.now();
     setRunning(true);
     setError(null);
@@ -164,7 +164,7 @@ export function Workbench({
       setResult(answer);
       log({
         kind: 'query',
-        memory,
+        ingot,
         sql: statement,
         ms: answer.elapsedMs,
         outcome: { rows: answer.rows.length, truncated: answer.truncated },
@@ -175,7 +175,7 @@ export function Workbench({
       if (!(cause instanceof IngotError && cause.isCredentialProblem)) {
         log({
           kind: 'query',
-          memory,
+          ingot,
           sql: statement,
           ms: Math.round(performance.now() - started),
           outcome: { error: messageOf(cause) },
@@ -190,14 +190,14 @@ export function Workbench({
     if (!selected) return false;
 
     const ingotId = selected;
-    const memory = nameOf(ingotId);
+    const ingot = nameOf(ingotId);
     const started = performance.now();
 
     try {
       const accepted = await uploadFile(credentials, ingotId, file, body);
       log({
         kind: 'upload',
-        memory,
+        ingot,
         ingotId,
         file: accepted,
         ms: Math.round(performance.now() - started),
@@ -212,7 +212,7 @@ export function Workbench({
 
       log({
         kind: 'refused',
-        memory,
+        ingot,
         filename: file.name,
         ms: Math.round(performance.now() - started),
         error: messageOf(cause),
@@ -225,8 +225,8 @@ export function Workbench({
 
   return (
     <div className="wb">
-      <MemoryPane
-        memories={memories}
+      <IngotPane
+        ingots={ingots}
         selected={selected}
         onSelect={select}
         info={info}
@@ -240,9 +240,9 @@ export function Workbench({
           <span className="bhead-r">One statement · SELECT only</span>
         </div>
 
-        {memories?.length === 0 ? (
+        {ingots?.length === 0 ? (
           <p className="wb-note">
-            This account has no memories yet. <code>POST /:account/create</code> casts one — the{' '}
+            This account has no ingots yet. <code>POST /:account/cast</code> casts one — the{' '}
             <a href={DOCS_HREF}>reference</a> has the body.
           </p>
         ) : null}
@@ -299,7 +299,7 @@ export function Workbench({
       </main>
 
       <aside className="wb-pane wb-right">
-        <UploadForm memory={current} onUpload={upload} />
+        <UploadForm ingot={current} onUpload={upload} />
         <ActivityLog
           entries={activity}
           credentials={credentials}

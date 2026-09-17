@@ -13,11 +13,11 @@ import { bytes } from './format';
  * watched in the log.
  */
 export function UploadForm({
-  memory,
+  ingot,
   onUpload,
 }: {
-  /** The name of the memory it will go into, or null while there is none. */
-  memory: string | null;
+  /** The name of the ingot it will go into, or null while there is none. */
+  ingot: string | null;
   /** Resolves true when the service took the bytes. */
   onUpload: (file: File, body: FileBody) => Promise<boolean>;
 }): ReactNode {
@@ -37,7 +37,7 @@ export function UploadForm({
   }
 
   async function send(): Promise<void> {
-    if (!file || !memory || sending) return;
+    if (!file || !ingot || sending) return;
 
     let body: FileBody;
     try {
@@ -119,17 +119,17 @@ export function UploadForm({
           className="btn-solid btn-sm"
           type="button"
           onClick={() => void send()}
-          disabled={sending || !file || !memory}
+          disabled={sending || !file || !ingot}
         >
           {sending ? 'Uploading…' : 'Upload'}
         </button>
         <span className="wb-hint">
-          {memory ? (
+          {ingot ? (
             <>
-              into <code>{memory}</code>
+              into <code>{ingot}</code>
             </>
           ) : (
-            'pick a memory first'
+            'pick an ingot first'
           )}
         </span>
       </div>
