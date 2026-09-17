@@ -131,7 +131,8 @@ export class Transport {
       (entry): entry is [string, string | number] => entry[1] !== undefined,
     );
     if (params.length === 0) return base;
-    return `${base}?${new URLSearchParams(params.map(([key, value]) => [key, String(value)]))}`;
+    const pairs = params.map(([key, value]): [string, string] => [key, String(value)]);
+    return `${base}?${new URLSearchParams(pairs)}`;
   }
 
   private headersFor(spec: RequestSpec): Record<string, string> {

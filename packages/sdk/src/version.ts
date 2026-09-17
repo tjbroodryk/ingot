@@ -8,6 +8,6 @@
  * upgraded server keeps answering in the shape these types promise. Bump it
  * together with the types.
  */
-export const INGOT_API_VERSION = '2026-09-15';
+export const INGOT_API_VERSION = '2026-09-17';
 
 export const SDK_VERSION = '0.1.0';

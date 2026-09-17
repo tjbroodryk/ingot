@@ -35,7 +35,10 @@ export function uploadForm(file: DocumentInput, options: UploadOptions): FormDat
   const blob =
     file instanceof Blob
       ? file
-      : new Blob([file as BlobPart], { type: options.mediaType ?? 'application/octet-stream' });
+      : // Spelled through the constructor rather than `BlobPart`, which only the DOM lib names.
+        new Blob([file] as ConstructorParameters<typeof Blob>[0], {
+          type: options.mediaType ?? 'application/octet-stream',
+        });
 
   const body: FileBody = {
     ...(options.externalId === undefined ? {} : { externalId: options.externalId }),
