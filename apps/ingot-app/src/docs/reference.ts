@@ -90,7 +90,7 @@ export interface Endpoint {
  * releases it. Typed rather than imported, since this app cannot reach the
  * service's code — bump it with a release.
  */
-export const API_VERSION = '2026-09-06';
+export const API_VERSION = '2026-09-15';
 
 export const GROUPS: Record<EndpointGroup, GroupHeading> = {
   [EndpointGroup.Service]: { title: 'Service · version-neutral', nav: 'Service' },
@@ -137,9 +137,9 @@ export const ENDPOINTS: readonly Endpoint[] = [
 { "header": "Ingot-Version",
   "latest": "${API_VERSION}",
   "versions": ["2026-08-26", "2026-08-27",
-               "2026-09-06"],
+               "2026-09-06", "2026-09-15"],
   "changelog": [
-    { "version": "2026-09-06",
+    { "version": "2026-09-15",
       "summary": "…",
       "changes": ["…"] } ] }`,
   },
@@ -478,7 +478,7 @@ Ingot-Batch: batch_1508c8…
     auth: Auth.Key,
     summary:
       'Read it back. `sql` is run as written — exactly one SELECT, in a locked-down DuckDB session, over a view unioning the overlay with the Parquet base. `text` is embedded and ranks a table by similarity.',
-    note: 'Given both, the embedding is bound as `$q` and your SQL may use it, which is how a hybrid search is one round trip rather than two. A POST that changes nothing, hence the explicit 200.',
+    note: 'Given both, the embedding is bound as `$q` and your SQL may use it, which is how a hybrid search is one round trip rather than two. A result cut short by `limit` carries `next`; send it back as `cursor` with the same query for the rows after it. It is an offset, so writes between pages move what follows, as `LIMIT … OFFSET` would. A POST that changes nothing, hence the explicit 200.',
     sample: `# structured
 { "sql": "SELECT company, arr FROM contacts
           WHERE stage = 'won' ORDER BY arr DESC" }
@@ -490,7 +490,8 @@ Ingot-Batch: batch_1508c8…
 200 OK
 { "columns": ["company", "arr"],
   "rows": [ { "company": "Northwind", "arr": 84000 } ],
-  "truncated": false, "elapsedMs": 34 }`,
+  "truncated": false, "next": null,
+  "elapsedMs": 34 }`,
   },
   {
     id: 'delete',
@@ -508,6 +509,45 @@ Ingot-Batch: batch_1508c8…
 200 OK
 { "table": "contacts", "rowsForgotten": 17,
   "truncated": false }`,
+  },
+  {
+    id: 'pending',
+    group: EndpointGroup.Data,
+    nav: 'Pending writes',
+    method: HttpMethod.Get,
+    path: '/api/v1/:account/:ingot/tables/:table/pending',
+    auth: Auth.Key,
+    summary:
+      'What the next roll-up will fold in: rows still in the Postgres overlay, oldest first, and rows forgotten since the last roll-up. All of it is already visible to `/query`.',
+    note: 'Rows are paged by sequence — pass `next` back as `after`, with `limit` up to 10,000 (1,000 by default). Tombstones are never paged: they apply to the Parquet as well, and applying some of them is wrong.',
+    sample: `GET …/tables/contacts/pending?limit=500
+
+200 OK
+{ "table": "contacts", "generation": 9,
+  "rows": [ { "rowId": "…", "seq": "80412",
+      "ingestedAt": "2026-09-15T09:12:03.114Z",
+      "values": { "id": "c_91",
+                  "company": "Northwind", … } } ],
+  "tombstones": [ { "rowId": "…",
+      "at": "2026-09-15T09:40:55.020Z" } ],
+  "next": "80912" }`,
+  },
+  {
+    id: 'parquet',
+    group: EndpointGroup.Data,
+    nav: 'Download Parquet',
+    method: HttpMethod.Get,
+    path: '/api/v1/:account/:ingot/tables/:table/parquet',
+    auth: Auth.Key,
+    summary:
+      'The table’s base tier as the Parquet file itself, streamed from the bucket rather than rebuilt.',
+    note: 'The file is the last roll-up and nothing since: overlay rows are not in it, and rows forgotten after it was written still are. `Ingot-Tombstones` says how many; `/pending` lists them. A 404 until the table has been rolled up once.',
+    sample: `200 OK
+Content-Type: application/vnd.apache.parquet
+Content-Disposition: attachment;
+  filename="contacts-gen-9.parquet"
+Ingot-Generation: 9
+Ingot-Tombstones: 17`,
   },
 
   // ── mcp ─────────────────────────────────────────────────────────────────
@@ -537,6 +577,7 @@ Ingot-Batch: batch_1508c8…
       'remember',
       'query',
       'recall',
+      'pending',
       'forget',
       'configure_table',
       'configure_delivery',

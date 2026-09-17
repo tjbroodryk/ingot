@@ -7,6 +7,16 @@ export interface OverlayRow {
   readonly payload: MappedRow;
 }
 
+/** An overlay row with when it arrived, for reporting what is pending. */
+export interface PendingOverlayRow extends OverlayRow {
+  readonly ingestedAt: Date;
+}
+
+export interface Tombstone {
+  readonly rowId: string;
+  readonly at: Date;
+}
+
 /** A table with enough in its overlay to be worth rolling up. */
 export interface OverlayDepth {
   readonly tableId: string;
@@ -81,6 +91,18 @@ export interface OverlayStore {
   /** Every row of a table, up to and including `throughSeq` if given. */
   read(tableId: string, throughSeq?: bigint): Promise<readonly OverlayRow[]>;
 
+  /**
+   * At most `limit` rows after `afterSeq`, oldest first.
+   *
+   * A sequence cursor rather than an offset: a roll-up drains the overlay from
+   * the bottom, and an offset taken before one would skip rows after it.
+   */
+  page(
+    tableId: string,
+    afterSeq: bigint | null,
+    limit: number,
+  ): Promise<readonly PendingOverlayRow[]>;
+
   /** The highest sequence currently in the table's overlay, or null if empty. */
   watermark(tableId: string): Promise<bigint | null>;
 
@@ -88,6 +110,9 @@ export interface OverlayStore {
 
   /** Row ids forgotten by a `/delete`, which every read must filter out. */
   tombstones(tableId: string): Promise<readonly string[]>;
+
+  /** The same set, with when each was written, oldest first. */
+  forgotten(tableId: string): Promise<readonly Tombstone[]>;
 
   countTombstones(tableId: string): Promise<number>;
 
@@ -108,11 +133,7 @@ export interface OverlayStore {
    * embedding queue — a queued text leaves it when its vector is written, or
    * when the row is forgotten, and a roll-up is neither.
    */
-  drain(
-    tableId: string,
-    throughSeq: bigint | null,
-    folded: readonly FoldedVector[],
-  ): Promise<void>;
+  drain(tableId: string, throughSeq: bigint | null, folded: readonly FoldedVector[]): Promise<void>;
 
   /** Everything belonging to a table, for a drop. */
   purgeTable(tableId: string): Promise<void>;

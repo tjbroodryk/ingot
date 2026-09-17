@@ -128,6 +128,19 @@ describe('the S3 base tier, against a real bucket', () => {
     await store.removePrefix(`${prefix}-sibling`);
   });
 
+  it('streams an object back byte for byte, for a Parquet download', async () => {
+    const prefix = scope();
+    const [key] = await seed(prefix, 1);
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of await store.open(key as string)) {
+      chunks.push(Buffer.from(chunk as Buffer));
+    }
+    expect(Buffer.concat(chunks).toString()).toBe(`bytes for ${key}`);
+
+    await store.removePrefix(prefix);
+  });
+
   it('hands DuckDB the object itself to write, with nothing to publish after', async () => {
     // S3 is the one remote case DuckDB can write, so a roll-up here is a
     // `COPY … TO 's3://…'` and `commit` has nothing to do. Google is the case

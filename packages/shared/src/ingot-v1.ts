@@ -270,7 +270,13 @@ export interface QueryBody {
   readonly table?: string;
   /** Required with `text` alone when a table has more than one embedded column. */
   readonly column?: string;
+  /** Rows per page. 1,000 unless given, 10,000 at most. */
   readonly limit?: number;
+  /**
+   * The `next` of a previous result, sent with the same `sql`, `text`, `table`
+   * and `column`. An offset: rows written between pages shift what follows.
+   */
+  readonly cursor?: string;
 }
 
 export interface QueryResult {
@@ -278,6 +284,8 @@ export interface QueryResult {
   readonly rows: readonly Readonly<Record<string, unknown>>[];
   /** True when the row cap cut the result short; there were more. */
   readonly truncated: boolean;
+  /** Send back as `cursor` for the rows after these. Null when `truncated` is false. */
+  readonly next: string | null;
   readonly elapsedMs: number;
 }
 
@@ -587,6 +595,37 @@ export interface DeleteResult {
   readonly rowsForgotten: number;
   /** True when the per-call cap stopped it short. Run it again. */
   readonly truncated: boolean;
+}
+
+// ── the overlay ───────────────────────────────────────────────────────────
+
+/** One row written by `/add` and not yet rolled up into Parquet. */
+export interface PendingRow {
+  readonly rowId: string;
+  /** Where it sits in the overlay. A string, because the sequence is a bigint. */
+  readonly seq: string;
+  readonly ingestedAt: string;
+  /** The row as stored: keyed by column, already coerced to the declared types. */
+  readonly values: Readonly<Record<string, unknown>>;
+}
+
+/** A row forgotten by `/delete` since the table was last rolled up. */
+export interface PendingTombstone {
+  readonly rowId: string;
+  readonly at: string;
+}
+
+/** What `GET /:account/:ingot/tables/:table/pending` returns. */
+export interface PendingOperations {
+  readonly table: string;
+  /** The generation of the Parquet these are pending against. */
+  readonly generation: number;
+  /** Oldest first, one page of them. */
+  readonly rows: readonly PendingRow[];
+  /** Every tombstone, never paged. They apply to the Parquet as much as the overlay. */
+  readonly tombstones: readonly PendingTombstone[];
+  /** Pass back as `after` for the next page. Null on the last one. */
+  readonly next: string | null;
 }
 
 // ── files ─────────────────────────────────────────────────────────────────

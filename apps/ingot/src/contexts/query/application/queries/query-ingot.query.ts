@@ -13,9 +13,11 @@ import { SessionBuilder } from '../../../../engine/session-builder.js';
 import { vectorColumnName } from '../../../../engine/duckdb-engine.js';
 import { ident } from '../../../../engine/sql.js';
 import { IngotAccess } from '../../../ingots/application/ingot-access.js';
+import { QueryCursor } from '../query-cursor.js';
 import {
   INGOT_TABLE_REPOSITORY,
   RAW,
+  ROW_ID,
   type IngotTable,
   type IngotTableRepository,
 } from '../../../ingots/domain/index.js';
@@ -24,6 +26,8 @@ import {
 export const QUERY_TIMEOUT_MS = 15_000;
 export const DEFAULT_ROW_CAP = 1_000;
 export const MAX_ROW_CAP = 10_000;
+/** How deep a cursor may reach. Every page re-reads the result up to where it starts. */
+export const MAX_QUERY_OFFSET = 100_000;
 
 /** `POST /api/v1/:account/:ingot/query` */
 export class QueryIngot extends Query<QueryResult> {
@@ -77,6 +81,14 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
     }
 
     const rowCap = Math.min(body.limit ?? DEFAULT_ROW_CAP, MAX_ROW_CAP);
+    const offset = QueryCursor.offset(body);
+    if (offset > MAX_QUERY_OFFSET) {
+      throw new InvariantViolation(
+        `A cursor reaches at most ${MAX_QUERY_OFFSET} rows into a result, because every page ` +
+          're-runs the query up to where it starts. Narrow it with a WHERE on the column it is ' +
+          'ordered by, or download the table from /parquet.',
+      );
+    }
 
     /*
      * A question is only comparable to the vectors it is ranked against.
@@ -107,7 +119,8 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
       sql = body.sql as string;
     } else {
       const target = pickTable(tables, body);
-      sql = rankingSql(target, pickColumn(target, body), rowCap);
+      // One past the page, or `truncated` could never be true for a search.
+      sql = rankingSql(target, pickColumn(target, body), offset + rowCap + 1);
     }
 
     // Every table is offered; the engine narrows to the ones the statement
@@ -121,6 +134,7 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
         sql,
         queryVector,
         rowCap,
+        offset,
         timeoutMs: QUERY_TIMEOUT_MS,
       }),
     );
@@ -129,7 +143,10 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
       { phase: 'execute', outcome: Outcome.Ok },
       outcome.elapsedMs / 1000,
     );
-    return outcome;
+    return {
+      ...outcome,
+      next: outcome.truncated ? QueryCursor.encode(body, offset + outcome.rows.length) : null,
+    };
   }
 }
 
@@ -221,6 +238,9 @@ function pickColumn(table: IngotTable, body: QueryBody): string {
  * difference that matters: `SELECT _raw FROM t` still answers. This function
  * writes the SQL for a caller who did not write any, and volunteering the
  * largest column in the table is not what they asked for.
+ *
+ * `_row_id` breaks ties in the score, so a cursor resumes where the last page
+ * stopped rather than wherever DuckDB happened to put two equal rows this time.
  */
 function rankingSql(table: IngotTable, column: string, limit: number): string {
   const vector = ident(vectorColumnName(column));
@@ -234,7 +254,7 @@ function rankingSql(table: IngotTable, column: string, limit: number): string {
   return (
     `SELECT * EXCLUDE (${withheld}), array_cosine_similarity(${vector}, $q) AS ${ident('score')} ` +
     `FROM ${ident(table.name.value)} WHERE ${vector} IS NOT NULL ` +
-    `ORDER BY ${ident('score')} DESC LIMIT ${limit}`
+    `ORDER BY ${ident('score')} DESC, ${ident(ROW_ID)} LIMIT ${limit}`
   );
 }
 

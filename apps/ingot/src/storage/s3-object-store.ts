@@ -6,6 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { upstream } from '../observability/index.js';
 import type { ObjectStore, PendingWrite } from './object-store.port.js';
@@ -114,6 +115,21 @@ export class S3ObjectStore implements ObjectStore {
       // directory at the end, and a PDF from its trailer. The size cap at
       // upload is what makes holding one in memory a bounded decision.
       return Buffer.from(await object.Body.transformToByteArray());
+    });
+  }
+
+  async open(key: string): Promise<Readable> {
+    return upstream('s3', 'get_object', async () => {
+      const object = await this.client.send(
+        new GetObjectCommand({ Bucket: this.settings.bucket, Key: key }),
+      );
+      if (!object.Body) throw new Error(`Object "${key}" came back with no body`);
+
+      // Under Node's HTTP handler the body already is a `Readable`; the web
+      // stream is for a runtime where the SDK chose `fetch` instead.
+      return object.Body instanceof Readable
+        ? object.Body
+        : Readable.fromWeb(object.Body.transformToWebStream() as never);
     });
   }
 

@@ -11,6 +11,7 @@ import { GetIngotInfo } from '../contexts/ingots/application/queries/get-ingot-i
 import { ListIngots } from '../contexts/ingots/application/queries/list-ingots.query.js';
 import { AddRecords } from '../contexts/records/application/commands/add-records.command.js';
 import { DeleteRecords } from '../contexts/records/application/commands/delete-records.command.js';
+import { GetPendingOperations } from '../contexts/records/application/queries/get-pending-operations.query.js';
 import { QueryIngot } from '../contexts/query/application/queries/query-ingot.query.js';
 import { McpScope, McpTool, type ToolDefinition, toolsFor } from './tool-catalogue.js';
 
@@ -163,6 +164,7 @@ export class IngotMcpServer {
             sql: String(args.sql),
             text: args.text === undefined ? undefined : String(args.text),
             limit: args.limit === undefined ? undefined : Number(args.limit),
+            cursor: args.cursor === undefined ? undefined : String(args.cursor),
           }),
         );
 
@@ -172,6 +174,15 @@ export class IngotMcpServer {
             text: String(args.text),
             table: args.table === undefined ? undefined : String(args.table),
             column: args.column === undefined ? undefined : String(args.column),
+            limit: args.limit === undefined ? undefined : Number(args.limit),
+            cursor: args.cursor === undefined ? undefined : String(args.cursor),
+          }),
+        );
+
+      case McpTool.Pending:
+        return this.dispatcher.ask(
+          new GetPendingOperations(ingotId, accountId, String(args.table), {
+            after: args.after === undefined ? undefined : String(args.after),
             limit: args.limit === undefined ? undefined : Number(args.limit),
           }),
         );

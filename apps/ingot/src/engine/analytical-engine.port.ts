@@ -40,6 +40,8 @@ export interface QueryRequest {
   /** Bound as `$q` so a caller's own SQL can rank by similarity. */
   readonly queryVector?: readonly number[];
   readonly rowCap: number;
+  /** Rows of the result to skip before the page starts. */
+  readonly offset: number;
   readonly timeoutMs: number;
 }
 

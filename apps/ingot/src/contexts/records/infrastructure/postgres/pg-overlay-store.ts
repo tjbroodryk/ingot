@@ -1,5 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, eq, gte, inArray, lt, lte, min, notExists, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gt,
+  gte,
+  inArray,
+  lt,
+  lte,
+  min,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 import {
@@ -8,8 +22,10 @@ import {
   type OverlayDepth,
   type OverlayRow,
   type OverlayStore,
+  type PendingOverlayRow,
   type PendingReceipt,
   type PendingEmbedding,
+  type Tombstone,
 } from '../../application/ports/overlay-store.port.js';
 import {
   overlayReceiptQueue,
@@ -104,6 +120,28 @@ export class PgOverlayStore implements OverlayStore {
     return rows;
   }
 
+  async page(
+    tableId: string,
+    afterSeq: bigint | null,
+    limit: number,
+  ): Promise<readonly PendingOverlayRow[]> {
+    return this.uow.queryable
+      .select({
+        rowId: overlayRow.rowId,
+        seq: overlayRow.seq,
+        payload: overlayRow.payload,
+        ingestedAt: overlayRow.ingestedAt,
+      })
+      .from(overlayRow)
+      .where(
+        afterSeq === null
+          ? eq(overlayRow.tableId, tableId)
+          : and(eq(overlayRow.tableId, tableId), gt(overlayRow.seq, afterSeq)),
+      )
+      .orderBy(asc(overlayRow.seq))
+      .limit(limit);
+  }
+
   async watermark(tableId: string): Promise<bigint | null> {
     const [row] = await this.uow.queryable
       .select({ high: sql<string | null>`max(${overlayRow.seq})` })
@@ -126,6 +164,14 @@ export class PgOverlayStore implements OverlayStore {
       .from(overlayTombstone)
       .where(eq(overlayTombstone.tableId, tableId));
     return rows.map((row) => row.rowId);
+  }
+
+  async forgotten(tableId: string): Promise<readonly Tombstone[]> {
+    return this.uow.queryable
+      .select({ rowId: overlayTombstone.rowId, at: overlayTombstone.at })
+      .from(overlayTombstone)
+      .where(eq(overlayTombstone.tableId, tableId))
+      .orderBy(asc(overlayTombstone.at), asc(overlayTombstone.rowId));
   }
 
   async countTombstones(tableId: string): Promise<number> {
@@ -224,19 +270,21 @@ export class PgOverlayStore implements OverlayStore {
 
     const spent = folded.filter((vector) => !pending.has(vector.rowId));
     for (const chunk of chunked(spent, INSERT_CHUNK)) {
-      await this.uow.queryable.delete(overlayVector).where(
-        and(
-          eq(overlayVector.tableId, tableId),
-          or(
-            ...chunk.map((vector) =>
-              and(
-                eq(overlayVector.rowId, vector.rowId),
-                eq(overlayVector.columnName, vector.column),
+      await this.uow.queryable
+        .delete(overlayVector)
+        .where(
+          and(
+            eq(overlayVector.tableId, tableId),
+            or(
+              ...chunk.map((vector) =>
+                and(
+                  eq(overlayVector.rowId, vector.rowId),
+                  eq(overlayVector.columnName, vector.column),
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
     }
 
     await this.uow.queryable.delete(overlayTombstone).where(

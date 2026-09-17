@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+
 /**
  * The base tier: Parquet objects, addressed by key.
  *
@@ -65,6 +67,18 @@ export interface ObjectStore {
    * with no content in it.
    */
   fetch(key: string): Promise<Buffer>;
+
+  /**
+   * Streams one object out, for handing a caller a Parquet file as it is.
+   *
+   * Also not a violation of the rule at the top: nothing in this process reads
+   * these bytes, they are piped to a socket. A stream rather than `fetch`
+   * because a base file is a whole table, and no upload cap bounds it.
+   *
+   * A store may not notice a missing object until the first read, which is
+   * after the response headers have gone — `stat` first.
+   */
+  open(key: string): Promise<Readable>;
 
   stat(key: string): Promise<{ bytes: number } | null>;
 

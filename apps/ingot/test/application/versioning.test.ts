@@ -200,6 +200,16 @@ describe('the changeset', () => {
     expect(INGOT_VERSIONS.backward(WireShape.AddResult, added, '2026-08-26')).toEqual(added);
   });
 
+  it('renders a query’s cursor away for a caller from before paging', () => {
+    const result = { columns: ['n'], rows: [{ n: 1 }], truncated: true, next: 'c', elapsedMs: 3 };
+    const { next: _next, ...before } = result;
+
+    expect(INGOT_VERSIONS.backward(WireShape.QueryResult, result, '2026-09-06')).toEqual(before);
+    expect(INGOT_VERSIONS.backward(WireShape.QueryResult, result, INGOT_VERSIONS.latest)).toEqual(
+      result,
+    );
+  });
+
   it('round-trips every shape it touches, at every version', () => {
     // A forward/backward pair that is not the identity is a version that
     // silently rewrites what a caller sent them.

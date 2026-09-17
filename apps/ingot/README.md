@@ -59,22 +59,24 @@ self-hosting answer, and currently the only one — opens the single account
 named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 `INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
 
-| Route                                   |                                                                      |
-| --------------------------------------- | -------------------------------------------------------------------- |
-| `GET /accounts/:account`                | The account and the keys on it. Metadata only.                       |
-| `POST /accounts/:account/keys`          | Mint another. `DELETE …/keys/:keyId` revokes one.                    |
-| `POST /:account/create`                 | Cast an ingot. `retainFor` sets a retention.                         |
-| `GET /:account/ingots`                  | List them.                                                           |
-| `POST /:account/:ingot/add`             | Store a tool result.                                                 |
-| `POST /:account/:ingot/file`            | Store a document. Multipart. Chunks and rows follow.                 |
-| `POST /:account/:ingot/query`           | DuckDB SQL, plain language, or both.                                 |
-| `GET /:account/:ingot/info`             | The information schema, settings included.                           |
-| `POST /:account/:ingot/config`          | Set where receipts are delivered. A patch; returns the whole config. |
-| `POST /:account/:ingot/config/:table`   | Set how a table is searched. A patch; returns the whole config.      |
-| `POST /:account/:ingot/delete`          | Forget rows matching a predicate.                                    |
-| `DELETE /:account/:ingot/tables/:table` | Drop a table.                                                        |
-| `DELETE /:account/:ingot`               | Destroy the memory.                                                  |
-| `ALL /:account/:ingot/mcp`              | MCP, scoped to this memory.                                          |
+| Route                                        |                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                        |
+| `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                     |
+| `POST /:account/create`                      | Cast an ingot. `retainFor` sets a retention.                          |
+| `GET /:account/ingots`                       | List them.                                                            |
+| `POST /:account/:ingot/add`                  | Store a tool result.                                                  |
+| `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                  |
+| `POST /:account/:ingot/query`                | DuckDB SQL, plain language, or both.                                  |
+| `GET /:account/:ingot/info`                  | The information schema, settings included.                            |
+| `POST /:account/:ingot/config`               | Set where receipts are delivered. A patch; returns the whole config.  |
+| `POST /:account/:ingot/config/:table`        | Set how a table is searched. A patch; returns the whole config.       |
+| `POST /:account/:ingot/delete`               | Forget rows matching a predicate.                                     |
+| `GET /:account/:ingot/tables/:table/pending` | Rows and tombstones not yet rolled up into Parquet. Paged by `after`. |
+| `GET /:account/:ingot/tables/:table/parquet` | The table's Parquet file, streamed. 404 until its first roll-up.      |
+| `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                         |
+| `DELETE /:account/:ingot`                    | Destroy the memory.                                                   |
+| `ALL /:account/:ingot/mcp`                   | MCP, scoped to this memory.                                           |
 
 Minted keys are stored as a SHA-256 digest and nothing else, and are returned
 once, in the response that created them; there is no way to read one back. The
@@ -119,11 +121,11 @@ Two things a change may not do, both asserted by `versioning.test.ts`:
   release that made the service _do_ something different would be a second
   product wearing the same name.
 
-`GET /api/versions` lists what exists. Three releases: the baseline;
+`GET /api/versions` lists what exists. Four releases: the baseline;
 `2026-08-27`, where every `TableInfo` gained a `config` — rendered away again
 for a caller pinned to the baseline, in `/info` and in an `/add` receipt alike;
-and `2026-09-06`, where the memory itself gained one, holding where its receipts
-are delivered.
+`2026-09-06`, where the memory itself gained one, holding where its receipts
+are delivered; and `2026-09-15`, where a query result gained `next` for paging.
 
 ## The mapping
 
@@ -232,13 +234,13 @@ guess whether their upload is slow or dead.
 The rule, and it is the whole of it: **split on the strongest boundary the
 format actually gives you, and fall back exactly one level at a time.**
 
-| format         | boundary                       |                                                                     |
-| -------------- | ------------------------------ | ------------------------------------------------------------------- |
-| `.pptx`        | one slide, always              | A slide is an authored unit. Never split one, never merge two.      |
-| `.docx` `.md` `.html` | the heading hierarchy   | Explicit and reliable, and the path is carried into the text.       |
-| `.pdf`         | the page, then the paragraph   | Pages are real; headings are guessed from font runs and often wrong.|
-| `.csv` `.xlsx` | not chunked as prose           | It already has rows. See below.                                     |
-| `.txt`         | paragraph → sentence → window  | Nothing to exploit. The fallback, never the default.                |
+| format                | boundary                      |                                                                      |
+| --------------------- | ----------------------------- | -------------------------------------------------------------------- |
+| `.pptx`               | one slide, always             | A slide is an authored unit. Never split one, never merge two.       |
+| `.docx` `.md` `.html` | the heading hierarchy         | Explicit and reliable, and the path is carried into the text.        |
+| `.pdf`                | the page, then the paragraph  | Pages are real; headings are guessed from font runs and often wrong. |
+| `.csv` `.xlsx`        | not chunked as prose          | It already has rows. See below.                                      |
+| `.txt`                | paragraph → sentence → window | Nothing to exploit. The fallback, never the default.                 |
 
 A slide's title becomes its heading, so `carryHeadings` puts it at the top of
 what gets embedded — a body reading "Up 4% year on year" ranks against nothing
@@ -267,16 +269,16 @@ per page. That is a fact worth recording and `chunker.ts` records it, but on
 its own it is a document that says nothing.
 
 `INGOT_OCR` names something to do about it, and it is **off by default**. The
-other two model selectors pick *which* engine because both have a free
-stand-in; this one picks *whether*, because reading a page costs money or CPU
+other two model selectors pick _which_ engine because both have a free
+stand-in; this one picks _whether_, because reading a page costs money or CPU
 and most PDFs are not scans.
 
-| `INGOT_OCR` | what reads the page                                                       |
-| ----------- | ------------------------------------------------------------------------- |
-| `off`       | Nothing. A blank page stays blank. The default.                           |
-| `local`     | Tesseract, in the process. ~350ms a page, no network, no bill.            |
-| `openai`    | A vision model. Better on a bad scan; seconds and money a page.           |
-| `gcp`       | The same, on Vertex.                                                      |
+| `INGOT_OCR` | what reads the page                                             |
+| ----------- | --------------------------------------------------------------- |
+| `off`       | Nothing. A blank page stays blank. The default.                 |
+| `local`     | Tesseract, in the process. ~350ms a page, no network, no bill.  |
+| `openai`    | A vision model. Better on a bad scan; seconds and money a page. |
+| `gcp`       | The same, on Vertex.                                            |
 
 **It is a fallback and never a mode.** A page reaches an engine only when the
 document's own text layer produced nothing for it — so a PDF that has text is
@@ -314,7 +316,7 @@ question anybody asks.
 **No renderer, and no native module in the image.** Rasterising a PDF page
 means a canvas, which in Node means `node-canvas` or `@napi-rs/canvas` — a
 compiler in the build and a platform-specific binary — for the minority of
-documents that are scans. But a scanned page *is* an image already:
+documents that are scans. But a scanned page _is_ an image already:
 `page-image.ts` lifts the single image XObject `pdfjs` has already decoded and
 wraps it in a PNG with `fflate`, which is here anyway for `.docx`. The cost of
 the trick is its edge: a page that is several images, or one whose content is
@@ -332,14 +334,17 @@ different download.
 
 ```jsonc
 // a spreadsheet: real field names, so paths resolve and NO MODEL IS CALLED
-{ "extract": {
+{
+  "extract": {
     "table": "invoices",
     "rows": "$[*]",
     "key": ["invoice_no"],
     "columns": {
       "invoice_no": { "from": "$[\"Invoice #\"]", "type": "VARCHAR" },
-      "amount":     { "from": "$.Amount",         "type": "INTEGER" }
-}}}
+      "amount": { "from": "$.Amount", "type": "INTEGER" },
+    },
+  },
+}
 ```
 
 This goes through **`RowMapping` — the same mapping `/add` uses** — so it is the
@@ -382,7 +387,7 @@ to make that work — it works because all three are tables.
 **Keyword search over chunks is on out of the box**, which no other table gets —
 `ingot_file_chunks` is the only one where prose is guaranteed, and the index is
 built only when a query actually mentions `fts_main_ingot_file_chunks`, so
-nobody else pays for it. Semantic search finds what a chunk *means*; this is for
+nobody else pays for it. Semantic search finds what a chunk _means_; this is for
 when the thing wanted is the chunk containing `ECONNREFUSED`.
 
 ```sql
@@ -447,11 +452,11 @@ Everything this service knows about a format is one object implementing
 
 ```ts
 export interface FormatHandler {
-  readonly mediaType: MediaType;        // restated, so it can be checked against the key
+  readonly mediaType: MediaType; // restated, so it can be checked against the key
   readonly extensions: readonly string[];
-  readonly shape: ByteShape;            // checked against the declared type
-  readonly tabular: boolean;            // already has rows? then extraction needs no model
-  readonly chunking: ChunkingStrategy;  // boundary, overlap, carryHeadings
+  readonly shape: ByteShape; // checked against the declared type
+  readonly tabular: boolean; // already has rows? then extraction needs no model
+  readonly chunking: ChunkingStrategy; // boundary, overlap, carryHeadings
   parse(input: ParseInput): Promise<ParsedDocument>;
 }
 ```
@@ -809,6 +814,20 @@ name, so aliasing one does not get it out.
 service quotes every identifier it emits; your own SQL is your own, so a column
 called `at` has to be written `"at"`.
 
+### Paging
+
+`limit` is rows per page — 1,000 unless given, 10,000 at most. A result cut
+short says `"truncated": true` and carries `next`; send that back as `cursor`,
+with the same `sql` and `text`, for the rows after it. `next` is null on the
+last page.
+
+It is an offset, so it behaves the way `LIMIT … OFFSET` does against any
+database still being written to: rows added or forgotten between two pages move
+what the next one holds, and a query with no `ORDER BY` has no order to resume.
+Every page re-runs the query up to where it starts, so a cursor reaches 100,000
+rows in and no further — past that, narrow the query on the column it is ordered
+by, or take the table from `/parquet`.
+
 ### Keyword search
 
 Semantic search finds what a row _means_; sometimes the thing wanted is the row
@@ -843,7 +862,7 @@ Four things worth knowing:
   over the whole table, on the query that searches it. Building one for every
   table of every memory would put that cost on queries that store no prose at
   all, so a caller asks for it once. `ingot_file_chunks` is the exception and is
-  on out of the box: it is the only table where prose is *guaranteed*, and by
+  on out of the box: it is the only table where prose is _guaranteed_, and by
   the next rule a query that does not search still pays nothing.
 - **Only for a query that searches.** `match_bm25` is a macro in the index's
   own schema, so a query using it must contain the text `fts_main_<table>`. No

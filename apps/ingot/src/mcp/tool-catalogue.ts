@@ -10,6 +10,7 @@ import { GetIngotInfo } from '../contexts/ingots/application/queries/get-ingot-i
 import { ListIngots } from '../contexts/ingots/application/queries/list-ingots.query.js';
 import { AddRecords } from '../contexts/records/application/commands/add-records.command.js';
 import { DeleteRecords } from '../contexts/records/application/commands/delete-records.command.js';
+import { GetPendingOperations } from '../contexts/records/application/queries/get-pending-operations.query.js';
 import { QueryIngot } from '../contexts/query/application/queries/query-ingot.query.js';
 
 /** What a tool is called on the wire, as a closed set. */
@@ -18,6 +19,7 @@ export enum McpTool {
   Remember = 'remember',
   Query = 'query',
   Recall = 'recall',
+  Pending = 'pending',
   Forget = 'forget',
   ConfigureTable = 'configure_table',
   ConfigureDelivery = 'configure_delivery',
@@ -150,6 +152,12 @@ export const TOOLS: readonly ToolDefinition[] = [
         .optional()
         .describe('Optional. Embedded and bound as $q, so your SQL can rank by similarity.'),
       limit: z.number().int().min(1).max(10_000).optional(),
+      cursor: z
+        .string()
+        .optional()
+        .describe(
+          'The "next" of a previous result, sent with the same sql and text, for more rows',
+        ),
     },
     resolvesTo: QueryIngot,
     readOnly: true,
@@ -169,8 +177,28 @@ export const TOOLS: readonly ToolDefinition[] = [
         .describe('Which table to search. Required if more than one is embedded.'),
       column: z.string().optional().describe('Which embedded column to rank by'),
       limit: z.number().int().min(1).max(10_000).optional(),
+      cursor: z
+        .string()
+        .optional()
+        .describe('The "next" of a previous result, sent with the same text, for the next matches'),
     },
     resolvesTo: QueryIngot,
+    readOnly: true,
+  },
+  {
+    name: McpTool.Pending,
+    scope: McpScope.Ingot,
+    title: 'List writes not yet rolled up',
+    description:
+      'Show one table’s writes since its last roll-up into Parquet: rows stored since, oldest ' +
+      'first, and rows forgotten since. All of it is already visible to query — use this to see ' +
+      'what changed recently, not to read the table.',
+    inputSchema: {
+      table: z.string(),
+      after: z.string().optional().describe('The "next" of a previous page, to continue from'),
+      limit: z.number().int().min(1).max(10_000).optional(),
+    },
+    resolvesTo: GetPendingOperations,
     readOnly: true,
   },
   {
