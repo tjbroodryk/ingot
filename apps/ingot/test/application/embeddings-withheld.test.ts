@@ -24,7 +24,7 @@ describe('embeddings', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory with vectors in it');
+    ingot = await world.ingot('an ingot with vectors in it');
     await world.add(ingot, {
       table: 'notes',
       columns: {

@@ -5,7 +5,7 @@ import { drainWithin } from './drain-within.js';
 const EVERY = minutes(1);
 
 /**
- * Sends the receipts a memory's delivery target was promised.
+ * Sends the receipts an ingot's delivery target was promised.
  *
  * The same two ways in as the other two workers, for the same reasons.
  * `WriteReceipt` wakes this on commit, so a receiver hears about a receipt
@@ -25,7 +25,7 @@ const EVERY = minutes(1);
   // somebody else's endpoint, so a backlog is the ordinary case rather than
   // the exception — see `CronSpec.exclusive`.
   exclusive: false,
-  description: 'Delivers receipts to the targets their memories nominated',
+  description: 'Delivers receipts to the targets their ingots nominated',
 })
 export class DeliveriesSweeper {
   constructor(private readonly worker: DeliveryWorker) {}

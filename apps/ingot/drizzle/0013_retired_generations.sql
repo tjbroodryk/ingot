@@ -10,7 +10,7 @@
 -- So a replaced generation is retired here with a time, and a sweep deletes it
 -- once that has passed: `INGOT_GENERATION_GRACE_MS`, the same for every table.
 --
--- A dropped table or a deleted memory takes its rows with it. A table recreated
+-- A dropped table or a deleted ingot takes its rows with it. A table recreated
 -- under the same name counts its generations from one again, and a retirement
 -- left over from the old one would delete the new table's files.
 

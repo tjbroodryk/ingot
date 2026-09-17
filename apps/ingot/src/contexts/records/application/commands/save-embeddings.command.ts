@@ -26,7 +26,7 @@ export interface EmbeddedText extends PendingEmbedding {
  * Stores vectors a model has already produced.
  *
  * The second half of the split, and short by construction: the embedder was
- * called outside any transaction, so all this does is claim the memory's
+ * called outside any transaction, so all this does is claim the ingot's
  * vector space, upsert the vectors, and take their rows out of the queue.
  * Leaving the queue is what marks a row done, and it happens in the same
  * transaction as the vector — so a crash between the two leaves the row queued
@@ -52,7 +52,7 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
   async execute(command: SaveEmbeddings): Promise<number> {
     if (command.embedded.length === 0) return 0;
 
-    // Before the vectors, not after. If the memory is already embedded with a
+    // Before the vectors, not after. If the ingot is already embedded with a
     // different model this throws, the transaction rolls back, and nothing is
     // written — which is the whole point. Writing first and checking after
     // would leave exactly the mixture the check exists to prevent.
@@ -65,10 +65,10 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
   }
 
   /**
-   * Which memories this batch touches.
+   * Which ingots this batch touches.
    *
    * A claim takes the oldest queued texts across every table, so one batch can
-   * span several memories. Resolved through the tables rather than carried on
+   * span several ingots. Resolved through the tables rather than carried on
    * the queue row: it is a primary-key read per distinct table in the batch,
    * against a batch of up to 128 rows that usually belong to one or two.
    */
@@ -86,9 +86,9 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
    * Records the vector space, or holds this write to the one already there.
    *
    * Only writes when something changed, which matters more than it looks: the
-   * steady state is a memory whose space was claimed by its first batch, and
+   * steady state is an ingot whose space was claimed by its first batch, and
    * saving unconditionally would make every later batch contend on the
-   * memory's version for nothing.
+   * ingot's version for nothing.
    *
    * Two first batches racing is the one case that writes twice, and the loser
    * re-reads rather than failing — the winner recorded the same model, since
@@ -96,7 +96,7 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
    */
   private async claimSpace(ingotId: string, space: EmbeddingSpace): Promise<void> {
     const ingot = await this.ingots.findById(IngotId.of(ingotId));
-    // A memory deleted between the claim and now. Its rows are going with it.
+    // An ingot deleted between the claim and now. Its rows are going with it.
     if (!ingot) return;
 
     const claimed = ingot.embedding !== null;

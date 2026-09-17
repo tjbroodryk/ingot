@@ -42,7 +42,7 @@ import {
  *
  * The last of three, and it takes the answer rather than fetching it: the
  * model was asked outside any transaction, precisely so that this one is short.
- * Everything here is Postgres — create the table if this is the memory's first
+ * Everything here is Postgres — create the table if this is the ingot's first
  * receipt, append the row, leave the queue — and it is measured as its own
  * command, so "receipts are slow" resolves into which of the three is slow.
  */
@@ -129,7 +129,7 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
     this.uow.afterCommit(async () => this.background.wakeDeliveries());
   }
 
-  /** The memory's receipt table, creating it on the first receipt. */
+  /** The ingot's receipt table, creating it on the first receipt. */
   private async receiptTable(ingotId: string): Promise<IngotTable> {
     return this.registry.ensureCurrent(ingotId, RECEIPT_TABLE, () =>
       declareReceiptTable(ingotId, this.clock.now()),

@@ -115,7 +115,7 @@ export class EmbedWorker {
     }
 
     // The space, not just the model name: the width is half of what makes two
-    // vectors comparable, and the memory records both.
+    // vectors comparable, and the ingot records both.
     return this.dispatcher.send(
       new SaveEmbeddings(embedded, {
         model: this.embedder.model,

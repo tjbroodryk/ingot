@@ -26,7 +26,7 @@ export class GetIngotInfo extends Query<IngotInfo> {
  *
  * No bucket read and no DuckDB session: everything here is in Postgres, which
  * is the point of keeping the catalogue there rather than in the Parquet. A
- * model about to write SQL against this memory calls this first, and it should
+ * model about to write SQL against this ingot calls this first, and it should
  * not cost a round trip to object storage to find out what the columns are.
  *
  * `rows` and `pending` are reported separately because the difference is
@@ -57,7 +57,7 @@ export class GetIngotInfoHandler implements IQueryHandler<GetIngotInfo> {
       createdAt: ingot.createdAt.toISOString(),
       expiresAt: ingot.expiresAt?.toISOString() ?? null,
       embedding: ingot.embedding,
-      // Defaults included, never partial — so "where do this memory's receipts
+      // Defaults included, never partial — so "where do this ingot's receipts
       // go" has an answer here rather than requiring somebody to remember
       // whether they ever configured it.
       config: ingot.config,

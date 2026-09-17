@@ -60,7 +60,7 @@ export class ExtractiveSummariser implements Summariser {
    *
    * Rarity rather than frequency, because a tool result's common words are
    * its keys — `id`, `name`, `url` — and those are exactly the ones that do
-   * not distinguish it from every other result in the memory. What somebody
+   * not distinguish it from every other result in the ingot. What somebody
    * half-remembers is the odd one: a branch name, a file path, an error.
    */
   private searchTerm(request: ReceiptRequest): string {

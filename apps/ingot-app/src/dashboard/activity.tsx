@@ -31,8 +31,8 @@ export type Unnumbered<T> = T extends unknown ? Omit<T, 'n'> : never;
 
 interface Entry {
   readonly n: number;
-  /** The memory's name, for the reader — the log spans every memory. */
-  readonly memory: string;
+  /** The ingot's name, for the reader — the log spans every ingot. */
+  readonly ingot: string;
   readonly ms: number;
 }
 
@@ -76,7 +76,7 @@ export function ActivityLog({
   entries: readonly Activity[];
   credentials: Credentials;
   onUpdate: (n: number, state: UploadState) => void;
-  /** Writes a statement into the editor, against the memory it belongs to. */
+  /** Writes a statement into the editor, against the ingot it belongs to. */
   onQuery: (ingotId: string, sql: string) => void;
   /** The key stopped working while an upload was being watched. */
   onRejected: () => void;
@@ -153,7 +153,7 @@ function QueryEntry({ entry }: { entry: QueryActivity }): ReactNode {
         <pre className="log-p">{outcome.error}</pre>
         <div className="log-s">
           <span className="verdict verdict-fail">Error</span>
-          <span className="log-r">→ no result · {entry.memory}</span>
+          <span className="log-r">→ no result · {entry.ingot}</span>
         </div>
       </div>
     );
@@ -165,7 +165,7 @@ function QueryEntry({ entry }: { entry: QueryActivity }): ReactNode {
       <div className="log-s log-s-tight">
         <span className="log-r">
           → {count(outcome.rows, 'row')}
-          {outcome.truncated ? ', capped' : ''} · {entry.memory}
+          {outcome.truncated ? ', capped' : ''} · {entry.ingot}
         </span>
       </div>
     </div>
@@ -179,7 +179,7 @@ function RefusedEntry({ entry }: { entry: RefusedUpload }): ReactNode {
       <pre className="log-p">{entry.error}</pre>
       <div className="log-s">
         <span className="verdict verdict-fail">Refused</span>
-        <span className="log-r">→ nothing was stored · {entry.memory}</span>
+        <span className="log-r">→ nothing was stored · {entry.ingot}</span>
       </div>
     </div>
   );
@@ -226,7 +226,7 @@ function UploadEntry({
           return;
         }
 
-        // A 422 here is `ingot_files` not existing yet, which is what a memory
+        // A 422 here is `ingot_files` not existing yet, which is what an ingot
         // whose first document is still parsing looks like — the table is
         // created by the write this is waiting for. So it is a "not yet" and
         // not a failure, and the only one of those: anything else is real, and
@@ -263,7 +263,7 @@ function UploadEntry({
       </pre>
       <div className="log-s">
         <Verdict state={state} />
-        <span className="log-r">{describe(state, entry.memory)}</span>
+        <span className="log-r">{describe(state, entry.ingot)}</span>
       </div>
 
       {/*
@@ -303,9 +303,9 @@ function Verdict({ state }: { state: UploadState }): ReactNode {
   return <span className="verdict verdict-fail">{state.t === 'failed' ? 'Failed' : 'Stopped'}</span>;
 }
 
-function describe(state: UploadState, memory: string): string {
+function describe(state: UploadState, ingot: string): string {
   if (state.t === 'parsing') return '→ watching ingot_files for its row';
-  if (state.t === 'ready') return `→ ${count(state.chunks, 'chunk')} · ${memory}`;
+  if (state.t === 'ready') return `→ ${count(state.chunks, 'chunk')} · ${ingot}`;
   if (state.t === 'failed') return `→ ${state.reason}`;
   return `→ ${state.reason}; the document's row says where it got to`;
 }

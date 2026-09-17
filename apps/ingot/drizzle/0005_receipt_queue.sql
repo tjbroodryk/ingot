@@ -6,7 +6,7 @@
 -- into typed columns and throws the rest away — `raw: true` is opt-in, and
 -- asking for a summary should not require it.
 --
--- The receipt itself does not live here. It is written into the memory's own
+-- The receipt itself does not live here. It is written into the ingot's own
 -- `_receipt` table, which means it gets the overlay, the embedding sweeper, the
 -- roll-up into Parquet, tombstones and `/query` from machinery that already
 -- exists. This table is only the work not yet done.
@@ -48,6 +48,6 @@ CREATE TABLE IF NOT EXISTS overlay_receipt_queue (
 CREATE INDEX IF NOT EXISTS overlay_receipt_queue_age
   ON overlay_receipt_queue (attempts, claimed_at, queued_at);
 
--- Destroying a memory destroys its pending work with it.
+-- Destroying an ingot destroys its pending work with it.
 CREATE INDEX IF NOT EXISTS overlay_receipt_queue_ingot
   ON overlay_receipt_queue (ingot_id);

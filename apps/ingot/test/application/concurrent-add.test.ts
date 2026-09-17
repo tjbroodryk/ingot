@@ -6,7 +6,7 @@ import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * Several agents writing to one memory at the same moment.
+ * Several agents writing to one ingot at the same moment.
  *
  * This is the normal case for this product, not an edge one — an ingot is
  * shared by whatever is storing into it — and it was broken. A k6 run at 100
@@ -41,7 +41,7 @@ describe('many writers, one table', () => {
   });
 
   it('all succeed when the table does not exist yet', async () => {
-    const ingot = await world.ingot('a contended memory');
+    const ingot = await world.ingot('a contended ingot');
 
     // Every one of these finds no table and tries to create it. Exactly one
     // wins the insert; the rest have to notice that and use what it made.
@@ -57,7 +57,7 @@ describe('many writers, one table', () => {
   });
 
   it('creates exactly one table, not one per writer', async () => {
-    const ingot = await world.ingot('another contended memory');
+    const ingot = await world.ingot('another contended ingot');
     await Promise.all(Array.from({ length: 12 }, (_, n) => world.add(ingot, mapping(n))));
 
     const info = await world.info(ingot);
@@ -80,7 +80,7 @@ describe('many writers, one table', () => {
     // or not anything about it had changed, so concurrent writes to a stable
     // table fought over its version for no reason. The steady state of this
     // product is a fixed schema and a great many rows.
-    const ingot = await world.ingot('a busy memory');
+    const ingot = await world.ingot('a busy ingot');
     await world.add(ingot, mapping(0));
 
     const before = await world.info(ingot);
@@ -93,7 +93,7 @@ describe('many writers, one table', () => {
   });
 
   it('still widens the schema when a concurrent write introduces a column', async () => {
-    const ingot = await world.ingot('a widening memory');
+    const ingot = await world.ingot('a widening ingot');
 
     // The table is created first, on its own. Racing the *creation* would make
     // this test order-dependent: whichever writer wins declares the schema, so

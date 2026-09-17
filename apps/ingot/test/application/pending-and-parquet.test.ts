@@ -46,7 +46,7 @@ describe('pending writes and the Parquet beneath them', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory with an overlay');
+    ingot = await world.ingot('an ingot with an overlay');
     await world.add(ingot, events(0, 3));
   });
 

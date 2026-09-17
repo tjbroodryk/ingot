@@ -143,7 +143,7 @@ export class IngotRestAdapter implements MemoryAdapter {
   }
 
   async ingest(corpus: readonly ToolResult[]): Promise<void> {
-    const created = await this.send<{ id: string }>('POST', `${this.account()}/create`, {
+    const created = await this.send<{ id: string }>('POST', `${this.account()}/cast`, {
       name: `bench ${this.options.runId}`,
       retainFor: '12h',
     });
@@ -299,7 +299,7 @@ export class IngotRestAdapter implements MemoryAdapter {
     this.ingotId = null;
     if (!ingotId) return;
     try {
-      // The memory carries `retainFor: 12h`, so this is tidiness rather than
+      // The ingot carries `retainFor: 12h`, so this is tidiness rather than
       // correctness — a failed delete must not fail the run.
       await this.send('DELETE', `${this.account()}/${ingotId}`);
     } catch {

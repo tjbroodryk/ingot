@@ -30,7 +30,7 @@ interface Session {
 export class McpController {
   constructor(private readonly servers: IngotMcpServer) {}
 
-  /** Scoped to one memory: the tools take no ids and cannot reach another. */
+  /** Scoped to one ingot: the tools take no ids and cannot reach another. */
   @All(':ingot/mcp')
   @AccountScope()
   // JSON-RPC, not this API's wire contract. MCP negotiates its own protocol
@@ -56,7 +56,7 @@ export class McpController {
     });
   }
 
-  /** Account-wide, for a client that has not been handed a memory yet. */
+  /** Account-wide, for a client that has not been handed an ingot yet. */
   @All('mcp')
   @AccountScope()
   @Wire.Empty()
@@ -67,7 +67,8 @@ export class McpController {
   ): Promise<void> {
     await this.serve(request, response, {
       instructions:
-        'Create a memory with create_memory, then reconnect to ' +
+        'An ingot is a memory: SQL tables your tool results are stored in. Cast one with ' +
+        'cast_ingot, then reconnect to ' +
         `/api/v1/${account.slug.value}/{ingot}/mcp to store and query things in it.`,
       register: (server) => this.servers.register(server, { account }),
     });

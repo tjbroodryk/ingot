@@ -83,8 +83,8 @@ curl -X POST http://localhost:3002/api/v1/accounts \\
   -H "Content-Type: application/json" \\
   -d '{"slug":"acme","name":"Acme Inc"}'
 
-# 2 — cast a memory; keep the id, it is the next path segment
-curl -X POST http://localhost:3002/api/v1/acme/create \\
+# 2 — cast an ingot; keep the id, it is the next path segment
+curl -X POST http://localhost:3002/api/v1/acme/cast \\
   -H "Authorization: Bearer ing_sk_…" \\
   -d '{"name":"crm-notes","retainFor":"14d"}'
 
@@ -111,15 +111,15 @@ export const STATUS_CODES: readonly StatusCode[] = [
     code: '200',
     when: 'Read succeeded — including the POSTs that change nothing, and the patch that returns the whole object.',
   },
-  { code: '201', when: 'Something was created: an account, a key, a memory, a row.' },
-  { code: '204', when: 'Something was removed: a key, a table, a memory.' },
+  { code: '201', when: 'Something was created: an account, a key, an ingot, a row.' },
+  { code: '204', when: 'Something was removed: a key, a table, an ingot.' },
   {
     code: '400',
     when: 'The body is not the right shape — an unknown field, a `retainFor` that is not a number and a unit.',
   },
   { code: '401', when: 'No key, an unknown key, or one that has been revoked.' },
   { code: '403', when: 'The key is valid, but not for the account named in the path.' },
-  { code: '404', when: 'No such account, memory or table.' },
+  { code: '404', when: 'No such account, ingot or table.' },
   { code: '409', when: 'The write conflicts with what is already there — a slug or a name taken.' },
   {
     code: '422',

@@ -5,9 +5,9 @@ import { IngotId } from './ingot-id.vo.js';
 import { Retention } from './retention.vo.js';
 
 /**
- * The vector space a memory's embeddings live in.
+ * The vector space an ingot's embeddings live in.
  *
- * Recorded on the memory rather than read from configuration at query time,
+ * Recorded on the ingot rather than read from configuration at query time,
  * because a stored vector is only meaningful next to vectors from the same
  * model. `INGOT_EMBEDDER` is a property of the process; this is a property of
  * the data, and the two stop agreeing the moment somebody changes the first.
@@ -23,24 +23,24 @@ const MAX_EXTERNAL_ID = 200;
 interface IngotProps {
   accountId: string;
   name: string;
-  /** The caller's own handle, unique per account among memories that hold one. */
+  /** The caller's own handle, unique per account among ingots that hold one. */
   externalId: string | null;
   createdAt: Date;
-  /** When this memory falls due for deletion. Null is kept indefinitely. */
+  /** When this ingot falls due for deletion. Null is kept indefinitely. */
   expiresAt: Date | null;
   /** Set by the first embedding written. Null until then. */
   embedding: EmbeddingSpace | null;
-  /** Where this memory's receipts are pushed. `none` until configured. */
+  /** Where this ingot's receipts are pushed. `none` until configured. */
   delivery: Delivery;
 }
 
 /**
- * One memory.
+ * One ingot.
  *
  * Deliberately thin. Everything interesting about an ingot — what tables it
  * has, what shape they are, where their Parquet lives — belongs to the tables
  * themselves, because that is the granularity writes contend at. This holds
- * only what is true of the memory as a whole, which is who owns it and what it
+ * only what is true of the ingot as a whole, which is who owns it and what it
  * is called.
  */
 export class Ingot extends AggregateRoot<IngotId> {
@@ -76,24 +76,24 @@ export class Ingot extends AggregateRoot<IngotId> {
             ),
       createdAt: input.now,
       expiresAt: retention ? retention.from(input.now) : null,
-      // Not chosen at creation. A memory that never embeds anything never
-      // acquires one, and a memory that does acquires whichever model was
+      // Not chosen at creation. An ingot that never embeds anything never
+      // acquires one, and an ingot that does acquires whichever model was
       // configured when its first vector was written.
       embedding: null,
       // Nor is this. Receipts are collected by the SELECT `/add` hands back
       // until somebody nominates somewhere to push them to, which is a second
-      // call rather than a field on `create` — a delivery target is a property
-      // of the system holding the memory, not of the moment it was cast.
+      // call rather than a field on `cast` — a delivery target is a property
+      // of the system holding the ingot, not of the moment it was cast.
       delivery: Delivery.none(),
     });
   }
 
   /**
-   * A new memory holding what `source` holds, under a new id.
+   * A new ingot holding what `source` holds, under a new id.
    *
    * The embedding space comes with it, because the vectors do. Delivery does
    * not: a receiver configured for the source knows nothing about the copy, and
-   * pushing it events for a memory it never heard of is a surprise nobody
+   * pushing it events for an ingot it never heard of is a surprise nobody
    * asked for. Retention is the source's unless `retainFor` says otherwise, so
    * a copy of something due for deletion does not quietly outlive it.
    */
@@ -129,13 +129,13 @@ export class Ingot extends AggregateRoot<IngotId> {
   get createdAt(): Date {
     return this.props.createdAt;
   }
-  /** When this memory falls due for deletion. Null is kept indefinitely. */
+  /** When this ingot falls due for deletion. Null is kept indefinitely. */
   get expiresAt(): Date | null {
     return this.props.expiresAt;
   }
 
   /**
-   * Whether this memory is past its retention.
+   * Whether this ingot is past its retention.
    *
    * Asked by the reaper immediately before it deletes, and not only by the
    * query that selected it. A row selected as expired and deleted several
@@ -147,9 +147,9 @@ export class Ingot extends AggregateRoot<IngotId> {
   }
 
   /**
-   * Gives up the caller's handle, so a new memory can be created under it.
+   * Gives up the caller's handle, so a new ingot can be created under it.
    *
-   * For a memory that has expired and not yet been reaped: answering a create
+   * For an ingot that has expired and not yet been reaped: answering a cast
    * with it would hand back something the reaper is about to delete.
    */
   releaseExternalId(): void {
@@ -161,12 +161,12 @@ export class Ingot extends AggregateRoot<IngotId> {
     return this.props.accountId === accountId;
   }
 
-  /** Where this memory's receipts are pushed. `none` until configured. */
+  /** Where this ingot's receipts are pushed. `none` until configured. */
   get delivery(): Delivery {
     return this.props.delivery;
   }
 
-  /** Everything configurable about this memory, defaults included. */
+  /** Everything configurable about this ingot, defaults included. */
   get config(): IngotConfig {
     return {
       delivery: this.props.delivery.toWire(),
@@ -183,7 +183,7 @@ export class Ingot extends AggregateRoot<IngotId> {
    * `{ t: "none" }` and not an omission.
    *
    * The boolean is what stops a no-op taking the aggregate's version. Saving
-   * for a patch that changed nothing makes whatever is writing to this memory
+   * for a patch that changed nothing makes whatever is writing to this ingot
    * right now lose an optimistic-concurrency race for no reason at all.
    */
   configure(
@@ -193,7 +193,7 @@ export class Ingot extends AggregateRoot<IngotId> {
     let moved = false;
 
     if (patch.retainFor !== undefined) {
-      // From now, not from creation: this is how a memory that is still in use
+      // From now, not from creation: this is how an ingot that is still in use
       // pushes its deletion out. `null` keeps it indefinitely.
       const expiresAt =
         patch.retainFor === null ? null : Retention.of(String(patch.retainFor)).from(now);
@@ -214,17 +214,17 @@ export class Ingot extends AggregateRoot<IngotId> {
     return moved;
   }
 
-  /** The vector space this memory's embeddings live in. Null until the first. */
+  /** The vector space this ingot's embeddings live in. Null until the first. */
   get embedding(): EmbeddingSpace | null {
     return this.props.embedding;
   }
 
   /**
-   * Claims a vector space for this memory, on the first embedding written.
+   * Claims a vector space for this ingot, on the first embedding written.
    *
    * Idempotent for the same model at the same width, and a conflict for any
    * other — which is the point. Cosine similarity between vectors from two
-   * different models is a number, and it means nothing; a memory that quietly
+   * different models is a number, and it means nothing; an ingot that quietly
    * accumulated both would return rankings that are wrong in a way no error
    * ever surfaces and no test would catch. So the first write decides, and
    * everything afterwards is held to it.
@@ -243,10 +243,10 @@ export class Ingot extends AggregateRoot<IngotId> {
     if (current.model === space.model && current.dimensions === space.dimensions) return;
 
     throw new ConflictingState(
-      `this memory is embedded with "${current.model}" at ${current.dimensions} dimensions, ` +
+      `this ingot is embedded with "${current.model}" at ${current.dimensions} dimensions, ` +
         `and this deployment is configured for "${space.model}" at ${space.dimensions}. ` +
         'Vectors from two models cannot be compared, so mixing them would silently corrupt ' +
-        'every ranking. Point INGOT_EMBEDDER back at the original model, or drop this memory ' +
+        'every ranking. Point INGOT_EMBEDDER back at the original model, or drop this ingot ' +
         'and store it again to re-embed it.',
     );
   }
@@ -254,7 +254,7 @@ export class Ingot extends AggregateRoot<IngotId> {
   /**
    * Refuses a question embedded by the wrong model.
    *
-   * The read half of `useEmbedding`. A memory with no embeddings has nothing
+   * The read half of `useEmbedding`. An ingot with no embeddings has nothing
    * to be incompatible with, so it accepts anything — the first write is what
    * decides.
    */

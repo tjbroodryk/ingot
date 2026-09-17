@@ -10,7 +10,7 @@
  * canvas design this page is drawn from had two of them wrong, and both
  * mistakes are the kind a reader would only find by being lied to:
  *
- *   - `:ingot` is the `ing_…` id `create` hands back, never the memory's name.
+ *   - `:ingot` is the `ing_…` id `cast` hands back, never the ingot's name.
  *   - `/add` takes its blob as `result`, and `columns` maps to
  *     `{ from, type }` objects rather than to bare path strings.
  *
@@ -31,9 +31,9 @@ export interface Step {
 export const STEPS: readonly Step[] = [
   {
     n: '01',
-    title: 'Cast a memory',
+    title: 'Cast an ingot',
     body: 'One POST. Name it, say how long it lives — 30m for a session, 4w for a project — and keep the id it hands back.',
-    route: 'POST /:account/create',
+    route: 'POST /:account/cast',
   },
   {
     n: '02',
@@ -77,8 +77,8 @@ export const FEATURES: readonly Feature[] = [
   },
   {
     kicker: 'Retention',
-    title: '30m to 4w, per memory',
-    body: 'Scratch memory for a session, durable memory for a project. You set it once, when you cast the memory.',
+    title: '30m to 4w, per ingot',
+    body: 'Scratch ingot for a session, durable ingot for a project. You set it once, when you cast the ingot.',
   },
   {
     kicker: 'Search',
@@ -93,12 +93,12 @@ export const FEATURES: readonly Feature[] = [
   {
     kicker: 'Delivery',
     title: 'Poll it, or be told',
-    body: 'A receipt hands back the SELECT that finds your rows. Or point the memory at a webhook or a queue and each one gets pushed as it lands, out of an outbox that survives a restart.',
+    body: 'A receipt hands back the SELECT that finds your rows. Or point the ingot at a webhook or a queue and each one gets pushed as it lands, out of an outbox that survives a restart.',
   },  
   {
     kicker: 'Joins',
-    title: 'Across memory types',
-    body: 'Every memory type is a table in the same database, so one SELECT can join a tool result to another on a value neither declared as a key — a file path in one, the team that owns it in another.',
+    title: 'Across tables',
+    body: 'Every table is in the same database, so one SELECT can join a tool result to another on a value neither declared as a key — a file path in one, the team that owns it in another.',
   },
 ];
 
@@ -107,7 +107,7 @@ export const FEATURES: readonly Feature[] = [
  *
  * It is first because everything below it is API, and a reader who has not yet
  * been told that this is the place an agent loop puts its tool results reads
- * the samples as a database's rather than as a memory's.
+ * the samples as a database's rather than as an ingot's.
  *
  * Two cells because `/add` and `/file` are the whole front door. Documents sit
  * here rather than being left to "What it's not" nine sections down: it is the
@@ -202,7 +202,7 @@ POST /api/v1/acme/ing_01H8Z…/query
  * The two things a write can opt into, and what each hands back.
  *
  * Both are opt-in and they are opt-in at different grains, which is the point
- * worth making: `embed` is per memory type and set once when the type is
+ * worth making: `embed` is per table and set once when the table is
  * declared, `receipt` is per call because it costs a model call every time. A
  * page that showed them as one switch would be describing a product that
  * bills differently from this one.
@@ -211,7 +211,7 @@ POST /api/v1/acme/ing_01H8Z…/query
  * being glossed over — it is the promise the receipt makes. Showing the query
  * answering underneath is the only honest way to draw it.
  */
-export const RECEIPTS = `# opt in: per memory type, and per call
+export const RECEIPTS = `# opt in: per table, and per call
 POST /api/v1/acme/ing_01H8Z…/add
 {
   "table": "notes",
@@ -254,7 +254,7 @@ POST /api/v1/acme/ing_01H8Z…/add
  * replaced. Keyword indexing is **off** until a table asks for it — see
  * `FtsSettings.default()` in the service, which explains why: the index is
  * built per session over the whole table, so defaulting it on would bill every
- * query of every memory for prose most of them do not hold. A sample that went
+ * query of every ingot for prose most of them do not hold. A sample that went
  * straight to `match_bm25` would be one somebody pastes, runs, and gets an
  * empty result from, with nothing on the page to say why.
  *
@@ -329,7 +329,7 @@ export const HARNESS: readonly WireNode[] = [
   },
   {
     actor: '02 · Your tool -> Ingot',
-    title: 'Sends the result to the memory',
+    title: 'Sends the result to the ingot',
     body: 'One POST, before you return. Send the tool-call id along as externalId and you can ask for this receipt back later by a name that means something to you.',
     wire: 'POST /:ingot/add',
   },
@@ -371,7 +371,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 
 const INGOT = 'http://localhost:3002/api/v1/acme';
-const memory = INGOT + '/ing_01H8Z…';
+const ingot = INGOT + '/ing_01H8Z…';
 
 export const searchContacts = tool({
   description: 'Search the CRM by stage.',
@@ -380,7 +380,7 @@ export const searchContacts = tool({
   async execute({ stage }, { toolCallId }) {
     const result = await crm.contacts.search({ stage });
 
-    const { receipt } = await post(memory + '/add', {
+    const { receipt } = await post(ingot + '/add', {
       table: 'contacts',
       rows: '$.contacts[*]',
       columns: {
@@ -393,7 +393,7 @@ export const searchContacts = tool({
       result,
     });
 
-    // The 412 contacts stay in the memory. This
+    // The 412 contacts stay in the ingot. This
     // is what goes back in their place.
     return {
       rows: receipt.totalResults,
@@ -504,10 +504,10 @@ export const MCP_CONFIG = `# claude_desktop_config.json
 export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: string }[] = [
   {
     scope: 'account-wide',
-    tools: 'create_memory · clone_memory · list_memories · delete_memory',
+    tools: 'cast_ingot · clone_ingot · list_ingots · delete_ingot',
   },
   {
-    scope: 'per memory',
+    scope: 'per ingot',
     tools:
       'describe · remember · query · recall · forget · configure_table · configure_delivery · drop_table',
   },
@@ -537,7 +537,7 @@ export const RAG_REPLACED: readonly RagContrast[] = [
   {
     job: 'Embed',
     rag: 'A pipeline writing vectors into another system.',
-    ingot: 'Opt in per memory type. A sweeper works the queue.',
+    ingot: 'Opt in per table. A sweeper works the queue.',
   },
   {
     job: 'Store vectors',
@@ -557,7 +557,7 @@ export const RAG_REPLACED: readonly RagContrast[] = [
   {
     job: 'Join sources',
     rag: 'One index per query.',
-    ingot: 'One SELECT across memory types — chunks, files and typed rows together.',
+    ingot: 'One SELECT across tables — chunks, files and typed rows together.',
   },
   {
     job: 'What goes in',

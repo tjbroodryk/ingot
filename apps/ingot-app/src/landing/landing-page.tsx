@@ -99,7 +99,7 @@ export function LandingPage(): ReactNode {
           The hero says it in one sentence and a sentence is not enough: a
           reader arriving here has to be told that this is where an agent loop
           puts its tool results, or they read the terminal underneath as a
-          database's samples rather than as a memory's. The `/why` link is the
+          database's samples rather than as an ingot's. The `/why` link is the
           third paragraph rather than a fourth cell because the argument is not
           a feature — and it is guarded, because the route is `null` in a build
           that does not have that page.
@@ -121,7 +121,7 @@ export function LandingPage(): ReactNode {
             </p>
             <p>
               Documents come in the same door. A PDF or a deck is chunked, embedded and landed
-              in tables of the same memory, next to the tool results, so finding a paragraph
+              in tables of the same ingot, next to the tool results, so finding a paragraph
               and filtering on a number are one SELECT rather than two systems.
             </p>
             <p>
@@ -243,7 +243,7 @@ export function LandingPage(): ReactNode {
             </h2>
             <p>
               The instinct is that a tool result has to go into the context window to be useful
-              later. It doesn&rsquo;t. One POST puts it in the memory, and what comes back is small
+              later. It doesn&rsquo;t. One POST puts it in the ingot, and what comes back is small
               enough to be the tool&rsquo;s own output — carrying the SQL that finds the rows again.
             </p>
             <a className="target-more landhead-more" href="#ai-sdk">
@@ -351,19 +351,19 @@ export function LandingPage(): ReactNode {
               expensive parts.
             </h3>
             <p>
-              We split these two on purpose. <code>embed</code> belongs to the memory type: set it
-              once when the type is declared and it applies to every write after that.{' '}
+              We split these two on purpose. <code>embed</code> belongs to the table: set it
+              once when the table is declared and it applies to every write after that.{' '}
               <code>receipt</code> is per call, because it costs a model call every time. A loop
               storing ten thousand tool results should never end up paying for either by accident.
             </p>
             <p>
               A receipt comes back <code>pending</code>, with the SELECT that will answer it. The
               model writing the summary is a network away; your rows are queryable the instant{' '}
-              <code>/add</code> returns. Point the memory at a webhook or a queue and you get told
+              <code>/add</code> returns. Point the ingot at a webhook or a queue and you get told
               instead of having to ask.
             </p>
             <div className="chips">
-              <span className="chip chip-accent">embed per memory type</span>
+              <span className="chip chip-accent">embed per table</span>
               <span className="chip">receipt per call</span>
               <span className="chip">webhook</span>
               <span className="chip">rabbitmq</span>
@@ -393,8 +393,8 @@ export function LandingPage(): ReactNode {
             <p>
               That is normally three pieces of infrastructure: a vector store, a metadata index, and
               a filtering hop between them. We did not want to run any of those, so here it is one
-              POST against the memory you were already writing to. Neither half is on by default —
-              you turn on embeddings and the keyword index per memory type, so a memory holding no
+              POST against the ingot you were already writing to. Neither half is on by default —
+              you turn on embeddings and the keyword index per table, so a table holding no
               prose pays for neither.
             </p>
             <div className="chips">

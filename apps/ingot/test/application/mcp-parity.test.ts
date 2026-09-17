@@ -85,7 +85,7 @@ describe('the MCP surface', () => {
       McpTool.Query,
       McpTool.Recall,
       McpTool.Pending,
-      McpTool.ListMemories,
+      McpTool.ListIngots,
     ]);
     for (const tool of TOOLS) {
       expect({ tool: tool.name, readOnly: tool.readOnly }).toEqual({
@@ -102,7 +102,7 @@ describe('the MCP surface', () => {
     );
 
     // An ingot-scoped tool takes no ingot id: the connection is already
-    // pointed at one, so a model cannot address a memory it was not given.
+    // pointed at one, so a model cannot address an ingot it was not given.
     for (const tool of TOOLS.filter((candidate) => candidate.scope === McpScope.Ingot)) {
       expect(Object.keys(tool.inputSchema)).not.toContain('ingot');
     }

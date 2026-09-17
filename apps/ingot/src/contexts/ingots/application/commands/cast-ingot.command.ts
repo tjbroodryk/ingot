@@ -16,20 +16,20 @@ import {
 } from '../../domain/index.js';
 import { summarise } from '../ingot-summary.js';
 
-export interface CreatedIngot {
+export interface CastIngotResult {
   readonly ingot: IngotSummary;
-  /** False when `externalId` named a memory that already existed. */
+  /** False when `externalId` named an ingot that already existed. */
   readonly created: boolean;
 }
 
-/** `POST /api/v1/:account/create` */
-export class CreateIngot extends Command<CreatedIngot> {
+/** `POST /api/v1/:account/cast` */
+export class CastIngot extends Command<CastIngotResult> {
   constructor(
     readonly accountId: string,
     readonly name: string,
-    /** `30m`, `12h`, `14d`, `4w`. Omitted, the memory is kept indefinitely. */
+    /** `30m`, `12h`, `14d`, `4w`. Omitted, the ingot is kept indefinitely. */
     readonly retainFor?: string,
-    /** The caller's own handle. Given, create answers with the memory it already names. */
+    /** The caller's own handle. Given, cast answers with the ingot it already names. */
     readonly externalId?: string,
   ) {
     super();
@@ -39,17 +39,17 @@ export class CreateIngot extends Command<CreatedIngot> {
 /**
  * Casting an ingot creates nothing but a row.
  *
- * No tables, no bucket prefix, no Parquet. A memory's shape is decided by what
+ * No tables, no bucket prefix, no Parquet. An ingot's shape is decided by what
  * is put into it, and the first `/add` naming a table is what brings that table
  * into existence — so an ingot that is never written to costs one row and
  * nothing else.
  *
- * With an `externalId` it is idempotent, and nothing about an existing memory
+ * With an `externalId` it is idempotent, and nothing about an existing ingot
  * is changed by asking for it again — not its name and not its retention, which
  * is what `/config` is for.
  */
-@CommandHandler(CreateIngot)
-export class CreateIngotHandler implements ICommandHandler<CreateIngot> {
+@CommandHandler(CastIngot)
+export class CastIngotHandler implements ICommandHandler<CastIngot> {
   constructor(
     @Inject(INGOT_REPOSITORY) private readonly ingots: IngotRepository,
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
@@ -57,7 +57,7 @@ export class CreateIngotHandler implements ICommandHandler<CreateIngot> {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async execute(command: CreateIngot): Promise<CreatedIngot> {
+  async execute(command: CastIngot): Promise<CastIngotResult> {
     const now = this.clock.now();
     const ingot = Ingot.cast({
       accountId: command.accountId,
@@ -78,7 +78,7 @@ export class CreateIngotHandler implements ICommandHandler<CreateIngot> {
     }
     if (existing) {
       // Past its retention and not reaped yet. The reaper still deletes it;
-      // the handle moves to the memory made here.
+      // the handle moves to the ingot made here.
       existing.releaseExternalId();
       await this.ingots.save(existing);
     }
@@ -92,7 +92,7 @@ export class CreateIngotHandler implements ICommandHandler<CreateIngot> {
     const winner = await this.ingots.findByExternalId(command.accountId, ingot.externalId);
     if (!winner) {
       throw new ConflictingState(
-        `a memory with externalId "${ingot.externalId}" was being created at the same time ` +
+        `an ingot with externalId "${ingot.externalId}" was being created at the same time ` +
           'and did not survive. Try again.',
       );
     }

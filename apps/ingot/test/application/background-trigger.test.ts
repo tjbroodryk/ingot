@@ -46,7 +46,7 @@ describe('what a write sets off', () => {
 
   beforeAll(async () => {
     world = await makeWorld();
-    ingot = await world.ingot('a memory with a background');
+    ingot = await world.ingot('an ingot with a background');
   });
 
   afterAll(async () => {

@@ -19,7 +19,7 @@ const EVERY_TABLE_EVENT = [
 ];
 
 /**
- * Table changes reach a memory's delivery target, as signals to go and read.
+ * Table changes reach an ingot's delivery target, as signals to go and read.
  *
  * What is asserted is the contract a mirror depends on: an announcement exists
  * once a write commits, writes waiting on one delivery fold into it rather than
@@ -73,7 +73,7 @@ describe('announcing table changes', () => {
   });
 
   it('folds writes that land before a delivery into one', async () => {
-    const ingot = await listening('a memory being mirrored');
+    const ingot = await listening('an ingot being mirrored');
 
     await world.add(ingot, events(0, 2));
     await world.add(ingot, events(2, 3));
@@ -103,7 +103,7 @@ describe('announcing table changes', () => {
   });
 
   it('starts a new announcement once the last one has gone', async () => {
-    const ingot = await listening('a memory written after a delivery');
+    const ingot = await listening('an ingot written after a delivery');
 
     await world.add(ingot, events(0, 1));
     await world.deliverAll();
@@ -115,7 +115,7 @@ describe('announcing table changes', () => {
   });
 
   it('announces forgotten rows, with no sequence to read to', async () => {
-    const ingot = await listening('a memory that forgets');
+    const ingot = await listening('an ingot that forgets');
     await world.add(ingot, events(0, 3));
     await world.deliverAll();
 
@@ -132,7 +132,7 @@ describe('announcing table changes', () => {
   });
 
   it('announces a roll-up with the generation to re-read from', async () => {
-    const ingot = await listening('a memory rolled up');
+    const ingot = await listening('an ingot rolled up');
     await world.add(ingot, events(0, 2));
     await world.deliverAll();
 
@@ -149,7 +149,7 @@ describe('announcing table changes', () => {
   });
 
   it('announces a dropped table', async () => {
-    const ingot = await listening('a memory losing a table');
+    const ingot = await listening('an ingot losing a table');
     await world.add(ingot, events(0, 1));
     await world.deliverAll();
 
@@ -161,14 +161,14 @@ describe('announcing table changes', () => {
   });
 
   it('sends nothing a strategy did not ask for', async () => {
-    const receiptsOnly = await world.ingot('a memory configured before table events');
+    const receiptsOnly = await world.ingot('an ingot configured before table events');
     await world.configureIngot(receiptsOnly, {
       delivery: { t: DeliveryKind.Webhook, endpoint: ENDPOINT },
     });
     await world.add(receiptsOnly, events(0, 2));
     await world.compact(receiptsOnly, 'events');
 
-    const rollUpsOnly = await listening('a memory that only wants roll-ups', [
+    const rollUpsOnly = await listening('an ingot that only wants roll-ups', [
       DeliveryEvent.TableRolledUp,
     ]);
     await world.add(rollUpsOnly, events(0, 2));

@@ -29,7 +29,7 @@ export class ConfigureIngot extends Command<IngotConfig> {
 }
 
 /**
- * Sets where a memory's receipts are delivered and how long it is kept, and
+ * Sets where an ingot's receipts are delivered and how long it is kept, and
  * returns everything it is now set to.
  *
  * Returns the whole config rather than an acknowledgement, for the reason
@@ -67,7 +67,7 @@ export class ConfigureIngotHandler implements ICommandHandler<ConfigureIngot> {
     }
 
     // `configure` reports whether anything moved, and a no-op is not written:
-    // saving would take the memory's version for a patch that changed nothing,
+    // saving would take the ingot's version for a patch that changed nothing,
     // making whatever is writing to it right now retry for no reason.
     if (ingot.configure(command.settings, this.clock.now())) {
       await this.ingots.save(ingot);

@@ -12,7 +12,7 @@ export const MAX_BODY_KEY = 'INGOT_MAX_BODY_BYTES';
  * of a tool result — a page of search hits or a file listing is past it, and
  * `/add` refused them with a 413 before anything of ours ran. The body is
  * parsed whole into the heap, and `/add` then holds the mapped rows beside it,
- * so like `INGOT_MAX_UPLOAD_BYTES` this is sized against memory rather than
+ * so like `INGOT_MAX_UPLOAD_BYTES` this is sized against ingot rather than
  * against what a caller might send. Multipart uploads are not governed by it.
  */
 export const DEFAULT_MAX_BODY = 16 * 1024 * 1024;

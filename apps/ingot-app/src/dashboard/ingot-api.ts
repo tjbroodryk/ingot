@@ -94,15 +94,15 @@ export function fetchAccount(credentials: Credentials): Promise<AccountDetail> {
   return call<AccountDetail>(credentials, `/api/v1/accounts/${enc(credentials.account)}`);
 }
 
-export function listMemories(credentials: Credentials): Promise<readonly IngotSummary[]> {
+export function listIngots(credentials: Credentials): Promise<readonly IngotSummary[]> {
   return call<readonly IngotSummary[]>(credentials, `/api/v1/${enc(credentials.account)}/ingots`);
 }
 
 /**
- * The information schema for one memory.
+ * The information schema for one ingot.
  *
  * Fetched so the console can show what there is to query. Somebody typing SQL
- * against a memory they did not fill has no other way to learn the table names,
+ * against an ingot they did not fill has no other way to learn the table names,
  * and guessing them is how you spend a minute reading a "table does not exist"
  * that is really "you spelled it differently".
  */
@@ -111,10 +111,10 @@ export function fetchInfo(credentials: Credentials, ingotId: string): Promise<In
 }
 
 /**
- * One SELECT against one memory.
+ * One SELECT against one ingot.
  *
  * `ingotId` and not a name: `:ingot` resolves through `IngotId.of`, so the
- * segment is the `ing_…` the memory was created with. The picker shows the
+ * segment is the `ing_…` the ingot was created with. The picker shows the
  * name and sends the id, which is the only place that difference should ever
  * have to be thought about.
  */

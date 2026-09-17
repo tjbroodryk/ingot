@@ -13,7 +13,7 @@ export function bytes(size: number): string {
 }
 
 /**
- * How long a memory has left, in the largest unit that is still a whole number
+ * How long an ingot has left, in the largest unit that is still a whole number
  * of something — `14d left`, `30m left`.
  *
  * Read off the clock of whoever is looking, which is the one it matters to. A
