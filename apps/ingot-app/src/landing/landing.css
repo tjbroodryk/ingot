@@ -241,9 +241,13 @@
 
 .step code {
   margin-top: var(--space-1);
+  max-width: 100%;
   padding: 7px 12px;
   border: 1px solid var(--ink-25);
   font-size: 12px;
+  /* A repository path is one word and the longest of them is wider than a
+     narrow phone; it breaks at the slash rather than taking the page with it. */
+  overflow-wrap: anywhere;
 }
 
 /* ══ the agent loop, and the file it becomes ════════════════════════════

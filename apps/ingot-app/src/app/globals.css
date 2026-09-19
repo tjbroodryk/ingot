@@ -971,6 +971,8 @@ pre {
   font-size: 12.5px;
   letter-spacing: 0;
   text-transform: none;
+  /* The URL in it is one word and wider than a phone. */
+  overflow-wrap: anywhere;
 }
 
 /* ══ footer ═════════════════════════════════════════════════════════════ */
@@ -1060,31 +1062,47 @@ pre {
   /*
    * Two rows rather than three, and the brand leads.
    *
-   * The old rule collapsed to a single column in source order, which put the
-   * nav above the wordmark and pushed the actions onto a third row — a header
-   * three deep before any of the page had started. Identity and the action sit
-   * together on the first row; the nav gets the full width of the second and
-   * scrolls if it outgrows it, which it now can, having gained an item.
+   * The three-column grid collapsed in source order, which put the nav above
+   * the wordmark and pushed the actions onto a third row — a header three deep
+   * before any of the page had started. Identity and the action sit together
+   * on the first row; the nav gets the full width of the second and scrolls if
+   * it outgrows it, which it now can, having gained an item.
+   *
+   * Flex rather than a two-column grid, because the number of actions is the
+   * page's to decide: a build with two of them does not fit beside the
+   * wordmark on a phone, and wrapping gives that case a row of its own instead
+   * of a column of stacked buttons in the corner.
    */
   .topbar {
-    grid-template-columns: auto minmax(0, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     row-gap: var(--space-3);
     column-gap: var(--space-4);
   }
 
   .brand {
-    order: -1;
-    grid-column: 1;
-    justify-self: start;
+    order: 1;
   }
 
+  /* A build with two buttons in the header runs out of row before it runs out
+     of buttons, so the group wraps too — as whole labels, never breaking "Get
+     the source" across two lines. */
   .topbar-meta {
-    grid-column: 2;
-    justify-self: end;
+    order: 2;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    /* Held to the right whichever row it lands on. */
+    margin-left: auto;
+  }
+
+  .topbar-meta .btn-solid,
+  .topbar-meta .btn-outline {
+    white-space: nowrap;
   }
 
   .topbar-nav {
-    grid-column: 1 / -1;
+    order: 3;
+    flex: 1 0 100%;
     gap: 20px;
     overflow-x: auto;
     /* A nav that scrolls should not also clip its own underline. */
@@ -1125,6 +1143,17 @@ pre {
   }
 
   /*
+   * On a phone the wordmark, the version and the actions stop fitting on one
+   * row, and the first thing to give is the version: it is the least of the
+   * three, and every page that depends on knowing it says so in its own head.
+   * The alternative is a header of three or four rows for a chip.
+   */
+  .topbar-meta > .muted,
+  .topbar-divider {
+    display: none;
+  }
+
+  /*
    * `INGOT_S3_SECRET_ACCESS_KEY` is 26 unbreakable characters and two more
    * columns follow it, so below about 520px this table has a minimum width the
    * viewport cannot give it. Breaking an identifier across two lines is worse
@@ -1136,4 +1165,12 @@ pre {
     display: block;
     overflow-x: auto;
   }
+
+  /* The reference's own tables reach the same point a little lower down —
+     a field name, a type and a sentence — and answer it the same way. */
+  .table {
+    display: block;
+    overflow-x: auto;
+  }
 }
+

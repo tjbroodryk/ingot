@@ -756,6 +756,89 @@
     padding-left: var(--space-4);
     padding-right: var(--space-4);
   }
+
+  /*
+   * Five columns have a floor of about 620px — the name, two tracks and two
+   * figures all have minimums — and a grid cannot go below the sum of them,
+   * so on a phone the row pushed the whole document sideways and took the
+   * header with it. The pair still has to be read as a pair, so the row
+   * stacks rather than scrolls or drops the cost: the accuracy sits on the
+   * name's line where the two read as one statement, its bar runs the full
+   * width underneath, and the cost keeps the quieter line below that.
+   */
+  .bench-rank {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name value'
+      'bar bar'
+      'cost-bar cost-value';
+    gap: 6px var(--space-4);
+    padding: 12px 0;
+  }
+
+  .bench-rank-name {
+    grid-area: name;
+  }
+
+  .bench-rank-track:not(.bench-rank-track-cost) {
+    grid-area: bar;
+    height: 20px;
+  }
+
+  .bench-rank-value:not(.bench-rank-cost) {
+    grid-area: value;
+  }
+
+  .bench-rank-track-cost {
+    grid-area: cost-bar;
+  }
+
+  .bench-rank-cost {
+    grid-area: cost-value;
+  }
+
+  /*
+   * The head has no tracks to label once the row has stacked, so it stops
+   * being a set of columns and becomes the two names of what follows, one at
+   * each end. The spacer cells it uses to reach the fifth column have nothing
+   * to space out any more.
+   */
+  .bench-rank-head {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .bench-rank-head > span:empty {
+    display: none;
+  }
+
+  /*
+   * The matrix keeps scrolling, but 264px of row label on a 390px screen left
+   * one category half in view and took the adapter names away the moment you
+   * scrolled to a second one. The column comes down to what a wrapped name
+   * needs and sticks to the left edge, so a heat cell is always read against
+   * the row it belongs to.
+   */
+  .bench-matrix thead th:first-child {
+    width: 132px;
+  }
+
+  .bench-matrix thead th:first-child,
+  .bench-matrix tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    padding-right: var(--space-2);
+    /* The cell it is holding in front of scrolls under it, so it needs the
+       ground rather than the band's transparency — and the shadow, which is a
+       solid block rather than a blur, carries that ground across the scroll
+       container's own padding, where a sliver of the table showed through. */
+    background: var(--color-bg);
+    box-shadow: calc(-1 * var(--space-4)) 0 0 var(--color-bg);
+    font-size: 12.5px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 /*
