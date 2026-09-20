@@ -4,7 +4,6 @@ import { LandingPage } from '../src/landing/landing-page';
 import {
   AI_SDK_SEEN,
   AI_SDK_TOOL,
-  FEATURES,
   HARNESS,
   LEDE,
   MCP_CONFIG,
@@ -85,7 +84,7 @@ describe('the landing page', () => {
 
   it('renders every section it is given without throwing', () => {
     for (const step of STEPS) expect(markup).toContain(step.title);
-    for (const feature of FEATURES) expect(markup).toContain(feature.title);
+    for (const way of WAYS_IN) expect(markup).toContain(way.title);
     for (const thing of SPEAKS) expect(markup).toContain(thing);
   });
 
@@ -116,7 +115,11 @@ describe('the landing page', () => {
    * they are compared, because a missing one is -1 and -1 sorts first.
    */
   it('says what it is before it says how it works', () => {
-    for (const way of WAYS_IN) expect(markup).toContain(way.title);
+    // Two of the three arguments are blank while they are being written, and
+    // an unwritten one has nothing to find in the markup.
+    for (const way of WAYS_IN) {
+      if (way.title) expect(markup).toContain(way.title);
+    }
 
     const what = markup.indexOf('id="what"');
 
@@ -125,13 +128,12 @@ describe('the landing page', () => {
   });
 
   /**
-   * `.features-pair` is `repeat(2, 1fr)`, and the border rules it inherits are
-   * written `3n + 1` — right for a pair and for a triple, and wrong for the
-   * third cell somebody adds here, which would start a row against the
-   * section's own edge.
+   * `.features` is `repeat(3, 1fr)` and draws its rules from a `3n + 1`
+   * arithmetic, so a fourth argument here would start a second row against the
+   * section's own edge and would need the border rules rewritten with it.
    */
-  it('keeps the pair a pair', () => {
-    expect(WAYS_IN.length).toBe(2);
+  it('keeps the arguments to a row of three', () => {
+    expect(WAYS_IN.length).toBe(3);
   });
 
   /**

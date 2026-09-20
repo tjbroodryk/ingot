@@ -877,6 +877,32 @@ pre {
   color: var(--color-accent-pale);
 }
 
+/*
+ * The two a TypeScript sample adds. Same idea as the pair above: the accent is
+ * the structure — there the key, here the words that are the language rather
+ * than the program — and the literal recedes from it.
+ *
+ * The weight is 500 rather than 700 because JetBrains Mono carries 500 and a
+ * sample whose every third word is bold reads as emphasis rather than as
+ * syntax. It is loaded in `layout.tsx`; do not reach for one that is not.
+ */
+.tok-kw {
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+.code-ink .tok-kw {
+  color: var(--color-accent-pale);
+}
+
+.tok-str {
+  color: var(--ink-60);
+}
+
+.code-ink .tok-str {
+  color: color-mix(in srgb, var(--color-ink-inverse) 62%, transparent);
+}
+
 /* — the framed terminal — */
 
 .panel {

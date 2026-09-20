@@ -14,6 +14,7 @@
 
 import {
   ADAPTERS,
+  adapterLabel,
   arrival,
   BENCHMARK,
   BENCHMARKS_DESCRIPTION,
@@ -56,7 +57,7 @@ function renderBenchmarks(): string {
     'One agent loop serves every column, with the same model, the same tool-call budget and the same answer channel. Only the retrieval tools differ, so a gap between two columns has exactly one possible cause.',
     table(
       ['Adapter', 'What it is'],
-      ADAPTERS.map((adapter) => [`\`${adapter.name}\``, adapter.blurb]),
+      ADAPTERS.map((adapter) => [`\`${adapterLabel(adapter.name)}\``, adapter.blurb]),
     ),
 
     heading(2, 'The questions'),
@@ -74,7 +75,10 @@ function renderBenchmarks(): string {
     'This is worth exactly as much as your ability to go and check it, so every part of it is one file. If you want to know whether we shaped the questions to flatter ourselves, read the generator — do not take our word for it.',
     table(
       ['Question', 'Where'],
-      SOURCES.map((source) => [source.question, `[\`${source.path}\`](${sourceHref(source.path)})`]),
+      SOURCES.map((source) => [
+        source.question,
+        `[\`${source.path}\`](${sourceHref(source.path)})`,
+      ]),
     ),
     '`bun run bench --dry-run` prints every question and every gold answer without making a single API call.',
   )}\n`;
@@ -168,7 +172,7 @@ function results(published: PublishedTable | null): readonly string[] {
     table(
       ['Adapter', 'Overall', ...categories],
       adapters.map((adapter) => [
-        `\`${adapter.name}\``,
+        `\`${adapterLabel(adapter.name)}\``,
         `${percent(adapter.accuracy)} ±${percent(adapter.stderr)}`,
         ...categories.map((category) =>
           adapter.byCategory[category] === undefined
@@ -180,9 +184,16 @@ function results(published: PublishedTable | null): readonly string[] {
 
     heading(3, 'Retrieval and cost'),
     table(
-      ['Adapter', 'Set F1', 'Evidence recall', 'Evidence precision', 'Tool calls', 'Context tokens'],
+      [
+        'Adapter',
+        'Set F1',
+        'Evidence recall',
+        'Evidence precision',
+        'Tool calls',
+        'Context tokens',
+      ],
       adapters.map((adapter) => [
-        `\`${adapter.name}\``,
+        `\`${adapterLabel(adapter.name)}\``,
         adapter.f1.toFixed(2),
         adapter.evidenceRecall === null ? '—' : percent(adapter.evidenceRecall),
         adapter.evidencePrecision === null ? '—' : percent(adapter.evidencePrecision),
@@ -197,7 +208,10 @@ function results(published: PublishedTable | null): readonly string[] {
       ? [
           `Runs that failed outright — the provider threw and nothing was answered: ${adapters
             .filter((adapter) => adapter.failures > 0)
-            .map((adapter) => `\`${adapter.name}\` ${adapter.failures} of ${adapter.runs}`)
+            .map(
+              (adapter) =>
+                `\`${adapterLabel(adapter.name)}\` ${adapter.failures} of ${adapter.runs}`,
+            )
             .join(
               ', ',
             )}. They are scored wrong, but they are infrastructure failures rather than retrieval failures.`,

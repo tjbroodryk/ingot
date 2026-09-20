@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   ADAPTERS,
+  adapterLabel,
   BENCHMARK,
   TABLES,
   CATEGORIES,
@@ -207,9 +208,10 @@ describe('the benchmarks page', () => {
 
   it('explains every adapter and every category', () => {
     for (const adapter of ADAPTERS) {
-      // The name is set as a kicker, which upper-cases it in the markup; the
-      // blurb is what actually has to be on the page.
-      expect(markup).toContain(adapter.name.toUpperCase());
+      // The label is set as a kicker, which upper-cases it in the markup; the
+      // blurb is what actually has to be on the page. The label rather than the
+      // name, because the run's name for a column is not what the page calls it.
+      expect(markup).toContain(adapterLabel(adapter.name).toUpperCase());
       expect(markup).toContain(adapter.blurb);
     }
     for (const category of CATEGORIES) {

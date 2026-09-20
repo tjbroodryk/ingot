@@ -141,6 +141,7 @@
  */
 .panel-wide {
   max-width: 1040px;
+  margin-inline: auto;
 }
 
 .panel-split {
@@ -158,21 +159,19 @@
 }
 
 /* ══ a section head ═════════════════════════════════════════════════════
-   Flush left, like everything below the hero. The artboard centred these; the
-   brief that came after it does not, and says so in as many words.
+   Centred, like the hero and like the artboard — the head, the grid under it
+   and the framed figures all sit on the page's centre line, so a reader going
+   down the page never has to find a new left edge.
    ═══════════════════════════════════════════════════════════════════════ */
 
 .landhead {
   padding: 72px var(--space-8) 56px;
-}
-
-.landhead-tight {
-  padding-bottom: 20px;
+  text-align: center;
 }
 
 .landtitle {
   max-width: 24ch;
-  margin: 0 0 24px;
+  margin: 0 auto 24px;
   font-size: clamp(32px, 4.4vw, 52px);
   line-height: 0.92;
   text-transform: uppercase;
@@ -180,6 +179,7 @@
 
 .landhead p {
   max-width: 660px;
+  margin-inline: auto;
   font-size: 16px;
   line-height: 1.5;
   color: var(--ink-70);
@@ -196,9 +196,10 @@
 .step {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   padding: 48px var(--space-8);
+  text-align: center;
 }
 
 .step + .step {
@@ -262,6 +263,16 @@
   padding: 0 var(--space-8) 64px;
 }
 
+/*
+ * One that follows a grid instead. A head ends on its own bottom padding and a
+ * grid ends on its cells' rules, so this closes the grid and brings back the
+ * space the head would have given.
+ */
+.steps + .landfigure {
+  padding-top: 64px;
+  border-top: var(--rule);
+}
+
 .wire-lane {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -278,8 +289,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   padding: 36px var(--space-6) 34px;
+  text-align: center;
 }
 
 .wire-node:not(:nth-child(4n + 1)) {
@@ -366,13 +378,6 @@
 
 /* ══ what you get ═══════════════════════════════════════════════════════ */
 
-.features-note {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 var(--space-8) 18px;
-  color: var(--ink-50);
-}
-
 .features {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -381,6 +386,7 @@
 
 .feature {
   padding: 44px var(--space-8);
+  text-align: center;
 }
 
 .feature h4 {
@@ -390,6 +396,7 @@
 
 .feature p {
   max-width: 36ch;
+  margin-inline: auto;
   font-size: 14.5px;
   color: var(--ink-70);
 }
@@ -414,16 +421,6 @@
 
 .feature:nth-child(n + 4) {
   border-top: var(--rule);
-}
-
-/*
- * The same cell at the top of the page, where there are two of them rather
- * than six. The rules above still hold at this width — `3n + 1` is the first
- * cell of a pair as well as of a triple, and nothing reaches a fourth — so
- * this is the column count and nothing else.
- */
-.features-pair {
-  grid-template-columns: repeat(2, 1fr);
 }
 
 /* ══ the two split sections ═════════════════════════════════════════════ */
@@ -586,6 +583,24 @@
 }
 
 /* ══ the closing band ═══════════════════════════════════════════════════ */
+
+/*
+ * Centred with the rest of the frame, and scoped to it rather than written in
+ * globals: `.cta` closes `/docs` and `/deployment` too, and those are
+ * flush-left documents.
+ */
+.landframe .cta {
+  text-align: center;
+}
+
+.landframe .cta h2,
+.landframe .cta p {
+  margin-inline: auto;
+}
+
+.landframe .cta-actions {
+  justify-content: center;
+}
 
 /* On the accent field the outline button borrows the field's ink, not the page's. */
 .cta-secondary {

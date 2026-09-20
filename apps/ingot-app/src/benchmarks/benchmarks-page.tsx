@@ -22,6 +22,7 @@ import './benchmarks.css';
 import { Prose } from '../docs/prose';
 import {
   ADAPTERS,
+  adapterLabel,
   arrival,
   BENCHMARK,
   BENCHMARKS_LEDE,
@@ -240,8 +241,9 @@ export function BenchmarksPage(): ReactNode {
               same<span className="mark">agent harness</span>
             </h2>
             <p>
-              One agent harness implementation serves every test case, with the same model, the same tool-call budget and
-              the same answer channel. Only the retrieval tools differ, so a gap between two columns
+              One agent harness implementation serves every test case, with the same model, the same
+              tool-call budget and the same answer channel. Only the retrieval tools differ, so a
+              gap between two columns
               <i>should</i> only be down to the tool results.
             </p>
           </div>
@@ -249,7 +251,7 @@ export function BenchmarksPage(): ReactNode {
           <div className="steps">
             {ADAPTERS.map((adapter) => (
               <div className="step" key={adapter.name}>
-                <div className="step-num">{adapter.name.toUpperCase()}</div>
+                <div className="step-num">{adapterLabel(adapter.name).toUpperCase()}</div>
                 <p>{adapter.blurb}</p>
               </div>
             ))}
@@ -283,7 +285,6 @@ export function BenchmarksPage(): ReactNode {
               </div>
             ))}
           </div>
-
         </section>
 
         <section className="landblock" id="check">
@@ -345,7 +346,10 @@ const DRIFTS: readonly [string, string][] = [
 
 /** How `packages/bench/src/score/score.ts` decides what the tables count. */
 const SCORING_TERMS: readonly [string, string][] = [
-  ['correct', 'exactly right — a set counts only at F1 = 1, and F1 is reported apart as partial credit'],
+  [
+    'correct',
+    'exactly right — a set counts only at F1 = 1, and F1 is reported apart as partial credit',
+  ],
   [
     'normalisation',
     'light: answers are trimmed and lowercased, and a comma-separated string stands in for an array, so the envelope is not what gets marked',
@@ -562,7 +566,9 @@ function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
             <div className="bench-source" key={tool}>
               <div className="bench-source-head">
                 <code className="bench-source-tool">{tool}</code>
-                {blurb ? <span className="label label-sm bench-source-shape">{blurb.shape}</span> : null}
+                {blurb ? (
+                  <span className="label label-sm bench-source-shape">{blurb.shape}</span>
+                ) : null}
               </div>
 
               {source ? <p className="bench-source-stat">{arrival(source)}</p> : null}
@@ -681,7 +687,7 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
 
   const row = (adapter: PublishedAdapter, muted: boolean): ReactNode => (
     <li className={muted ? 'bench-rank bench-rank-muted' : 'bench-rank'} key={adapter.name}>
-      <code className="bench-rank-name">{adapter.name}</code>
+      <code className="bench-rank-name">{adapterLabel(adapter.name)}</code>
       <span className="bench-rank-track">
         <span className="bench-rank-fill" style={bar(adapter.accuracy)} aria-hidden="true" />
       </span>
@@ -721,9 +727,7 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
       <ol className="bench-ranks">{memories.map((adapter) => row(adapter, false))}</ol>
       {controls.length > 0 ? (
         <>
-          <h3 className="bench-subhead label label-sm bench-subhead-quiet">
-            The Control
-          </h3>
+          <h3 className="bench-subhead label label-sm bench-subhead-quiet">The Control</h3>
           <ol className="bench-ranks">{controls.map((adapter) => row(adapter, true))}</ol>
         </>
       ) : null}
@@ -860,7 +864,7 @@ function HeatMatrix({
           {memories.map((adapter, index) => (
             <tr key={adapter.name}>
               <th scope="row" className={index < 2 ? 'bench-lead' : ''}>
-                {adapter.name}
+                {adapterLabel(adapter.name)}
               </th>
               {cells(adapter, false)}
             </tr>
@@ -878,7 +882,7 @@ function HeatMatrix({
             </tr>
             {controls.map((adapter) => (
               <tr key={adapter.name}>
-                <th scope="row">{adapter.name}</th>
+                <th scope="row">{adapterLabel(adapter.name)}</th>
                 {cells(adapter, true)}
               </tr>
             ))}
@@ -916,7 +920,7 @@ function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): Reac
         {hit.map((adapter, index) => (
           <span key={adapter.name}>
             {index > 0 ? ', ' : ''}
-            <code>{adapter.name}</code> {adapter.failures} of {adapter.runs}
+            <code>{adapterLabel(adapter.name)}</code> {adapter.failures} of {adapter.runs}
           </span>
         ))}
         {'. They are scored wrong, because a memory that could not be asked did not answer — but ' +
@@ -945,7 +949,7 @@ function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): Rea
           {adapters.map((adapter) => (
             <tr key={adapter.name}>
               <th scope="row">
-                <code>{adapter.name}</code>
+                <code>{adapterLabel(adapter.name)}</code>
               </th>
               <td>{adapter.f1.toFixed(2)}</td>
               <td>{adapter.evidenceRecall === null ? '—' : percent(adapter.evidenceRecall)}</td>
@@ -1014,9 +1018,8 @@ function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
   // One row per (question, adapter), grouped by question the way the sidecar
   // already orders them — the order the summary shows the columns in.
   const runs: readonly TranscriptRun[] =
-    forThis?.questions.flatMap((question) =>
-      question.adapters.map((run) => ({ question, run })),
-    ) ?? [];
+    forThis?.questions.flatMap((question) => question.adapters.map((run) => ({ question, run }))) ??
+    [];
 
   return (
     <div className="bench-transcripts">
@@ -1164,7 +1167,7 @@ function RunsTable({
                 <td className="bench-runs-class label label-sm">{question.category}</td>
                 <td>
                   <code className={isProduct(run.adapter) ? 'bench-runs-adapter-key' : undefined}>
-                    {run.adapter}
+                    {adapterLabel(run.adapter)}
                   </code>
                 </td>
                 <td>
@@ -1267,7 +1270,12 @@ function Trace({
 
   return (
     <div className="bench-trace-inner">
-      <button type="button" className="bench-trace-close" onClick={onClose} aria-label="Close trace">
+      <button
+        type="button"
+        className="bench-trace-close"
+        onClick={onClose}
+        aria-label="Close trace"
+      >
         <span aria-hidden="true">×</span>
       </button>
 
@@ -1295,7 +1303,7 @@ function Trace({
 
       {run.calls.length === 0 ? (
         <p className="bench-note bench-trace-empty">
-          No tool calls — {run.adapter} answered from the prompt.
+          No tool calls — {adapterLabel(run.adapter)} answered from the prompt.
         </p>
       ) : (
         <ol className="bench-trace-calls">
@@ -1327,7 +1335,9 @@ function Trace({
       <div className="bench-trace-foot">
         <div>
           <div className="label label-sm">answer given</div>
-          <p className={run.correct ? 'bench-trace-answer' : 'bench-trace-answer bench-trace-wrong'}>
+          <p
+            className={run.correct ? 'bench-trace-answer' : 'bench-trace-answer bench-trace-wrong'}
+          >
             {summariseAnswer(run.answer)}
           </p>
         </div>

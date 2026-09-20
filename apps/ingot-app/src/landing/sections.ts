@@ -50,80 +50,53 @@ export const STEPS: readonly Step[] = [
 ];
 
 /**
- * A kicker, a claim and a paragraph: the six cells under "What you get", and
- * the pair at the top of the page that say what the thing is.
+ * One of the three arguments under "What it is".
+ *
+ * Keyed on an id rather than on its own copy: these three get rewritten as the
+ * pitch changes, and a cell keyed on its kicker loses its identity — and its
+ * place in the grid — on the edit that reworded it.
  */
-export interface Feature {
+export interface Argument {
+  readonly id: string;
   readonly kicker: string;
   readonly title: string;
   readonly body: string;
 }
 
-export const FEATURES: readonly Feature[] = [
-  {
-    kicker: 'Typed',
-    title: 'Columns, not blobs',
-    body: 'JSON paths map onto real types, so a model can filter and count instead of re-reading the same text every turn.',
-  },
-  {
-    kicker: 'Schema first',
-    title: '/info',
-    body: 'Tell the model exactly what is can query.',
-  },
-  {
-    kicker: 'Sandboxed',
-    title: 'Exactly one SELECT',
-    body: 'Queries run in a locked-down DuckDB that unions the live overlay with Parquet. Nothing else gets through.',
-  },
-  {
-    kicker: 'Retention',
-    title: '30m to 4w, per ingot',
-    body: 'Scratch ingot for a session, durable ingot for a project. You set it once, when you cast the ingot.',
-  },
-  {
-    kicker: 'Search',
-    title: 'Keyword, semantic, hybrid',
-    body: 'BM25 with a configurable stemmer, cosine similarity over embedded columns, or both ranked in one SELECT. That is RAG retrieval, with nothing running beside it.',
-  },
-  {
-    kicker: 'Keys',
-    title: 'One bearer token',
-    body: 'Mint and revoke labelled keys. You see a secret exactly once. MCP uses the same one, so there is no second auth path to wire up.',
-  },
-  {
-    kicker: 'Delivery',
-    title: 'Poll it, or be told',
-    body: 'A receipt hands back the SELECT that finds your rows. Or point the ingot at a webhook or a queue and each one gets pushed as it lands, out of an outbox that survives a restart.',
-  },  
-  {
-    kicker: 'Joins',
-    title: 'Across tables',
-    body: 'Every table is in the same database, so one SELECT can join a tool result to another on a value neither declared as a key — a file path in one, the team that owns it in another.',
-  },
-];
-
 /**
- * The two cells under "What this is", which is the first section on the page.
+ * The three cells under "What it is", which is the first section on the page.
  *
  * It is first because everything below it is API, and a reader who has not yet
  * been told that this is the place an agent loop puts its tool results reads
  * the samples as a database's rather than as an ingot's.
  *
- * Two cells because `/add` and `/file` are the whole front door. Documents sit
- * here rather than being left to "What it's not" nine sections down: it is the
- * half of the product people arrive already looking for, and the claim worth
- * making early is that a chunk lands in the same tables a tool result does.
+ * Three arguments and not one paragraph, because they fail separately: the
+ * window fills whatever the retrieval is worth, and the retrieval is imprecise
+ * whatever the window can hold. A reader who has only been told about the
+ * first one thinks a bigger model solves this.
+ *
+ * The 180 and the 48,000 in the second cell are the figures `AI_SDK_SEEN`
+ * prints, and they are said as estimates in both places because that is what
+ * `payload.estimatedTokens` is. Change one and change the other.
  */
-export const WAYS_IN: readonly Feature[] = [
+export const WAYS_IN: readonly Argument[] = [
   {
-    kicker: 'Tool results',
-    title: 'What the loop already makes',
-    body: 'Map JSON paths onto typed columns and a tool result becomes rows a model can filter, count and sort. What goes back into the context window is a receipt carrying the SELECT that finds them again — about 180 tokens standing in for 48,000.',
+    id: 'tool-results',
+    kicker: 'Recall',
+    title: 'Somewhere to put a tool result',
+    body: 'Ingot is a drop-in memory for an agent loop. Tool results can clog up your context window. We can give you a dedicated place to store and retrieve them efficiently.',
   },
   {
-    kicker: 'Documents',
-    title: 'Chunked per format, into the same tables',
-    body: 'Post a PDF, a deck, a CSV, HTML, Markdown or plain text. It is chunked the way its own format divides — a slide does not bleed into the next one — embedded on the way in, and it can hand back typed rows pulled out of the same upload. Chunks are an ordinary table, so one SELECT ranks a paragraph by meaning and filters it on a number from the tool result beside it.',
+    id: 'size',
+    kicker: 'Size',
+    title: 'The result that would not have fit',
+    body: 'Some tools can return huge payloads that can overwhelm your context window. When casting them to the ingot, the model only sees a concise receipt, keeping your context window manageable.',
+  },
+  {
+    id: 'precision',
+    kicker: 'Precision',
+    title: 'SQL gives exact answers',
+    body: 'Naive RAG can give you imprecise results, because it relies on approximate similarity searches. SQL, on the other hand, gives exact answers, ensuring that the model retrieves the correct data every time.',
   },
 ];
 
@@ -141,7 +114,9 @@ export const LEDE =
 
 /** The row under the hero. What the thing already speaks, rather than logos. */
 export const SPEAKS: readonly string[] = [
-  'SQL Queries', 'Similarity Searches', 'Document Chunking'
+  'SQL Queries',
+  'Similarity Searches',
+  'Document Chunking',
 ];
 
 /**
@@ -586,7 +561,8 @@ export const RAG_LEFT_OUT: readonly RagContrast[] = [
   {
     job: 'Schema',
     rag: 'None asked for.',
-    ingot: 'Required up front for `/add`. A real cost, and one the benchmark does not put a number on.',
+    ingot:
+      'Required up front for `/add`. A real cost, and one the benchmark does not put a number on.',
   },
 ];
 

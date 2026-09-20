@@ -48,6 +48,21 @@ export enum SampleTone {
   Ink = 'ink',
 }
 
+/**
+ * Which of the two languages a sample is in, because they are marked up
+ * differently — see `CodeBlock`.
+ *
+ * Nearly every sample on this site is a request and its answer, and the one
+ * that is not is the harness file on the landing page. A quoted string is a
+ * key in the first and a value in the second, so one rule cannot serve both.
+ */
+export enum SampleLang {
+  /** HTTP and JSON, and the shell prompts that sit in the same blocks. */
+  Wire = 'wire',
+  /** TypeScript: the file you paste into your own repository. */
+  Ts = 'ts',
+}
+
 export interface GroupHeading {
   /** What the section rule says. */
   readonly title: string;

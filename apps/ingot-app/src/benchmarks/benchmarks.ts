@@ -232,12 +232,12 @@ export function leadStats(table: PublishedTable | null): readonly LeadStat[] {
     {
       value: `${Math.round(best.accuracy * 100)}%`,
       label: 'highest overall accuracy',
-      subjects: [best.name],
+      subjects: [adapterLabel(best.name)],
     },
     {
       value: leanest.contextTokens.toLocaleString('en-GB'),
       label: 'fewest context tokens per answer',
-      subjects: [leanest.name],
+      subjects: [adapterLabel(leanest.name)],
     },
   ];
 
@@ -246,7 +246,7 @@ export function leadStats(table: PublishedTable | null): readonly LeadStat[] {
     stats.push({
       value: `${(heaviest.contextTokens / leanest.contextTokens).toFixed(1)}×`,
       label: 'context-token spread, leanest to heaviest',
-      subjects: [leanest.name, heaviest.name],
+      subjects: [adapterLabel(leanest.name), adapterLabel(heaviest.name)],
     });
   }
   return stats;
@@ -280,6 +280,24 @@ export const BENCHMARKS_LEDE =
   'better than just similarity search, and ' +
   'how much does it cost in tokens?';
 
+/**
+ * What a column is called on the page, where that is not what the run calls it.
+ *
+ * The names in `results.json` are `packages/bench`'s own — they key every
+ * figure, they are what `--adapters` takes, and renaming them would mean
+ * renaming a published artefact to make a page read better. So the rename is
+ * here and it is display only: `ingot-mcp` beside `ingot-rest` reads as two
+ * products, when they are one server and one set of rows reached two ways.
+ */
+const ADAPTER_LABELS: Readonly<Record<string, string>> = {
+  'ingot-mcp': 'ingot (via MCP)',
+  'ingot-rest': 'ingot (via API)',
+};
+
+export function adapterLabel(name: string): string {
+  return ADAPTER_LABELS[name] ?? name;
+}
+
 /** What each adapter is, in the order the table shows them. */
 const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }[] = [
   {
@@ -290,17 +308,17 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'ingot-rest',
     blurb:
-      'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot-mcp` tells you how much of the result is the surface and how much is the data model.',
+      'The same server and the same rows, over the REST API, with the tools written in this repository in the same voice as the baselines’. The gap to `ingot (via MCP)` tells you how much of the result is the surface and how much is the data model.',
   },
   {
     name: 'control-same-store-top-k',
     blurb:
-      'The control, and the most important column on this page. It is the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot-mcp` is what SQL over typed rows is worth, and nothing else.',
+      'The control, and the most important column on this page. It is the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot (via MCP)` is what SQL over typed rows is worth, and nothing else.',
   },
   {
     name: 'control-same-store-top-k-rest',
     blurb:
-      'The same control over the REST surface, for when `ingot-rest` is in the table: the gap between the two says how much of the surface’s result survives without SQL.',
+      'The same control over the REST surface, for when `ingot (via API)` is in the table: the gap between the two says how much of the surface’s result survives without SQL.',
   },
   {
     name: 'vector',
@@ -629,13 +647,13 @@ export const SOURCES: readonly {
   {
     question: 'How is correctness decided?',
     path: 'packages/bench/src/score/score.ts',
-    detail:
-      'Counts exact, sets by F1, ordered lists in order. No model grades anything.',
+    detail: 'Counts exact, sets by F1, ordered lists in order. No model grades anything.',
   },
   {
     question: 'What does each memory get?',
     path: 'packages/bench/src/adapters',
-    detail: 'One interface, ten implementations. The tools each adapter puts in front of the agent.',
+    detail:
+      'One interface, ten implementations. The tools each adapter puts in front of the agent.',
   },
   {
     question: 'What does the agent do with them?',
@@ -649,37 +667,30 @@ export const SOURCES: readonly {
 export const LIMITS: readonly { readonly title: string; readonly body: string }[] = [
   {
     title: 'The questions are generated, not collected',
-    body:
-      'A seeded generator builds a world; the corpus is that world rendered as the paginated tool results an agent would have received; the gold answers are computed from the world objects directly. That is what makes hundreds of questions affordable and every run reproducible from a seed. It is also why this is a benchmark of a shape of workload, and not of anyone’s production traffic.',
+    body: 'A seeded generator builds a world; the corpus is that world rendered as the paginated tool results an agent would have received; the gold answers are computed from the world objects directly. That is what makes hundreds of questions affordable and every run reproducible from a seed. It is also why this is a benchmark of a shape of workload, and not of anyone’s production traffic.',
   },
   {
     title: 'Evidence recall is not defined for every question',
-    body:
-      'Aggregate questions are scored on the answer alone. A correct count of thirty-seven pull requests is its own evidence, and demanding that thirty-seven records come back through the tools would score the cheapest correct path — one SELECT count(*) — as a total retrieval failure.',
+    body: 'Aggregate questions are scored on the answer alone. A correct count of thirty-seven pull requests is its own evidence, and demanding that thirty-seven records come back through the tools would score the cheapest correct path — one SELECT count(*) — as a total retrieval failure.',
   },
   {
     title: 'There is no model judging the answers',
-    body:
-      'Every category is machine-scorable by construction: counts, sets of record ids, ordered lists of record ids. A judge would be a second model whose mistakes land in the same column as the retrieval failures being measured.',
+    body: 'Every category is machine-scorable by construction: counts, sets of record ids, ordered lists of record ids. A judge would be a second model whose mistakes land in the same column as the retrieval failures being measured.',
   },
   {
     title: 'Write cost is not scored',
-    body:
-      'Ingot asks for a column mapping up front and a vector store does not. Ingestion is timed, but that asymmetry is real and this page does not put a number on it.',
+    body: 'Ingot asks for a column mapping up front and a vector store does not. Ingestion is timed, but that asymmetry is real and this page does not put a number on it.',
   },
   {
     title: 'There is one ceiling, and it has a size limit',
-    body:
-      '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only for as long as the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here. It would not for a memory a thousand times larger.',
+    body: '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only for as long as the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here. It would not for a memory a thousand times larger.',
   },
   {
     title: 'The generator moves faster than the runs',
-    body:
-      'Question templates get added to the harness as the workload it models gets better understood, so a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away. But a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
+    body: 'Question templates get added to the harness as the workload it models gets better understood, so a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away. But a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
   },
   {
     title: 'One corpus, one size',
-    body:
-      'The default world is around five hundred records — small enough that raw-context is a usable ceiling, which is the point of including it. Conclusions about a corpus a thousand times larger are not supported by this.',
+    body: 'The default world is around five hundred records — small enough that raw-context is a usable ceiling, which is the point of including it. Conclusions about a corpus a thousand times larger are not supported by this.',
   },
 ];
