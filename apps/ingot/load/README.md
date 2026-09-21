@@ -70,9 +70,9 @@ session hands it back. The pair is `(classid, objid)` from
 SQL.
 
 **`multi-table.js`** — one ingot, tables added one at a time, queries only ever
-against `t0` and `t1`. A query reads the overlay of _every_ table in the ingot
-from Postgres before DuckDB narrows to the ones it names, so this says what the
-tables a query never mentions cost it. Each stops at `ROWS=900`, under the
+against `t0` and `t1`. It checks that the tables a query never mentions cost it
+nothing: up to 0.3.1 every table's overlay was read from Postgres before DuckDB
+narrowed, and the curve rose about 5ms per table. Each stops at `ROWS=900`, under the
 sweeper's 1000, so nothing needs holding off. `TABLES`, `FILES`, `REPEAT` and
 `EMBED=1` tune it.
 

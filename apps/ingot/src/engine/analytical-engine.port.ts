@@ -78,6 +78,12 @@ export interface AnalyticalEngine {
   run(request: QueryRequest): Promise<QueryOutcome>;
 
   /**
+   * The tables a statement names, lowercased, or `null` when that cannot be
+   * told — which a caller must read as "every table", never as "none".
+   */
+  tablesNamedBy(sql: string): Promise<readonly string[] | null>;
+
+  /**
    * Resolves a predicate to the row ids it matches.
    *
    * Same sandbox as `run`. Deletes name rows rather than storing predicates,

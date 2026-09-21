@@ -12,11 +12,11 @@ import {
 /**
  * Query latency on one table as the ingot's *other* tables fill their overlays.
  *
- * A query builds its session from `SessionBuilder.all`, which reads the overlay
- * and vectors of every table in the ingot from Postgres; only then does DuckDB
- * narrow to the tables the SQL names. So a query against `t0` pays for `t1..tN`
- * too. This walks the table count up one at a time, keeping `t0` fixed, and
- * prints the curve.
+ * A query should read only the tables its SQL names. Up to 0.3.1 it read the
+ * overlay and vectors of every table in the ingot and narrowed afterwards, so a
+ * query against `t0` paid for `t1..tN` too. This walks the table count up one
+ * at a time, keeping `t0` fixed, and prints the curve — which should now be
+ * flat.
  *
  * Each table stops at ROWS, which defaults to under the roll-up sweeper's
  * `MIN_OVERLAY_ROWS` (1000), so nothing is compacted underneath the
