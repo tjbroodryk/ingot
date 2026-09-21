@@ -223,7 +223,7 @@ describe('parquet cache settings', () => {
     expect(parquetCacheSettings(read({})).maxBytes).toBe(0);
   });
 
-  it('takes a byte count, a quantity, or what Helm makes of a large number', () => {
+  it('takes a byte count, a binary suffix, or exponent notation', () => {
     expect(parquetCacheSettings(read({ INGOT_PARQUET_CACHE_BYTES: '1048576' })).maxBytes).toBe(
       1048576,
     );
