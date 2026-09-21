@@ -377,6 +377,11 @@ config:
     memoryLimit: 1GB
     threads: 2
     maxTableRows: 2000000
+    # DuckDB instances each pod keeps opened and configured ahead of a query,
+    # so a query skips creating one. Each is single-use; taking one starts its
+    # replacement. Size it to the burst of concurrent queries a pod sees — an
+    # idle one is a few MB and `threads` idle threads. 0 opens on demand.
+    warmSessions: 2
 
   # ── observability ────────────────────────────────────────────────────────
   # Tracing is on unless explicitly disabled, and the service's own default

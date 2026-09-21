@@ -15,7 +15,7 @@ import {
   type AnalyticalEngine,
 } from '../../../../engine/analytical-engine.port.js';
 import { SessionBuilder } from '../../../../engine/session-builder.js';
-import { vectorColumnName } from '../../../../engine/duckdb-engine.js';
+import { narrow, vectorColumnName } from '../../../../engine/duckdb-engine.js';
 import { ident } from '../../../../engine/sql.js';
 import { IngotAccess } from '../../../ingots/application/ingot-access.js';
 import { QueryCursor } from '../query-cursor.js';
@@ -133,10 +133,15 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
         sql = rankingSql(target, pickColumn(target, body), offset + rowCap + 1);
       }
 
-      // Every table is offered; the engine narrows to the ones the statement
-      // actually names. That decision belongs inside the session, where the
-      // connection that can read the statement lives — see `narrow()` there.
-      return { sql, available: await this.sessions.all(tables) };
+      // Only the tables the statement names are read from the overlay. Reading
+      // every table and letting the engine drop the rest cost each query the
+      // overlay of tables it never mentions. See `narrow()` for the fallback.
+      const named = await this.engine.tablesNamedBy(sql);
+      const needed = narrow(
+        tables.map((table) => ({ name: table.name.value, table })),
+        named,
+      ).map((entry) => entry.table);
+      return { sql, available: await this.sessions.all(needed) };
     });
 
     const outcome = await observe('ingot.query', { 'ingot.mode': mode(wantsSql, wantsText) }, () =>

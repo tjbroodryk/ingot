@@ -16,6 +16,23 @@ Point them elsewhere with `INGOT_URL=https://…`. `K6_VERBOSE=1` prints the bod
 of anything that fails, which is the first thing you want when a threshold goes
 red.
 
+## Against a cluster
+
+A port-forward is its own bottleneck at these rates, so `load/k8s/run.sh` runs
+the script as a Job beside the deployment instead: stock `grafana/k6`, the
+scripts mounted from a ConfigMap, the account and key taken from the release's
+own ConfigMap and Secret. It streams the output and exits non-zero if a
+threshold goes red.
+
+```bash
+bun run load:k8s mixed --vus 5 --duration 30s   # start small
+bun run load:k8s write -e RATE=20 -e K6_VERBOSE=1
+```
+
+It targets whatever `kubectl` is pointed at, and asks first. `NAMESPACE`,
+`RELEASE` and `SECRET` default to `ingot`, `ingot` and `ingot-secrets`. A
+sealed deployment has one account, so the load lands in the real one.
+
 ## What each one is for
 
 **`write.js`** — `/add` under sustained arrival rate. There is no DuckDB and no
@@ -51,6 +68,13 @@ session hands it back. The pair is `(classid, objid)` from
 `src/sweepers/exclusive.ts` — the second number is the FNV-1a hash of
 `roll-up-ingots`, which is why it is written out here rather than computed in
 SQL.
+
+**`multi-table.js`** — one ingot, tables added one at a time, queries only ever
+against `t0` and `t1`. It checks that the tables a query never mentions cost it
+nothing: up to 0.3.1 every table's overlay was read from Postgres before DuckDB
+narrowed, and the curve rose about 5ms per table. Each stops at `ROWS=900`, under the
+sweeper's 1000, so nothing needs holding off. `TABLES`, `FILES`, `REPEAT` and
+`EMBED=1` tune it.
 
 **`mixed.js`** — store, then read back through the query the receipt handed you,
 with an occasional semantic recall. The other scripts isolate each path; this
