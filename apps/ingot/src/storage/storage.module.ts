@@ -1,11 +1,12 @@
 import { Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env.js';
+import { ENV } from '../config/env.module.js';
 import { StorageDriver } from './drivers.js';
 import { FilesystemObjectStore } from './filesystem-object-store.js';
 import { GcsObjectStore } from './gcs-object-store.js';
 import { OBJECT_STORE, type ObjectStore } from './object-store.port.js';
 import { S3ObjectStore } from './s3-object-store.js';
-import { type StorageSettings, storageSettings } from './storage-settings.js';
+import type { StorageSettings } from './storage-settings.js';
 
 /**
  * The base tier a deployment asked for, and a line at boot saying which.
@@ -22,9 +23,9 @@ import { type StorageSettings, storageSettings } from './storage-settings.js';
   providers: [
     {
       provide: OBJECT_STORE,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): ObjectStore => {
-        const store = build(storageSettings((key) => config.get<string>(key)));
+      inject: [ENV],
+      useFactory: (env: Env): ObjectStore => {
+        const store = build(env.storage);
         Logger.log(`Base tier: ${store.describe()}`, 'Storage');
         return store;
       },

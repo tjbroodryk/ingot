@@ -1,5 +1,15 @@
+import { z } from 'zod';
+import {
+  type Ctx,
+  choice,
+  demand,
+  section,
+  text,
+  textOr,
+  type VarsOf,
+  whole,
+} from '../config/vars.js';
 import { tooLongForLease } from '../shared/claim-lease.js';
-import { Guard } from '../shared/domain/index.js';
 import { AiProvider } from './providers.js';
 
 /**
@@ -8,9 +18,15 @@ import { AiProvider } from './providers.js';
  * The same shape as `storage-settings.ts`, for the same reasons: parsed into a
  * discriminated union rather than passed round as a bag of optional strings,
  * so an adapter's constructor cannot be reached without the values it needs;
- * and a pure function over a reader, so the whole matrix is asserted in a unit
- * test rather than by booting the service once per provider and reading a log
- * line.
+ * and a pure schema over the environment, so the whole matrix is asserted in a
+ * unit test rather than by booting the service once per provider and reading a
+ * log line.
+ *
+ * A provider named without what it needs refuses to boot, for the reason
+ * `INGOT_STORAGE` does. A service that booted with a provider named and no key
+ * for it would either fall back to the stand-in — which silently makes every
+ * search lexical — or fail on the first `/add` that wanted a receipt, hours
+ * later, to somebody who cannot see the configuration.
  *
  * Two selectors rather than one — `INGOT_EMBEDDER` and `INGOT_SUMMARISER` —
  * because they are separate purchases. Semantic search over stored columns is
@@ -194,32 +210,87 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 /** The widest vector `FLOAT[N]` is worth building. Guards a typo, not a model. */
 const MAX_DIMENSIONS = 8192;
 
-/** Reads one environment variable. `ConfigService.get` is one of these. */
-export type Setting = (key: string) => string | undefined;
+const PROVIDERS = `Choose one of: ${Object.values(AiProvider).join(', ')}.`;
 
-/**
- * A deployment that asked for a model it cannot reach.
- *
- * Fatal, for the reason `StorageMisconfigured` is. A service that boots with a
- * provider named and no key for it either falls back to the stand-in — which
- * silently makes every search lexical — or fails on the first `/add` that
- * wanted a receipt, hours later, to somebody who cannot see the configuration.
- * Refusing to start says it once, to the person holding the deployment.
- */
-export class AiMisconfigured extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AiMisconfigured';
-  }
+const dimensions = (fallback: number) =>
+  whole({
+    fallback,
+    min: 1,
+    max: MAX_DIMENSIONS,
+    rule: `; a vector width is a whole number between 1 and ${MAX_DIMENSIONS}.`,
+  });
+
+/** So that a base URL with a trailing slash does not produce `//embeddings`. */
+const url = () => text().transform((raw) => raw?.replace(/\/+$/, ''));
+
+const VARS = {
+  // Unset is the local stand-in for these two, and nothing at all for OCR.
+  INGOT_EMBEDDER: choice(
+    Object.values(AiProvider),
+    `, which is not a provider this service has. ${PROVIDERS}`,
+  ),
+  INGOT_SUMMARISER: choice(
+    Object.values(AiProvider),
+    `, which is not a provider this service has. ${PROVIDERS}`,
+  ),
+  INGOT_OCR: choice(
+    [OCR_OFF, ...Object.values(AiProvider)],
+    `, which is not a way to read a scanned page. Choose one of: ${OCR_OFF}, ` +
+      `${Object.values(AiProvider).join(', ')}.`,
+  ),
+
+  OPENAI_API_KEY: text(),
+  OPENAI_BASE_URL: url(),
+  INGOT_OPENAI_EMBEDDING_MODEL: textOr(OPENAI_EMBEDDING_MODEL),
+  INGOT_OPENAI_EMBEDDING_DIMENSIONS: dimensions(OPENAI_EMBEDDING_DIMENSIONS),
+  INGOT_OPENAI_SUMMARY_MODEL: textOr(OPENAI_SUMMARY_MODEL),
+  INGOT_OPENAI_OCR_MODEL: textOr(OPENAI_OCR_MODEL),
+
+  INGOT_GCP_PROJECT: text(),
+  INGOT_GCP_LOCATION: textOr(GCP_LOCATION),
+  INGOT_GCP_ENDPOINT: url(),
+  INGOT_GCP_EMBEDDING_MODEL: textOr(GCP_EMBEDDING_MODEL),
+  INGOT_GCP_EMBEDDING_DIMENSIONS: dimensions(GCP_EMBEDDING_DIMENSIONS),
+  INGOT_GCP_SUMMARY_MODEL: textOr(GCP_SUMMARY_MODEL),
+  INGOT_GCP_OCR_MODEL: textOr(GCP_OCR_MODEL),
+
+  INGOT_TESSDATA_DIR: text(),
+  INGOT_OCR_LANGUAGE: textOr(OCR_LANGUAGE),
+  INGOT_OCR_MAX_PAGES: whole({ fallback: OCR_MAX_PAGES, min: 1, max: MAX_OCR_PAGES }),
+  INGOT_OCR_CONCURRENCY: whole({ fallback: OCR_CONCURRENCY, min: 1, max: MAX_OCR_CONCURRENCY }),
+
+  INGOT_AI_TIMEOUT_MS: whole({
+    fallback: DEFAULT_TIMEOUT_MS,
+    min: 1_000,
+    rule:
+      '; a timeout is a whole number of milliseconds, and anything under a second is a typo ' +
+      'rather than a deadline.',
+  }).superRefine((timeoutMs, ctx) => {
+    // Bounded above by the claim lease, not by taste. A model call still
+    // running when the lease it is held under lapses is a batch a second
+    // replica may claim as well — paid for twice, and invisible.
+    const tooLong = tooLongForLease('INGOT_AI_TIMEOUT_MS', timeoutMs);
+    if (tooLong !== null) ctx.addIssue(tooLong);
+  }),
+};
+
+type AiVars = VarsOf<typeof VARS>;
+
+export interface AiSettings {
+  readonly embedder: EmbedderSettings;
+  readonly summariser: SummariserSettings;
+  readonly ocr: OcrSettings;
 }
 
-export function embedderSettings(read: Setting): EmbedderSettings {
-  return EMBEDDER_PARSERS[provider(read, 'INGOT_EMBEDDER')](read);
-}
+export const aiEnv = section(VARS, (vars, ctx): AiSettings => {
+  // All three built before any is refused, so each one's problem is reported.
+  const embedder = EMBEDDER_BUILDERS[vars.INGOT_EMBEDDER ?? AiProvider.Local](vars, ctx);
+  const summariser = SUMMARISER_BUILDERS[vars.INGOT_SUMMARISER ?? AiProvider.Local](vars, ctx);
+  const ocr = ocrFrom(vars, ctx);
 
-export function summariserSettings(read: Setting): SummariserSettings {
-  return SUMMARISER_PARSERS[provider(read, 'INGOT_SUMMARISER')](read);
-}
+  if (embedder === undefined || summariser === undefined || ocr === undefined) return z.NEVER;
+  return { embedder, summariser, ocr };
+});
 
 /**
  * What reads a scanned page, and what happens when it cannot.
@@ -236,44 +307,46 @@ export function summariserSettings(read: Setting): SummariserSettings {
  * asked for. Naming a model without a tessdata directory is equally valid and
  * means a page the model refuses stays blank.
  */
-export function ocrSettings(read: Setting): OcrSettings {
-  const named = value(read('INGOT_OCR'));
-  if (named === undefined || named.toLowerCase() === OCR_OFF) return { provider: OCR_OFF };
+function ocrFrom(vars: AiVars, ctx: Ctx): OcrSettings | undefined {
+  const named = vars.INGOT_OCR;
+  if (named === undefined || named === OCR_OFF) return { provider: OCR_OFF };
 
-  return OCR_PARSERS[ocrProvider(named)](read);
+  return OCR_BUILDERS[named](vars, ctx);
 }
 
-const OCR_PARSERS: Record<AiProvider, (read: Setting) => OcrSettings> = {
-  // `required`, so this never returns null: a local engine with no tessdata
-  // directory throws rather than resolving to "no OCR after all".
-  [AiProvider.Local]: (read) => local(read, true) as LocalOcr,
+const OCR_BUILDERS: Record<AiProvider, (vars: AiVars, ctx: Ctx) => OcrSettings | undefined> = {
+  // `required`, so this never resolves to null: a local engine with no
+  // tessdata directory is refused rather than becoming "no OCR after all".
+  [AiProvider.Local]: (vars, ctx) => local(vars, ctx, true),
 
-  [AiProvider.OpenAi]: (read) => {
-    const [apiKey] = demand(read, 'INGOT_OCR', AiProvider.OpenAi, ['OPENAI_API_KEY']);
+  [AiProvider.OpenAi]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_OCR=${AiProvider.OpenAi}`, ['OPENAI_API_KEY']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.OpenAi,
-      apiKey,
-      baseUrl: trimSlash(value(read('OPENAI_BASE_URL')) ?? OPENAI_BASE_URL),
-      model: value(read('INGOT_OPENAI_OCR_MODEL')) ?? OPENAI_OCR_MODEL,
-      timeoutMs: timeout(read),
-      maxPages: maxPages(read),
-      concurrency: concurrency(read),
-      fallback: local(read, false),
+      apiKey: found[0],
+      baseUrl: vars.OPENAI_BASE_URL ?? OPENAI_BASE_URL,
+      model: vars.INGOT_OPENAI_OCR_MODEL,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
+      maxPages: vars.INGOT_OCR_MAX_PAGES,
+      concurrency: vars.INGOT_OCR_CONCURRENCY,
+      fallback: local(vars, ctx, false),
     };
   },
 
-  [AiProvider.Gcp]: (read) => {
-    const [project] = demand(read, 'INGOT_OCR', AiProvider.Gcp, ['INGOT_GCP_PROJECT']);
+  [AiProvider.Gcp]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_OCR=${AiProvider.Gcp}`, ['INGOT_GCP_PROJECT']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.Gcp,
-      project,
-      location: value(read('INGOT_GCP_LOCATION')) ?? GCP_LOCATION,
-      model: value(read('INGOT_GCP_OCR_MODEL')) ?? GCP_OCR_MODEL,
-      endpoint: trimSlashIfSet(value(read('INGOT_GCP_ENDPOINT'))),
-      timeoutMs: timeout(read),
-      maxPages: maxPages(read),
-      concurrency: concurrency(read),
-      fallback: local(read, false),
+      project: found[0],
+      location: vars.INGOT_GCP_LOCATION,
+      model: vars.INGOT_GCP_OCR_MODEL,
+      endpoint: vars.INGOT_GCP_ENDPOINT,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
+      maxPages: vars.INGOT_OCR_MAX_PAGES,
+      concurrency: vars.INGOT_OCR_CONCURRENCY,
+      fallback: local(vars, ctx, false),
     };
   },
 };
@@ -288,205 +361,93 @@ const OCR_PARSERS: Record<AiProvider, (read: Setting) => OcrSettings> = {
  * omission alongside `INGOT_OCR=openai` is just a deployment that did not want
  * a fallback.
  */
-function local(read: Setting, required: boolean): LocalOcr | null {
-  const tessdataDir = value(read('INGOT_TESSDATA_DIR'));
+function local(vars: AiVars, ctx: Ctx, required: true): LocalOcr | undefined;
+function local(vars: AiVars, ctx: Ctx, required: false): LocalOcr | null;
+function local(vars: AiVars, ctx: Ctx, required: boolean): LocalOcr | null | undefined {
+  const tessdataDir = vars.INGOT_TESSDATA_DIR;
 
   if (tessdataDir === undefined) {
     if (!required) return null;
-    throw new AiMisconfigured(
+    ctx.addIssue(
       `INGOT_OCR=${AiProvider.Local} needs INGOT_TESSDATA_DIR — the directory holding ` +
         `${OCR_LANGUAGE}.traineddata. Tesseract downloads its language data from a CDN when it ` +
         'is not given one, and a parse that fetches on behalf of an uploaded document is the ' +
         'thing this service does not do. Bake it into the image; docker/Dockerfile does.',
     );
+    return undefined;
   }
 
   return {
     provider: AiProvider.Local,
-    language: value(read('INGOT_OCR_LANGUAGE')) ?? OCR_LANGUAGE,
+    language: vars.INGOT_OCR_LANGUAGE,
     tessdataDir,
-    maxPages: maxPages(read),
+    maxPages: vars.INGOT_OCR_MAX_PAGES,
   };
 }
 
-function ocrProvider(named: string): AiProvider {
-  try {
-    return Guard.oneOf(named.toLowerCase(), Object.values(AiProvider), 'INGOT_OCR');
-  } catch {
-    throw new AiMisconfigured(
-      `INGOT_OCR is "${named}", which is not a way to read a scanned page. Choose one of: ` +
-        `${OCR_OFF}, ${Object.values(AiProvider).join(', ')}.`,
-    );
-  }
-}
-
-function maxPages(read: Setting): number {
-  return whole(read, 'INGOT_OCR_MAX_PAGES', OCR_MAX_PAGES, 1, MAX_OCR_PAGES);
-}
-
-function concurrency(read: Setting): number {
-  return whole(read, 'INGOT_OCR_CONCURRENCY', OCR_CONCURRENCY, 1, MAX_OCR_CONCURRENCY);
-}
-
-function whole(read: Setting, key: string, fallback: number, min: number, max: number): number {
-  const raw = value(read(key));
-  if (raw === undefined) return fallback;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new AiMisconfigured(
-      `${key} is "${raw}"; it must be a whole number between ${min} and ${max}.`,
-    );
-  }
-  return parsed;
-}
-
-/** Keyed on the enum, so a provider added without a reader fails to compile. */
-const EMBEDDER_PARSERS: Record<AiProvider, (read: Setting) => EmbedderSettings> = {
+/** Keyed on the enum, so a provider added without a builder fails to compile. */
+const EMBEDDER_BUILDERS: Record<
+  AiProvider,
+  (vars: AiVars, ctx: Ctx) => EmbedderSettings | undefined
+> = {
   [AiProvider.Local]: () => ({ provider: AiProvider.Local }),
 
-  [AiProvider.OpenAi]: (read) => {
-    const [apiKey] = demand(read, 'INGOT_EMBEDDER', AiProvider.OpenAi, ['OPENAI_API_KEY']);
+  [AiProvider.OpenAi]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_EMBEDDER=${AiProvider.OpenAi}`, ['OPENAI_API_KEY']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.OpenAi,
-      apiKey,
-      baseUrl: trimSlash(value(read('OPENAI_BASE_URL')) ?? OPENAI_BASE_URL),
-      model: value(read('INGOT_OPENAI_EMBEDDING_MODEL')) ?? OPENAI_EMBEDDING_MODEL,
-      dimensions: dimensions(
-        read,
-        'INGOT_OPENAI_EMBEDDING_DIMENSIONS',
-        OPENAI_EMBEDDING_DIMENSIONS,
-      ),
-      timeoutMs: timeout(read),
+      apiKey: found[0],
+      baseUrl: vars.OPENAI_BASE_URL ?? OPENAI_BASE_URL,
+      model: vars.INGOT_OPENAI_EMBEDDING_MODEL,
+      dimensions: vars.INGOT_OPENAI_EMBEDDING_DIMENSIONS,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
     };
   },
 
-  [AiProvider.Gcp]: (read) => {
-    const [project] = demand(read, 'INGOT_EMBEDDER', AiProvider.Gcp, ['INGOT_GCP_PROJECT']);
+  [AiProvider.Gcp]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_EMBEDDER=${AiProvider.Gcp}`, ['INGOT_GCP_PROJECT']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.Gcp,
-      project,
-      location: value(read('INGOT_GCP_LOCATION')) ?? GCP_LOCATION,
-      model: value(read('INGOT_GCP_EMBEDDING_MODEL')) ?? GCP_EMBEDDING_MODEL,
-      dimensions: dimensions(read, 'INGOT_GCP_EMBEDDING_DIMENSIONS', GCP_EMBEDDING_DIMENSIONS),
-      endpoint: trimSlashIfSet(value(read('INGOT_GCP_ENDPOINT'))),
-      timeoutMs: timeout(read),
+      project: found[0],
+      location: vars.INGOT_GCP_LOCATION,
+      model: vars.INGOT_GCP_EMBEDDING_MODEL,
+      dimensions: vars.INGOT_GCP_EMBEDDING_DIMENSIONS,
+      endpoint: vars.INGOT_GCP_ENDPOINT,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
     };
   },
 };
 
-const SUMMARISER_PARSERS: Record<AiProvider, (read: Setting) => SummariserSettings> = {
+const SUMMARISER_BUILDERS: Record<
+  AiProvider,
+  (vars: AiVars, ctx: Ctx) => SummariserSettings | undefined
+> = {
   [AiProvider.Local]: () => ({ provider: AiProvider.Local }),
 
-  [AiProvider.OpenAi]: (read) => {
-    const [apiKey] = demand(read, 'INGOT_SUMMARISER', AiProvider.OpenAi, ['OPENAI_API_KEY']);
+  [AiProvider.OpenAi]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_SUMMARISER=${AiProvider.OpenAi}`, ['OPENAI_API_KEY']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.OpenAi,
-      apiKey,
-      baseUrl: trimSlash(value(read('OPENAI_BASE_URL')) ?? OPENAI_BASE_URL),
-      model: value(read('INGOT_OPENAI_SUMMARY_MODEL')) ?? OPENAI_SUMMARY_MODEL,
-      timeoutMs: timeout(read),
+      apiKey: found[0],
+      baseUrl: vars.OPENAI_BASE_URL ?? OPENAI_BASE_URL,
+      model: vars.INGOT_OPENAI_SUMMARY_MODEL,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
     };
   },
 
-  [AiProvider.Gcp]: (read) => {
-    const [project] = demand(read, 'INGOT_SUMMARISER', AiProvider.Gcp, ['INGOT_GCP_PROJECT']);
+  [AiProvider.Gcp]: (vars, ctx) => {
+    const found = demand(ctx, vars, `INGOT_SUMMARISER=${AiProvider.Gcp}`, ['INGOT_GCP_PROJECT']);
+    if (found === undefined) return undefined;
     return {
       provider: AiProvider.Gcp,
-      project,
-      location: value(read('INGOT_GCP_LOCATION')) ?? GCP_LOCATION,
-      model: value(read('INGOT_GCP_SUMMARY_MODEL')) ?? GCP_SUMMARY_MODEL,
-      endpoint: trimSlashIfSet(value(read('INGOT_GCP_ENDPOINT'))),
-      timeoutMs: timeout(read),
+      project: found[0],
+      location: vars.INGOT_GCP_LOCATION,
+      model: vars.INGOT_GCP_SUMMARY_MODEL,
+      endpoint: vars.INGOT_GCP_ENDPOINT,
+      timeoutMs: vars.INGOT_AI_TIMEOUT_MS,
     };
   },
 };
-
-/** The provider a selector names, or the local stand-in when it names none. */
-function provider(read: Setting, key: string): AiProvider {
-  const named = value(read(key));
-  if (named === undefined) return AiProvider.Local;
-
-  try {
-    return Guard.oneOf(named.toLowerCase(), Object.values(AiProvider), key);
-  } catch {
-    throw new AiMisconfigured(
-      `${key} is "${named}", which is not a provider this service has. ` +
-        `Choose one of: ${Object.values(AiProvider).join(', ')}.`,
-    );
-  }
-}
-
-/**
- * Every value a provider cannot work without, or a message naming the ones
- * that are missing.
- *
- * All of them at once rather than the first: an operator filling in a
- * deployment template should learn what is left in one restart, not in three.
- */
-function demand<const K extends readonly string[]>(
-  read: Setting,
-  selector: string,
-  named: AiProvider,
-  keys: K,
-): { [I in keyof K]: string } {
-  const found = keys.map((key) => value(read(key)));
-  const missing = keys.filter((_key, at) => found[at] === undefined);
-
-  if (missing.length > 0) {
-    throw new AiMisconfigured(
-      `${selector}=${named} needs ${keys.join(', ')}. Missing: ${missing.join(', ')}.`,
-    );
-  }
-  // Every element was just proved present, which is a fact about the loop
-  // above rather than one the type of `map` can carry.
-  return found as { [I in keyof K]: string };
-}
-
-function dimensions(read: Setting, key: string, fallback: number): number {
-  const raw = value(read(key));
-  if (raw === undefined) return fallback;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_DIMENSIONS) {
-    throw new AiMisconfigured(
-      `${key} is "${raw}"; a vector width is a whole number between 1 and ${MAX_DIMENSIONS}.`,
-    );
-  }
-  return parsed;
-}
-
-function timeout(read: Setting): number {
-  const raw = value(read('INGOT_AI_TIMEOUT_MS'));
-  if (raw === undefined) return DEFAULT_TIMEOUT_MS;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1_000) {
-    throw new AiMisconfigured(
-      `INGOT_AI_TIMEOUT_MS is "${raw}"; a timeout is a whole number of milliseconds, ` +
-        'and anything under a second is a typo rather than a deadline.',
-    );
-  }
-  // Bounded above by the claim lease, not by taste. A model call still running
-  // when the lease it is held under lapses is a batch a second replica may
-  // claim as well — paid for twice, and invisible.
-  const tooLong = tooLongForLease('INGOT_AI_TIMEOUT_MS', parsed);
-  if (tooLong) throw new AiMisconfigured(tooLong);
-
-  return parsed;
-}
-
-/** Blank is unset. A variable exported as `""` is one somebody meant to omit. */
-function value(raw: string | undefined): string | undefined {
-  const trimmed = raw?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-/** So that a base URL with a trailing slash does not produce `//embeddings`. */
-function trimSlash(url: string): string {
-  return url.replace(/\/+$/, '');
-}
-
-function trimSlashIfSet(url: string | undefined): string | undefined {
-  return url === undefined ? undefined : trimSlash(url);
-}

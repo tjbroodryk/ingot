@@ -14,7 +14,7 @@ import { PgUnitOfWork } from '../../src/shared/infrastructure/postgres/pg-unit-o
  * is how a test run quietly deletes an afternoon's work. Override with
  * INGOT_TEST_DATABASE_URL to point somewhere else.
  */
-const CONNECTION =
+export const CONNECTION =
   process.env.INGOT_TEST_DATABASE_URL ?? 'postgres://ingot:ingot@localhost:5432/ingot_test';
 
 const MIGRATIONS = join(__dirname, '..', '..', 'drizzle');
@@ -84,19 +84,6 @@ async function open(): Promise<TestDatabase> {
   }
 
   await migrate(pool);
-
-  /**
-   * Anything that builds the real container from here on talks to this
-   * database, and not to whichever one `.env` names.
-   *
-   * Set rather than defaulted, and that is the whole point: `DATABASE_URL` is
-   * in every developer's `.env` pointing at the database they keep local state
-   * in, so a `??=` here would leave `DatabaseModule` connected to it while
-   * `truncate()` emptied a different one. That was survivable while compiling
-   * `AppModule` only read; it stopped being survivable when sealed mode gave
-   * the graph an `OnApplicationBootstrap` that writes an account.
-   */
-  process.env.DATABASE_URL = CONNECTION;
 
   return {
     pool,

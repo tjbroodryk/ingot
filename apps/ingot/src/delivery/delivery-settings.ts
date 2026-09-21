@@ -1,4 +1,6 @@
 import { DeliveryKind } from '@ingot/shared/ingot-v1';
+import { z } from 'zod';
+import { section, text, textOr, whole } from '../config/vars.js';
 import { tooLongForLease } from '../shared/claim-lease.js';
 
 /**
@@ -11,8 +13,9 @@ import { tooLongForLease } from '../shared/claim-lease.js';
  * many times to try. A tenant naming a broker URL would be a tenant choosing
  * where this service opens an authenticated connection.
  *
- * A pure function over a reader, like `ai-settings.ts`, so the whole matrix is
- * asserted in a unit test rather than by booting the service once per shape.
+ * A pure schema over the environment, like `ai-settings.ts`, so the whole
+ * matrix is asserted in a unit test rather than by booting the service once per
+ * shape.
  */
 export interface DeliverySettings {
   /**
@@ -63,26 +66,24 @@ export const DEFAULT_USER_AGENT = 'ingot-receipts/1';
 /** Parsed once at boot and injected, so no adapter reads the environment. */
 export const DELIVERY_SETTINGS = Symbol('DeliverySettings');
 
-/** Reads one environment variable. `ConfigService.get` is one of these. */
-export type Setting = (key: string) => string | undefined;
+const POSITIVE = ', which is not a positive whole number.';
 
-/** A deployment that asked for a transport it cannot reach. */
-export class DeliveryMisconfigured extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DeliveryMisconfigured';
-  }
-}
-
-export function deliverySettings(read: Setting): DeliverySettings {
-  return {
-    brokerUrl: broker(value(read('INGOT_RABBITMQ_URL'))),
-    exchange: value(read('INGOT_RABBITMQ_EXCHANGE')) ?? '',
-    timeoutMs: deadline(read),
-    maxAttempts: positive(read, 'INGOT_DELIVERY_ATTEMPTS', DEFAULT_DELIVERY_ATTEMPTS),
-    userAgent: value(read('INGOT_DELIVERY_USER_AGENT')) ?? DEFAULT_USER_AGENT,
-  };
-}
+export const deliveryEnv = section(
+  {
+    INGOT_RABBITMQ_URL: broker(),
+    INGOT_RABBITMQ_EXCHANGE: textOr(''),
+    INGOT_DELIVERY_TIMEOUT_MS: deadline(),
+    INGOT_DELIVERY_ATTEMPTS: whole({ fallback: DEFAULT_DELIVERY_ATTEMPTS, min: 1, rule: POSITIVE }),
+    INGOT_DELIVERY_USER_AGENT: textOr(DEFAULT_USER_AGENT),
+  },
+  (vars): DeliverySettings => ({
+    brokerUrl: vars.INGOT_RABBITMQ_URL,
+    exchange: vars.INGOT_RABBITMQ_EXCHANGE,
+    timeoutMs: vars.INGOT_DELIVERY_TIMEOUT_MS,
+    maxAttempts: vars.INGOT_DELIVERY_ATTEMPTS,
+    userAgent: vars.INGOT_DELIVERY_USER_AGENT,
+  }),
+);
 
 /**
  * Whether a deployment can deliver by a given strategy at all.
@@ -106,18 +107,23 @@ export function unavailable(settings: DeliverySettings, kind: DeliveryKind): str
  * A scheme, so that a value pasted without one — `rabbitmq:5672`, which `URL`
  * happily parses as a `rabbitmq:` scheme with no host — is refused at boot
  * rather than at the first publish.
+ *
+ * The message never repeats the value: a broker URL carries its password.
  */
-function broker(raw: string | undefined): string | null {
-  if (raw === undefined) return null;
+function broker() {
+  return text().transform((raw, ctx) => {
+    if (raw === undefined) return null;
 
-  const url = tryUrl(raw);
-  if (!url || (url.protocol !== 'amqp:' && url.protocol !== 'amqps:')) {
-    throw new DeliveryMisconfigured(
-      `INGOT_RABBITMQ_URL must be an amqp or amqps URL, e.g. amqps://user:pass@broker:5671. ` +
-        'Unset it if this deployment does not deliver to a broker.',
-    );
-  }
-  return raw;
+    const url = tryUrl(raw);
+    if (!url || (url.protocol !== 'amqp:' && url.protocol !== 'amqps:')) {
+      ctx.addIssue(
+        `INGOT_RABBITMQ_URL must be an amqp or amqps URL, e.g. amqps://user:pass@broker:5671. ` +
+          'Unset it if this deployment does not deliver to a broker.',
+      );
+      return z.NEVER;
+    }
+    return raw;
+  });
 }
 
 function tryUrl(raw: string): URL | null {
@@ -137,27 +143,11 @@ function tryUrl(raw: string): URL | null {
  * second claim likely. Refused at boot rather than left as a comment, because
  * the deployment that would hit it is the one least able to see it happening.
  */
-function deadline(read: Setting): number {
-  const timeoutMs = positive(read, 'INGOT_DELIVERY_TIMEOUT_MS', DEFAULT_DELIVERY_TIMEOUT_MS);
-  const tooLong = tooLongForLease('INGOT_DELIVERY_TIMEOUT_MS', timeoutMs);
-  if (tooLong) throw new DeliveryMisconfigured(tooLong);
-
-  return timeoutMs;
-}
-
-function positive(read: Setting, key: string, fallback: number): number {
-  const raw = value(read(key));
-  if (raw === undefined) return fallback;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new DeliveryMisconfigured(`${key} is "${raw}", which is not a positive whole number.`);
-  }
-  return parsed;
-}
-
-/** An empty variable is an unset one — a deployment template left blank. */
-function value(raw: string | undefined): string | undefined {
-  const trimmed = raw?.trim();
-  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+function deadline() {
+  return whole({ fallback: DEFAULT_DELIVERY_TIMEOUT_MS, min: 1, rule: POSITIVE }).superRefine(
+    (timeoutMs, ctx) => {
+      const tooLong = tooLongForLease('INGOT_DELIVERY_TIMEOUT_MS', timeoutMs);
+      if (tooLong !== null) ctx.addIssue(tooLong);
+    },
+  );
 }

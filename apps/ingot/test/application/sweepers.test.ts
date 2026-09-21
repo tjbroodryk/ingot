@@ -31,7 +31,6 @@ describe('the sweepers', () => {
   beforeAll(async () => {
     ({ pool } = await openDatabase());
     url = (pool.options.connectionString as string) ?? '';
-    process.env.DATABASE_URL ??= url;
     app = await compileAppModule().compile();
     await app.init();
   });

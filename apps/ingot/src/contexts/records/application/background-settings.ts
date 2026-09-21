@@ -1,3 +1,4 @@
+import { section, whole } from '../../../config/vars.js';
 import { BackgroundKind, CONCURRENCY } from './background.js';
 
 /**
@@ -27,17 +28,6 @@ export const CONCURRENCY_KEYS: Record<BackgroundKind, string> = {
  */
 export const MAX_CONCURRENCY = 64;
 
-/** Reads one environment variable. `ConfigService.get` is one of these. */
-export type Setting = (key: string) => string | undefined;
-
-/** A deployment that asked for a bound this service will not honour. */
-export class BackgroundMisconfigured extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BackgroundMisconfigured';
-  }
-}
-
 /**
  * How many drains of each kind this deployment allows at once.
  *
@@ -48,7 +38,7 @@ export class BackgroundMisconfigured extends Error {
  * `INGOT_EMBEDDER` names, arriving precisely when load is highest. Set these
  * against a quota divided by `maxReplicas`, not against one pod.
  *
- * A pure function over a reader, like `ai-settings.ts` and
+ * A pure schema over the environment, like `ai-settings.ts` and
  * `delivery-settings.ts`, so the whole matrix is asserted in a unit test rather
  * than by booting the service once per shape.
  *
@@ -57,32 +47,33 @@ export class BackgroundMisconfigured extends Error {
  * has no way to find out, and the number here is one somebody chose against a
  * quota they were looking at.
  */
-export function concurrencyFrom(read: Setting): Record<BackgroundKind, number> {
-  const bounds = { ...CONCURRENCY };
-
-  for (const kind of Object.values(BackgroundKind)) {
-    const key = CONCURRENCY_KEYS[kind];
-    const raw = read(key)?.trim();
-    // An empty variable is an unset one — a deployment template left blank.
-    if (raw === undefined || raw === '') continue;
-
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      throw new BackgroundMisconfigured(
-        `${key} is "${raw}"; a concurrency is a whole number of drains, and at least one. ` +
-          'Set it to 1 to work this queue one drain at a time.',
-      );
+export const concurrencyEnv = section(
+  Object.fromEntries(
+    Object.values(BackgroundKind).map((kind) => [CONCURRENCY_KEYS[kind], bound(kind)]),
+  ),
+  (vars): Record<BackgroundKind, number> => {
+    const bounds = { ...CONCURRENCY };
+    for (const kind of Object.values(BackgroundKind)) {
+      bounds[kind] = vars[CONCURRENCY_KEYS[kind]] ?? CONCURRENCY[kind];
     }
-    if (parsed > MAX_CONCURRENCY) {
-      throw new BackgroundMisconfigured(
-        `${key} is ${parsed}, which is past the ${MAX_CONCURRENCY} this service will honour. ` +
-          'That is a typo guard rather than a limit worth having — but remember this is per ' +
-          'replica, so what your provider sees is this times however many pods are running.',
-      );
-    }
+    return bounds;
+  },
+);
 
-    bounds[kind] = parsed;
-  }
-
-  return bounds;
+function bound(kind: BackgroundKind) {
+  const key = CONCURRENCY_KEYS[kind];
+  return whole({
+    fallback: CONCURRENCY[kind],
+    min: 1,
+    rule:
+      '; a concurrency is a whole number of drains, and at least one. ' +
+      'Set it to 1 to work this queue one drain at a time.',
+  }).superRefine((parsed, ctx) => {
+    if (parsed <= MAX_CONCURRENCY) return;
+    ctx.addIssue(
+      `${key} is ${parsed}, which is past the ${MAX_CONCURRENCY} this service will honour. ` +
+        'That is a typo guard rather than a limit worth having — but remember this is per ' +
+        'replica, so what your provider sees is this times however many pods are running.',
+    );
+  });
 }

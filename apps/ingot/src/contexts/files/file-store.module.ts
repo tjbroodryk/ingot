@@ -1,6 +1,7 @@
 import { Global, Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { FILE_SETTINGS, type FileSettings, fileSettings } from './application/file-settings.js';
+import type { Env } from '../../config/env.js';
+import { ENV } from '../../config/env.module.js';
+import { FILE_SETTINGS, type FileSettings } from './application/file-settings.js';
 import { FileWorker } from './application/file-worker.js';
 import { FILE_QUEUE } from './application/ports/file-queue.port.js';
 import { assertConsistent, describeFormats } from './domain/formats/index.js';
@@ -27,8 +28,8 @@ import { PgFileQueue } from './infrastructure/postgres/pg-file-queue.js';
     { provide: FILE_QUEUE, useExisting: PgFileQueue },
     {
       provide: FILE_SETTINGS,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): FileSettings => {
+      inject: [ENV],
+      useFactory: (env: Env): FileSettings => {
         /*
          * The registry, checked against itself before anything uses it.
          *
@@ -41,7 +42,7 @@ import { PgFileQueue } from './infrastructure/postgres/pg-file-queue.js';
          */
         assertConsistent();
 
-        const settings = fileSettings((key) => config.get<string>(key));
+        const settings = env.files;
         Logger.log(
           `Reading ${describeFormats()}. Anything else is refused at /file rather than ` +
             'accepted and abandoned.',

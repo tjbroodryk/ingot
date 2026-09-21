@@ -1,26 +1,12 @@
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module.js';
-import { AuthMode } from '../../src/auth/auth-mode.js';
-import type { AuthSettings } from '../../src/auth/auth-settings.js';
-import { ApiKey } from '../../src/contexts/accounts/domain/index.js';
+import type { Env } from '../../src/config/env.js';
 import { TICKERS } from '../../src/sweepers/scheduler.js';
+import { testEnv } from './env.js';
 
-/**
- * A root credential for a test, generated rather than written down.
- *
- * `ApiKey.mint()` so the suite never contains a string that looks like a key
- * somebody could paste into a deployment and have work. It is a fresh one per
- * process, which is all a test needs — nothing here asserts on its value, only
- * that it authenticates and that another one does not.
- */
-export const TEST_ROOT_KEY = ApiKey.mint();
+export { TEST_ROOT_KEY } from './env.js';
 
-export const TEST_AUTH: AuthSettings = {
-  mode: AuthMode.Sealed,
-  slug: 'test-sealed',
-  keyDigest: TEST_ROOT_KEY.digest,
-  keyPrefix: TEST_ROOT_KEY.prefix,
-};
+export const TEST_AUTH = testEnv().auth;
 
 /**
  * The real `AppModule`, with nothing sweeping.
@@ -40,14 +26,12 @@ export const TEST_AUTH: AuthSettings = {
  * A test that wants a sweep runs `tick()` itself. That way the suite says when
  * the background happened rather than racing it.
  *
- * The authentication settings are passed in rather than read from the
- * environment, for the same reason as the tickers: a suite that depended on
- * `INGOT_AUTH` being exported would pass or fail on the shell it was run from.
+ * The environment is `testEnv()` rather than the shell's — see `env.ts`.
  * `SealedAuthenticator` seeds its account on bootstrap, so compiling this does
  * open `test-sealed` in the test database.
  */
-export function compileAppModule(auth: AuthSettings = TEST_AUTH): TestingModuleBuilder {
-  return Test.createTestingModule({ imports: [AppModule.forRoot(auth)] })
+export function compileAppModule(env: Env = testEnv()): TestingModuleBuilder {
+  return Test.createTestingModule({ imports: [AppModule.forRoot(env)] })
     .overrideProvider(TICKERS)
     .useValue([]);
 }

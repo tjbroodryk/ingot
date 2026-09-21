@@ -6,15 +6,13 @@ import {
   Module,
   type OnApplicationShutdown,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env.js';
+import { ENV } from '../config/env.module.js';
 import {
   type EmbedderSettings,
-  embedderSettings,
   OCR_OFF,
   type OcrSettings,
-  ocrSettings,
   type SummariserSettings,
-  summariserSettings,
 } from './ai-settings.js';
 import { EMBEDDER, type Embedder } from './embedder.port.js';
 import { ExtractiveSummariser } from './extractive-summariser.js';
@@ -69,25 +67,25 @@ class OcrShutdown implements OnApplicationShutdown {
     { provide: GOOGLE_CREDENTIALS, useFactory: () => new GoogleCredentials() },
     {
       provide: EMBEDDER,
-      inject: [ConfigService, GOOGLE_CREDENTIALS],
-      useFactory: (config: ConfigService, google: GoogleCredentials): Embedder => {
-        const embedder = buildEmbedder(embedderSettings(read(config)), google);
+      inject: [ENV, GOOGLE_CREDENTIALS],
+      useFactory: (env: Env, google: GoogleCredentials): Embedder => {
+        const embedder = buildEmbedder(env.ai.embedder, google);
         announce('Embedding', embedder.model, `${embedder.dimensions}d`, 'INGOT_EMBEDDER');
         return embedder;
       },
     },
     {
       provide: SUMMARISER,
-      inject: [ConfigService, GOOGLE_CREDENTIALS],
-      useFactory: (config: ConfigService, google: GoogleCredentials): Summariser => {
-        const summariser = buildSummariser(summariserSettings(read(config)), google);
+      inject: [ENV, GOOGLE_CREDENTIALS],
+      useFactory: (env: Env, google: GoogleCredentials): Summariser => {
+        const summariser = buildSummariser(env.ai.summariser, google);
         announce('Summarising', summariser.model, 'receipts', 'INGOT_SUMMARISER');
         return summariser;
       },
     },
     {
       provide: OCR,
-      inject: [ConfigService],
+      inject: [ENV],
       /**
        * Null when `INGOT_OCR` is off, which is the default and is a real
        * value rather than a missing one: `pdf.ts` reaches for this only when a
@@ -95,8 +93,8 @@ class OcrShutdown implements OnApplicationShutdown {
        * no-op engine in its place would be an object saying "I read nothing"
        * for every page, which is the same outcome described less honestly.
        */
-      useFactory: async (config: ConfigService): Promise<Ocr | null> => {
-        const settings = ocrSettings(read(config));
+      useFactory: async (env: Env): Promise<Ocr | null> => {
+        const settings = env.ai.ocr;
         if (settings.provider === OCR_OFF) return null;
 
         const ocr = await buildOcr(settings);
@@ -207,10 +205,6 @@ export function buildSummariser(
     google: GoogleCredentials,
   ) => Summariser;
   return make(settings, google);
-}
-
-function read(config: ConfigService): (key: string) => string | undefined {
-  return (key) => config.get<string>(key);
 }
 
 /**

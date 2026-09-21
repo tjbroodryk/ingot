@@ -1,7 +1,8 @@
 import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import type { Env } from '../config/env.js';
+import { ENV } from '../config/env.module.js';
 import * as schema from './schema.js';
 
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
@@ -80,14 +81,6 @@ export function oneQueryAtATime(client: pg.PoolClient): void {
   client.query = serialised as unknown as typeof client.query;
 }
 
-function connectionString(config: ConfigService): string {
-  const url = config.get<string>('DATABASE_URL');
-  if (!url) {
-    throw new Error('DATABASE_URL is not set — Ingot cannot start without its database');
-  }
-  return url;
-}
-
 /**
  * Postgres, once, for the whole process.
  *
@@ -105,16 +98,16 @@ function connectionString(config: ConfigService): string {
   providers: [
     {
       provide: DATABASE_URL,
-      inject: [ConfigService],
-      useFactory: connectionString,
+      inject: [ENV],
+      useFactory: (env: Env) => env.database.url,
     },
     {
       provide: DATABASE_POOL,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
+      inject: [ENV],
+      useFactory: (env: Env) => {
         const pool = new pg.Pool({
-          connectionString: connectionString(config),
-          max: config.get<number>('DATABASE_POOL_MAX') ?? 10,
+          connectionString: env.database.url,
+          max: env.database.poolMax,
           idleTimeoutMillis: 30_000,
           connectionTimeoutMillis: 5_000,
         });

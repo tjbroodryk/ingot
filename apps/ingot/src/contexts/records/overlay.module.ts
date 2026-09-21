@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { GENERATION_GRACE, generationGraceFrom } from './application/generation-grace.js';
+import type { Env } from '../../config/env.js';
+import { ENV } from '../../config/env.module.js';
+import { GENERATION_GRACE } from './application/generation-grace.js';
 import { CHANGE_NOTIFIER } from './application/ports/change-notifier.port.js';
 import { DELIVERY_OUTBOX } from './application/ports/delivery-outbox.port.js';
 import { RETIRED_GENERATIONS } from './application/ports/retired-generations.port.js';
@@ -49,8 +50,8 @@ import { PgOverlayStore } from './infrastructure/postgres/pg-overlay-store.js';
     { provide: RETIRED_GENERATIONS, useExisting: PgRetiredGenerations },
     {
       provide: GENERATION_GRACE,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => generationGraceFrom((key) => config.get<string>(key)),
+      inject: [ENV],
+      useFactory: (env: Env) => env.generationGraceMs,
     },
   ],
   exports: [OVERLAY_STORE, DELIVERY_OUTBOX, CHANGE_NOTIFIER, RETIRED_GENERATIONS, GENERATION_GRACE],

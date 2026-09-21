@@ -265,8 +265,7 @@ describe('the wiring', () => {
   let app: TestingModule;
 
   beforeAll(async () => {
-    const { pool } = await openDatabase();
-    process.env.DATABASE_URL ??= (pool.options.connectionString as string) ?? '';
+    await openDatabase();
     app = await compileAppModule().compile();
     await app.init();
   });

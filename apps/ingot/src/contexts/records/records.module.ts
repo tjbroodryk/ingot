@@ -1,12 +1,12 @@
 import { Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { Env } from '../../config/env.js';
+import { ENV } from '../../config/env.module.js';
 import { IngotsModule } from '../ingots/ingots.module.js';
 import {
   BACKGROUND_CONCURRENCY,
   type BackgroundKind,
   BackgroundWork,
 } from './application/background.js';
-import { concurrencyFrom } from './application/background-settings.js';
 import { AddRecordsHandler } from './application/commands/add-records.command.js';
 import { ClaimDeliveryHandler } from './application/commands/claim-delivery.command.js';
 import { ClaimReceiptHandler } from './application/commands/claim-receipt.command.js';
@@ -58,11 +58,10 @@ import { RecordsController } from './interface/records.controller.js';
     // resolve a fourth argument it had never been given.
     {
       provide: BACKGROUND_CONCURRENCY,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): Record<BackgroundKind, number> => {
-        const bounds = concurrencyFrom((key) => config.get<string>(key));
-        announce(bounds);
-        return bounds;
+      inject: [ENV],
+      useFactory: (env: Env): Record<BackgroundKind, number> => {
+        announce(env.concurrency);
+        return env.concurrency;
       },
     },
     // The seam `WriteReceipt` wakes delivery through. A token rather than

@@ -1,9 +1,9 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { VersioningModule } from '@ingot/versioning/nest';
-import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module.js';
-import type { AuthSettings } from './auth/auth-settings.js';
+import type { Env } from './config/env.js';
+import { EnvModule } from './config/env.module.js';
 import { AccountsModule } from './contexts/accounts/accounts.module.js';
 import { FileStoreModule } from './contexts/files/file-store.module.js';
 import { FilesModule } from './contexts/files/files.module.js';
@@ -48,19 +48,19 @@ import { INGOT_VERSIONS, VERSION_HEADER } from './versioning/changeset.js';
  * transform, so that "which version am I being served" has a straight answer
  * everywhere.
  *
- * `forRoot` takes the authentication settings rather than reading them from
- * `ConfigService`, because a module's `imports` are evaluated before the
- * container exists and the mode decides what is in them. `main.ts` parses them
- * first, which is also what makes a misconfiguration fatal before the port is
- * bound rather than on the first request that needed a credential.
+ * `forRoot` takes the parsed environment rather than reading it, because a
+ * module's `imports` are evaluated before the container exists and the auth
+ * mode decides what is in them. `main.ts` parses it first, which is also what
+ * makes a misconfiguration fatal before the port is bound rather than on the
+ * first request that needed a credential.
  */
 @Module({})
 export class AppModule {
-  static forRoot(auth: AuthSettings): DynamicModule {
+  static forRoot(env: Env): DynamicModule {
     return {
       module: AppModule,
       imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
+        EnvModule.forRoot(env),
         ObservabilityModule,
         // Before the contexts, so its interceptor wraps every route they register.
         // The contract a caller sees is negotiated per request by a header; only
@@ -86,7 +86,7 @@ export class AppModule {
         // After the context it authenticates against and before everything
         // that is authenticated. It imports `AccountsModule` itself, so this
         // position is for reading rather than for resolution.
-        AuthModule.forRoot(auth),
+        AuthModule.forRoot(env.auth),
         IngotsModule,
         RecordsModule,
         // After `RecordsModule`, which it imports for `BackgroundWork` so that

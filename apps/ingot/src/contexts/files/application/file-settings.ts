@@ -1,13 +1,5 @@
-/** Reads one environment variable. `ConfigService.get` is one of these. */
-export type Setting = (key: string) => string | undefined;
-
-/** A deployment that asked for something this service will not honour. */
-export class FilesMisconfigured extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'FilesMisconfigured';
-  }
-}
+import { z } from 'zod';
+import { section, whole } from '../../../config/vars.js';
 
 export const MAX_UPLOAD_KEY = 'INGOT_MAX_UPLOAD_BYTES';
 export const CHUNK_TOKENS_KEY = 'INGOT_CHUNK_TOKENS';
@@ -85,42 +77,39 @@ export const FILE_SETTINGS = Symbol('FileSettings');
 /**
  * What this deployment will accept and how it splits it.
  *
- * A pure function over a reader, like `ai-settings.ts` and
+ * A pure schema over the environment, like `ai-settings.ts` and
  * `background-settings.ts`, so the whole matrix is asserted in a unit test
  * rather than by booting the service once per shape. Refusing rather than
  * clamping, for the reason those refuse: a deployment that asked for something
  * and silently got something else has no way to find out.
  */
-export function fileSettings(read: Setting): FileSettings {
-  const maxUploadBytes = whole(read, MAX_UPLOAD_KEY, DEFAULT_MAX_UPLOAD, MIN_MAX_UPLOAD, MAX_MAX_UPLOAD);
-  const chunkTokens = whole(read, CHUNK_TOKENS_KEY, DEFAULT_CHUNK_TOKENS, MIN_CHUNK_TOKENS, MAX_CHUNK_TOKENS);
-  const overlapTokens = whole(read, OVERLAP_TOKENS_KEY, DEFAULT_OVERLAP_TOKENS, 0, MAX_CHUNK_TOKENS);
+export const filesEnv = section(
+  {
+    [MAX_UPLOAD_KEY]: whole({ fallback: DEFAULT_MAX_UPLOAD, min: MIN_MAX_UPLOAD, max: MAX_MAX_UPLOAD }),
+    [CHUNK_TOKENS_KEY]: whole({
+      fallback: DEFAULT_CHUNK_TOKENS,
+      min: MIN_CHUNK_TOKENS,
+      max: MAX_CHUNK_TOKENS,
+    }),
+    [OVERLAP_TOKENS_KEY]: whole({ fallback: DEFAULT_OVERLAP_TOKENS, min: 0, max: MAX_CHUNK_TOKENS }),
+  },
+  (vars, ctx): FileSettings => {
+    const chunkTokens = vars[CHUNK_TOKENS_KEY];
+    const overlapTokens = vars[OVERLAP_TOKENS_KEY];
 
-  // Checked against each other rather than only against their own bounds. An
-  // overlap at or past the chunk size means every chunk contains the whole of
-  // the one before it, which is not a large overlap — it is a splitter that
-  // never advances, and it produces a document's worth of near-duplicate rows.
-  if (overlapTokens >= chunkTokens) {
-    throw new FilesMisconfigured(
-      `${OVERLAP_TOKENS_KEY} is ${overlapTokens} and ${CHUNK_TOKENS_KEY} is ${chunkTokens}. ` +
-        'An overlap has to be smaller than a chunk, or the splitter repeats itself without ' +
-        'ever moving forward.',
-    );
-  }
+    // Checked against each other rather than only against their own bounds. An
+    // overlap at or past the chunk size means every chunk contains the whole of
+    // the one before it, which is not a large overlap — it is a splitter that
+    // never advances, and it produces a document's worth of near-duplicate rows.
+    if (overlapTokens >= chunkTokens) {
+      ctx.addIssue(
+        `${OVERLAP_TOKENS_KEY} is ${overlapTokens} and ${CHUNK_TOKENS_KEY} is ${chunkTokens}. ` +
+          'An overlap has to be smaller than a chunk, or the splitter repeats itself without ' +
+          'ever moving forward.',
+      );
+      return z.NEVER;
+    }
 
-  return { maxUploadBytes, chunkTokens, overlapTokens };
-}
-
-function whole(read: Setting, key: string, fallback: number, min: number, max: number): number {
-  const raw = read(key)?.trim();
-  // An empty variable is an unset one — a deployment template left blank.
-  if (raw === undefined || raw === '') return fallback;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new FilesMisconfigured(
-      `${key} is "${raw}"; it must be a whole number between ${min} and ${max}.`,
-    );
-  }
-  return parsed;
-}
+    return { maxUploadBytes: vars[MAX_UPLOAD_KEY], chunkTokens, overlapTokens };
+  },
+);

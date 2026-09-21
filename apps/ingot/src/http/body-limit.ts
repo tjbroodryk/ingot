@@ -1,7 +1,6 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-
-export type Setting = (key: string) => string | undefined;
+import { section, text, whole } from '../config/vars.js';
 
 export const MAX_BODY_KEY = 'INGOT_MAX_BODY_BYTES';
 
@@ -23,28 +22,30 @@ const MIN_MAX_BODY = 100 * 1024;
 /** One body past this can take a pod down on its own. A typo guard. */
 const MAX_MAX_BODY = 512 * 1024 * 1024;
 
-export class BodyLimitMisconfigured extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BodyLimitMisconfigured';
-  }
+export interface HttpSettings {
+  readonly port: number;
+  readonly bodyLimit: number;
+  /** Unset allows any origin. */
+  readonly corsOrigin?: readonly string[];
 }
 
-export function maxBodyBytes(read: Setting): number {
-  const raw = read(MAX_BODY_KEY)?.trim();
-  // An empty variable is an unset one — a deployment template left blank.
-  if (raw === undefined || raw === '') return DEFAULT_MAX_BODY;
-
-  // `Number` rather than `parseInt`: Helm renders large integers as `3.3e+07`.
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < MIN_MAX_BODY || parsed > MAX_MAX_BODY) {
-    throw new BodyLimitMisconfigured(
-      `${MAX_BODY_KEY} is "${raw}"; it must be a whole number of bytes between ` +
-        `${MIN_MAX_BODY} and ${MAX_MAX_BODY}.`,
-    );
-  }
-  return parsed;
-}
+export const httpEnv = section(
+  {
+    PORT: whole({ fallback: 3002, min: 1, max: 65_535 }),
+    [MAX_BODY_KEY]: whole({
+      fallback: DEFAULT_MAX_BODY,
+      min: MIN_MAX_BODY,
+      max: MAX_MAX_BODY,
+      rule: `; it must be a whole number of bytes between ${MIN_MAX_BODY} and ${MAX_MAX_BODY}.`,
+    }),
+    CORS_ORIGIN: text(),
+  },
+  (vars): HttpSettings => ({
+    port: vars.PORT,
+    bodyLimit: vars[MAX_BODY_KEY],
+    corsOrigin: vars.CORS_ORIGIN?.split(','),
+  }),
+);
 
 /**
  * Everything about how the app speaks HTTP, in one place for `main.ts` and for

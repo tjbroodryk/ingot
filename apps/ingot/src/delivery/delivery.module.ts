@@ -1,8 +1,9 @@
 import { Global, Logger, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
+import type { Env } from '../config/env.js';
+import { ENV } from '../config/env.module.js';
 import { AMQP_CONNECT, type AmqpConnect } from './amqp.port.js';
-import { DELIVERY_SETTINGS, type DeliverySettings, deliverySettings } from './delivery-settings.js';
+import { DELIVERY_SETTINGS, type DeliverySettings } from './delivery-settings.js';
 import { DELIVERY_TRANSPORT } from './delivery-transport.port.js';
 import { LoggingTransport } from './logging-transport.js';
 import { RmqTransport } from './rmq-transport.js';
@@ -27,11 +28,10 @@ import { WebhookTransport } from './webhook-transport.js';
   providers: [
     {
       provide: DELIVERY_SETTINGS,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): DeliverySettings => {
-        const settings = deliverySettings((key) => config.get<string>(key));
-        announce(settings);
-        return settings;
+      inject: [ENV],
+      useFactory: (env: Env): DeliverySettings => {
+        announce(env.delivery);
+        return env.delivery;
       },
     },
     // The real thing, bound once. A port rather than a module import so that

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { warmSessions } from '../../src/engine/engine.module.js';
+import { loadSection } from '../../src/config/env.js';
+import { engineEnv } from '../../src/engine/engine-settings.js';
 import { WarmSessions } from '../../src/engine/warm-sessions.js';
+
+const warmSessions = (raw: string | undefined) =>
+  loadSection(engineEnv, { INGOT_QUERY_WARM_SESSIONS: raw }).warmSessions;
 
 function fake() {
   let opened = 0;

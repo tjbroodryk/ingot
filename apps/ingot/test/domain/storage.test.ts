@@ -7,12 +7,9 @@ import { StorageDriver } from '../../src/storage/drivers.js';
 import { FilesystemObjectStore } from '../../src/storage/filesystem-object-store.js';
 import { GcsObjectStore } from '../../src/storage/gcs-object-store.js';
 import { S3ObjectStore } from '../../src/storage/s3-object-store.js';
+import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 import { build } from '../../src/storage/storage.module.js';
-import {
-  StorageMisconfigured,
-  type StorageSettings,
-  storageSettings,
-} from '../../src/storage/storage-settings.js';
+import { type StorageSettings, storageEnv } from '../../src/storage/storage-settings.js';
 
 /**
  * Where a self-hosted deployment puts its Parquet.
@@ -23,7 +20,7 @@ import {
  * it was told about. That used to be a warning; here it is a refusal, and
  * these are the shapes it refuses.
  *
- * Pure throughout — settings are parsed from a reader and stores are asked
+ * Pure throughout — settings are parsed from a record and stores are asked
  * what they would say, so the whole matrix is covered without a bucket, a
  * network or a boot. What DuckDB makes of the SQL below is a claim about
  * DuckDB rather than about us, and `scripts/spike-duckdb.ts` runs it.
@@ -31,10 +28,12 @@ import {
 const scratch = mkdtempSync(join(tmpdir(), 'ingot-storage-test-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** An environment, as `ConfigService.get` would present it. */
-function env(values: Record<string, string>): (key: string) => string | undefined {
-  return (key) => values[key];
+/** An environment, as a deployment would set it. */
+function env(values: Record<string, string>): EnvSource {
+  return values;
 }
+
+const storageSettings = (source: EnvSource) => loadSection(storageEnv, source);
 
 const S3 = {
   INGOT_STORAGE: 's3',
@@ -65,7 +64,7 @@ describe('choosing a base tier', () => {
     // the driver used to be a warning and a fallback to local disk, which is a
     // service that appears to work until the pod is replaced.
     for (const key of ['INGOT_S3_BUCKET', 'INGOT_GCS_BUCKET']) {
-      expect(() => storageSettings(env({ [key]: 'ingots' }))).toThrow(StorageMisconfigured);
+      expect(() => storageSettings(env({ [key]: 'ingots' }))).toThrow(EnvMisconfigured);
       expect(() => storageSettings(env({ [key]: 'ingots' }))).toThrow(/INGOT_STORAGE=/);
     }
   });

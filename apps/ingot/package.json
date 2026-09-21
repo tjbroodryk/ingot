@@ -33,7 +33,6 @@
     "@ingot/versioning": "workspace:*",
     "@modelcontextprotocol/sdk": "^1",
     "@nestjs/common": "^11",
-    "@nestjs/config": "^4",
     "@nestjs/core": "^11",
     "@nestjs/cqrs": "^11.0.3",
     "@nestjs/platform-express": "^11",
