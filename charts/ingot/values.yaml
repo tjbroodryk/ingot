@@ -45,12 +45,20 @@ server:
   # No CPU limit. A query is bursty by nature and CFS throttling turns a
   # two-second answer into a ten-second one while the node sits idle; the
   # request is what earns the pod its share.
+  #
+  # Ephemeral storage said outright, and sized to `scratch.sizeLimit` plus
+  # room for `/tmp`, logs and the writable layer. Left out, GKE Autopilot fills
+  # in 1Gi, and the kubelet evicts the pod once *everything* it writes passes
+  # that — whatever the scratch volume's own `sizeLimit` says. Raise the two
+  # together.
   resources:
     requests:
       cpu: 500m
       memory: 1Gi
+      ephemeral-storage: 6Gi
     limits:
       memory: 3Gi
+      ephemeral-storage: 6Gi
 
   # Scaling the API is safe in a way worth being explicit about: every
   # background job is a timer inside the process that takes a Postgres advisory
@@ -79,8 +87,11 @@ server:
   # roll-up stages Parquet before uploading it. A ceiling, so a runaway spill
   # fills a volume the kubelet evicts this pod over rather than the node's
   # disk, which it would take every other pod down with.
+  #
+  # Counted against `resources`' ephemeral storage, not in addition to it: a
+  # `sizeLimit` above that limit is one the pod is evicted before reaching.
   scratch:
-    sizeLimit: 10Gi
+    sizeLimit: 5Gi
 
   # `enableShutdownHooks` in `main.ts` means SIGTERM stops the sweepers and
   # drains. Sized for the slowest thing a pod can be holding — a roll-up
