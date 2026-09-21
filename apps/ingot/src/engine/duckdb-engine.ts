@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import {
   type DuckDBConnection,
   DuckDBInstance,
@@ -21,6 +27,7 @@ import type {
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
+import { WarmSessions } from './warm-sessions.js';
 
 export interface EngineLimits {
   readonly memoryLimit: string;
@@ -38,6 +45,15 @@ export interface EngineLimits {
    * which is a size nobody hits until a tenant does.
    */
   readonly temporaryDirectory?: string;
+  /** Sessions kept opened and configured ahead of a query. 0 opens each on demand. */
+  readonly warmSessions: number;
+}
+
+/** One instance and its connection, used once and closed. */
+interface Session {
+  readonly instance: DuckDBInstance;
+  readonly connection: DuckDBConnection;
+  close(): void;
 }
 
 /** Raised instead of a bare error so the filter maps it and the metric counts it. */
@@ -51,13 +67,52 @@ class Refused extends InvariantViolation {
 }
 
 @Injectable()
-export class DuckDbEngine implements AnalyticalEngine {
+export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DuckDbEngine.name);
+  private readonly warm: WarmSessions<Session>;
+  private parser?: Promise<{ instance: DuckDBInstance; connection: DuckDBConnection }>;
 
   constructor(
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     private readonly limits: EngineLimits,
-  ) {}
+  ) {
+    // Warm sessions load `fts` whether or not the query turns out to need it:
+    // off the request path it costs nothing, and it is what today's cold
+    // sessions did for every query anyway.
+    this.warm = new WarmSessions(limits.warmSessions, () => this.open({ fullText: true }));
+  }
+
+  onModuleInit(): void {
+    this.warm.start();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.warm.close();
+    const parser = await this.parser?.catch(() => undefined);
+    parser?.instance.closeSync();
+  }
+
+  /**
+   * The tables a statement names, or `null` when that cannot be told.
+   *
+   * Parsed on a long-lived instance that holds nothing: `getTableNames` reads
+   * the statement against an empty catalogue and runs none of it, so sharing
+   * one across tenants shares no data. See `narrow` for why `null` has to mean
+   * "all of them".
+   */
+  async tablesNamedBy(sql: string): Promise<readonly string[] | null> {
+    this.parser ??= DuckDBInstance.create(':memory:').then(async (instance) => ({
+      instance,
+      connection: await instance.connect(),
+    }));
+    const { connection } = await this.parser;
+    try {
+      const named = connection.getTableNames(sql, false);
+      return named.length > 0 ? named.map((name) => name.toLowerCase()) : null;
+    } catch {
+      return null;
+    }
+  }
 
   async run(request: QueryRequest): Promise<QueryOutcome> {
     const started = performance.now();
@@ -110,7 +165,7 @@ export class DuckDbEngine implements AnalyticalEngine {
           elapsedMs: Math.round(performance.now() - started),
         };
       },
-      request.sql,
+      { sql: request.sql },
     );
   }
 
@@ -150,52 +205,56 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   async compact(request: CompactionRequest): Promise<CompactionOutcome> {
-    return this.withSession([request.table], async (connection) => {
-      // Deliberately *not* locked down: this SQL is ours and it has to write.
-      const table = ident(request.table.name);
+    return this.withSession(
+      [request.table],
+      async (connection) => {
+        // Deliberately *not* locked down: this SQL is ours and it has to write.
+        const table = ident(request.table.name);
 
-      // The vector columns are excluded: they belong in the sibling file, so
-      // that re-embedding rewrites one small object rather than every base
-      // file. `EXCLUDE ()` is not valid SQL, so an unembedded table takes the
-      // plain projection.
-      const excluded = vectorColumns(request.table);
-      const projection =
-        excluded.length > 0 ? `* EXCLUDE (${excluded.map(ident).join(', ')})` : '*';
+        // The vector columns are excluded: they belong in the sibling file, so
+        // that re-embedding rewrites one small object rather than every base
+        // file. `EXCLUDE ()` is not valid SQL, so an unembedded table takes the
+        // plain projection.
+        const excluded = vectorColumns(request.table);
+        const projection =
+          excluded.length > 0 ? `* EXCLUDE (${excluded.map(ident).join(', ')})` : '*';
 
-      const rows = await this.write(request.baseTarget, (into) =>
-        connection.run(
-          `COPY (SELECT ${projection} FROM ${table})` +
-            ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
-        ),
-      ).then(() => this.count(connection, `SELECT count(*) AS n FROM ${table}`));
-
-      let vectors = 0;
-      const embedded = request.table.embedded;
-      if (embedded.length > 0) {
-        // Vectors go to their own file keyed by `_row_id`, never as a column
-        // in the data. Re-embedding with a better model then rewrites one
-        // small object instead of every base file.
-        const projection = embedded
-          .map((entry) => `${ident(vectorColumnName(entry.column))} AS ${ident(entry.column)}`)
-          .join(', ');
-        const anyPresent = embedded
-          .map((entry) => `${ident(vectorColumnName(entry.column))} IS NOT NULL`)
-          .join(' OR ');
-
-        await this.write(request.vectorTarget, (into) =>
+        const rows = await this.write(request.baseTarget, (into) =>
           connection.run(
-            `COPY (SELECT ${ident('_row_id')}, ${projection} FROM ${table} WHERE ${anyPresent})` +
+            `COPY (SELECT ${projection} FROM ${table})` +
               ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
           ),
-        );
-        vectors = await this.count(
-          connection,
-          `SELECT count(*) AS n FROM ${table} WHERE ${anyPresent}`,
-        );
-      }
+        ).then(() => this.count(connection, `SELECT count(*) AS n FROM ${table}`));
 
-      return { rows, vectors };
-    });
+        let vectors = 0;
+        const embedded = request.table.embedded;
+        if (embedded.length > 0) {
+          // Vectors go to their own file keyed by `_row_id`, never as a column
+          // in the data. Re-embedding with a better model then rewrites one
+          // small object instead of every base file.
+          const projection = embedded
+            .map((entry) => `${ident(vectorColumnName(entry.column))} AS ${ident(entry.column)}`)
+            .join(', ');
+          const anyPresent = embedded
+            .map((entry) => `${ident(vectorColumnName(entry.column))} IS NOT NULL`)
+            .join(' OR ');
+
+          await this.write(request.vectorTarget, (into) =>
+            connection.run(
+              `COPY (SELECT ${ident('_row_id')}, ${projection} FROM ${table} WHERE ${anyPresent})` +
+                ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
+            ),
+          );
+          vectors = await this.count(
+            connection,
+            `SELECT count(*) AS n FROM ${table} WHERE ${anyPresent}`,
+          );
+        }
+
+        return { rows, vectors };
+      },
+      { writes: true },
+    );
   }
 
   /**
@@ -241,33 +300,71 @@ export class DuckDbEngine implements AnalyticalEngine {
    * `enable_external_access` and `lock_configuration` are *instance*-wide, so
    * locking one caller's session down would lock every other session on that
    * instance — one tenant's query breaking the next one's.
+   *
+   * Warm when the pool has one, which is steps 1–2 already done. `sql` is the
+   * caller's statement, and decides both which tables are built and which
+   * extensions the session needs; `writes` is a roll-up, which always needs the
+   * store.
    */
   private async withSession<T>(
     tables: readonly MaterialisableTable[],
     work: (connection: DuckDBConnection) => Promise<T>,
-    narrowFor?: string,
+    options: { sql?: string; writes?: boolean } = {},
   ): Promise<T> {
-    const instance = await DuckDBInstance.create(':memory:');
-    try {
-      const connection = await instance.connect();
-      await this.configure(connection);
+    const { sql, writes = false } = options;
+    const needed = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    const fullText = sql !== undefined && needsFullText(needed, sql);
+    const readsStore = needed.some(
+      (table) => table.baseFiles.length > 0 || table.vectorFiles.length > 0,
+    );
 
-      const needed = narrowFor ? narrow(connection, tables, narrowFor) : tables;
+    const pooled = this.warm.take();
+    const session = pooled ?? (await this.open({ fullText }));
+    try {
+      const { connection } = session;
+      // Step 3, only when something will reach the store. A table that has
+      // never been rolled up is all overlay, and for GCS this is a token fetch
+      // and an `httpfs` load that such a query would pay for nothing.
+      if (readsStore || writes) {
+        for (const statement of await this.store.session()) {
+          await connection.run(statement);
+        }
+      }
+
       await observe(
         'ingot.materialise',
-        { 'ingot.tables': needed.length, 'ingot.tables_available': tables.length },
+        {
+          'ingot.tables': needed.length,
+          'ingot.tables_available': tables.length,
+          'ingot.warm_session': pooled !== undefined,
+        },
         async () => {
-          for (const table of needed) await this.materialise(connection, table, narrowFor);
+          for (const table of needed) await this.materialise(connection, table, sql);
         },
       );
       return await work(connection);
     } finally {
-      instance.closeSync();
+      session.close();
     }
   }
 
-  /** Steps 1–3: limits, extensions, then the store's own credentials. */
-  private async configure(connection: DuckDBConnection): Promise<void> {
+  /** Steps 1–2: a new instance, its limits, and `fts` if it will be searched. */
+  private async open(options: { fullText: boolean }): Promise<Session> {
+    const instance = await DuckDBInstance.create(':memory:');
+    try {
+      const connection = await instance.connect();
+      await this.configure(connection, options);
+      return { instance, connection, close: () => instance.closeSync() };
+    } catch (error) {
+      instance.closeSync();
+      throw error;
+    }
+  }
+
+  private async configure(
+    connection: DuckDBConnection,
+    options: { fullText: boolean },
+  ): Promise<void> {
     await connection.run(`SET memory_limit = ${literal(this.limits.memoryLimit)}`);
     await connection.run(`SET threads = ${this.limits.threads}`);
 
@@ -285,24 +382,22 @@ export class DuckDbEngine implements AnalyticalEngine {
     }
 
     /*
-     * Full text search, in every session rather than only the ones that use it.
+     * Full text search, for a session that will search.
      *
      * A caller cannot load it themselves. `LOAD` is refused after the lockdown
      * — and has to be, since the same statement reaches every other extension
-     * too — so an ingot whose session did not load `fts` is one where
-     * `match_bm25` is a catalog error no configuration can fix. Loading it here,
-     * while external access is still on, is what makes the function there for
-     * every table that asked to be indexed.
+     * too — so it is loaded here, while external access is still on. Only when
+     * `needsFullText` says the statement will use it, because it is a few
+     * milliseconds of every query otherwise; a warm session loads it
+     * regardless, since it is off the request path.
      *
      * `INSTALL` reads from `extension_directory`, which the image bakes at
      * build time (`scripts/bake-extensions.ts`); against a copy already there
      * it costs nothing and reaches nowhere.
      */
-    await connection.run('INSTALL fts');
-    await connection.run('LOAD fts');
-
-    for (const statement of await this.store.session()) {
-      await connection.run(statement);
+    if (options.fullText) {
+      await connection.run('INSTALL fts');
+      await connection.run('LOAD fts');
     }
   }
 
@@ -669,27 +764,35 @@ export class DuckDbEngine implements AnalyticalEngine {
  * Every failure mode therefore lands on materialising more than necessary,
  * which costs time. None of them lands on materialising too little, which
  * would cost correctness.
+ *
+ * `named` is `tablesNamedBy`'s answer. Exported because the query path narrows
+ * before it reads the overlay, which is where most of the saving is: a table
+ * the statement never names should not cost a Postgres read either.
  */
-function narrow(
-  connection: DuckDBConnection,
-  tables: readonly MaterialisableTable[],
-  sql: string,
-): readonly MaterialisableTable[] {
-  let named: readonly string[];
-  try {
-    named = connection.getTableNames(sql, false);
-  } catch {
-    return tables;
-  }
-  if (named.length === 0) return tables;
+export function narrow<T extends { name: string }>(
+  tables: readonly T[],
+  named: readonly string[] | null,
+): readonly T[] {
+  if (named === null) return tables;
 
-  const wanted = new Set(named.map((name) => name.toLowerCase()));
+  const wanted = new Set(named);
   const selected = tables.filter((table) => wanted.has(table.name));
   // A name we do not recognise is not our business to reject here — the query
   // will fail on its own with a catalog error that names it, which is a better
   // message than anything this function could invent. But if nothing matched,
   // fall back rather than build an empty session.
   return selected.length > 0 ? selected : tables;
+}
+
+/**
+ * Whether a session needs `fts` loaded.
+ *
+ * Any table the statement will search, plus a bare `stem(` — the extension's
+ * one scalar function, usable without an index. Nothing documents it, but a
+ * caller who found it should not lose it to an optimisation.
+ */
+function needsFullText(tables: readonly MaterialisableTable[], sql: string): boolean {
+  return tables.some((table) => wantsFullText(table, sql)) || /\bstem\s*\(/i.test(sql);
 }
 
 /**
