@@ -15,6 +15,7 @@ import {
   type RetiredGenerations,
 } from '../../../records/application/ports/retired-generations.port.js';
 import { FILE_QUEUE, type FileQueue } from '../../../files/application/ports/file-queue.port.js';
+import { ParquetCache } from '../../../../engine/parquet-cache.js';
 import { Keys, OBJECT_STORE, type ObjectStore } from '../../../../storage/object-store.port.js';
 import { INGOT_REPOSITORY, type IngotRepository } from '../../domain/index.js';
 import { IngotAccess } from '../ingot-access.js';
@@ -59,6 +60,7 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(RETIRED_GENERATIONS) private readonly retired: RetiredGenerations,
+    private readonly cache: ParquetCache,
   ) {}
 
   async execute(command: DeleteIngot): Promise<void> {
@@ -84,6 +86,9 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     await this.ingots.remove(ingot.id);
 
     const prefix = Keys.ingot(ingot.accountId, ingot.id.value);
+    // In the transaction, so a cached copy is due for deletion exactly when the
+    // ingot is gone.
+    await this.cache.forgetPrefix(prefix);
     this.uow.afterCommit(() => this.store.removePrefix(prefix));
   }
 }

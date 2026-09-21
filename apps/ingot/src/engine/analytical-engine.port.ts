@@ -7,16 +7,9 @@ export interface RowVector {
   readonly vector: readonly number[];
 }
 
-/** One base-tier object, as the local Parquet cache needs to name and fetch it. */
+/** One base-tier object, as the Parquet cache names and fetches it. */
 export interface ParquetFile {
-  /**
-   * Which table, and which life of it: its id and when it was created.
-   *
-   * The id alone is not enough. It is derived from the ingot and the name, so a
-   * table dropped and recreated under the same name gets the same id — and,
-   * counting generations from one again, the same object keys for different
-   * bytes.
-   */
+  /** `<table id>@<createdAt>`. The id alone repeats when a table is dropped and recreated. */
   readonly table: string;
   readonly key: string;
   /** What `baseFiles` or `vectorFiles` carries for this object. */

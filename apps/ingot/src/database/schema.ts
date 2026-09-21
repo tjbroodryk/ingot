@@ -18,3 +18,4 @@ export {
   receiptDeliveryQueue,
   retiredGeneration,
 } from '../contexts/records/infrastructure/postgres/schema.js';
+export { parquetCacheFile } from '../engine/postgres/schema.js';

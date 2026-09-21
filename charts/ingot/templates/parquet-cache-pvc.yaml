@@ -1,0 +1,22 @@
+{{- if and (include "ingot.parquetCache.enabled" .) (not .Values.config.query.parquetCache.volume.existingClaim) }}
+# The shared Parquet cache's volume. ReadWriteMany, because every server pod
+# reads and writes the same files — that is the point of it.
+#
+# No `resource-policy: keep`, unlike the data claim: everything on here is a
+# copy of something in the bucket, and losing it costs downloads, not data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ingot.parquetCache.claim" . }}
+  labels:
+    {{- include "ingot.server.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.config.query.parquetCache.volume.size }}
+  {{- with .Values.config.query.parquetCache.volume.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

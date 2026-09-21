@@ -78,10 +78,10 @@ sweeper's 1000, so nothing needs holding off. `TABLES`, `FILES`, `REPEAT` and
 
 **`swept.js`** — the opposite case: tables filled past 1000 rows, waited on
 until the sweeper rolls them up (polling `/pending`, up to five minutes), then
-queried. Every read comes from Parquet, so this is the one that shows the local
+queried. Every read comes from Parquet, so this is the one that shows the
 Parquet cache — run it with `config.query.parquetCache.bytes` at 0, then set.
-It prints the first few queries apart from the rest: with several replicas, the
-first read on each pod downloads.
+It prints the first few queries apart from the rest, since the first read of a
+file downloads it.
 
 **`mixed.js`** — store, then read back through the query the receipt handed you,
 with an occasional semantic recall. The other scripts isolate each path; this

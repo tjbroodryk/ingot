@@ -115,6 +115,20 @@ failure to whichever template pulled it in — usually `server-deployment.yaml`,
 via the config checksum on its pod template — so ignore the file and line it
 prints and read the message, which says what to set and why.
 */}}
+{{/*
+Whether the shared Parquet cache is on: any budget but zero.
+*/}}
+{{- define "ingot.parquetCache.enabled" -}}
+{{- if ne (toString .Values.config.query.parquetCache.bytes) "0" }}true{{ end }}
+{{- end }}
+
+{{/*
+The claim the Parquet cache mounts: the one named, or the chart's own.
+*/}}
+{{- define "ingot.parquetCache.claim" -}}
+{{- .Values.config.query.parquetCache.volume.existingClaim | default (printf "%s-parquet-cache" (include "ingot.fullname" .)) }}
+{{- end }}
+
 {{- define "ingot.validate" -}}
 
 {{- if not (or .Values.secrets.create .Values.secrets.existingSecret) }}

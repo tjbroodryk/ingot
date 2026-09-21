@@ -11,19 +11,10 @@ import {
 } from './lib.js';
 
 /**
- * Query latency on tables that have been rolled up to Parquet.
- *
- * `multi-table.js` keeps every table under the sweeper's threshold, so its
- * queries never touch the bucket. This one goes past it, waits for the sweeper
- * to fold each table in, and then queries: the first read of a file on a pod
- * downloads it, and with the local Parquet cache on, every read after that is
- * off local disk. Run it with `config.query.parquetCache.bytes` at 0 and then
- * set, and compare.
- *
- * There is no API to trigger a roll-up, so this polls `/pending` until each
- * table reports a generation — up to one sweeper tick, five minutes. With two
- * or more replicas, the first query on *each* pod is a miss, which is why the
- * first few are reported apart from the rest.
+ * Query latency on rolled-up tables, to compare with the Parquet cache off and
+ * on. Fills tables past the sweeper's threshold, polls `/pending` until each is
+ * rolled up (up to five minutes), then reports the first queries apart from the
+ * rest, since the first read of a file downloads it.
  */
 const TABLES = Number(__ENV.TABLES || 3);
 const ROWS = Number(__ENV.ROWS || 1500);

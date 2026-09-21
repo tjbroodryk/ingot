@@ -6,6 +6,7 @@ import { StorageModule } from '../storage/storage.module.js';
 import { ANALYTICAL_ENGINE } from './analytical-engine.port.js';
 import { DuckDbEngine } from './duckdb-engine.js';
 import { ParquetCache } from './parquet-cache.js';
+import { PgParquetCacheIndex } from './postgres/pg-parquet-cache-index.js';
 import { SessionBuilder } from './session-builder.js';
 
 /**
@@ -19,13 +20,20 @@ import { SessionBuilder } from './session-builder.js';
   imports: [StorageModule],
   providers: [
     SessionBuilder,
+    PgParquetCacheIndex,
+    {
+      provide: ParquetCache,
+      inject: [OBJECT_STORE, ENV, PgParquetCacheIndex],
+      useFactory: (store: ObjectStore, env: Env, index: PgParquetCacheIndex) =>
+        new ParquetCache(env.parquetCache, store, index),
+    },
     {
       provide: ANALYTICAL_ENGINE,
-      inject: [OBJECT_STORE, ENV],
-      useFactory: (store: ObjectStore, env: Env) =>
-        new DuckDbEngine(store, env.engine, new ParquetCache(env.parquetCache, store)),
+      inject: [OBJECT_STORE, ENV, ParquetCache],
+      useFactory: (store: ObjectStore, env: Env, cache: ParquetCache) =>
+        new DuckDbEngine(store, env.engine, cache),
     },
   ],
-  exports: [ANALYTICAL_ENGINE, SessionBuilder, StorageModule],
+  exports: [ANALYTICAL_ENGINE, ParquetCache, SessionBuilder, StorageModule],
 })
 export class EngineModule {}

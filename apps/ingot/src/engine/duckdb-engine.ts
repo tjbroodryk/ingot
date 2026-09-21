@@ -57,6 +57,13 @@ interface Session {
   close(): void;
 }
 
+/** Building a session from cached files failed; the caller retries from the store. */
+class CachedReadFailed extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
 /** Raised instead of a bare error so the filter maps it and the metric counts it. */
 class Refused extends InvariantViolation {
   constructor(
@@ -91,7 +98,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
 
   async onModuleDestroy(): Promise<void> {
     this.warm.close();
-    this.cache.stop();
+    await this.cache.stop();
     const parser = await this.parser?.catch(() => undefined);
     parser?.instance.closeSync();
   }
@@ -310,35 +317,50 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
    * extensions the session needs; `writes` is a roll-up, which always needs the
    * store.
    *
-   * Only a query's files come through the local cache. A roll-up reads the
+   * Only a query's files come through the Parquet cache. A roll-up reads the
    * generation it is about to replace, and caching that would spend the budget
    * on a file nothing will ask for again.
+   *
+   * A cached file that fails to read — evicted by another replica between the
+   * check and the read, or a shared volume gone bad — costs one retry against
+   * the store, never the query.
    */
   private async withSession<T>(
     tables: readonly MaterialisableTable[],
     work: (connection: DuckDBConnection) => Promise<T>,
     options: { sql?: string; writes?: boolean } = {},
   ): Promise<T> {
-    const { sql, writes = false } = options;
+    const { sql } = options;
     const named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
-    const fullText = sql !== undefined && needsFullText(named, sql);
-
     const lease =
       sql === undefined ? undefined : await this.cache.lease(named.flatMap((t) => t.sources));
+
+    try {
+      return await this.inSession(tables, named, work, options, lease);
+    } catch (error) {
+      if (!(error instanceof CachedReadFailed)) throw error;
+      this.logger.warn(`A cached Parquet file failed to read; using the store: ${error.message}`);
+      return this.inSession(tables, named, work, options, undefined);
+    }
+  }
+
+  private async inSession<T>(
+    tables: readonly MaterialisableTable[],
+    named: readonly MaterialisableTable[],
+    work: (connection: DuckDBConnection) => Promise<T>,
+    options: { sql?: string; writes?: boolean },
+    lease: Lease | undefined,
+  ): Promise<T> {
+    const { sql, writes = false } = options;
+    const fullText = sql !== undefined && needsFullText(named, sql);
     const needed = lease ? named.map((table) => local(table, lease)) : named;
-    // Every file answered locally is one `httpfs` never has to reach.
+    // Every file answered from the cache is one `httpfs` never has to reach.
     const readsStore = needed.some((table) =>
       table.sources.some((file) => (lease ? lease.path(file.uri) === file.uri : true)),
     );
 
     const pooled = this.warm.take();
-    let session: Session;
-    try {
-      session = pooled ?? (await this.open({ fullText }));
-    } catch (error) {
-      lease?.release();
-      throw error;
-    }
+    const session = pooled ?? (await this.open({ fullText }));
     try {
       const { connection } = session;
       // Step 3, only when something will reach the store. A table that has
@@ -358,13 +380,17 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           'ingot.warm_session': pooled !== undefined,
         },
         async () => {
-          for (const table of needed) await this.materialise(connection, table, sql);
+          try {
+            for (const table of needed) await this.materialise(connection, table, sql);
+          } catch (error) {
+            if (lease?.local && !(error instanceof Refused)) throw new CachedReadFailed(error);
+            throw error;
+          }
         },
       );
       return await work(connection);
     } finally {
       session.close();
-      lease?.release();
     }
   }
 

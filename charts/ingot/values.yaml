@@ -393,16 +393,33 @@ config:
     # replacement. Size it to the burst of concurrent queries a pod sees — an
     # idle one is a few MB and `threads` idle threads. 0 opens on demand.
     warmSessions: 2
-    # Rolled-up Parquet kept on each pod's scratch volume, so a query on a
-    # swept table skips the bucket. Off until `bytes` is set (`2Gi` or a byte
-    # count); keep it well under `server.scratch.sizeLimit`, which spill and
-    # roll-up staging share. Least recently used goes first, and nothing stays
-    # longer than `maxAgeMs` — which is also how long a destroyed ingot's data
-    # can outlive its bucket objects on a pod.
+    # Rolled-up Parquet kept on one volume every server pod mounts, so a query
+    # on a swept table skips the bucket and each file is cached once, not once
+    # per pod. Off until `bytes` is set (`2Gi` or a byte count), which is the
+    # budget across all pods.
+    #
+    # The volume must be ReadWriteMany: Filestore on GKE (`standard-rwx`,
+    # `zonal-rwx`), EFS, Azure Files, or an NFS provisioner. Either name a
+    # class and let the chart claim one, or point at a claim you made. Mount
+    # it `soft` if the class allows, so a volume that stops answering fails
+    # reads — which fall back to the bucket — rather than hanging them.
+    #
+    # Least recently read goes first, and nothing stays past `maxAgeMs`. A
+    # deleted table or ingot is removed within a few minutes.
     parquetCache:
       bytes: 0
       maxAgeMs: 86400000
-      dir: /var/lib/ingot/parquet-cache
+      dir: /var/lib/ingot-cache
+      volume:
+        existingClaim: ''
+        storageClassName: ''
+        # Filestore's smallest is 1Ti whatever is asked for; other classes
+        # can go smaller. Keep `bytes` well under it.
+        size: 1Ti
+        # Most RWX volumes ignore `fsGroup`, so their root belongs to root. An
+        # init container running as root hands `dir` to the server's user;
+        # turn it off where the class already does.
+        chown: true
 
   # ── observability ────────────────────────────────────────────────────────
   # Tracing is on unless explicitly disabled, and the service's own default

@@ -89,6 +89,30 @@ spec:
                   matchLabels:
                     {{- include "ingot.server.selectorLabels" . | nindent 20 }}
         {{- end }}
+      {{- if and (include "ingot.parquetCache.enabled" .) .Values.config.query.parquetCache.volume.chown }}
+      initContainers:
+        # A ReadWriteMany volume usually ignores `fsGroup` and arrives owned by
+        # root. Root here only to hand it to uid 1000, with `CHOWN` the one
+        # capability kept; the server itself still runs as 1000.
+        - name: parquet-cache-owner
+          image: {{ include "ingot.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ['sh', '-c', 'chown 1000:1000 "$0"', {{ .Values.config.query.parquetCache.dir | quote }}]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+              add: ['CHOWN']
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - name: parquet-cache
+              mountPath: {{ .Values.config.query.parquetCache.dir }}
+      {{- end }}
       containers:
         - name: server
           image: {{ include "ingot.server.image" . }}
@@ -174,6 +198,11 @@ spec:
             - name: data
               mountPath: {{ .Values.config.filesystem.dataDir }}
             {{- end }}
+            {{- if include "ingot.parquetCache.enabled" . }}
+            # Shared by every server pod; see `config.query.parquetCache`.
+            - name: parquet-cache
+              mountPath: {{ .Values.config.query.parquetCache.dir }}
+            {{- end }}
 
       volumes:
         - name: scratch
@@ -189,4 +218,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "ingot.fullname" . }}-data
+        {{- end }}
+        {{- if include "ingot.parquetCache.enabled" . }}
+        - name: parquet-cache
+          persistentVolumeClaim:
+            claimName: {{ include "ingot.parquetCache.claim" . }}
         {{- end }}
