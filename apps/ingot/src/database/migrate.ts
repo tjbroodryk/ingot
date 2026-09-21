@@ -1,6 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import pg from 'pg';
+import { loadSection } from '../config/env.js';
+import { section, textOr } from '../config/vars.js';
+import { databaseEnv } from './database-settings.js';
 
 /**
  * Bring a database up to schema, from outside the service.
@@ -23,17 +26,20 @@ import pg from 'pg';
  * ones before it applied and says which one stopped, rather than rolling back
  * an hour of work on a large table.
  */
-async function migrate(): Promise<void> {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error('DATABASE_URL is not set — there is nothing to migrate');
-  }
+const migrateEnv = section(
+  {
+    // `dist/database/` → the `drizzle/` beside `dist/`, which is where the
+    // image puts them. Overridable because a test and a Job disagree about cwd.
+    INGOT_MIGRATIONS_DIR: textOr(join(__dirname, '..', '..', 'drizzle')),
+  },
+  (vars) => resolve(vars.INGOT_MIGRATIONS_DIR),
+);
 
-  // `dist/database/` → the `drizzle/` beside `dist/`, which is where the
-  // image puts them. Overridable because a test and a Job disagree about cwd.
-  const directory = resolve(
-    process.env.INGOT_MIGRATIONS_DIR ?? join(__dirname, '..', '..', 'drizzle'),
-  );
+async function migrate(): Promise<void> {
+  // Only what a migration needs: a Job has no reason to carry the service's
+  // auth or storage settings, so this does not load the whole `Env`.
+  const { url } = loadSection(databaseEnv, process.env);
+  const directory = loadSection(migrateEnv, process.env);
 
   const files = (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort();
   if (files.length === 0) {

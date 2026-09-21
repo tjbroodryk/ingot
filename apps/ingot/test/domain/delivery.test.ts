@@ -2,12 +2,12 @@ import { describe, expect, it } from 'bun:test';
 import { DeliveryEvent, DeliveryKind } from '@ingot/shared/ingot-v1';
 import { Delivery } from '../../src/contexts/ingots/domain/delivery.vo.js';
 import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
+import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 import {
   DEFAULT_DELIVERY_ATTEMPTS,
   DEFAULT_DELIVERY_TIMEOUT_MS,
   DEFAULT_USER_AGENT,
-  DeliveryMisconfigured,
-  deliverySettings,
+  deliveryEnv,
   unavailable,
 } from '../../src/delivery/delivery-settings.js';
 
@@ -197,10 +197,12 @@ describe('a delivery strategy', () => {
   });
 });
 
-/** An environment, as `ConfigService.get` would present it. */
-function env(values: Record<string, string>): (key: string) => string | undefined {
-  return (key) => values[key];
+/** An environment, as a deployment would set it. */
+function env(values: Record<string, string>): EnvSource {
+  return values;
 }
+
+const deliverySettings = (source: EnvSource) => loadSection(deliveryEnv, source);
 
 describe('what a deployment decides about delivery', () => {
   it('needs nothing configured, and can still deliver a webhook', () => {
@@ -253,7 +255,7 @@ describe('what a deployment decides about delivery', () => {
 
     const over = String(MAX_UPSTREAM_TIMEOUT_MS + 1);
     expect(() => deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: over }))).toThrow(
-      DeliveryMisconfigured,
+      EnvMisconfigured,
     );
     // The message has to name the variable and the reason, since the person
     // who set it is the only one who can unset it.
@@ -269,7 +271,7 @@ describe('what a deployment decides about delivery', () => {
     ['INGOT_DELIVERY_ATTEMPTS', '0', 'no attempts at all'],
     ['INGOT_DELIVERY_ATTEMPTS', '-1', 'a negative count'],
   ])('refuses %s=%s (%s)', (key, value) => {
-    expect(() => deliverySettings(env({ [key]: value }))).toThrow(DeliveryMisconfigured);
+    expect(() => deliverySettings(env({ [key]: value }))).toThrow(EnvMisconfigured);
   });
 
   /**

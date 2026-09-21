@@ -3,12 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { AuthMode } from '../../src/auth/auth-mode.js';
-import {
-  AuthMisconfigured,
-  type Setting,
-  authSettings,
-  fileBackedReader,
-} from '../../src/auth/auth-settings.js';
+import { authEnv } from '../../src/auth/auth-settings.js';
+import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 import { ApiKey, KEY_PREFIX } from '../../src/contexts/accounts/domain/index.js';
 
 /**
@@ -21,16 +17,18 @@ import { ApiKey, KEY_PREFIX } from '../../src/contexts/accounts/domain/index.js'
  * authentication mode that fell back would let the wrong people read the
  * ingots. So there is no fallback, and this is what refusal looks like.
  *
- * Pure throughout: settings are parsed from a reader, so the whole matrix is
+ * Pure throughout: settings are parsed from a record, so the whole matrix is
  * covered without a boot, a database or a request. The one impure corner —
  * `<NAME>_FILE` — gets a real temporary file, because the thing worth
  * asserting about it is that it reads one.
  */
 
-/** An environment, as `ConfigService.get` would present it. */
-function env(values: Record<string, string>): Setting {
-  return (key) => values[key];
+/** An environment, as a deployment would set it. */
+function env(values: Record<string, string>): EnvSource {
+  return values;
 }
+
+const authSettings = (source: EnvSource) => loadSection(authEnv, source);
 
 /** A key of the right shape, generated so the suite holds no usable secret. */
 const KEY = ApiKey.mint().secret;
@@ -40,7 +38,7 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe('the mode selector', () => {
   it('refuses to guess when INGOT_AUTH is unset', () => {
-    expect(() => authSettings(env({}))).toThrow(AuthMisconfigured);
+    expect(() => authSettings(env({}))).toThrow(EnvMisconfigured);
     // The message has to say what to do, because the person reading it is
     // holding a service that will not start.
     expect(() => authSettings(env({}))).toThrow(/INGOT_AUTH is not set/);
@@ -133,7 +131,7 @@ describe('sealed', () => {
 
   it('refuses a slug that is not a slug', () => {
     const read = env({ INGOT_AUTH: 'sealed', INGOT_ACCOUNT: 'Acme Corp!', INGOT_API_KEY: KEY });
-    expect(() => authSettings(read)).toThrow(AuthMisconfigured);
+    expect(() => authSettings(read)).toThrow(EnvMisconfigured);
   });
 
   it('lowercases the slug it was given, as AccountSlug does', () => {
@@ -150,9 +148,7 @@ describe('reading a secret from a file', () => {
     writeFileSync(path, `${KEY}\n`);
 
     const settings = authSettings(
-      fileBackedReader(
-        env({ INGOT_AUTH: 'sealed', INGOT_ACCOUNT: 'acme', INGOT_API_KEY_FILE: path }),
-      ),
+      env({ INGOT_AUTH: 'sealed', INGOT_ACCOUNT: 'acme', INGOT_API_KEY_FILE: path }),
     );
 
     expect(settings.keyDigest).toBe(ApiKey.digestOf(KEY));
@@ -163,27 +159,23 @@ describe('reading a secret from a file', () => {
     writeFileSync(path, ApiKey.mint().secret);
 
     const settings = authSettings(
-      fileBackedReader(
-        env({
-          INGOT_AUTH: 'sealed',
-          INGOT_ACCOUNT: 'acme',
-          INGOT_API_KEY: KEY,
-          INGOT_API_KEY_FILE: path,
-        }),
-      ),
+      env({
+        INGOT_AUTH: 'sealed',
+        INGOT_ACCOUNT: 'acme',
+        INGOT_API_KEY: KEY,
+        INGOT_API_KEY_FILE: path,
+      }),
     );
 
     expect(settings.keyDigest).toBe(ApiKey.digestOf(KEY));
   });
 
   it('refuses a file it cannot read rather than falling back to unset', () => {
-    const read = fileBackedReader(
-      env({
-        INGOT_AUTH: 'sealed',
-        INGOT_ACCOUNT: 'acme',
-        INGOT_API_KEY_FILE: join(scratch, 'not-here'),
-      }),
-    );
+    const read = env({
+      INGOT_AUTH: 'sealed',
+      INGOT_ACCOUNT: 'acme',
+      INGOT_API_KEY_FILE: join(scratch, 'not-here'),
+    });
     // A missing mount that read as "no key configured" would produce the
     // "INGOT_API_KEY is required" message, which sends the operator to fix
     // the wrong thing.
@@ -194,7 +186,7 @@ describe('reading a secret from a file', () => {
     const path = join(scratch, 'slug');
     writeFileSync(path, 'from-a-file');
 
-    const read = fileBackedReader(env({ INGOT_ACCOUNT_FILE: path }));
-    expect(read('INGOT_ACCOUNT')).toBe('from-a-file');
+    const read = env({ INGOT_AUTH: 'sealed', INGOT_ACCOUNT_FILE: path, INGOT_API_KEY: KEY });
+    expect(authSettings(read).slug).toBe('from-a-file');
   });
 });

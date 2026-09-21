@@ -1,3 +1,5 @@
+import { section, text, textOr } from '../config/vars.js';
+
 /**
  * What this deployment exports, and to where.
  *
@@ -8,6 +10,8 @@
 export interface TelemetryConfig {
   /** The `service.name` on every span and the `service` label on every metric. */
   serviceName: string;
+  /** The build, as `service.version`. */
+  serviceVersion: string;
   /** Deployment environment — `production`, `staging`, a developer's laptop. */
   environment: string;
   /** This process, so one pod's numbers can be told from another's. */
@@ -35,7 +39,26 @@ export interface TelemetryConfig {
 }
 
 /**
- * Reads the environment, defaulting to "on, pointed at localhost".
+ * Anything but an explicit `false` is on.
+ *
+ * The asymmetry is deliberate: a typo in `TRACING_ENABLED` should leave
+ * tracing on, because a mistake that silently disables observability is one
+ * nobody notices until they need it.
+ */
+const flag = () =>
+  text().transform((raw) => raw === undefined || (raw.toLowerCase() !== 'false' && raw !== '0'));
+
+/** Out of range falls back rather than refusing: telemetry never stops a boot. */
+const within = (fallback: number, min: number, max: number) =>
+  text().transform((raw) => {
+    const parsed = Number(raw);
+    return raw === undefined || !Number.isFinite(parsed) || parsed < min || parsed > max
+      ? fallback
+      : parsed;
+  });
+
+/**
+ * Defaults to "on, pointed at localhost".
  *
  * On by default because the failure mode of the alternative is discovering
  * during an incident that the one service you needed to look at was the one
@@ -43,38 +66,34 @@ export interface TelemetryConfig {
  * line per export attempt and nothing else — `startTelemetry` makes sure of
  * that — so the default is safe even on a laptop with no Jaeger running.
  */
-export function telemetryConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TelemetryConfig {
-  return {
-    serviceName: env.OTEL_SERVICE_NAME ?? '@ingot/server',
-    environment: env.NODE_ENV ?? 'development',
-    instanceId: env.HOSTNAME ?? env.POD_NAME ?? `local-${process.pid}`,
+export const telemetryEnv = section(
+  {
+    OTEL_SERVICE_NAME: textOr('@ingot/server'),
+    GIT_SHA: textOr('dev'),
+    NODE_ENV: textOr('development'),
+    HOSTNAME: text(),
+    POD_NAME: text(),
+    TRACING_ENABLED: flag(),
+    OTEL_EXPORTER_OTLP_ENDPOINT: textOr('http://localhost:4318'),
+    TRACE_SAMPLE_RATIO: within(1, 0, 1),
+    METRICS_ENABLED: flag(),
+    METRICS_PORT: within(9464, 1, 65_535),
+    METRICS_HOST: textOr('0.0.0.0'),
+  },
+  (vars): TelemetryConfig => ({
+    serviceName: vars.OTEL_SERVICE_NAME,
+    serviceVersion: vars.GIT_SHA,
+    environment: vars.NODE_ENV,
+    instanceId: vars.HOSTNAME ?? vars.POD_NAME ?? `local-${process.pid}`,
     tracing: {
-      enabled: flag(env.TRACING_ENABLED, true),
-      endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318',
-      sampleRatio: ratio(env.TRACE_SAMPLE_RATIO, 1),
+      enabled: vars.TRACING_ENABLED,
+      endpoint: vars.OTEL_EXPORTER_OTLP_ENDPOINT,
+      sampleRatio: vars.TRACE_SAMPLE_RATIO,
     },
     metrics: {
-      enabled: flag(env.METRICS_ENABLED, true),
-      port: Number(env.METRICS_PORT ?? 9464),
-      host: env.METRICS_HOST ?? '0.0.0.0',
+      enabled: vars.METRICS_ENABLED,
+      port: vars.METRICS_PORT,
+      host: vars.METRICS_HOST,
     },
-  };
-}
-
-/**
- * Anything but an explicit `false` is on.
- *
- * The asymmetry is deliberate: a typo in `TRACING_ENABLED` should leave
- * tracing on, because a mistake that silently disables observability is one
- * nobody notices until they need it.
- */
-function flag(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) return fallback;
-  return value.toLowerCase() !== 'false' && value !== '0';
-}
-
-function ratio(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
-  return parsed;
-}
+  }),
+);

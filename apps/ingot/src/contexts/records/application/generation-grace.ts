@@ -1,4 +1,4 @@
-import type { Setting } from './background-settings.js';
+import { section, whole } from '../../../config/vars.js';
 
 export const GENERATION_GRACE_KEY = 'INGOT_GENERATION_GRACE_MS';
 
@@ -18,17 +18,17 @@ const LONGEST = 7 * 86_400_000;
 
 export const GENERATION_GRACE = Symbol('GenerationGrace');
 
-export function generationGraceFrom(read: Setting): number {
-  const raw = read(GENERATION_GRACE_KEY)?.trim();
-  if (raw === undefined || raw === '') return DEFAULT_GENERATION_GRACE_MS;
-
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < SHORTEST || parsed > LONGEST) {
-    throw new Error(
-      `${GENERATION_GRACE_KEY} is "${raw}"; it is milliseconds, between ${SHORTEST} (a minute, ` +
-        `past the query timeout) and ${LONGEST} (a week). A replaced generation is kept this ` +
-        'long for readers that resolved it before a roll-up replaced it.',
-    );
-  }
-  return parsed;
-}
+export const generationGraceEnv = section(
+  {
+    [GENERATION_GRACE_KEY]: whole({
+      fallback: DEFAULT_GENERATION_GRACE_MS,
+      min: SHORTEST,
+      max: LONGEST,
+      rule:
+        `; it is milliseconds, between ${SHORTEST} (a minute, past the query timeout) and ` +
+        `${LONGEST} (a week). A replaced generation is kept this long for readers that ` +
+        'resolved it before a roll-up replaced it.',
+    }),
+  },
+  (vars) => vars[GENERATION_GRACE_KEY],
+);

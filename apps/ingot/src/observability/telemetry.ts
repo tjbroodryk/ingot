@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { type TelemetryConfig, telemetryConfigFromEnv } from './config.js';
+import type { TelemetryConfig } from './config.js';
 import { MetricsServer } from './metrics/metrics-server.js';
 import { collectRuntimeMetrics, registry } from './metrics/registry.js';
 import { startTracing, stopTracing } from './tracing/provider.js';
@@ -24,9 +24,7 @@ let started = false;
  * service's job is to serve requests; the service's telemetry failing is a
  * reason to page somebody, not a reason to take the service down with it.
  */
-export async function startTelemetry(
-  config: TelemetryConfig = telemetryConfigFromEnv(),
-): Promise<void> {
+export async function startTelemetry(config: TelemetryConfig): Promise<void> {
   if (started) return;
   started = true;
 

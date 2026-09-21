@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  AiMisconfigured,
+  aiEnv,
   DEFAULT_TIMEOUT_MS,
   GCP_EMBEDDING_DIMENSIONS,
   GCP_EMBEDDING_MODEL,
@@ -16,9 +16,6 @@ import {
   OPENAI_EMBEDDING_MODEL,
   OPENAI_OCR_MODEL,
   OPENAI_SUMMARY_MODEL,
-  embedderSettings,
-  ocrSettings,
-  summariserSettings,
 } from '../../src/ai/ai-settings.js';
 import { buildEmbedder, buildOcr, buildSummariser } from '../../src/ai/ai.module.js';
 import { ExtractiveSummariser } from '../../src/ai/extractive-summariser.js';
@@ -29,6 +26,7 @@ import { OpenAiEmbedder } from '../../src/ai/openai-embedder.js';
 import { AiProvider } from '../../src/ai/providers.js';
 import { transcriptFrom } from '../../src/ai/ocr.port.js';
 import { extractJson, receiptFrom } from '../../src/ai/summariser.port.js';
+import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 
 /**
@@ -41,15 +39,19 @@ import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
  * becomes a sentence about column names. Nobody finds that by reading a
  * dashboard — so it is refused at boot, and this is what refusal looks like.
  *
- * Pure throughout. Settings are parsed from a reader and adapters are built
+ * Pure throughout. Settings are parsed from a record and adapters are built
  * from settings, so the whole matrix is covered without a key, a network, or
  * a bill.
  */
 
-/** An environment, as `ConfigService.get` would present it. */
-function env(values: Record<string, string>): (key: string) => string | undefined {
-  return (key) => values[key];
+/** An environment, as a deployment would set it. */
+function env(values: Record<string, string>): EnvSource {
+  return values;
 }
+
+const embedderSettings = (source: EnvSource) => loadSection(aiEnv, source).embedder;
+const summariserSettings = (source: EnvSource) => loadSection(aiEnv, source).summariser;
+const ocrSettings = (source: EnvSource) => loadSection(aiEnv, source).ocr;
 
 const OPENAI = { OPENAI_API_KEY: 'sk-test' };
 const GCP = { INGOT_GCP_PROJECT: 'a-project' };
@@ -91,7 +93,7 @@ describe('choosing an embedder', () => {
     // The whole point of naming the provider rather than inferring it: an
     // operator who meant to configure OpenAI and left the key out should be
     // told, not quietly given a hash that ranks by word overlap.
-    expect(() => embedderSettings(env({ INGOT_EMBEDDER: 'openai' }))).toThrow(AiMisconfigured);
+    expect(() => embedderSettings(env({ INGOT_EMBEDDER: 'openai' }))).toThrow(EnvMisconfigured);
     expect(() => embedderSettings(env({ INGOT_EMBEDDER: 'gcp' }))).toThrow(/INGOT_GCP_PROJECT/);
   });
 
@@ -120,7 +122,7 @@ describe('choosing an embedder', () => {
         embedderSettings(
           env({ INGOT_EMBEDDER: 'openai', ...OPENAI, INGOT_OPENAI_EMBEDDING_DIMENSIONS: bad }),
         ),
-      ).toThrow(AiMisconfigured);
+      ).toThrow(EnvMisconfigured);
     }
   });
 
@@ -181,7 +183,7 @@ describe('choosing a summariser', () => {
 
   it('refuses a provider named without its credentials', () => {
     expect(() => summariserSettings(env({ INGOT_SUMMARISER: 'openai' }))).toThrow(/OPENAI_API_KEY/);
-    expect(() => summariserSettings(env({ INGOT_SUMMARISER: 'gcp' }))).toThrow(AiMisconfigured);
+    expect(() => summariserSettings(env({ INGOT_SUMMARISER: 'gcp' }))).toThrow(EnvMisconfigured);
   });
 
   it('names the selector in the message, not the other one', () => {
@@ -258,7 +260,7 @@ describe('the model deadline', () => {
     });
 
     expect(() => summariserSettings(env({ ...named, INGOT_AI_TIMEOUT_MS: '30' }))).toThrow(
-      AiMisconfigured,
+      EnvMisconfigured,
     );
   });
 
@@ -305,7 +307,7 @@ describe('choosing how a scan is read', () => {
       maxPages: OCR_MAX_PAGES,
     });
 
-    expect(() => ocrSettings(env({ INGOT_OCR: 'local' }))).toThrow(AiMisconfigured);
+    expect(() => ocrSettings(env({ INGOT_OCR: 'local' }))).toThrow(EnvMisconfigured);
     expect(() => ocrSettings(env({ INGOT_OCR: 'local' }))).toThrow(/INGOT_TESSDATA_DIR/);
   });
 
@@ -330,7 +332,7 @@ describe('choosing how a scan is read', () => {
   });
 
   it('refuses a provider named without its credentials', () => {
-    expect(() => ocrSettings(env({ INGOT_OCR: 'openai' }))).toThrow(AiMisconfigured);
+    expect(() => ocrSettings(env({ INGOT_OCR: 'openai' }))).toThrow(EnvMisconfigured);
     expect(() => ocrSettings(env({ INGOT_OCR: 'gcp' }))).toThrow(/INGOT_GCP_PROJECT/);
   });
 
@@ -371,7 +373,7 @@ describe('choosing how a scan is read', () => {
 
     expect(() =>
       ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA, INGOT_OCR_MAX_PAGES: '0' })),
-    ).toThrow(AiMisconfigured);
+    ).toThrow(EnvMisconfigured);
     expect(() =>
       ocrSettings(env({ INGOT_OCR: 'local', ...TESSDATA, INGOT_OCR_MAX_PAGES: 'lots' })),
     ).toThrow(/whole number/);

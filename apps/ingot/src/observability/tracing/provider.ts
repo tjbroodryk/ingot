@@ -59,7 +59,7 @@ export function startTracing(config: TelemetryConfig): void {
   provider = new NodeTracerProvider({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: config.serviceName,
-      [ATTR_SERVICE_VERSION]: process.env.GIT_SHA ?? 'dev',
+      [ATTR_SERVICE_VERSION]: config.serviceVersion,
       [ATTR_SERVICE_INSTANCE_ID]: config.instanceId,
       'deployment.environment.name': config.environment,
     }),

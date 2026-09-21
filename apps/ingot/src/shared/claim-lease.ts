@@ -39,9 +39,8 @@ export const MAX_UPSTREAM_TIMEOUT_MS = CLAIM_LEASE_MS / 2;
 /**
  * Why a timeout is too long, or null when it is fine.
  *
- * A message rather than a throw, because the two callers raise different
- * errors — `AiMisconfigured` and `DeliveryMisconfigured` — and which one a
- * deployment sees should say which half of the configuration to go and look at.
+ * A message rather than a throw, because both callers are schema refinements
+ * that report it alongside everything else wrong with the environment.
  */
 export function tooLongForLease(key: string, timeoutMs: number): string | null {
   if (timeoutMs <= MAX_UPSTREAM_TIMEOUT_MS) return null;

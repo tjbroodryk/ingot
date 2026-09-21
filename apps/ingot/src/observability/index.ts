@@ -23,7 +23,7 @@
  * See `README.md` in this directory for the whole picture, including which
  * detail belongs on a label and which belongs on a span.
  */
-export { telemetryConfigFromEnv, type TelemetryConfig } from './config.js';
+export type { TelemetryConfig } from './config.js';
 export { InfrastructureCollectors } from './infrastructure-collectors.js';
 export { Metrics, PoolState, RefusalReason } from './metrics/catalogue.js';
 export { Buckets } from './metrics/buckets.js';

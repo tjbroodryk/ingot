@@ -1,8 +1,9 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
+import type { EnvSource } from '../../src/config/env.js';
+import { EnvModule } from '../../src/config/env.module.js';
 import type {
   AddBody,
   AddResult,
@@ -58,6 +59,7 @@ import { Dispatcher } from '../../src/shared/application/index.js';
 import { SharedModule } from '../../src/shared/shared.module.js';
 import { TestDatabaseModule } from './database-module.js';
 import { openDatabase } from './database.js';
+import { testEnv } from './env.js';
 
 /**
  * The service, assembled for a test, with a scratch directory for its base tier.
@@ -142,6 +144,8 @@ export interface WorldOverrides {
    * a refusal is handled — neither of which needs a socket.
    */
   readonly transport?: DeliveryTransport;
+  /** Variables on top of `testEnv()`'s. */
+  readonly env?: EnvSource;
 }
 
 export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> {
@@ -150,13 +154,12 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
   const dataDir = mkdtempSync(join(tmpdir(), 'ingot-world-'));
   // The filesystem driver, named rather than inferred, which is the
-  // composition these tests want: real Parquet, no network. A developer with
-  // a bucket in their own environment does not change what the suite writes.
-  process.env.INGOT_STORAGE = 'filesystem';
-  process.env.INGOT_DATA_DIR = dataDir;
-  // The models are pinned in `test/support/environment.ts`, preloaded before
-  // any test file, because the tests that compile the real `AppModule` never
-  // come through here.
+  // composition these tests want: real Parquet, no network.
+  const env = testEnv({
+    INGOT_STORAGE: 'filesystem',
+    INGOT_DATA_DIR: dataDir,
+    ...overrides.env,
+  });
 
   /**
    * The background, written down instead of run.
@@ -176,7 +179,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
   const building = Test.createTestingModule({
     imports: [
-      ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+      EnvModule.forRoot(env),
       TestDatabaseModule.with(database),
       SharedModule.forTesting(),
       EngineModule,

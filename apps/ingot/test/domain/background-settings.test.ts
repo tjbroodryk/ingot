@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { BackgroundKind, CONCURRENCY } from '../../src/contexts/records/application/background.js';
 import {
-  BackgroundMisconfigured,
   CONCURRENCY_KEYS,
   MAX_CONCURRENCY,
-  concurrencyFrom,
+  concurrencyEnv,
 } from '../../src/contexts/records/application/background-settings.js';
+import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 
 /**
  * How much of somebody else's service a deployment will use at once.
@@ -17,14 +17,16 @@ import {
  * limit at a hosted model — which arrives as a slow queue rather than as an
  * error, and is read as "the embedder is slow".
  *
- * Pure: a function over a reader, so every shape is covered with no container
+ * Pure: a schema over a record, so every shape is covered with no container
  * and no environment.
  */
 
-/** An environment, as `ConfigService.get` would present it. */
-function env(values: Record<string, string>): (key: string) => string | undefined {
-  return (key) => values[key];
+/** An environment, as a deployment would set it. */
+function env(values: Record<string, string>): EnvSource {
+  return values;
 }
+
+const concurrencyFrom = (source: EnvSource) => loadSection(concurrencyEnv, source);
 
 describe('the background concurrency', () => {
   it('falls back to the numbers this service ships with', () => {
@@ -88,7 +90,7 @@ describe('the background concurrency', () => {
     ['1e2', 'a number nobody typed on purpose'],
   ])('refuses %s (%s)', (raw) => {
     expect(() => concurrencyFrom(env({ INGOT_EMBEDDINGS_CONCURRENCY: raw }))).toThrow(
-      BackgroundMisconfigured,
+      EnvMisconfigured,
     );
   });
 
