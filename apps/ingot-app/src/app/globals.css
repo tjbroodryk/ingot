@@ -76,6 +76,10 @@
   --gutter: 28px;
   --pad-x: 40px;
 
+  /* One line length for prose, so a lede, a gloss list and a note under a
+     control all break in the same place. */
+  --measure: 660px;
+
   /* Nothing rounds. `--radius` exists so that stays a decision. */
   --radius: 0px;
 

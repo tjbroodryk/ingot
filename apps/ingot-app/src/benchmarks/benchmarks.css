@@ -930,8 +930,12 @@
   padding-top: var(--space-4);
 }
 
-/* Sits between the switch and the first table, so it is read before any number. */
+/* Sits between the switch and the first table, so it is read before any number.
+   Ranged on the tiles' left edge, and held to the page's measure — the tables
+   below it are as wide as their columns need, but this is prose and a line of
+   it running the full width of a desktop window is unreadable. */
 .bench-corpus-meaning {
+  max-width: calc(var(--measure) + var(--space-8) * 2);
   padding: 0 var(--space-8) var(--space-4);
   font-size: 15px;
   color: var(--ink-70);
@@ -944,39 +948,61 @@
   border-top: var(--rule);
   color: var(--ink-100);
 }
+/*
+ * A term and its gloss, one per row. Ranged left wherever it sits — a gloss is
+ * read against its term, and centred prose gives it no edge to be read from.
+ * The block opens and closes on a section rule and divides on row rules, which
+ * is the brief's distinction between the two weights.
+ */
 .bench-terms {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 6px var(--space-6);
+  /* The columns are set apart by the term's own padding rather than a gap, so
+     a row rule crosses the pair unbroken. */
+  gap: 0;
   margin: 0 0 var(--space-3);
-  padding: var(--space-3) 0;
   border-top: var(--rule);
   border-bottom: var(--rule);
+  text-align: left;
 }
 .bench-terms > div {
   display: contents;
 }
 .bench-terms dt {
+  padding: 11px var(--space-6) 11px 0;
   color: var(--ink-100);
 }
 .bench-terms dd {
   margin: 0;
+  padding: 10px 0;
 }
-/* Stacked, where a term and its gloss side by side would leave neither room. */
+.bench-terms > div + div > dt,
+.bench-terms > div + div > dd {
+  border-top: var(--rule-row);
+}
+/* Stacked, where a term and its gloss side by side would leave neither room.
+   The row rule then falls above the term only — between a term and its own
+   gloss it would divide the pair it exists to hold together. */
 @media (max-width: 620px) {
   .bench-terms {
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+  }
+  .bench-terms dt {
+    padding: 10px 0 2px;
   }
   .bench-terms dd {
-    margin-bottom: 10px;
+    padding-top: 0;
+  }
+  .bench-terms > div + div > dd {
+    border-top: 0;
   }
 }
 /* In a section head it takes the lede's measure and colour, so it reads as
-   the paragraph continuing rather than a table dropped under it. */
+   the paragraph continuing rather than a table dropped under it — and it is
+   centred on the same line the head is, not flush to a left edge of its own. */
 .landhead .bench-terms {
-  max-width: 660px;
-  margin: var(--space-4) 0 0;
+  max-width: var(--measure);
+  margin: var(--space-6) auto 0;
   font-size: 15px;
   color: var(--ink-70);
 }
