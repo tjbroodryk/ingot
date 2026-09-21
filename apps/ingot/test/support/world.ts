@@ -144,7 +144,7 @@ export interface WorldOverrides {
    * a refusal is handled — neither of which needs a socket.
    */
   readonly transport?: DeliveryTransport;
-  /** Variables on top of `testEnv()`'s. */
+  /** Variables on top of `testEnv()`'s, e.g. turning the Parquet cache on. */
   readonly env?: EnvSource;
 }
 

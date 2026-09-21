@@ -41,6 +41,7 @@ export const TABLES = [
   'overlay_receipt_queue',
   'receipt_delivery_queue',
   'retired_generation',
+  'parquet_cache_file',
 ];
 
 export interface TestDatabase {

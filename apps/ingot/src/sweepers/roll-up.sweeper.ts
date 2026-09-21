@@ -5,6 +5,7 @@ import {
 } from '../contexts/records/application/ports/overlay-store.port.js';
 import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
 import { ReapGenerations } from '../contexts/records/application/commands/reap-generations.command.js';
+import { ParquetCache } from '../engine/parquet-cache.js';
 import { Cron, minutes } from './cron.js';
 import { Dispatcher } from '../shared/application/index.js';
 
@@ -63,6 +64,7 @@ export class RollUpSweeper {
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
+    private readonly cache: ParquetCache,
   ) {}
 
   async tick(): Promise<void> {
@@ -102,6 +104,17 @@ export class RollUpSweeper {
     } catch (error) {
       this.logger.error(
         `Reaping replaced generations failed: ` +
+          `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+      );
+    }
+
+    // Also here for the lock: every replica shares the cache, and two sweeps
+    // deciding what to evict at once would each count the other's deletes.
+    try {
+      await this.cache.sweep();
+    } catch (error) {
+      this.logger.error(
+        `Sweeping the Parquet cache failed: ` +
           `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
       );
     }

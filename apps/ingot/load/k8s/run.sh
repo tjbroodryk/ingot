@@ -21,8 +21,9 @@ case "$script" in
   write | read | mixed) file="$script.js" ;;
   depth) file="overlay-depth.js" ;;
   tables) file="multi-table.js" ;;
+  swept) file="swept.js" ;;
   *)
-    echo "usage: $0 <write|read|mixed|depth|tables> [k6 flags…]" >&2
+    echo "usage: $0 <write|read|mixed|depth|tables|swept> [k6 flags…]" >&2
     exit 2
     ;;
 esac
@@ -35,7 +36,7 @@ image="${K6_IMAGE:-grafana/k6:2.3.0}"
 url="${INGOT_URL:-http://$release-server.$ns.svc:3002}"
 job="ingot-load-$script-$(date +%Y%m%d%H%M%S)"
 load_dir="$(cd "$(dirname "$0")/.." && pwd)"
-scripts=(lib.js write.js read.js mixed.js overlay-depth.js multi-table.js)
+scripts=(lib.js write.js read.js mixed.js overlay-depth.js multi-table.js swept.js)
 
 # The scripts follow the API, so they have to come from the release that is
 # deployed, not from whatever is checked out. The image tag names the release;

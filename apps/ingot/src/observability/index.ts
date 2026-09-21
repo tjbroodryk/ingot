@@ -25,7 +25,13 @@
  */
 export type { TelemetryConfig } from './config.js';
 export { InfrastructureCollectors } from './infrastructure-collectors.js';
-export { Metrics, PoolState, RefusalReason } from './metrics/catalogue.js';
+export {
+  CacheResult,
+  EvictionReason,
+  Metrics,
+  PoolState,
+  RefusalReason,
+} from './metrics/catalogue.js';
 export { Buckets } from './metrics/buckets.js';
 export {
   defineCounter,

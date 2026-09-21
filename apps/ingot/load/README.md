@@ -76,6 +76,13 @@ narrowed, and the curve rose about 5ms per table. Each stops at `ROWS=900`, unde
 sweeper's 1000, so nothing needs holding off. `TABLES`, `FILES`, `REPEAT` and
 `EMBED=1` tune it.
 
+**`swept.js`** — the opposite case: tables filled past 1000 rows, waited on
+until the sweeper rolls them up (polling `/pending`, up to five minutes), then
+queried. Every read comes from Parquet, so this is the one that shows the
+Parquet cache — run it with `config.query.parquetCache.bytes` at 0, then set.
+It prints the first few queries apart from the rest, since the first read of a
+file downloads it.
+
 **`mixed.js`** — store, then read back through the query the receipt handed you,
 with an occasional semantic recall. The other scripts isolate each path; this
 one runs them together, because the interesting failure is contention between

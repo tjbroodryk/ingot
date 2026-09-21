@@ -27,6 +27,7 @@ import type {
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
+import { Lease, type ParquetCache } from './parquet-cache.js';
 import { WarmSessions } from './warm-sessions.js';
 
 export interface EngineLimits {
@@ -56,6 +57,13 @@ interface Session {
   close(): void;
 }
 
+/** Building a session from cached files failed; the caller retries from the store. */
+class CachedReadFailed extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
 /** Raised instead of a bare error so the filter maps it and the metric counts it. */
 class Refused extends InvariantViolation {
   constructor(
@@ -75,6 +83,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
   constructor(
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     private readonly limits: EngineLimits,
+    private readonly cache: ParquetCache,
   ) {
     // Warm sessions load `fts` whether or not the query turns out to need it:
     // off the request path it costs nothing, and it is what today's cold
@@ -82,12 +91,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     this.warm = new WarmSessions(limits.warmSessions, () => this.open({ fullText: true }));
   }
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.warm.start();
+    await this.cache.start();
   }
 
   async onModuleDestroy(): Promise<void> {
     this.warm.close();
+    await this.cache.stop();
     const parser = await this.parser?.catch(() => undefined);
     parser?.instance.closeSync();
   }
@@ -305,18 +316,46 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
    * caller's statement, and decides both which tables are built and which
    * extensions the session needs; `writes` is a roll-up, which always needs the
    * store.
+   *
+   * Only a query's files come through the Parquet cache. A roll-up reads the
+   * generation it is about to replace, and caching that would spend the budget
+   * on a file nothing will ask for again.
+   *
+   * A cached file that fails to read — evicted by another replica between the
+   * check and the read, or a shared volume gone bad — costs one retry against
+   * the store, never the query.
    */
   private async withSession<T>(
     tables: readonly MaterialisableTable[],
     work: (connection: DuckDBConnection) => Promise<T>,
     options: { sql?: string; writes?: boolean } = {},
   ): Promise<T> {
+    const { sql } = options;
+    const named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    const lease =
+      sql === undefined ? Lease.none : await this.cache.lease(named.flatMap((t) => t.sources));
+
+    try {
+      return await this.inSession(tables, named, work, options, lease);
+    } catch (error) {
+      if (!(error instanceof CachedReadFailed)) throw error;
+      this.logger.warn(`A cached Parquet file failed to read; using the store: ${error.message}`);
+      return this.inSession(tables, named, work, options, Lease.none);
+    }
+  }
+
+  private async inSession<T>(
+    tables: readonly MaterialisableTable[],
+    named: readonly MaterialisableTable[],
+    work: (connection: DuckDBConnection) => Promise<T>,
+    options: { sql?: string; writes?: boolean },
+    lease: Lease,
+  ): Promise<T> {
     const { sql, writes = false } = options;
-    const needed = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
-    const fullText = sql !== undefined && needsFullText(needed, sql);
-    const readsStore = needed.some(
-      (table) => table.baseFiles.length > 0 || table.vectorFiles.length > 0,
-    );
+    const fullText = sql !== undefined && needsFullText(named, sql);
+    const needed = named.map((table) => lease.apply(table));
+    // Every file answered from the cache is one `httpfs` never has to reach.
+    const readsStore = lease.readsStore(named);
 
     const pooled = this.warm.take();
     const session = pooled ?? (await this.open({ fullText }));
@@ -339,7 +378,12 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           'ingot.warm_session': pooled !== undefined,
         },
         async () => {
-          for (const table of needed) await this.materialise(connection, table, sql);
+          try {
+            for (const table of needed) await this.materialise(connection, table, sql);
+          } catch (error) {
+            if (lease.local && !(error instanceof Refused)) throw new CachedReadFailed(error);
+            throw error;
+          }
         },
       );
       return await work(connection);

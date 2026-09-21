@@ -7,6 +7,17 @@ export interface RowVector {
   readonly vector: readonly number[];
 }
 
+/** One base-tier object, as the Parquet cache names and fetches it. */
+export interface ParquetFile {
+  /** `<table id>@<createdAt>`. The id alone repeats when a table is dropped and recreated. */
+  readonly table: string;
+  readonly key: string;
+  /** What `baseFiles` or `vectorFiles` carries for this object. */
+  readonly uri: string;
+  /** As the manifest recorded it; 0 when that was unknown. */
+  readonly bytes: number;
+}
+
 /**
  * Everything needed to reconstruct one logical table inside a session: its
  * declared shape, its base Parquet, its overlay, and what has been forgotten.
@@ -17,6 +28,8 @@ export interface MaterialisableTable {
   /** Object-store URIs, already resolved. Empty before the first roll-up. */
   readonly baseFiles: readonly string[];
   readonly vectorFiles: readonly string[];
+  /** Both lists' objects, for the cache to swap a URI for a local path. */
+  readonly sources: readonly ParquetFile[];
   /** Rows accepted but not yet rolled up. Keys are column names. */
   readonly overlayRows: readonly Readonly<Record<string, unknown>>[];
   readonly overlayVectors: readonly RowVector[];

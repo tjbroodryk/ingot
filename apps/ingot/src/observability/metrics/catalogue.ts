@@ -122,6 +122,29 @@ export const Metrics = {
     labels: ['reason'],
   }),
 
+  /**
+   * Base-tier files a session asked the Parquet cache for. `bypass` is a file
+   * read from the store because the cache was off, full, or failed — never a
+   * failed query.
+   */
+  ParquetCacheRequests: defineCounter({
+    name: 'ingot_parquet_cache_requests_total',
+    help: 'Parquet files resolved for a query session, by whether the Parquet cache served them.',
+    labels: ['result'],
+  }),
+  ParquetCacheSize: defineGauge({
+    name: 'ingot_parquet_cache_bytes',
+    help:
+      'Bytes of Parquet in the shared cache. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  ParquetCacheEvictions: defineCounter({
+    name: 'ingot_parquet_cache_evictions_total',
+    help: 'Files removed from the Parquet cache, by why.',
+    labels: ['reason'],
+  }),
+
   // ── roll-up ─────────────────────────────────────────────────────────────
   CompactionDuration: defineHistogram({
     name: 'ingot_compaction_duration_seconds',
@@ -330,6 +353,8 @@ export const DEPLOYMENT_WIDE: readonly string[] = [
   // with the same number — the depth of a queue they all share.
   'ingot_files_pending',
   'ingot_files_abandoned',
+  // One volume every replica mounts, totalled in Postgres.
+  'ingot_parquet_cache_bytes',
 ];
 
 /**
@@ -366,4 +391,19 @@ export enum RefusalReason {
   IngotTooLarge = 'ingot_too_large',
   EmbeddingOnly = 'embedding_only',
   EmbeddingEscape = 'embedding_escape',
+}
+
+/** How the Parquet cache answered, as the label on `ParquetCacheRequests`. */
+export enum CacheResult {
+  Hit = 'hit',
+  Miss = 'miss',
+  Bypass = 'bypass',
+}
+
+/** Why a file left the Parquet cache. */
+export enum EvictionReason {
+  /** Made room for another file. */
+  Lru = 'lru',
+  /** Older than the maximum age. */
+  Age = 'age',
 }

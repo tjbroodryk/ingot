@@ -73,6 +73,12 @@ export class SessionBuilder {
       })),
       baseFiles: table.baseFiles.map((file) => this.store.uri(file.key)),
       vectorFiles: table.vectorFiles.map((file) => this.store.uri(file.key)),
+      sources: [...table.baseFiles, ...table.vectorFiles].map((file) => ({
+        table: `${table.id.value}@${table.createdAt.toISOString()}`,
+        key: file.key,
+        uri: this.store.uri(file.key),
+        bytes: file.bytes,
+      })),
       overlayRows: overlayRows.map((row) => row.payload),
       overlayVectors,
       tombstones: [...tombstones],
