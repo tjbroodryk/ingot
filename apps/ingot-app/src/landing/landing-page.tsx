@@ -109,7 +109,7 @@ export function LandingPage(): ReactNode {
             </a>
           </div>
 
-          <div className="label label-sm speaks-label">Speaks</div>
+          <div className="label label-sm speaks-label">Features</div>
           <div className="speaks">
             {SPEAKS.map((thing) => (
               <span key={thing}>{thing}</span>
