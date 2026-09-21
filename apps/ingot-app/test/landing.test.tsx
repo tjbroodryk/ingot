@@ -145,7 +145,11 @@ describe('the landing page', () => {
     // marker would be the whole document, and this would pass by finding the
     // word further down — which is the failure it exists to catch.
     const heroStart = markup.indexOf('class="hero"');
-    const heroEnd = markup.indexOf('class="landsection"');
+    // The first section after the hero, whatever that section turns out to be:
+    // the marker used to be `.landsection`, which stopped existing when the
+    // terminal moved into the benchmark split, and a missing marker here fails
+    // loudly rather than widening the slice to the whole page.
+    const heroEnd = markup.indexOf('id="what"');
 
     expect(heroStart).toBeGreaterThan(-1);
     expect(heroEnd).toBeGreaterThan(heroStart);

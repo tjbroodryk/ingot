@@ -52,24 +52,41 @@ export const IS_LANDING = MODE === SiteMode.Landing;
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
 /**
+ * Where the landing site lives.
+ *
+ * In the tree rather than in the deploy, because it is a fact about this
+ * project and not about a particular build of it: the public page has one
+ * address, and the files that have to name it — `sitemap.xml`, `robots.txt`'s
+ * `Sitemap:` line, a canonical URL — are wrong at every other one.
+ *
+ * Only the landing build gets it. See {@link SITE_URL}.
+ */
+export const LANDING_ORIGIN = 'https://ingotdb.dev';
+
+/**
  * The origin this build is served from, where that is known — `https://…`,
  * with no trailing slash.
  *
- * Empty by default, and everything the site writes works with it empty: a page
- * links its own site with a root-relative path, which is right at every
- * address at once. What it is *not* enough for is the handful of files that
- * are read off this site by something that is not on it — `robots.txt`'s
- * `Sitemap:` line and every `<loc>` in the sitemap it points at must be
- * absolute, per their own specifications, and a canonical URL is absolute by
- * definition. So those are written when this is set and left out when it is
- * not, rather than guessed at or written relative and quietly ignored.
+ * {@link LANDING_ORIGIN} for a landing build, because that build is the site
+ * at that address. Empty for a dashboard build, and that is not a gap: that
+ * one ships beside somebody's own service and is served from whatever address
+ * they gave it, so there is nothing true to write down and the files that
+ * would need an absolute URL are left out instead of claiming this project's.
+ *
+ * `NEXT_PUBLIC_SITE_URL` overrides both, for a fork or a preview deploy that
+ * is a real site at an address of its own. An empty one is read as "not set"
+ * rather than as "no origin", because that is what an unset repository
+ * variable expands to in a workflow, and a deploy that forgot to set it should
+ * publish this site rather than a sitemap-less copy of it.
  *
  * The pair with {@link BASE_PATH}, not an alternative to it. A GitHub Pages
  * project site is `''` + `/<repo>`; a custom domain at the root is an origin +
  * `''`; a site under a path on a domain of its own is both, and
  * {@link absolute} composes them in that order.
  */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/+$/, '');
+export const SITE_URL = ((process.env.NEXT_PUBLIC_SITE_URL ?? '').trim() ||
+  (IS_LANDING ? LANDING_ORIGIN : '')
+).replace(/\/+$/, '');
 
 /**
  * A path on this site, as far as this build can address it: an absolute URL

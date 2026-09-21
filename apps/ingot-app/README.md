@@ -199,15 +199,16 @@ take a flattened form, and neither does this.
 
 ## What a build decides
 
-Three variables, all inlined by `next build`, because a page with no server has
+Four variables, all inlined by `next build`, because a page with no server has
 no other way to know them — so a deployment that differs in any of them is a
-different build. All three are declared in `turbo.json`, so the cache cannot
+different build. All four are declared in `turbo.json`, so the cache cannot
 hand back a directory made with different ones.
 
 | Variable                  | Default              | What it decides                          |
 | ------------------------- | -------------------- | ---------------------------------------- |
 | `NEXT_PUBLIC_INGOT_URL`   | `http://localhost:3002` | Which service the dashboard talks to. Empty is this site's own origin. |
 | `NEXT_PUBLIC_INGOT_MODE`  | `dashboard`          | Which site this is, and which routes exist. |
+| `NEXT_PUBLIC_SITE_URL`    | `https://ingotdb.dev` in a landing build, *(empty)* in a dashboard one | The origin it writes where a URL has to be absolute. |
 | `NEXT_PUBLIC_BASE_PATH`   | *(empty)*            | The subdirectory it is served from.      |
 
 `NEXT_PUBLIC_INGOT_URL` is the one the gate and the footer print, so a dashboard
@@ -217,7 +218,17 @@ The image builds it empty. Its nginx forwards `/api/` to `INGOT_API_URL`, read
 at container start by `api-proxy.sh`, so where the API is stays a run-time
 setting even though the page cannot read one.
 
+`NEXT_PUBLIC_SITE_URL` is the address in `sitemap.xml`, in `robots.txt`'s
+`Sitemap:` line, in the links `llms.txt` hands a model, and in every canonical
+tag — the handful of places a relative URL is either discarded or wrong. The
+landing site's is in the tree, in `src/site/mode.ts`, because the public page
+has one address and it is a fact about the project. A dashboard build gets
+none: it is served from whatever address its operator chose, so those files are
+left out rather than pointed at this project's domain. Set the variable to
+override both, which is what a fork or a preview deploy at its own address
+wants.
+
 `NEXT_PUBLIC_BASE_PATH` exists for GitHub Pages, which serves a project site
-from `/<repo>/`. Next prepends it to its own asset URLs and Pages' workflow
-reads it off the repository name; a custom domain serves from the root, and
-wants it empty.
+from `/<repo>/`. Next prepends it to its own asset URLs; a site at the root of
+its own domain — which `ingotdb.dev` is — wants it empty, and a fork publishing
+to `<user>.github.io/<repo>` sets it to the subdirectory.

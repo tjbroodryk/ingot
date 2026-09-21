@@ -3,6 +3,7 @@ import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
+import { proofCards, TABLES } from '../benchmarks/benchmarks';
 import { SampleLang, SampleTone } from '../docs/reference';
 import { BENCHMARKS_HREF, DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
 import './landing.css';
@@ -32,6 +33,30 @@ import {
  */
 const RUN_HREF = DEPLOYMENT_HREF ?? REPO_URL;
 const RUN_LOCAL_HREF = DEPLOYMENT_HREF ? `${DEPLOYMENT_HREF}#run-local` : REPO_URL;
+
+/**
+ * The ordinary corpus, which is the one a landing page can lead with.
+ *
+ * `TABLES[0]` rather than a search for the label: the publisher writes the
+ * ordinary run first and the drifted one after it, and a drifted table read as
+ * the headline result understates every column in it. Empty until a run is
+ * published, and the block is left out entirely in that case.
+ */
+const PROOF = proofCards(TABLES[0] ?? null);
+
+/**
+ * What the run was, counted rather than written down.
+ *
+ * The artboard's version says "sixty questions, six task classes, three runs
+ * each", which was true of the run it was drawn against and is a sentence
+ * nobody re-reads when the next one publishes. These three are the same three
+ * figures, read off the table the cards under them come from.
+ */
+const PROOF_RUN = TABLES[0]?.run ?? null;
+const PROOF_LEDE = PROOF_RUN
+  ? `${PROOF_RUN.questions} questions, ${TABLES[0]?.categories.length ?? 0} task classes, ` +
+    `${PROOF_RUN.repeats} runs each. Accuracy above, what it cost to get there below.`
+  : '';
 
 /**
  * The page in front of the project, and only in a landing build — see
@@ -130,21 +155,92 @@ export function LandingPage(): ReactNode {
         </section>
 
         {/*
-          The two calls that are the whole product, side by side, because the
-          claim the page is making is about the second following the first
-          immediately rather than about either on its own.
+          What the claims above cost, and what they are made of — the measured
+          columns beside the two calls that produce them.
+
+          One split rather than two bands, because they answer the same
+          question from opposite ends: the left says the retrieval is better,
+          the right says it is two POSTs. Each half is a head of its own in the
+          system's idiom — flush-left kicker, display title, one paragraph —
+          so neither reads as a caption on the other.
         */}
-        <section className="landsection">
-          <div className="panel panel-wide">
-            <div className="panel-bar">
-              <span className="panel-glyph">≡ ×</span>
-              <span className="panel-rule" />
-              <span>Ingot · crm-notes</span>
-              <span className="panel-rule" />
-            </div>
-            <div className="panel-split">
-              <CodeBlock code={REMEMBER} />
-              <CodeBlock code={RECALL} />
+        <section className="split split-heads" id="benchmark">
+          <div className="split-copy">
+            <span className="label kicker kicker-n">Benchmark</span>
+            <h3>
+              Structured beats
+              <br />
+              similarity
+            </h3>
+            <p>{PROOF_LEDE}</p>
+
+            {PROOF.length > 0 ? (
+              <div className="proof">
+                {PROOF.map((card) => (
+                  <div
+                    className={card.lead ? 'proof-card proof-lead' : 'proof-card'}
+                    key={card.name}
+                  >
+                    <div className="proof-head label label-sm">
+                      <span className="proof-name">{card.name}</span>
+                      <span
+                        className={card.ranked ? 'proof-badge proof-badge-rank' : 'proof-badge'}
+                      >
+                        {card.badge.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="proof-value">
+                      {Math.round(card.accuracy * 100)}%
+                      <span className="proof-pm">±{Math.round(card.stderr * 100)}</span>
+                    </div>
+                    <div className="proof-caption label label-sm">{card.caption.toUpperCase()}</div>
+
+                    <div className="proof-stats">
+                      {card.stats.map((stat) => (
+                        <div className="proof-stat" key={stat.label}>
+                          <div className="proof-stat-value">{stat.value}</div>
+                          <div className="proof-stat-label label label-sm">
+                            {stat.label.toUpperCase()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {BENCHMARKS_HREF ? (
+              <a className="target-more proof-more" href={BENCHMARKS_HREF}>
+                Every column, and what it does not measure →
+              </a>
+            ) : null}
+          </div>
+
+          <div className="split-copy">
+            <span className="label kicker kicker-n">Two calls</span>
+            <h3>
+              Write it once,
+              <br />
+              once, <span className="mark">query</span> it back
+            </h3>
+            <p>
+              No embedding step, and no re-reading the transcript. The tool result becomes a table
+              the model can select from, in the same second it was written.
+            </p>
+
+            <div className="panel">
+              <div className="panel-bar">
+                <span className="panel-glyph">≡ ×</span>
+                <span className="panel-rule" />
+                <span>Ingot · crm-notes</span>
+                <span className="panel-rule" />
+              </div>
+              <div className="panel-split">
+                <CodeBlock code={REMEMBER} />
+                <CodeBlock code={RECALL} />
+              </div>
             </div>
           </div>
         </section>
@@ -160,15 +256,12 @@ export function LandingPage(): ReactNode {
           <div className="landhead">
             <span className="label kicker kicker-n">What it&rsquo;s not</span>
             <h2 className="landtitle">
-              Half of RAG.
-              <br />
-              <span className="mark">The half that finds</span>
+              <span className="mark">RAG</span> Replacement
             </h2>
             <p>
-              &ldquo;RAG&rdquo; names two things that come apart: store documents so a model can
-              find them, and put the top k chunks in the prompt. Ingot is the first. It replaces the
-              half of the stack that stores and finds, and does no part of the half that writes the
-              answer.
+              &ldquo;RAG&rdquo; can encompase complex document processing pipelines, but Ingot
+              focuses solely on the storage and retrieval aspect, leaving the rest to other
+              components.
             </p>
             {BENCHMARKS_HREF ? (
               <a className="target-more landhead-more" href={BENCHMARKS_HREF}>

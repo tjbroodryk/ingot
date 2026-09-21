@@ -246,12 +246,16 @@ The image is the dashboard build, for somebody running the service.
 ## The landing page
 
 `.github/workflows/pages.yml` builds the landing mode and publishes it to
-GitHub Pages on every push to `main` that touches the site. It is the public
-page in front of the project and it says what is true of it — Ingot is
-self-hosted, there is nothing to sign up to, and the way to get it is to run
-it. Pages serves a project site from `/<repo>/`, so the workflow passes
-`NEXT_PUBLIC_BASE_PATH` read off the repository name; a custom domain wants it
-empty.
+[ingotdb.dev](https://ingotdb.dev) on every push to `main` that touches the
+site. It is the public page in front of the project and it says what is true of
+it — Ingot is self-hosted, there is nothing to sign up to, and the way to get
+it is to run it.
+
+The domain is in the tree, in `apps/ingot-app/src/site/mode.ts`, because a
+sitemap and a canonical tag have to name it and there is only one right answer.
+What is not in the tree is GitHub's half: the custom domain in Settings → Pages
+and the DNS records under it. A dashboard build claims no origin at all — it is
+served from wherever its operator put it.
 
 ## Deploying
 

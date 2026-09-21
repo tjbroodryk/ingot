@@ -3,7 +3,7 @@ import { NOT_NEEDED, OPTIONAL, REQUIRED } from '../src/deployment/dependencies';
 import { RUN_TARGETS } from '../src/deployment/targets';
 import { BASICS, STATUS_CODES } from '../src/docs/page-sections';
 import { ENDPOINTS } from '../src/docs/reference';
-import { REPO_URL, SITE_URL, SiteMode } from '../src/site/mode';
+import { LANDING_ORIGIN, REPO_URL, routesFor, SITE_URL, SiteMode } from '../src/site/mode';
 import { DEPLOYMENT } from '../src/text/deployment-text';
 import { REFERENCE } from '../src/text/reference-text';
 import { WHY } from '../src/text/why-text';
@@ -182,19 +182,18 @@ describe.each([
 });
 
 /**
- * The move to a custom domain, run rather than reasoned about.
+ * The origin, run rather than reasoned about.
  *
- * `NEXT_PUBLIC_SITE_URL` is read once when `src/site/mode.ts` is loaded — that
- * is the point of it, since a static export has no run time to read it in — so
- * the only way to assert what setting it does is to load the module again in a
- * process that has it. That is what this spawns.
+ * The mode and `NEXT_PUBLIC_SITE_URL` are read once when `src/site/mode.ts` is
+ * loaded — that is the point of them, since a static export has no run time to
+ * read them in — so the only way to assert what a build does with them is to
+ * load the module again in a process that has them. That is what this spawns.
  *
- * Worth the subprocess because this is the one change nobody will make twice:
- * the variable gets set in the repository's settings, the next deploy is the
- * first time anything renders with it, and the failure mode is a sitemap full
- * of URLs on the wrong host.
+ * Worth the subprocess because the failure mode is quiet and public: a sitemap
+ * full of URLs on the wrong host, or a self-hoster's copy of the dashboard
+ * claiming to be canonically this project's site.
  */
-describe('an origin, once there is one', () => {
+describe('the origin a build writes', () => {
   const SITE = 'https://ingot.example';
 
   const emitted = (env: Record<string, string>): readonly TextFile[] => {
@@ -208,6 +207,8 @@ describe('an origin, once there is one', () => {
         ...process.env,
         MODULE: `${import.meta.dir}/../src/text/text-files.ts`,
         NEXT_PUBLIC_INGOT_MODE: 'landing',
+        NEXT_PUBLIC_SITE_URL: '',
+        NEXT_PUBLIC_BASE_PATH: '',
         ...env,
       },
     });
@@ -217,11 +218,31 @@ describe('an origin, once there is one', () => {
   };
 
   const withOrigin = emitted({ NEXT_PUBLIC_SITE_URL: SITE });
+  const dashboard = emitted({ NEXT_PUBLIC_INGOT_MODE: 'dashboard' });
   const at = (files: readonly TextFile[], path: string) =>
     files.find((file) => file.path === path);
 
+  it('is this project’s domain in a landing build, with nothing set', () => {
+    const locations = [
+      ...(at(emitted({}), 'sitemap.xml')?.body.matchAll(/<loc>([^<]+)<\/loc>/g) ?? []),
+    ].map((match) => match[1]);
+
+    expect(locations).toEqual([
+      `${LANDING_ORIGIN}/`,
+      `${LANDING_ORIGIN}/why/`,
+      `${LANDING_ORIGIN}/docs/`,
+      `${LANDING_ORIGIN}/deployment/`,
+      `${LANDING_ORIGIN}/benchmarks/`,
+    ]);
+  });
+
+  it('is nobody’s in a dashboard build, which is served from an address it cannot know', () => {
+    expect(at(dashboard, 'sitemap.xml')).toBeUndefined();
+    expect(at(dashboard, 'robots.txt')?.body).not.toContain('Sitemap:');
+    expect(at(dashboard, 'llms.txt')?.body).not.toContain(LANDING_ORIGIN);
+  });
+
   it('writes a sitemap only once it can address the pages in one', () => {
-    expect(at(emitted({}), 'sitemap.xml')).toBeUndefined();
     expect(at(withOrigin, 'sitemap.xml')).toBeDefined();
   });
 
@@ -235,12 +256,30 @@ describe('an origin, once there is one', () => {
       `${SITE}/why/`,
       `${SITE}/docs/`,
       `${SITE}/deployment/`,
+      `${SITE}/benchmarks/`,
     ]);
   });
 
+  it('lists every route the mode has except the console', () => {
+    // Derived from the route map rather than written out again, because the
+    // way this file goes wrong is a route being added to the site and not to
+    // it — `/benchmarks` was missing from the sitemap for exactly as long as
+    // there was no origin to publish one with.
+    const { dashboard: _console, ...crawlable } = routesFor(SiteMode.Landing);
+    const expected = Object.values(crawlable).filter((route): route is string => route !== null);
+    const locations = [
+      ...(at(withOrigin, 'sitemap.xml')?.body.matchAll(/<loc>([^<]+)<\/loc>/g) ?? []),
+    ].map((match) => match[1]?.replace(SITE, ''));
+
+    expect(new Set(locations)).toEqual(new Set(expected));
+  });
+
   it('points robots.txt at it, absolutely — a relative one is discarded', () => {
-    expect(at(emitted({}), 'robots.txt')?.body).not.toContain('Sitemap:');
     expect(at(withOrigin, 'robots.txt')?.body).toContain(`Sitemap: ${SITE}/sitemap.xml`);
+  });
+
+  it('takes the variable over the tree, for a fork or a preview at its own address', () => {
+    expect(at(withOrigin, 'sitemap.xml')?.body).not.toContain(LANDING_ORIGIN);
   });
 
   it('makes the index links absolute, so they survive being copied off the site', () => {

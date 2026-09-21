@@ -168,9 +168,16 @@ function robotsTxt(mode: SiteMode): string {
  */
 function sitemapXml(mode: SiteMode): string {
   const routes = routesFor(mode);
-  const pages = [routes.what, routes.why, routes.docs, routes.deployment].filter(
-    (route): route is string => route !== null,
-  );
+  // Every HTML route the mode has, named one by one rather than taken from
+  // `Object.values`: `dashboard` is in that object too and is the one route
+  // that must not be here.
+  const pages = [
+    routes.what,
+    routes.why,
+    routes.docs,
+    routes.deployment,
+    routes.benchmarks,
+  ].filter((route): route is string => route !== null);
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',

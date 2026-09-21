@@ -255,6 +255,114 @@ export function leadStats(table: PublishedTable | null): readonly LeadStat[] {
 /** Whether there is anything to show, which decides which page this is. */
 export const HAS_RESULTS = TABLES.some((table) => table.adapters.length > 0);
 
+/* ── the four cards the landing page leads with ─────────────────────────── */
+
+/** One card: an adapter, reduced to the four figures that fit on one. */
+export interface ProofCard {
+  readonly name: string;
+  /** `Rank 2`, `Baseline`, `Control` — what this column is here to be. */
+  readonly badge: string;
+  /** Whether the badge is a placing, which is the only one drawn as a chip. */
+  readonly ranked: boolean;
+  /** The winner, filled in accent. At most one card has it. */
+  readonly lead: boolean;
+  readonly accuracy: number;
+  readonly stderr: number;
+  /** What the big number is, and where this column is weakest. */
+  readonly caption: string;
+  readonly stats: readonly { readonly value: string; readonly label: string }[];
+}
+
+/**
+ * The generic baseline and the ablation, by the names `packages/bench` gives
+ * them. Everything else on a card is derived, and these are looked up rather
+ * than assumed — a run published without one of them renders three cards.
+ *
+ * `vector` rather than the strongest baseline in the table on purpose: it is
+ * brute-force exact cosine over the same embeddings, written in this
+ * repository, so nobody has to take our word for what it does. Naming a
+ * competitor's product on a landing page is a different kind of claim from
+ * naming it in a benchmark, and `/benchmarks` is where that one belongs.
+ */
+const PROOF_BASELINE = 'vector';
+const PROOF_CONTROL = 'control-same-store-top-k';
+
+/**
+ * The same argument the page above them makes, as four columns of one run.
+ *
+ * Every figure is read off `results.json` and every placing is counted, so the
+ * block cannot flatter a run it does not have — a published run where Ingot
+ * places third says third. The four are picked by role rather than by score,
+ * which is the part worth being careful about: two Ingot surfaces, the generic
+ * vector baseline, and the ablation that holds the store constant and takes
+ * the SQL away. Picking the top four by accuracy instead would quietly drop
+ * the ablation, which is the only column that answers "is this just a better
+ * chunker".
+ *
+ * The caption is the weakest class rather than the best one, and the third
+ * statistic is evidence precision rather than recall, for the same reason.
+ * Recall is within a few points across the whole table and flatters everybody;
+ * precision is where top-k actually parts company with a SELECT, and a card
+ * that showed our recall against their precision would be picking the metric
+ * per column. One rule, every card.
+ */
+export function proofCards(table: PublishedTable | null): readonly ProofCard[] {
+  const adapters = table?.adapters ?? [];
+  const categories = table?.categories ?? [];
+  if (adapters.length === 0) return [];
+
+  const ranked = [...adapters].sort((a, b) => b.accuracy - a.accuracy);
+  const placing = (adapter: PublishedAdapter): number =>
+    ranked.findIndex((one) => one.name === adapter.name) + 1;
+
+  const named = (name: string): readonly PublishedAdapter[] => {
+    const found = ranked.find((one) => one.name === name);
+    return found ? [found] : [];
+  };
+
+  const chosen: readonly { readonly adapter: PublishedAdapter; readonly badge: string }[] = [
+    ...ranked
+      .filter((one) => one.name.startsWith('ingot'))
+      .slice(0, 2)
+      .map((adapter) => ({ adapter, badge: `Rank ${placing(adapter)}` })),
+    ...named(PROOF_BASELINE).map((adapter) => ({ adapter, badge: 'Baseline' })),
+    ...named(PROOF_CONTROL).map((adapter) => ({ adapter, badge: 'Control' })),
+  ];
+
+  return chosen.map(({ adapter, badge }) => ({
+    name: adapterLabel(adapter.name),
+    badge,
+    ranked: badge.startsWith('Rank'),
+    lead: placing(adapter) === 1,
+    accuracy: adapter.accuracy,
+    stderr: adapter.stderr,
+    caption: caption(adapter, categories),
+    stats: [
+      { value: adapter.contextTokens.toLocaleString('en-GB'), label: 'ctx tokens' },
+      { value: adapter.toolCalls.toFixed(1), label: 'tool calls' },
+      {
+        value:
+          adapter.evidencePrecision === null
+            ? '—'
+            : `${Math.round(adapter.evidencePrecision * 100)}%`,
+        label: 'ev. precision',
+      },
+    ],
+  }));
+}
+
+/** `Overall accuracy — weakest class ordering, 11%`, or the first half alone. */
+function caption(adapter: PublishedAdapter, categories: readonly string[]): string {
+  const scored = categories.filter((one) => adapter.byCategory[one] !== undefined);
+  if (scored.length === 0) return 'Overall accuracy';
+
+  const worst = scored.reduce((low, one) =>
+    (adapter.byCategory[one] as number) < (adapter.byCategory[low] as number) ? one : low,
+  );
+  const share = Math.round((adapter.byCategory[worst] as number) * 100);
+  return `Overall accuracy — weakest class ${worst}, ${share}%`;
+}
+
 export const BENCHMARKS_DESCRIPTION =
   'What an agent gets back out of a memory, and what it costs to get it — Ingot ' +
   'against vector search local and hosted, a hosted memory, and its own embedding ' +

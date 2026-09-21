@@ -35,12 +35,6 @@
   border-bottom: var(--rule);
 }
 
-/* One that does not: a section whose content is a single block. */
-.landsection {
-  padding: 56px var(--space-8) 72px;
-  border-bottom: var(--rule);
-}
-
 /* ══ hero ═══════════════════════════════════════════════════════════════ */
 
 .hero {
@@ -268,9 +262,180 @@
  * grid ends on its cells' rules, so this closes the grid and brings back the
  * space the head would have given.
  */
-.steps + .landfigure {
+.steps + .landfigure,
+.features + .landfigure {
   padding-top: 64px;
   border-top: var(--rule);
+}
+
+/* ══ the four measured columns ══════════════════════════════════════════
+   A figure rather than another grid of tiles: one strong frame around four
+   cells, so the block reads as a table somebody ran rather than as more of
+   the page's copy. Every number in it comes from `proofCards`.
+
+   One cell to a row, because the block lives in half a page now — four
+   figures across a column this narrow is a stat nobody can read, and stacked
+   is also the order the argument is in: the two surfaces, then what they are
+   being measured against.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.proof {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border: var(--rule-strong);
+  text-align: left;
+}
+
+.proof-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6);
+}
+
+/*
+ * The seam is the strong rule, not the section rule: inside a frame this heavy
+ * a 20% line reads as a crease in one card rather than as a division between
+ * two of them.
+ */
+.proof-card + .proof-card {
+  border-top: var(--rule-strong);
+}
+
+/* The winner, and only ever one — see `ProofCard.lead`. */
+.proof-lead {
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+.proof-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.proof-badge {
+  color: var(--ink-70);
+}
+
+/* A placing is a claim and gets a chip; a role is a label and does not. */
+.proof-badge-rank {
+  padding: 4px 9px;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent-deep);
+}
+
+.proof-lead .proof-badge-rank {
+  border-color: color-mix(in srgb, var(--color-ink-inverse) 50%, transparent);
+  color: var(--color-ink-inverse);
+}
+
+.proof-value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(44px, 5.2vw, 72px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+.proof-pm {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-70);
+}
+
+.proof-lead .proof-pm {
+  color: color-mix(in srgb, var(--color-ink-inverse) 75%, transparent);
+}
+
+.proof-caption {
+  margin-top: var(--space-4);
+  /* `auto` takes the slack, so the statistics line up across four captions of
+     four different lengths — the same reason `.wire-node code` does. */
+  margin-bottom: auto;
+  color: var(--ink-70);
+}
+
+.proof-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: var(--rule);
+}
+
+.proof-lead .proof-stats {
+  border-top-color: color-mix(in srgb, var(--color-ink-inverse) 35%, transparent);
+}
+
+.proof-stat-value {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+
+.proof-stat-label {
+  margin-top: var(--space-1);
+  color: var(--ink-70);
+}
+
+/*
+ * The three greys the filled card cannot use, last so that each one follows
+ * the rule it overrides — a `.proof-lead .x` written above `.x` still wins on
+ * specificity, and still reads as though it does not.
+ */
+.proof-lead .proof-badge,
+.proof-lead .proof-caption,
+.proof-lead .proof-stat-label {
+  color: color-mix(in srgb, var(--color-ink-inverse) 85%, transparent);
+}
+
+/*
+ * What the block is, over the frame rather than under it — the same place a
+ * section head sits, at the size and colour of one, because that is the job it
+ * is doing here.
+ *
+ * Centred with the prose above it even though the cards below are not: the
+ * label belongs to the section, and the frame is what marks the cards as a
+ * different kind of thing.
+ */
+/*
+ * A split whose halves are both heads rather than head-and-figure.
+ *
+ * `.split-copy` sets the padding and the measure; what it does not expect is a
+ * framed block under the prose, so the figures get the air a paragraph would
+ * have had and nothing else changes.
+ */
+.split-heads .proof,
+.split-heads .panel {
+  margin-top: var(--space-6);
+}
+
+/*
+ * Two panes do not fit half a page. The sheet already folds them at 1000px for
+ * the whole viewport; inside a column they fold at every width.
+ */
+.split-heads .panel-split {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.split-heads .panel-split .code + .code {
+  border-left: 0;
+  border-top: var(--rule);
+}
+
+/* Under the frame rather than inside it: the link is the section's, not a card's. */
+.proof-more {
+  display: inline-block;
+  margin-top: var(--space-6);
 }
 
 .wire-lane {

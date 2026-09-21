@@ -31,14 +31,16 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   /**
-   * What a relative URL in this object is relative *to*.
+   * What a relative URL in this object is relative *to*: the landing site's
+   * own domain, and nothing in a dashboard build.
    *
-   * Undefined until the site has an address of its own, and that is the honest
-   * state rather than a gap: metadata is what other people's software quotes
-   * this page as, and a canonical or a preview URL is a claim about where the
-   * page lives. A self-hosted copy lives at whatever somebody typed, so there
-   * is nothing true to say, and Next leaves the tags off rather than resolving
-   * them against a guess.
+   * That asymmetry is the honest state rather than a gap. Metadata is what
+   * other people's software quotes this page as, and a canonical or a preview
+   * URL is a claim about where the page lives. The public site lives at one
+   * address; a self-hosted copy lives at whatever somebody typed, so there is
+   * nothing true to say, and Next leaves the tags off rather than resolving
+   * them against a guess — or against this project's domain, which is the
+   * worse guess of the two.
    */
   metadataBase: SITE_URL ? new URL(SITE_URL) : undefined,
   // Guarded by the same condition rather than written unconditionally: a
