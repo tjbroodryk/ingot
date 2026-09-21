@@ -393,6 +393,16 @@ config:
     # replacement. Size it to the burst of concurrent queries a pod sees — an
     # idle one is a few MB and `threads` idle threads. 0 opens on demand.
     warmSessions: 2
+    # Rolled-up Parquet kept on each pod's scratch volume, so a query on a
+    # swept table skips the bucket. Off until `bytes` is set (`2Gi` or a byte
+    # count); keep it well under `server.scratch.sizeLimit`, which spill and
+    # roll-up staging share. Least recently used goes first, and nothing stays
+    # longer than `maxAgeMs` — which is also how long a destroyed ingot's data
+    # can outlive its bucket objects on a pod.
+    parquetCache:
+      bytes: 0
+      maxAgeMs: 86400000
+      dir: /var/lib/ingot/parquet-cache
 
   # ── observability ────────────────────────────────────────────────────────
   # Tracing is on unless explicitly disabled, and the service's own default

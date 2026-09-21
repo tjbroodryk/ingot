@@ -17,6 +17,7 @@
     "load:mixed": "k6 run load/mixed.js",
     "load:read": "k6 run load/read.js",
     "load:tables": "k6 run load/multi-table.js",
+    "load:swept": "k6 run load/swept.js",
     "load:write": "k6 run load/write.js",
     "spike:duckdb": "bun scripts/spike-duckdb.ts",
     "start": "bun dist/main.js",

@@ -140,6 +140,9 @@ data:
   INGOT_QUERY_THREADS: {{ .Values.config.query.threads | quote }}
   INGOT_MAX_TABLE_ROWS: {{ .Values.config.query.maxTableRows | quote }}
   INGOT_QUERY_WARM_SESSIONS: {{ .Values.config.query.warmSessions | quote }}
+  INGOT_PARQUET_CACHE_BYTES: {{ .Values.config.query.parquetCache.bytes | quote }}
+  INGOT_PARQUET_CACHE_MAX_AGE_MS: {{ .Values.config.query.parquetCache.maxAgeMs | quote }}
+  INGOT_PARQUET_CACHE_DIR: {{ .Values.config.query.parquetCache.dir | quote }}
 
   # ── observability ───────────────────────────────────────────────────────
   # Off is said explicitly rather than left to the default, which is on and

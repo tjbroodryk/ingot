@@ -5,6 +5,7 @@ import { OBJECT_STORE, type ObjectStore } from '../storage/object-store.port.js'
 import { StorageModule } from '../storage/storage.module.js';
 import { ANALYTICAL_ENGINE } from './analytical-engine.port.js';
 import { DuckDbEngine } from './duckdb-engine.js';
+import { ParquetCache } from './parquet-cache.js';
 import { SessionBuilder } from './session-builder.js';
 
 /**
@@ -21,7 +22,8 @@ import { SessionBuilder } from './session-builder.js';
     {
       provide: ANALYTICAL_ENGINE,
       inject: [OBJECT_STORE, ENV],
-      useFactory: (store: ObjectStore, env: Env) => new DuckDbEngine(store, env.engine),
+      useFactory: (store: ObjectStore, env: Env) =>
+        new DuckDbEngine(store, env.engine, new ParquetCache(env.parquetCache, store)),
     },
   ],
   exports: [ANALYTICAL_ENGINE, SessionBuilder, StorageModule],

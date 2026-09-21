@@ -27,6 +27,7 @@ import type {
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
+import type { Lease, ParquetCache } from './parquet-cache.js';
 import { WarmSessions } from './warm-sessions.js';
 
 export interface EngineLimits {
@@ -75,6 +76,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
   constructor(
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     private readonly limits: EngineLimits,
+    private readonly cache: ParquetCache,
   ) {
     // Warm sessions load `fts` whether or not the query turns out to need it:
     // off the request path it costs nothing, and it is what today's cold
@@ -82,12 +84,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     this.warm = new WarmSessions(limits.warmSessions, () => this.open({ fullText: true }));
   }
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.warm.start();
+    await this.cache.start();
   }
 
   async onModuleDestroy(): Promise<void> {
     this.warm.close();
+    this.cache.stop();
     const parser = await this.parser?.catch(() => undefined);
     parser?.instance.closeSync();
   }
@@ -305,6 +309,10 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
    * caller's statement, and decides both which tables are built and which
    * extensions the session needs; `writes` is a roll-up, which always needs the
    * store.
+   *
+   * Only a query's files come through the local cache. A roll-up reads the
+   * generation it is about to replace, and caching that would spend the budget
+   * on a file nothing will ask for again.
    */
   private async withSession<T>(
     tables: readonly MaterialisableTable[],
@@ -312,14 +320,25 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     options: { sql?: string; writes?: boolean } = {},
   ): Promise<T> {
     const { sql, writes = false } = options;
-    const needed = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
-    const fullText = sql !== undefined && needsFullText(needed, sql);
-    const readsStore = needed.some(
-      (table) => table.baseFiles.length > 0 || table.vectorFiles.length > 0,
+    const named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    const fullText = sql !== undefined && needsFullText(named, sql);
+
+    const lease =
+      sql === undefined ? undefined : await this.cache.lease(named.flatMap((t) => t.sources));
+    const needed = lease ? named.map((table) => local(table, lease)) : named;
+    // Every file answered locally is one `httpfs` never has to reach.
+    const readsStore = needed.some((table) =>
+      table.sources.some((file) => (lease ? lease.path(file.uri) === file.uri : true)),
     );
 
     const pooled = this.warm.take();
-    const session = pooled ?? (await this.open({ fullText }));
+    let session: Session;
+    try {
+      session = pooled ?? (await this.open({ fullText }));
+    } catch (error) {
+      lease?.release();
+      throw error;
+    }
     try {
       const { connection } = session;
       // Step 3, only when something will reach the store. A table that has
@@ -345,6 +364,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
       return await work(connection);
     } finally {
       session.close();
+      lease?.release();
     }
   }
 
@@ -782,6 +802,15 @@ export function narrow<T extends { name: string }>(
   // message than anything this function could invent. But if nothing matched,
   // fall back rather than build an empty session.
   return selected.length > 0 ? selected : tables;
+}
+
+/** The table with every object the cache holds pointed at its local copy. */
+function local(table: MaterialisableTable, lease: Lease): MaterialisableTable {
+  return {
+    ...table,
+    baseFiles: table.baseFiles.map((uri) => lease.path(uri)),
+    vectorFiles: table.vectorFiles.map((uri) => lease.path(uri)),
+  };
 }
 
 /**

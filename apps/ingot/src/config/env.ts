@@ -7,7 +7,7 @@ import { concurrencyEnv } from '../contexts/records/application/background-setti
 import { generationGraceEnv } from '../contexts/records/application/generation-grace.js';
 import { databaseEnv } from '../database/database-settings.js';
 import { deliveryEnv } from '../delivery/delivery-settings.js';
-import { engineEnv } from '../engine/engine-settings.js';
+import { engineEnv, parquetCacheEnv } from '../engine/engine-settings.js';
 import { httpEnv } from '../http/body-limit.js';
 import { telemetryEnv } from '../observability/config.js';
 import { storageEnv } from '../storage/storage-settings.js';
@@ -26,6 +26,7 @@ const SECTIONS = {
   database: databaseEnv,
   storage: storageEnv,
   engine: engineEnv,
+  parquetCache: parquetCacheEnv,
   ai: aiEnv,
   delivery: deliveryEnv,
   files: filesEnv,

@@ -122,6 +122,27 @@ export const Metrics = {
     labels: ['reason'],
   }),
 
+  /**
+   * Base-tier files a session asked the local cache for. `bypass` is a file
+   * read from the store because the cache was off, full, or failed — never a
+   * failed query.
+   */
+  ParquetCacheRequests: defineCounter({
+    name: 'ingot_parquet_cache_requests_total',
+    help: 'Parquet files resolved for a query session, by whether the local cache served them.',
+    labels: ['result'],
+  }),
+  ParquetCacheSize: defineGauge({
+    name: 'ingot_parquet_cache_bytes',
+    help: 'Bytes of Parquet this process holds in its local cache, including downloads in flight.',
+    labels: [],
+  }),
+  ParquetCacheEvictions: defineCounter({
+    name: 'ingot_parquet_cache_evictions_total',
+    help: 'Files removed from the local Parquet cache, by why.',
+    labels: ['reason'],
+  }),
+
   // ── roll-up ─────────────────────────────────────────────────────────────
   CompactionDuration: defineHistogram({
     name: 'ingot_compaction_duration_seconds',
@@ -341,6 +362,8 @@ export const DEPLOYMENT_WIDE: readonly string[] = [
 export const PER_PROCESS: readonly string[] = [
   'ingot_http_requests_in_flight',
   'ingot_db_pool_connections',
+  // Each pod's own disk.
+  'ingot_parquet_cache_bytes',
 ];
 
 /** The pool states `DbPoolConnections` reports. */
@@ -366,4 +389,19 @@ export enum RefusalReason {
   IngotTooLarge = 'ingot_too_large',
   EmbeddingOnly = 'embedding_only',
   EmbeddingEscape = 'embedding_escape',
+}
+
+/** How the local Parquet cache answered, as the label on `ParquetCacheRequests`. */
+export enum CacheResult {
+  Hit = 'hit',
+  Miss = 'miss',
+  Bypass = 'bypass',
+}
+
+/** Why a file left the local Parquet cache. */
+export enum EvictionReason {
+  /** Made room for another file. */
+  Lru = 'lru',
+  /** Older than the maximum age. */
+  Age = 'age',
 }
