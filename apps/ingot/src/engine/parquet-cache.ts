@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { Logger } from '@nestjs/common';
 import { CacheResult, EvictionReason, Metrics, observe } from '../observability/index.js';
 import type { ObjectStore } from '../storage/object-store.port.js';
-import type { ParquetFile } from './analytical-engine.port.js';
+import type { MaterialisableTable, ParquetFile } from './analytical-engine.port.js';
 import type { CachedFileUse, EvictedFile, ParquetCacheIndex } from './parquet-cache-index.port.js';
 
 export interface ParquetCacheSettings {
@@ -19,11 +19,35 @@ export interface ParquetCacheSettings {
 }
 
 /** Where a session reads each of its files from. */
-export interface Lease {
-  /** The cached copy of `uri` when there is one, `uri` itself when there is not. */
-  path(uri: string): string;
+export class Lease {
+  /** Every file from the store: a roll-up, or the retry after a cached read failed. */
+  static readonly none = new Lease(new Map());
+
+  constructor(private readonly cached: ReadonlyMap<string, string>) {}
+
   /** Whether any file resolved to a cached copy. */
-  readonly local: boolean;
+  get local(): boolean {
+    return this.cached.size > 0;
+  }
+
+  /** The cached copy of `uri` when there is one, `uri` itself when there is not. */
+  path(uri: string): string {
+    return this.cached.get(uri) ?? uri;
+  }
+
+  /** The table with every object the cache holds pointed at its local copy. */
+  apply(table: MaterialisableTable): MaterialisableTable {
+    return {
+      ...table,
+      baseFiles: table.baseFiles.map((uri) => this.path(uri)),
+      vectorFiles: table.vectorFiles.map((uri) => this.path(uri)),
+    };
+  }
+
+  /** Whether any of these tables' files still has to come from the store. */
+  readsStore(tables: readonly MaterialisableTable[]): boolean {
+    return tables.some((table) => table.sources.some((file) => !this.cached.has(file.uri)));
+  }
 }
 
 /** Unread this long before the sweep may delete a file: reads on other replicas aren't tracked. */
@@ -82,7 +106,7 @@ export class ParquetCache {
         if (path) local.set(file.uri, path);
       }),
     );
-    return { path: (uri) => local.get(uri) ?? uri, local: local.size > 0 };
+    return new Lease(local);
   }
 
   /** For a deleted table or ingot: the next sweep past the idle wait deletes it all. */

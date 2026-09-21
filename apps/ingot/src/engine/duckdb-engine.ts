@@ -27,7 +27,7 @@ import type {
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
-import type { Lease, ParquetCache } from './parquet-cache.js';
+import { Lease, type ParquetCache } from './parquet-cache.js';
 import { WarmSessions } from './warm-sessions.js';
 
 export interface EngineLimits {
@@ -333,14 +333,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     const { sql } = options;
     const named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
     const lease =
-      sql === undefined ? undefined : await this.cache.lease(named.flatMap((t) => t.sources));
+      sql === undefined ? Lease.none : await this.cache.lease(named.flatMap((t) => t.sources));
 
     try {
       return await this.inSession(tables, named, work, options, lease);
     } catch (error) {
       if (!(error instanceof CachedReadFailed)) throw error;
       this.logger.warn(`A cached Parquet file failed to read; using the store: ${error.message}`);
-      return this.inSession(tables, named, work, options, undefined);
+      return this.inSession(tables, named, work, options, Lease.none);
     }
   }
 
@@ -349,15 +349,13 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     named: readonly MaterialisableTable[],
     work: (connection: DuckDBConnection) => Promise<T>,
     options: { sql?: string; writes?: boolean },
-    lease: Lease | undefined,
+    lease: Lease,
   ): Promise<T> {
     const { sql, writes = false } = options;
     const fullText = sql !== undefined && needsFullText(named, sql);
-    const needed = lease ? named.map((table) => local(table, lease)) : named;
+    const needed = named.map((table) => lease.apply(table));
     // Every file answered from the cache is one `httpfs` never has to reach.
-    const readsStore = needed.some((table) =>
-      table.sources.some((file) => (lease ? lease.path(file.uri) === file.uri : true)),
-    );
+    const readsStore = lease.readsStore(named);
 
     const pooled = this.warm.take();
     const session = pooled ?? (await this.open({ fullText }));
@@ -383,7 +381,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           try {
             for (const table of needed) await this.materialise(connection, table, sql);
           } catch (error) {
-            if (lease?.local && !(error instanceof Refused)) throw new CachedReadFailed(error);
+            if (lease.local && !(error instanceof Refused)) throw new CachedReadFailed(error);
             throw error;
           }
         },
@@ -828,15 +826,6 @@ export function narrow<T extends { name: string }>(
   // message than anything this function could invent. But if nothing matched,
   // fall back rather than build an empty session.
   return selected.length > 0 ? selected : tables;
-}
-
-/** The table with every object the cache holds pointed at its local copy. */
-function local(table: MaterialisableTable, lease: Lease): MaterialisableTable {
-  return {
-    ...table,
-    baseFiles: table.baseFiles.map((uri) => lease.path(uri)),
-    vectorFiles: table.vectorFiles.map((uri) => lease.path(uri)),
-  };
 }
 
 /**
