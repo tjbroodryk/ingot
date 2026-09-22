@@ -1062,6 +1062,33 @@
   text-transform: uppercase;
   border-bottom: 2px solid var(--ink-100);
 }
+/* The header's own type, so a sortable column reads as a heading first. */
+.bench-runs-sort {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.bench-runs-sort:hover,
+.bench-runs thead th[aria-sort] {
+  color: var(--color-ink);
+}
+/* Arrow on the left of right-aligned headers, so the label stays flush with the
+   figures under it. */
+.bench-runs-num .bench-runs-sort {
+  flex-direction: row-reverse;
+}
+.bench-runs-sort-arrow {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+}
 .bench-runs-num {
   text-align: right;
   font-variant-numeric: tabular-nums;

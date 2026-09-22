@@ -1073,6 +1073,53 @@ function isProduct(adapter: string): boolean {
   return adapter.startsWith('ingot');
 }
 
+interface SortColumn {
+  readonly key: string;
+  readonly label: string;
+  readonly numeric: boolean;
+  readonly value: (run: TranscriptRun) => string | number;
+}
+
+const SORT_COLUMNS: readonly SortColumn[] = [
+  { key: 'run', label: 'run', numeric: false, value: ({ question }) => question.id },
+  { key: 'class', label: 'class', numeric: false, value: ({ question }) => question.category },
+  {
+    key: 'adapter',
+    label: 'adapter',
+    numeric: false,
+    value: ({ run }) => adapterLabel(run.adapter),
+  },
+  { key: 'result', label: 'result', numeric: false, value: ({ run }) => (run.correct ? 0 : 1) },
+  { key: 'calls', label: 'calls', numeric: true, value: ({ run }) => run.calls.length },
+  { key: 'tokens', label: 'tokens', numeric: true, value: ({ run }) => run.contextTokens },
+  { key: 'time', label: 'time', numeric: true, value: ({ run }) => run.ms },
+];
+
+interface Sort {
+  readonly key: string;
+  readonly descending: boolean;
+}
+
+/*
+ * Stable, so rows that tie keep the order they arrived in: question order, then
+ * adapter order. That is also why unsorted needs no state of its own — sorting
+ * by run ascending gives it back.
+ */
+function sortRuns(runs: readonly TranscriptRun[], sort: Sort | null): readonly TranscriptRun[] {
+  const column = SORT_COLUMNS.find(({ key }) => key === sort?.key);
+  if (!sort || !column) return runs;
+  const sign = sort.descending ? -1 : 1;
+  return [...runs].sort((a, b) => {
+    const x = column.value(a);
+    const y = column.value(b);
+    const order =
+      typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : String(x).localeCompare(String(y), 'en-GB', { numeric: true });
+    return order * sign;
+  });
+}
+
 /** The runs, flat, with a trace one click away from each. */
 function RunsTable({
   runs,
@@ -1097,6 +1144,17 @@ function RunsTable({
   const shown =
     showing === null ? runs : runs.filter(({ question }) => question.category === showing);
   const correct = shown.filter(({ run }) => run.correct).length;
+
+  const [sort, setSort] = useState<Sort | null>(null);
+  const sorted = sortRuns(shown, sort);
+  // Numbers open biggest first, since the question is usually which run cost
+  // the most; a second click on the same column flips it.
+  const sortBy = (column: SortColumn): void =>
+    setSort((current) =>
+      current?.key === column.key
+        ? { key: column.key, descending: !current.descending }
+        : { key: column.key, descending: column.numeric },
+    );
 
   return (
     <>
@@ -1140,26 +1198,38 @@ function RunsTable({
         <table className="bench-runs">
           <thead>
             <tr>
-              <th scope="col">run</th>
-              <th scope="col">class</th>
-              <th scope="col">adapter</th>
-              <th scope="col">result</th>
-              <th scope="col" className="bench-runs-num">
-                calls
-              </th>
-              <th scope="col" className="bench-runs-num">
-                tokens
-              </th>
-              <th scope="col" className="bench-runs-num">
-                time
-              </th>
+              {SORT_COLUMNS.map((column) => {
+                const active = sort?.key === column.key;
+                const direction = active && sort.descending ? 'descending' : 'ascending';
+                return (
+                  <th
+                    scope="col"
+                    key={column.key}
+                    className={column.numeric ? 'bench-runs-num' : undefined}
+                    aria-sort={active ? direction : undefined}
+                  >
+                    <button
+                      type="button"
+                      className="bench-runs-sort"
+                      onClick={() => sortBy(column)}
+                    >
+                      {column.label}
+                      {/* Always present, so the label does not shift when a
+                          column becomes the sorted one. */}
+                      <span aria-hidden="true" className="bench-runs-sort-arrow">
+                        {active ? (sort.descending ? '↓' : '↑') : ''}
+                      </span>
+                    </button>
+                  </th>
+                );
+              })}
               <th scope="col">
                 <span className="bench-sr">trace</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {shown.map(({ question, run }) => (
+            {sorted.map(({ question, run }) => (
               <tr key={`${question.id}\u0000${run.adapter}`}>
                 <th scope="row" className="bench-runs-id">
                   {question.id}
