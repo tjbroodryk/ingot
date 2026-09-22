@@ -84,7 +84,7 @@ describe('the published results file', () => {
     // can see, which is the misreading the section exists to prevent: this
     // benchmark is over tool-call JSON, and a reader whose data is documents
     // should be told so rather than left to assume. Every table carries its
-    // own, because with `--drift` the corpus is what differs between them.
+    // own, because with `--logs` the corpus is what differs between them.
     for (const { corpus } of file.tables) {
       expect(corpus.sources.length).toBeGreaterThan(0);
       expect(corpus.records).toBe(
@@ -238,23 +238,6 @@ describe('the benchmarks page', () => {
     if (TABLES.length > 1) for (const table of TABLES) expect(markup).toContain(table.label);
   });
 
-  it('does not deny a drifted run once one is published', () => {
-    // The copy on the ordinary corpus used to end "No such run is published
-    // here yet", which was true when written and became false the moment a
-    // drifted run was published — and nothing failed. The page renders only
-    // the selected table, so the stale sentence sat on the default view.
-    if (TABLES.some((table) => table.run?.drift)) {
-      expect(markup).not.toContain('No such run is published here yet');
-    }
-  });
-
-  it('says what the corpus it is showing means, above the numbers', () => {
-    // Both corpora are explained, not only the drifted one: a caveat that
-    // shows up only when the numbers are worse is an excuse. This asserts the
-    // default view, which is the one most readers never click away from.
-    if (HAS_RESULTS) expect(markup).toContain('the same world with that assumption taken away');
-  });
-
   /**
    * The workload, on the page and not only in the harness.
    *
@@ -316,7 +299,7 @@ describe('the markdown half', () => {
   const body = BENCHMARKS.render();
 
   it('says the same thing as the page', () => {
-    for (const adapter of ADAPTERS) expect(body).toContain(adapter.name);
+    for (const adapter of ADAPTERS) expect(body).toContain(adapterLabel(adapter.name));
     for (const limit of LIMITS) expect(body).toContain(limit.title);
   });
 

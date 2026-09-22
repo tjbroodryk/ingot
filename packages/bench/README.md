@@ -195,93 +195,6 @@ therefore cost the same as five, and `--seed` regenerates all of it exactly.
 The corpus is the only view any adapter is allowed to ingest, and every adapter
 gets the identical array.
 
-## The corpus is an assumption too
-
-The question mix is policed above and the tool descriptions are policed below,
-and until `--drift` existed nothing policed the corpus. It is the place the
-thumb was actually resting.
-
-Every tool emits exactly one shape. Every record carries a `ref`. Every page of
-a tool has byte-identical keys to every other page, and `stream.ts` stamps the
-whole thing at a single `world.now` — its own comment says the corpus is a
-snapshot rather than something gathered over time. That is a relational
-database wearing JSON. Asking whether SQL beats top-k over it is asking a
-question half-answered by the fixture, and it is the fixture most flattering to
-this project's claim.
-
-`--drift` is the same world written down badly, the way a provider actually
-writes things down:
-
-| | |
-| --- | --- |
-| a field renamed | `owner` becomes `owner_team` partway through the services |
-| a unit changed with the name | `duration_sec` becomes `duration_ms`, values converted |
-| a type changed | `assignee` is a string, then `{id, name}` |
-| a key arriving late | files gain `service_ref` only after the change |
-
-The asymmetry this attacks is Ingot's, not the baselines'. `remember` has to
-commit to a column name and a column type before it has seen the last page. A
-vector store commits to nothing — it embeds whatever bytes arrive, and drift
-costs it a slightly different neighbourhood. So the expected result is that the
-Ingot columns fall, the dense columns stay roughly flat, and the gap this
-benchmark exists to show gets smaller. **That is the point.** A benchmark that
-has only ever been run over the corpus its authors designed is not yet
-evidence.
-
-Two rules keep it a harder benchmark rather than a rigged one, and
-`corpus.test.ts` holds both:
-
-- **Nothing is lost.** Every world record still appears exactly once with its
-  `ref`, the rate-limit body is a retry rather than a replaced page, and the
-  renamed unit carries the converted value. Every question stays answerable —
-  by an adapter that notices. A drift that dropped records would be scoring
-  retrieval against evidence the corpus does not contain, which is a rigged
-  loss and no more honest than a rigged win.
-- **Both shapes are findable.** The change lands two fifths of the way through
-  each tool's records, keyed to the record rather than the page — keyed to the
-  page it would never fire on `catalog.list_services`, which is eight records
-  in one page and the table most of the `join` category goes through. A drift
-  visible on three rows in two hundred would be testing whether an adapter can
-  spot a rarity, which is a different question.
-
-`github.list_pull_requests` and `pagerduty.list_incidents` are left alone. A
-corpus where every tool drifts is its own unrealistic fixture, and two clean
-sources make the drifted ones harder to dismiss.
-
-### The drift that was removed
-
-There was a fifth: a rate-limit body — `{"error": "rate limited",
-"retry_after": 30}` — emitted on `ci.list_runs` as a retry, to ask what
-`remember` does with a payload that has no records in it. It is a real thing
-agents store and no schema anticipates, and it lasted exactly one run.
-
-`flattenRecords` is the chunker every vector column shares, and it iterates
-`page.items ?? []`. A payload with no `items` is therefore *invisible* to
-`vector`, `pinecone`, `turbopuffer` and `hyperspell` — they never see it, and
-it costs them nothing. Ingot's `/add` rejects it outright:
-
-```
-422 invariant_violation
-rows does not point at an array — found nothing.
-```
-
-which fails ingest, which skips the adapter, which means the Ingot columns are
-not in the table at all. Not scored badly — absent.
-
-That is a drift only one side can see, and the fact that it hurt this project
-rather than flattered it does not make it a finding. A rigged loss is worth no
-more than a rigged win, and a benchmark that publishes one has spent the
-credibility it was built to earn. Asking that question honestly means changing
-what the baselines ingest too, so that both sides carry the payload — a
-different change from this one, and not yet made.
-
-A drifted run is not comparable with an ordinary one and the harness will not
-let you pretend otherwise: `drift` is in the header, in the sidecar, in the
-published summary, in the merge's must-match list and in the page's own
-provenance note — which states the one-shape-per-tool assumption on the
-ordinary run too, since a caveat that appears only when the numbers are bad is
-an excuse.
-
 ## Fairness
 
 Everything below is a rule the harness enforces, not an aspiration.
@@ -413,14 +326,6 @@ part of `bun run test` at the repository root, and spends real money.
 --effort LEVEL         low | medium | high | xhigh | max  (high)
                        Adaptive thinking on Claude, reasoningEffort on GPT.
 --no-thinking          Send no reasoning settings at all.
---drift                Render the corpus with a payload shape that changes
-                       underneath the agent: a field renamed, a unit changed
-                       with it, a string that becomes an object, a key that
-                       arrives late, one body with no records. The world and
-                       every gold answer are untouched and nothing is lost, so
-                       every question stays answerable — by an adapter that did
-                       not fix its schema on the first page. Not comparable
-                       with a run without it.
 --publish FILE         Also write the site's summary JSON here. It carries the
                        corpus as well as the scores — every source, its page
                        size, and one record verbatim — rebuilt from the seed,
@@ -481,8 +386,8 @@ is not, so the merge refuses rather than concatenates:
 - **Every setting that could move a number has to match** — seed, per-template,
   repeats, tool-call budget, model, provider, effort, thinking, mapping,
   embedder, logs. A mismatch names the field and both values and stops.
-  `concurrency` is exempt: it moves only the `ms` column, which is not
-  published, and a note records it when the runs disagree.
+  `concurrency` is exempt: it moves only the latencies, and a published
+  warning records it when the runs disagree.
 - **No column may answer the same question in two files.** Which of the two a
   reader should see is not a thing the harness can decide. The rule is on the
   cell rather than the column, because the same column over *different*
@@ -501,11 +406,11 @@ is not, so the merge refuses rather than concatenates:
 operation — the same columns under one *changed* setting — is `--against`:
 
 ```bash
-bun run bench --from results/PLAIN.jsonl --against results/DRIFT.jsonl
+bun run bench --from results/AUTHORED.jsonl --against results/AGENT.jsonl
 ```
 
 It renders one table of `before to after (Δ points)` per adapter per category,
-which is the only readable form of the question a drift run actually asks:
+which is the only readable form of the question a changed setting asks:
 *what did that change cost each column.* Two tables side by side leave the
 reader subtracting eight adapters across six categories, on means over
 different row counts.
@@ -533,8 +438,8 @@ Three rules, all enforced:
 Nothing is written. Both runs already exist on disk with their own reports;
 this is a reading of them rather than a third run.
 
-Any setting works, not just `--drift`. `--mapping authored` against
-`--mapping agent` is the same question asked of who writes the schema.
+Any setting works, not just the mapping: `--logs` against an ordinary run asks
+what an oversized result costs each column.
 
 ### Adding questions without re-buying the table
 
@@ -722,10 +627,8 @@ vectors that rank badly for reasons nobody can see.
 ## What this does not measure
 
 - **Write cost.** Ingestion is timed but not scored. Ingot asks for a schema up
-  front and a vector store does not, which is a real cost. `--drift` now prices
-  the half of it that shows up later — what a schema fixed on the first page is
-  worth once the payloads stop agreeing with it — but the tokens, the latency
-  and the human or model attention that mapping takes are still unmeasured.
+  front and a vector store does not, which is a real cost — the tokens, the
+  latency and the human or model attention that mapping takes are unmeasured.
 - **Freshness.** Every corpus is loaded once and queried; nothing measures a
   memory being written to while it is read.
 - **Scale.** The default world is about five hundred records, which fits in a

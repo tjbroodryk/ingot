@@ -78,14 +78,7 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
   // reached, so it needs the same treatment as the rows or a merge would report
   // a column under one name and list it under another.
   const adapters = meta.adapters.map(canonicalAdapter);
-  // A sidecar written before `--drift` existed has no `drift` key, and every
-  // run that produced one was over the ordinary corpus. Defaulting it here
-  // rather than leaving it `undefined` is what lets those runs still merge
-  // with new ones: `MUST_MATCH` compares with `===`, and `undefined !== false`
-  // would refuse exactly the splice — a new column beside a table already
-  // bought — that the merge exists to allow.
-  const drift = meta.drift ?? false;
-  return { meta: { ...meta, adapters, drift }, rows: rows as readonly RunRecord[] };
+  return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
 }
 
 /**
@@ -93,15 +86,14 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
  * one table.
  *
  * Everything that could move a number: the corpus and questions (`seed`,
- * `perTemplate`, `logs`, `drift`), the agent (`model`, `provider`, `effort`,
+ * `perTemplate`, `logs`), the agent (`model`, `provider`, `effort`,
  * `thinking`, `maxToolCalls`), the vectors (`embedder`), who wrote the
  * mappings, and `repeats` — because the ± in the report is a function of how
  * many runs are behind each cell, and a column bought once beside columns
  * bought three times is a spread comparison nobody made on purpose.
  *
- * `concurrency` is deliberately absent. It moves only the `ms` column, which
- * the site does not publish, so refusing a merge over it would block a
- * perfectly good table for a number nobody is reading.
+ * `concurrency` is deliberately absent. It moves only the latencies, so a
+ * merge across it goes ahead and carries a published warning instead.
  */
 export const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'seed',
@@ -115,7 +107,6 @@ export const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'mapping',
   'embedder',
   'logs',
-  'drift',
 ];
 
 /**
@@ -228,7 +219,10 @@ export async function readRuns(
   if (rest.length === 0) {
     return dropped.length === 0
       ? base
-      : { ...base, meta: { ...base.meta, warnings: [...base.meta.warnings, droppedNote(dropped)] } };
+      : {
+          ...base,
+          meta: { ...base.meta, warnings: [...base.meta.warnings, droppedNote(dropped)] },
+        };
   }
 
   for (const run of rest) {
@@ -341,11 +335,12 @@ export async function readRuns(
 
   const notes = new Set(runs.flatMap((run) => run.meta.notes));
   const concurrencies = new Set(runs.map((run) => run.meta.concurrency));
+  // A warning rather than a note, because the latencies are published.
   if (concurrencies.size > 1) {
-    notes.add(
-      `The merged runs had different concurrency (${[...concurrencies].join(', ')}), so the ms ` +
-        'column compares columns that were measured under different load. Accuracy and tokens ' +
-        'are unaffected.',
+    warnings.add(
+      `The merged runs had different concurrency (${[...concurrencies].join(', ')}), so the ` +
+        'latencies compare columns that were measured under different load. Accuracy and ' +
+        'tokens are unaffected.',
     );
   }
 

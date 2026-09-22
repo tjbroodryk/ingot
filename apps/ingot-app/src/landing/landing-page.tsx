@@ -38,9 +38,8 @@ const RUN_LOCAL_HREF = DEPLOYMENT_HREF ? `${DEPLOYMENT_HREF}#run-local` : REPO_U
  * The ordinary corpus, which is the one a landing page can lead with.
  *
  * `TABLES[0]` rather than a search for the label: the publisher writes the
- * ordinary run first and the drifted one after it, and a drifted table read as
- * the headline result understates every column in it. Empty until a run is
- * published, and the block is left out entirely in that case.
+ * ordinary run first and any variant after it. Empty until a run is published,
+ * and the block is left out entirely in that case.
  */
 const PROOF = proofCards(TABLES[0] ?? null);
 

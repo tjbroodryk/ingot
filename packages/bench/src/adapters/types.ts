@@ -53,8 +53,9 @@ export interface MemoryAdapter {
    * What the store refused to hold, said out loud.
    *
    * Ingest is not all-or-nothing, and pretending it is turns a measurable loss
-   * into an absent column. Under `--drift` a typed column meets a payload it
-   * was not declared for, `/add` returns a 422, and the honest model of an
+   * into an absent column. When a typed column meets a payload it was not
+   * declared for — an agent-written mapping that guessed a type wrong —
+   * `/add` returns a 422, and the honest model of an
    * agent in that position is one that loses those rows and carries on — not
    * one that throws its whole memory away. So a rejected payload is counted
    * here and the run continues, and the questions those rows would have

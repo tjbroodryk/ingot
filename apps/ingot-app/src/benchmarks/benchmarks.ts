@@ -26,19 +26,12 @@ export interface PublishedRun {
   readonly thinking: boolean;
   readonly repeats: number;
   readonly maxToolCalls: number;
+  /** Agent runs in flight at once; above 1 the latencies were measured under load. */
+  readonly concurrency: number;
   readonly embedder: string;
   readonly mapping: string;
   /** Log lines in the corpus, as one unpaginated result. 0 is the ordinary run. */
   readonly logs: number;
-  /**
-   * Whether the corpus was rendered with a payload shape that changes
-   * underneath the agent. False is the ordinary run.
-   *
-   * Read by the page for the same reason `logs` is: the two runs answer the
-   * same questions over different corpora, and a drifted run rendered as an
-   * ordinary one would understate every column in the table.
-   */
-  readonly drift: boolean;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -73,6 +66,10 @@ export interface PublishedAdapter {
   readonly evidencePrecision: number | null;
   readonly toolCalls: number;
   readonly contextTokens: number;
+  /** Mean wall time of one run, model time included. */
+  readonly runMs: number;
+  /** Mean latency of one tool call. Null for a column that made none. */
+  readonly callMs: number | null;
   /** Runs where the provider threw and nothing was answered. Scored wrong. */
   readonly failures: number;
   readonly byCategory: Readonly<Record<string, number>>;
@@ -84,18 +81,15 @@ export interface PublishedBenchmark {
   /**
    * One table per corpus the questions were asked over, ordinary first.
    *
-   * A list because `--drift` made the corpus a variable. The same columns over
-   * an ordinary corpus and over one whose payloads change shape are two
-   * tables and never two sets of columns in one — the harness refuses that
-   * merge — but they belong on the same page, because a reader shown only the
-   * ordinary table is being shown the friendliest case this project can
-   * construct.
+   * A list because `--logs` makes the corpus a variable. The same columns over
+   * two corpora are two tables and never two sets of columns in one — the
+   * harness refuses that merge.
    */
   readonly tables: readonly PublishedTable[];
 }
 
 export interface PublishedTable {
-  /** What this table is, for the switch that selects it: `drifted`. */
+  /** What this table is, for the switch that selects it: `ordinary corpus`. */
   readonly label: string;
   readonly run: PublishedRun;
   readonly corpus: PublishedCorpus;
@@ -466,7 +460,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
  */
 export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] = HAS_RESULTS
   ? // The union across published runs, not the intersection. A column that ran
-    // on the ordinary corpus and was skipped on the drifted one is still a
+    // on one corpus and was skipped on another is still a
     // column this page shows, and describing it in one tab but not the other
     // would read as two different benchmarks rather than one under two corpora.
     ADAPTER_BLURBS.filter((blurb) =>
