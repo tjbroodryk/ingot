@@ -35,7 +35,6 @@ const HEADER: ReportHeader = {
   mapping: 'authored',
   notes: [],
   logs: 0,
-  drift: false,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -182,7 +181,7 @@ describe('publishable', () => {
  * The file the page reads holds one table per corpus, and a publish adds to it.
  *
  * The failure this exists to prevent is quiet: the ordinary run is bought,
- * published, and eighty minutes later the drifted one is published over the
+ * published, and eighty minutes later the log-lines one is published over the
  * top of it. Both are expensive, only one is on the page, and the only symptom
  * is a tab that used to be there.
  */
@@ -192,14 +191,14 @@ describe('publishing into a file that already has a run in it', () => {
 
   test('keeps the run already there and adds the new one', () => {
     const one = withTable(NO_RESULTS, table({ runId: 'plain' }));
-    const two = withTable(one, table({ runId: 'drifted', drift: true }));
+    const two = withTable(one, table({ runId: 'logs', logs: 5000 }));
 
-    expect(two.tables.map((t) => t.label)).toEqual(['ordinary corpus', 'drifted']);
-    expect(two.tables.map((t) => t.run.runId)).toEqual(['plain', 'drifted']);
+    expect(two.tables.map((t) => t.label)).toEqual(['ordinary corpus', '5,000 log lines']);
+    expect(two.tables.map((t) => t.run.runId)).toEqual(['plain', 'logs']);
   });
 
   test('puts the ordinary corpus first however the runs arrived', () => {
-    const one = withTable(NO_RESULTS, table({ runId: 'drifted', drift: true }));
+    const one = withTable(NO_RESULTS, table({ runId: 'logs', logs: 5000 }));
     const two = withTable(one, table({ runId: 'plain' }));
 
     // The tab that opens is the case the rest of the page's prose describes.
@@ -222,11 +221,10 @@ describe('publishing into a file that already has a run in it', () => {
    */
   test('names a run by what makes it a different experiment', () => {
     expect(labelFor(table({}).run).label).toBe('ordinary corpus');
-    expect(labelFor(table({ drift: true }).run).label).toBe('drifted');
     expect(labelFor(table({ logs: 5000 }).run).label).toBe('5,000 log lines');
     expect(labelFor(table({ mapping: 'agent' }).run).label).toBe('agent-mapped');
-    expect(labelFor(table({ drift: true, mapping: 'agent' }).run).label).toBe(
-      'drifted, agent-mapped',
+    expect(labelFor(table({ logs: 5000, mapping: 'agent' }).run).label).toBe(
+      '5,000 log lines, agent-mapped',
     );
   });
 
@@ -357,7 +355,7 @@ describe('transcriptTable', () => {
  * The merge that keeps a re-publish from orphaning transcripts.
  *
  * This is the failure that would actually bite: the summary merges per table,
- * so if the sidecar did not, publishing the drifted run an hour after the
+ * so if the sidecar did not, publishing the log-lines run an hour after the
  * ordinary one would drop the ordinary run's transcripts while the summary went
  * on linking to them. The mirror of the summary's own `withTable` test.
  */
@@ -379,9 +377,9 @@ describe('withTranscripts', () => {
 
   test('adds a new corpus and keeps the ones already there', () => {
     const one = withTranscripts(NO_TRANSCRIPTS, table('ordinary corpus', 1));
-    const two = withTranscripts(one, table('drifted', 2));
+    const two = withTranscripts(one, table('5,000 log lines', 2));
 
-    expect(two.tables.map((t) => t.label)).toEqual(['ordinary corpus', 'drifted']);
+    expect(two.tables.map((t) => t.label)).toEqual(['ordinary corpus', '5,000 log lines']);
   });
 
   test('replaces a re-publish of the same corpus rather than doubling it', () => {

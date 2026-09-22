@@ -146,14 +146,6 @@ interface Options {
   publish: string | null;
   /** Log lines in one unpaginated tool result. 0 leaves the corpus as it was. */
   logs: number;
-  /**
-   * Render the corpus with a payload shape that changes underneath the agent.
-   *
-   * The world, the questions and every gold answer are untouched — this is a
-   * property of how the world is written down, not of what is true in it. See
-   * `CorpusOptions.drift`.
-   */
-  drift: boolean;
   /** How many agent runs to have in flight at once, within one adapter. */
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
@@ -204,7 +196,6 @@ function parse(argv: readonly string[]): Options {
     thinking: true,
     publish: null,
     logs: 0,
-    drift: false,
     // One by default. Concurrency makes a run faster and its latency column
     // meaningless, and that is a trade the person running it should make on
     // purpose rather than inherit from a default.
@@ -302,9 +293,6 @@ function parse(argv: readonly string[]): Options {
       case '--logs':
         options.logs = Number(next(flag, value));
         at += 1;
-        break;
-      case '--drift':
-        options.drift = true;
         break;
       case '--concurrency': {
         const concurrency = Number(next(flag, value));
@@ -447,8 +435,8 @@ const HELP = `bun run bench [flags]
                          two runs instead of either of them. The opposite of a
                          merge — --from A,B splices columns bought under
                          identical settings; this takes the same columns under
-                         exactly one changed setting (--drift, --mapping,
-                         --logs, --model...) and renders what the change cost
+                         exactly one changed setting (--mapping, --logs,
+                         --model...) and renders what the change cost
                          each of them. Refuses if none or more than one setting
                          differs, and counts only the cells both runs hold.
   --logs N               Add N log lines as ONE unpaginated tool result. (0)
@@ -456,17 +444,6 @@ const HELP = `bun run bench [flags]
                          window: raw-context is refused rather than scored, and
                          top-k finds a shrinking share of what an aggregate
                          needs while SQL is indifferent to the row count.
-  --drift                Render the corpus with a payload shape that changes
-                         underneath the agent: a field renamed, a unit changed
-                         with the name, a string that becomes an object, and a
-                         foreign key that arrives late. The world and every gold answer are
-                         untouched and no record is lost, so every question
-                         stays answerable — by an adapter that notices. The
-                         ordinary corpus is one shape per tool, which is the
-                         case this project is most flattered by; this is the
-                         one where committing to a column mapping before the
-                         last page has a cost. Not comparable with a run
-                         without it.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -602,21 +579,6 @@ async function onlyMissingFrom(
     );
   }
 
-  // Drift gets its own check because it fails differently. It does not move a
-  // question id — the world and the generator are untouched, so `q-026` is the
-  // same question either way — which is exactly why it needs saying: the
-  // subtraction would look right, the merge afterwards would be a table whose
-  // columns were answered over two different corpora, and nothing in the ids
-  // would give it away.
-  if ((meta.drift ?? false) !== options.drift) {
-    throw new Error(
-      `${path} was run with drift=${meta.drift ?? false} and this one has ${options.drift}. ` +
-        'The questions are the same but the corpus is not, so topping one up from the other ' +
-        'would produce a table half of which was answered over a corpus the other half never ' +
-        'saw. Match the setting, or run the whole set.',
-    );
-  }
-
   const answered = new Set(rows.map((row) => row.questionId));
   const missing = questions.filter((question) => !answered.has(question.id));
   console.log(
@@ -630,7 +592,7 @@ async function main(options: Options): Promise<void> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
 
   const world = buildWorld({ seed: options.seed, logs: options.logs });
-  const corpus = buildCorpus(world, { drift: options.drift });
+  const corpus = buildCorpus(world);
   const knownRefs = corpusRefs(corpus);
   const all = buildQuestions(world, { perTemplate: options.perTemplate });
   const byCategory = options.categories
@@ -709,19 +671,6 @@ async function main(options: Options): Promise<void> {
       'Run sent no reasoning settings. Not comparable with a run that did.',
     );
   }
-  // A warning rather than a note, because it changes what every number in the
-  // table means. A drifted run and an ordinary one are two experiments, and a
-  // reader who takes the first for the second is reading a corpus built to be
-  // hostile as though it were the corpus an agent would ordinarily see.
-  if (options.drift) {
-    warnings.push(
-      'Corpus was rendered with schema drift: a field renamed, a unit changed with it, a ' +
-        'string that becomes an object, and a foreign key that arrives late. Every world ' +
-        'record is still present exactly once, so every question ' +
-        'remains answerable — but not by an adapter that fixed its schema on the first page. ' +
-        'These numbers are not comparable with a run over the ordinary corpus.',
-    );
-  }
   if (options.questionsNotIn) {
     // A warning rather than a note: this run's accuracy is over a handful of
     // questions chosen because they were missing, which is not a sample of the
@@ -764,7 +713,6 @@ async function main(options: Options): Promise<void> {
     embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
     mapping: options.mapping,
     logs: options.logs,
-    drift: options.drift,
     provider: options.provider,
     thinking: options.thinking,
     warnings,
@@ -814,9 +762,8 @@ async function main(options: Options): Promise<void> {
      * A warning rather than a note, because it changes what the column means:
      * these rows are not in the memory, so the questions they would have
      * answered are answered wrong, and the accuracy below is the accuracy of a
-     * store that is missing part of the corpus. That is the finding under
-     * `--drift` rather than a defect in the run — but a reader who does not
-     * know it happened will read the column as a retrieval result.
+     * store that is missing part of the corpus, and a reader who does not know
+     * it happened will read the column as a retrieval result.
      */
     const refused = adapter.refusals?.() ?? [];
     if (refused.length > 0) {
@@ -932,11 +879,10 @@ async function emit(
     /*
      * A publish adds a table rather than replacing the file.
      *
-     * The site shows one run per corpus the questions were asked over, and the
-     * ordinary and drifted runs are bought hours apart. Overwriting would mean
-     * the second publish silently deleted the first — the expensive one, the
-     * one the rest of the page's prose is about — and the only symptom would
-     * be a tab that used to be there. A run whose label matches one already in
+     * The site shows one run per corpus the questions were asked over, and
+     * those runs are bought hours apart. Overwriting would mean the second
+     * publish silently deleted the first, and the only symptom would be a tab
+     * that used to be there. A run whose label matches one already in
      * the file replaces it, because that is a re-publish of the same
      * experiment. See `withTable`.
      *
@@ -974,8 +920,7 @@ async function emit(
  * Written in the same step as the summary and merged the same way — a table
  * already present under this label is replaced, every other kept — because the
  * summary and the transcripts are two halves of one publish keyed on one label,
- * and a re-publish of the drifted run must not orphan the ordinary run's
- * transcripts. Keyed on `table.label` for exactly that reason: it is the string
+ * and a re-publish of one corpus's run must not orphan another's transcripts. Keyed on `table.label` for exactly that reason: it is the string
  * the summary was just written with, so the page joins the two files on it.
  *
  * A file that cannot be read or parsed is treated as absent rather than fatal,
@@ -1066,14 +1011,11 @@ async function replay(options: Options): Promise<void> {
   // longer generated means the generator has moved underneath these rows, and
   // scoring them against a question they were never asked is worse than
   // refusing.
-  // `logs` and `drift` come off the sidecar rather than off this invocation:
-  // re-scoring has to rebuild the corpus the run was bought over, not the one
-  // whatever flags happen to be on the command line would produce. (Drift
-  // preserves every ref, so it cannot move `knownRefs` — it is passed because
-  // reconstructing a run's corpus from part of its provenance is the habit
-  // that eventually gets one of these wrong. `logs` genuinely does move it.)
+  // `logs` comes off the sidecar rather than off this invocation: re-scoring
+  // has to rebuild the corpus the run was bought over, not the one whatever
+  // flags happen to be on the command line would produce.
   const world = buildWorld({ seed: meta.seed, logs: meta.logs });
-  const knownRefs = corpusRefs(buildCorpus(world, { drift: meta.drift }));
+  const knownRefs = corpusRefs(buildCorpus(world));
   const questions = new Map(
     buildQuestions(world, { perTemplate: meta.perTemplate }).map((question) => [
       question.id,

@@ -35,7 +35,6 @@ const META: RunMeta = {
   mapping: 'authored',
   notes: [],
   logs: 0,
-  drift: false,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -296,15 +295,15 @@ describe('merging finished runs', () => {
     expect(merged.meta.warnings.filter((warning) => warning === 'hash embedder')).toHaveLength(1);
   });
 
-  test('notes a concurrency difference rather than refusing over it', async () => {
+  test('warns about a concurrency difference rather than refusing over it', async () => {
     const dir = await scratch();
     const base = await write(dir, 'base', { concurrency: 1 }, ['vector']);
     const extra = await write(dir, 'extra', { concurrency: 5 }, ['pinecone']);
 
-    // It moves the ms column, which is not published, so it is operator
-    // detail rather than a reason to block a table.
+    // It moves only the latencies, which are published, so the reader is told
+    // rather than the table blocked.
     const merged = await readRuns([base, extra]);
-    expect(merged.meta.notes.join(' ')).toContain('different concurrency');
+    expect(merged.meta.warnings.join(' ')).toContain('different concurrency');
   });
 });
 
@@ -322,13 +321,13 @@ describe('the axis two runs are compared across', () => {
   const meta = (extra: Partial<RunMeta>): RunMeta => ({ ...META, ...extra });
 
   test('names the one setting that differs', () => {
-    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', drift: true }));
-    expect(axis).toEqual({ field: 'drift', left: false, right: true });
+    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', mapping: 'agent' }));
+    expect(axis).toEqual({ field: 'mapping', left: 'authored', right: 'agent' });
   });
 
-  test('works for any setting, not only drift', () => {
-    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', mapping: 'agent' }));
-    expect(axis.field).toBe('mapping');
+  test('works for any setting, not only the mapping', () => {
+    const axis = comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', logs: 5000 }));
+    expect(axis.field).toBe('logs');
   });
 
   test('refuses two runs that agree about everything', () => {
@@ -339,7 +338,7 @@ describe('the axis two runs are compared across', () => {
 
   test('refuses two changes at once', () => {
     expect(() =>
-      comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', drift: true, mapping: 'agent' })),
+      comparisonAxis(meta({ runId: 'a' }), meta({ runId: 'b', logs: 5000, mapping: 'agent' })),
     ).toThrow(/differ in 2 settings/);
   });
 

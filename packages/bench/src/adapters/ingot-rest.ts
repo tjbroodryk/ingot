@@ -168,8 +168,8 @@ export class IngotRestAdapter implements MemoryAdapter {
        * A payload the store will not hold costs its rows, not the column.
        *
        * `/add` rejects a page whose values do not fit the mapping's declared
-       * types — under `--drift` that is `assignee` arriving as an object where
-       * `VARCHAR` was declared. Letting that throw would abort ingest and skip
+       * types — an agent-written mapping that declared `VARCHAR` for a field
+       * that arrives as an object. Letting that throw would abort ingest and skip
        * the adapter, which reports the most interesting outcome this benchmark
        * can produce as an infrastructure failure and leaves the column out of
        * the table. It is also not what an agent would do: it would lose the

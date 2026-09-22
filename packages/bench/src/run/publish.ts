@@ -27,14 +27,10 @@ export interface PublishedBenchmark {
   /**
    * Every run the page can show, one per corpus the questions were asked over.
    *
-   * A list rather than a single run because `--drift` made the corpus a
-   * variable. The same columns over an ordinary corpus and over one whose
-   * payloads change shape are two tables, never two sets of columns in one —
-   * `readRuns` refuses that merge and it is right to. But they belong on the
-   * same page: a reader who sees only the ordinary table is reading the
-   * friendliest case this project can construct, and a reader who sees only
-   * the drifted one is reading a corpus built to be hostile. The page shows
-   * both and lets them switch.
+   * A list rather than a single run because `--logs` and `--mapping agent`
+   * make the corpus or the store a variable. The same columns under two of
+   * those settings are two tables, never two sets of columns in one —
+   * `readRuns` refuses that merge and it is right to.
    *
    * Ordered least-modified first, so the tab that opens is the ordinary
    * corpus. Empty until a run has been published.
@@ -109,6 +105,11 @@ export interface PublishedRun {
   readonly thinking: boolean;
   readonly repeats: number;
   readonly maxToolCalls: number;
+  /**
+   * Agent runs in flight at once. Published beside the latencies because above
+   * 1 they were measured against a loaded provider and a loaded server.
+   */
+  readonly concurrency: number;
   readonly embedder: string;
   readonly mapping: string;
   /**
@@ -121,18 +122,6 @@ export interface PublishedRun {
    * heading.
    */
   readonly logs: number;
-  /**
-   * Whether the corpus was rendered with schema drift. False is the ordinary
-   * run, and the only kind published before this existed.
-   *
-   * Published for the same reason `logs` is, and with more at stake: it is the
-   * run where a field is renamed underneath the agent and a unit changes with
-   * it, so every column falls and the Ingot ones fall furthest. A page that
-   * showed those numbers without saying so would be understating this
-   * project's own product, which is the one direction a missing stamp is easy
-   * to leave missing.
-   */
-  readonly drift: boolean;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -149,6 +138,10 @@ export interface PublishedAdapter {
   readonly evidencePrecision: number | null;
   readonly toolCalls: number;
   readonly contextTokens: number;
+  /** Mean wall time of one run, model time included. */
+  readonly runMs: number;
+  /** Mean latency of one tool call. Null for a column that made none. */
+  readonly callMs: number | null;
   /**
    * Runs where the provider threw and nothing was answered.
    *
@@ -188,7 +181,6 @@ export const NO_RESULTS: PublishedBenchmark = {
  */
 export function labelFor(run: PublishedRun): { label: string; rank: number } {
   const parts: string[] = [];
-  if (run.drift) parts.push('drifted');
   if (run.logs > 0) parts.push(`${run.logs.toLocaleString('en-GB')} log lines`);
   if (run.mapping === 'agent') parts.push('agent-mapped');
   return {
@@ -211,10 +203,7 @@ export function labelFor(run: PublishedRun): { label: string; rank: number } {
  * settings that decide it, so two runs share a label exactly when they are the
  * same experiment. Which is why the label is derived and not an argument.
  */
-export function withTable(
-  existing: PublishedBenchmark,
-  table: PublishedTable,
-): PublishedBenchmark {
+export function withTable(existing: PublishedBenchmark, table: PublishedTable): PublishedBenchmark {
   const kept = existing.tables.filter((other) => other.label !== table.label);
   const tables = [...kept, table].sort(
     (a, b) => labelFor(a.run).rank - labelFor(b.run).rank || a.label.localeCompare(b.label),
@@ -235,14 +224,9 @@ interface Page {
  * this is the identical array of payloads every adapter ingested, down to the
  * bytes. Replaying an old run with `--from` therefore republishes the corpus
  * it was actually asked about.
- *
- * Which is why `drift` is a parameter and not a default: the sample payload
- * this puts on the page comes out of the corpus itself, so a drifted run
- * republished without it would show the reader a tidy `owner` field that the
- * run being reported never saw past its first few records.
  */
-export function corpusShape(seed: number, logs: number, drift = false): PublishedCorpus {
-  const corpus = buildCorpus(buildWorld({ seed, logs }), { drift });
+export function corpusShape(seed: number, logs: number): PublishedCorpus {
+  const corpus = buildCorpus(buildWorld({ seed, logs }));
 
   // Grouped in the order the tools first appear, which is the order an agent
   // met them: a table sorted by size would put the shape of the corpus second
@@ -299,6 +283,7 @@ export function publishable(
   const adapters = names.map((name): PublishedAdapter => {
     const mine = rows.filter((row) => row.adapter === name);
     const overall = summarise(mine);
+    const calls = mine.flatMap((row) => row.calls);
 
     const byCategory: Record<string, number> = {};
     for (const category of categories) {
@@ -316,6 +301,11 @@ export function publishable(
       evidencePrecision: overall.evidencePrecision,
       toolCalls: overall.toolCalls,
       contextTokens: Math.round(overall.finalInputTokens),
+      runMs: Math.round(mine.reduce((sum, row) => sum + row.ms, 0) / mine.length),
+      callMs:
+        calls.length === 0
+          ? null
+          : Math.round(calls.reduce((sum, call) => sum + call.ms, 0) / calls.length),
       // Same rule as the report's banner: the provider throwing is an
       // infrastructure failure, a corpus that does not fit is a finding.
       failures: mine.filter(
@@ -343,10 +333,10 @@ export function publishable(
     thinking: header.thinking,
     repeats: header.repeats,
     maxToolCalls: header.maxToolCalls,
+    concurrency: header.concurrency,
     embedder: header.embedder,
     mapping: header.mapping,
     logs: header.logs,
-    drift: header.drift ?? false,
     questions: questionIds.size,
     categoryCounts,
     warnings: header.warnings,
@@ -355,7 +345,7 @@ export function publishable(
   return {
     label: labelFor(run).label,
     run,
-    corpus: corpusShape(header.seed, header.logs, header.drift ?? false),
+    corpus: corpusShape(header.seed, header.logs),
     // Only the categories this run actually asked about, so the page never
     // renders a column with nothing under it.
     categories: categories.filter((category) => categoryCounts[category] !== undefined),
@@ -410,9 +400,9 @@ function cap(output: string): string {
  * Same schema-versioned, per-table shape as the summary, and that is
  * load-bearing rather than tidy: the two are published from one run in one
  * step, keyed by the same label, and merge the same way (see {@link
- * withTranscripts}). If only the summary merged, publishing the drifted run an
- * hour after the ordinary one would silently drop the ordinary run's
- * transcripts while the summary still promised them.
+ * withTranscripts}). If only the summary merged, publishing a second corpus's
+ * run an hour after the first would silently drop the first run's transcripts
+ * while the summary still promised them.
  */
 export interface PublishedTranscripts {
   /** This file's own shape, so the page can refuse a stale one. */
@@ -527,22 +517,20 @@ export function transcriptTable(label: string, rows: readonly RunRecord[]): Tran
       const first = group[0] as RunRecord;
       const adapters = [...group]
         .sort((a, b) => columnOrder.indexOf(a.adapter) - columnOrder.indexOf(b.adapter))
-        .map(
-          (row): AdapterTranscript => ({
-            adapter: row.adapter,
-            answer: row.answer,
-            correct: row.correct,
-            contextTokens: row.finalInputTokens,
-            ms: row.ms,
-            calls: row.calls.map((call) => ({
-              name: call.name,
-              input: call.input,
-              output: cap(call.output),
-              ms: call.ms,
-              failed: call.failed,
-            })),
-          }),
-        );
+        .map((row): AdapterTranscript => ({
+          adapter: row.adapter,
+          answer: row.answer,
+          correct: row.correct,
+          contextTokens: row.finalInputTokens,
+          ms: row.ms,
+          calls: row.calls.map((call) => ({
+            name: call.name,
+            input: call.input,
+            output: cap(call.output),
+            ms: call.ms,
+            failed: call.failed,
+          })),
+        }));
       return { id, question: first.question, category: first.category, gold: first.gold, adapters };
     });
 
@@ -555,7 +543,7 @@ export function transcriptTable(label: string, rows: readonly RunRecord[]): Tran
  * The mirror of {@link withTable}, and it has to stay one. A label already
  * present is replaced — a re-publish of the same experiment — and every other
  * table is kept, which is the whole reason this file has a list rather than one
- * table: the ordinary and drifted runs are published hours apart, and a publish
+ * table: runs over different corpora are published hours apart, and a publish
  * that dropped the table it was not about would orphan transcripts the summary
  * still links to.
  */
