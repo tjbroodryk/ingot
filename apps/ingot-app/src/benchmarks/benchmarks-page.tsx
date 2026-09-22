@@ -5,18 +5,16 @@
 // silently builds this as a server component and fails at prerender with an
 // undefined export rather than anything that names the cause.
 //
-// The page is a client component for one reason: the switch between published
-// corpora is state, and both the results section and the corpus section below
-// it have to move together — the drifted run's payload samples are the drifted
-// payloads. Splitting the state out would mean two components that have to
-// agree about which run is showing, which is the bug this avoids.
+// The page is a client component because the switch between published corpora,
+// the sortable tables, the transcripts and the sticky contents are all state.
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BrandMark } from '../chrome/brand-mark';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
-// The landing page's layout, used rather than restated, the way `/why` uses
-// it: this page is the same shape of document — a hero and ruled bands.
+import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHAT_HREF, WHY_HREF } from '../site/mode';
+// The hero, the badge and the buttons are the landing page's, used rather than
+// restated. The bands below them are this page's own.
 import '../landing/landing.css';
 import './benchmarks.css';
 import { Prose } from '../docs/prose';
@@ -47,6 +45,7 @@ import {
 } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
+const count = (value: number): string => value.toLocaleString('en-GB');
 
 /**
  * What an agent gets back out, measured.
@@ -67,19 +66,14 @@ export function BenchmarksPage(): ReactNode {
    * Which published run the page is showing.
    *
    * State rather than a route because the tables are the same questions and
-   * the same columns over two corpora, and a reader comparing them wants to
-   * flick between them with the scroll position kept. A URL per corpus would
-   * also make the drifted numbers linkable on their own, which is the one
-   * reading of them that is not true — they mean nothing except beside the
-   * ordinary ones.
+   * the same columns over different corpora, and a reader comparing them wants
+   * to flick between them with the scroll position kept.
    */
   const [selected, setSelected] = useState(0);
   const table = TABLES[selected] ?? TABLES[0] ?? null;
-  const { run, categories, adapters } = table ?? {
-    run: null,
-    categories: [] as readonly string[],
-    adapters: [] as readonly PublishedAdapter[],
-  };
+  const transcripts = useTranscripts();
+  // Memoised so the sticky bar's scroll listener is not re-bound on every render.
+  const sections = useMemo(() => contents(table), [table]);
 
   return (
     <>
@@ -92,21 +86,10 @@ export function BenchmarksPage(): ReactNode {
         }
       />
 
+      <StickyContents sections={sections} transcripts={Boolean(table)} />
+
       <div className="landframe">
         <section className="hero">
-          <div className="hero-badge label">
-            <span className="badge">The measurement</span>
-            {/*
-              The workload is linked from the hero because it is the first
-              thing that decides whether the table below applies to anybody's
-              own problem. A reader whose corpus is prose documents should find
-              out that this one is tool-call JSON before they read a number,
-              not three sections after it.
-            */}
-            <a href="#corpus">What it is asked about</a>
-            <a href="#method">How this is scored</a>
-          </div>
-
           <h1 className="hero-title">
             But is it any
             <br />
@@ -127,74 +110,22 @@ export function BenchmarksPage(): ReactNode {
           </div>
         </section>
 
-        <section className="landblock" id="results">
-          <div className="landhead">
-            <span className="label kicker kicker-n">Results</span>
-            <h2 className="landtitle">
-              Accuracy and cost,
-              <br />
-              <span className="mark">per category</span>
-            </h2>
-            <p>
-              Aggregates, absence, ordering and joins are where structure should tell; the semantic
-              questions are where embeddings should perform better.
-            </p>
-            <dl className="bench-terms">
-              {SCORING_TERMS.map(([term, gloss]) => (
-                <div key={term}>
-                  <dt className="label label-sm">{term}</dt>
-                  <dd>
-                    <Prose text={gloss} />
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+        <Contents sections={sections} />
 
-          {/*
-            The switch is above the numbers rather than beside them, because
-            which corpus a table was measured over is not a filter on the
-            table — it is what the table is. A reader who scrolls past it and
-            reads the drifted numbers as the headline result has been misled by
-            the layout, so it sits where the heading would.
-          */}
-          {TABLES.length > 1 ? (
-            <div className="bench-switch label label-sm">
-              <span className="bench-switch-legend">measured over</span>
-              {TABLES.map((option, index) => (
-                <button
-                  aria-pressed={index === selected}
-                  className="bench-switch-option"
-                  key={option.label}
-                  onClick={() => setSelected(index)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
+        {table ? <TheRun table={table} selected={selected} onSelect={setSelected} /> : null}
 
-          {/*
-           * What the selected corpus is, said where the reader selects it.
-           *
-           * The corpus section below carries the same distinction in more
-           * detail, and that is too far down to help: by the time a reader
-           * reaches it they have already read a table and formed a view of
-           * what the numbers mean. A switch that silently changes every figure
-           * on the page owes an explanation next to itself.
-           */}
-          {run ? <CorpusMeaning run={run} /> : null}
-
-          {run ? (
+        <Band
+          id="results"
+          kicker="Results"
+          title="Accuracy, and what it cost"
+          lede="An answer counts only when it is exactly right. The bar is overall accuracy; the number beside it is the mean prompt the model had to read to produce each answer."
+        >
+          {table ? (
             <>
               <Tiles table={table} />
-              <RankedAccuracy adapters={adapters} />
-              <HeatMatrix categories={categories} adapters={adapters} />
-              <Provenance table={table} />
-              <CostTable adapters={adapters} />
-              <Failures adapters={adapters} />
-              <Transcripts table={table} />
+              <RankedAccuracy adapters={table.adapters} />
+              <Failures adapters={table.adapters} />
+              <CostTable adapters={table.adapters} concurrency={table.run.concurrency} />
             </>
           ) : (
             <div className="bench-empty">
@@ -210,125 +141,131 @@ export function BenchmarksPage(): ReactNode {
               </pre>
             </div>
           )}
-        </section>
+        </Band>
 
-        <section className="landblock" id="corpus">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What it is asked about</span>
-            <h2 className="landtitle">
-              Tool results,
-              <br />
-              <span className="mark">not documents</span>
-            </h2>
-            <p>{CORPUS_LEDE}</p>
-          </div>
+        {table ? (
+          <Band
+            id="classes"
+            kicker="By task class"
+            title="Where each one breaks"
+            lede="Aggregates, absence, ordering and joins are where structure should tell; the semantic questions are where embeddings should perform better."
+          >
+            <HeatMatrix categories={table.categories} adapters={table.adapters} />
+          </Band>
+        ) : null}
 
+        <Band
+          id="questions"
+          kicker="The questions"
+          title={
+            table
+              ? `${table.run.questions} questions, ${countWord(table.categories.length).toLowerCase()} shapes`
+              : 'The questions'
+          }
+          lede="A generator builds a world, renders it as the paginated JSON an agent would have received, and computes the gold answer from the world objects. Nothing is annotated by hand. Open a shape to read the questions it asks."
+        >
+          <QuestionShapes table={table} transcripts={transcripts} />
+        </Band>
+
+        <Band
+          id="corpus"
+          kicker="What it is asked about"
+          title="Tool results, not documents"
+          lede={CORPUS_LEDE}
+        >
           <CorpusShape table={table} />
-        </section>
+        </Band>
 
-        <section className="landblock" id="method">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What is compared</span>
-            {/*
-              "Columns" rather than "memories", because two of them are not
-              memories: `raw-context` answers from the prompt and is a
-              reference point. The heading counting the columns and the section
-              listing that many cells is the agreement that matters.
-            */}
-            <h2 className="landtitle">
-              {countWord(ADAPTERS.length)} comparisons,
-              <br />
-              same<span className="mark">agent harness</span>
-            </h2>
-            <p>
+        {table ? (
+          <Band
+            id="transcripts"
+            kicker="Transcripts"
+            title="Read the runs"
+            lede="Every number above is a mean over transcripts. Open one to see the SQL it wrote or the searches it ran, what came back, and the answer it gave."
+          >
+            <Transcripts table={table} transcripts={transcripts} />
+          </Band>
+        ) : null}
+
+        <Band
+          id="method"
+          kicker="What is compared"
+          // "Columns" rather than "memories", because `raw-context` is not one:
+          // it answers from the prompt and is a reference point. The heading
+          // counting the columns and the grid listing that many cells is the
+          // agreement that matters.
+          title={`${countWord(ADAPTERS.length)} comparisons, same agent harness`}
+          lede={
+            <>
               One agent harness implementation serves every test case, with the same model, the same
               tool-call budget and the same answer channel. Only the retrieval tools differ, so a
-              gap between two columns
-              <i>should</i> only be down to the tool results.
-            </p>
-          </div>
-
-          <div className="steps">
+              gap between two columns <i>should</i> only be down to the tool results.
+            </>
+          }
+        >
+          <div className="bench-cells">
             {ADAPTERS.map((adapter) => (
-              <div className="step" key={adapter.name}>
-                <div className="step-num">{adapterLabel(adapter.name).toUpperCase()}</div>
+              <div className="bench-cell" key={adapter.name}>
+                <div className="bench-cell-key">{adapterLabel(adapter.name).toUpperCase()}</div>
                 <p>{adapter.blurb}</p>
               </div>
             ))}
           </div>
-        </section>
+        </Band>
 
-        <section className="landblock" id="limits">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What this does not measure</span>
-            <h2 className="landtitle">
-              <span className="mark">Caveats</span>
-            </h2>
-            <p>
-              We are publishing a benchmark of our own software, which you should discount
-              accordingly. So we shall attempt to highlight where it is weak.
-            </p>
-          </div>
-
-          <div className="steps">
+        <Band
+          id="limits"
+          kicker="Caveats"
+          title="What this does not measure"
+          lede="We are publishing a benchmark of our own software. Discount it accordingly, and start here."
+        >
+          <div className="bench-cells">
             {LIMITS.map((limit) => (
-              <div className="step" key={limit.title}>
-                {/*
-                  `.step-num` rather than a heading, so these read as the
-                  method section's cells do. That class sets the treatment —
-                  mono, letterspaced, accent — and not the casing, which is
-                  why the adapter names are upper-cased at their call site and
-                  a sentence like this one is not.
-                */}
-                <div className="step-num">{limit.title}</div>
+              <div className="bench-cell" key={limit.title}>
+                <h3 className="bench-cell-title">{limit.title}</h3>
                 <p>{limit.body}</p>
               </div>
             ))}
           </div>
-        </section>
+        </Band>
 
-        <section className="landblock" id="check">
-          <div className="landhead">
-            <span className="label kicker kicker-n">Check it</span>
-            <h2 className="landtitle">
-              View our
-              <br />
-              <span className="mark">test cases</span>
-            </h2>
-            <p>
-              This is worth exactly as much as your ability to go and check it, so every part of it
-              is one file, linked below by the question it answers. If you want to know whether we
-              shaped the questions to flatter ourselves, you can read the generator.
-            </p>
-          </div>
-
-          <div className="steps">
+        <Band
+          id="check"
+          kicker="Check it"
+          title="View our test cases"
+          lede="This is worth exactly as much as your ability to go and check it, so every part of it is one file, linked below by the question it answers. If you want to know whether we shaped the questions to flatter ourselves, you can read the generator."
+        >
+          <div className="bench-cells">
             {SOURCES.map((source) => (
-              <div className="step" key={source.path}>
-                <div className="step-num">
+              <div className="bench-cell" key={source.path}>
+                <h3 className="bench-cell-title">
                   <a href={sourceHref(source.path)}>{source.question}</a>
-                </div>
+                </h3>
                 <p>{source.detail}</p>
-                <code>{source.path}</code>
+                <code className="bench-cell-path">{source.path}</code>
               </div>
             ))}
           </div>
 
-          <div className="bench-strip">
-            <p>
-              Or run it yourself against a seed of your own — <code>--dry-run</code> prints every
-              question and every gold answer without spending anything.
-            </p>
-            <div className="hero-actions label">
-              <a className="btn-solid" href={sourceHref('packages/bench/README.md')}>
-                The methodology
-              </a>
-              <a className="btn-outline" href={DOCS_HREF}>
-                View docs
-              </a>
-            </div>
+          <p className="bench-caption">
+            Or run it yourself against a seed of your own — <code>--dry-run</code> prints every
+            question and every gold answer without spending anything.
+          </p>
+          <div className="bench-actions label">
+            <a className="btn-solid" href={sourceHref('packages/bench/README.md')}>
+              The methodology <span aria-hidden="true">→</span>
+            </a>
+            <a
+              className="btn-outline"
+              href={sourceHref('packages/bench/src/questions/questions.ts')}
+            >
+              Read the question set
+            </a>
+            <a className="btn-outline" href={DOCS_HREF}>
+              View docs
+            </a>
           </div>
-        </section>
+        </Band>
       </div>
 
       <SiteFooter />
@@ -336,13 +273,369 @@ export function BenchmarksPage(): ReactNode {
   );
 }
 
-/** The four shape changes `--drift` makes, in the order the corpus makes them. */
-const DRIFTS: readonly [string, string][] = [
-  ['a field renamed', '`owner` becomes `owner_team` partway through the services'],
-  ['a unit changed with the name', '`duration_sec` becomes `duration_ms`, values converted'],
-  ['a type changed', '`assignee` is a string, then `{id, name}`'],
-  ['a key arriving late', 'files gain `service_ref` only after the change'],
-];
+/** One numbered section, as the contents and the sticky bar list it. */
+interface Section {
+  readonly id: string;
+  readonly title: string;
+  /** The sticky bar's name for it, where the title is too long for one line of chrome. */
+  readonly short: string;
+  readonly about: string;
+}
+
+/**
+ * The page's numbered sections, in the order they render.
+ *
+ * Filtered by the same conditions the bands are, so the numbers here always
+ * agree with the `[ 0n ]` counters on the kickers.
+ */
+function contents(table: PublishedTable | null): readonly Section[] {
+  const columns = table ? countWord(table.adapters.length).toLowerCase() : null;
+  const all: readonly (Section & { readonly needsRun: boolean })[] = [
+    {
+      id: 'results',
+      title: 'Results',
+      short: 'Results',
+      about: columns
+        ? `Overall accuracy and context cost for ${columns} columns, sortable by any of them.`
+        : 'What the page will show once a run has been published.',
+      needsRun: false,
+    },
+    {
+      id: 'classes',
+      title: 'By task class',
+      short: 'Task class',
+      about: 'Where each one breaks: aggregates, absence, ordering, joins, semantic, multi-hop.',
+      needsRun: true,
+    },
+    {
+      id: 'questions',
+      title: 'The questions',
+      short: 'Questions',
+      about: table
+        ? `${table.run.questions} questions in ${countWord(table.categories.length).toLowerCase()} shapes. Open a shape to read the questions it asks.`
+        : 'The shapes of question the generator asks.',
+      needsRun: false,
+    },
+    {
+      id: 'corpus',
+      title: 'What it is asked about',
+      short: 'Corpus',
+      about: 'The tool results every column was asked about, and one record from each.',
+      needsRun: false,
+    },
+    {
+      id: 'transcripts',
+      title: 'Transcripts',
+      short: 'Transcripts',
+      about: 'Every call each run made, the rows that came back, and the answer it gave.',
+      needsRun: true,
+    },
+    {
+      id: 'method',
+      title: 'What is compared',
+      short: 'Compared',
+      about: 'Each column, and what it is in the table to test.',
+      needsRun: false,
+    },
+    {
+      id: 'limits',
+      title: 'Caveats',
+      short: 'Caveats',
+      about: 'What this does not measure, and where the benchmark flatters its author.',
+      needsRun: false,
+    },
+    {
+      id: 'check',
+      title: 'Check it',
+      short: 'Check it',
+      about: 'The file behind each claim, named by the question it answers.',
+      needsRun: false,
+    },
+  ];
+  return all.filter((section) => table || !section.needsRun);
+}
+
+const sectionNumber = (index: number): string => String(index + 1).padStart(2, '0');
+
+/** The contents, under the hero: every section, what it holds, and a link to it. */
+function Contents({ sections }: { sections: readonly Section[] }): ReactNode {
+  return (
+    <nav className="bench-contents" id="contents" aria-label="Contents">
+      <div className="bench-contents-label label">[ Contents ]</div>
+      <ol className="bench-contents-list">
+        {sections.map((section, index) => (
+          <li key={section.id}>
+            <a href={`#${section.id}`}>
+              <span className="bench-contents-n label">{sectionNumber(index)}</span>
+              <span className="bench-contents-title label">{section.title}</span>
+              <span className="bench-contents-about">{section.about}</span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/**
+ * The contents again, as a bar pinned to the top once the list above has
+ * scrolled away, with the section being read underlined.
+ *
+ * Read off the layout on scroll, throttled to a frame. Hidden, it is `inert`,
+ * so a keyboard never tabs into links nobody can see.
+ */
+function StickyContents({
+  sections,
+  transcripts,
+}: {
+  sections: readonly Section[];
+  transcripts: boolean;
+}): ReactNode {
+  const [stuck, setStuck] = useState(false);
+  const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const tick = (): void => {
+      frame = 0;
+      const list = document.getElementById('contents');
+      setStuck(list ? list.getBoundingClientRect().bottom < 0 : false);
+      // The last section whose top has passed under the bar.
+      let current: string | null = null;
+      for (const section of sections) {
+        const element = document.getElementById(section.id);
+        if (element && element.getBoundingClientRect().top <= 140) current = section.id;
+      }
+      setActive(current);
+    };
+    const onScroll = (): void => {
+      if (!frame) frame = window.requestAnimationFrame(tick);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    tick();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [sections]);
+
+  // The bar stands in for the site header while it shows. The header wraps to
+  // two rows on a phone and would otherwise peek out underneath.
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-bench-stuck', stuck);
+    return () => document.documentElement.removeAttribute('data-bench-stuck');
+  }, [stuck]);
+
+  return (
+    <div className={stuck ? 'bench-sticky bench-sticky-on' : 'bench-sticky'} inert={!stuck}>
+      <nav className="bench-sticky-bar label" aria-label="Sections">
+        <a className="bench-sticky-brand" href={WHAT_HREF}>
+          <BrandMark className="brand-mark" />
+          <span className="brand-word">Ingot</span>
+        </a>
+        <span className="bench-sticky-divider" aria-hidden="true" />
+        {sections.map((section, index) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="bench-sticky-link"
+            aria-current={active === section.id ? 'location' : undefined}
+          >
+            <span className="bench-sticky-n">{sectionNumber(index)}</span>
+            {section.short}
+          </a>
+        ))}
+        <span className="bench-sticky-fill" aria-hidden="true" />
+        {transcripts ? (
+          <a className="btn-solid bench-sticky-cta" href="#transcripts">
+            Transcripts
+          </a>
+        ) : null}
+      </nav>
+    </div>
+  );
+}
+
+/** A numbered band: a centred kicker, title and lede over whatever it holds. */
+function Band({
+  id,
+  kicker,
+  title,
+  lede,
+  children,
+}: {
+  id: string;
+  kicker: string;
+  title: string;
+  lede: ReactNode;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <section className="bench-band" id={id}>
+      <div className="bench-wrap">
+        <span className="label kicker kicker-n">{kicker}</span>
+        <h2 className="bench-title">{title}</h2>
+        <p className="bench-lede">{lede}</p>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/** A mono label with a rule running to the far edge, and a legend at the end. */
+function Rule({ label, legend }: { label: string; legend?: ReactNode }): ReactNode {
+  return (
+    <div className="bench-rule label label-sm">
+      <span>{label}</span>
+      <span className="bench-rule-line" aria-hidden="true" />
+      {legend ? <span>{legend}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * The transcripts, fetched once for the whole page.
+ *
+ * The question shapes and the transcript list read the same file, so one
+ * fetch serves both. Nothing is fetched on load: they are megabytes, and most
+ * readers never open either.
+ */
+function useTranscripts(): Transcripts {
+  const [state, setState] = useState<Transcripts['state']>('idle');
+  const [data, setData] = useState<PublishedTranscripts | null>(null);
+
+  const load = async (): Promise<void> => {
+    if (state === 'loading' || state === 'ready') return;
+    setState('loading');
+    try {
+      // Through BASE_PATH, so the fetch resolves when the site is served from a
+      // subdirectory (GitHub Pages puts a project site under `/<repo>/`).
+      const response = await fetch(`${BASE_PATH}/${TRANSCRIPTS_FILE}`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      setData((await response.json()) as PublishedTranscripts);
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  };
+
+  return { state, data, load };
+}
+
+interface Transcripts {
+  readonly state: 'idle' | 'loading' | 'ready' | 'error';
+  readonly data: PublishedTranscripts | null;
+  readonly load: () => Promise<void>;
+}
+
+/** The selected corpus's runs, grouped by question in the sidecar's order. */
+function runsFor(transcripts: Transcripts, label: string): readonly TranscriptRun[] {
+  const forThis = transcripts.data?.tables.find((one) => one.label === label);
+  return (
+    forThis?.questions.flatMap((question) => question.adapters.map((run) => ({ question, run }))) ??
+    []
+  );
+}
+
+/* ── the run ───────────────────────────────────────────────────────────── */
+
+/**
+ * What produced the numbers, above the numbers.
+ *
+ * The corpus switch sits here because which corpus a table was measured over
+ * is not a filter on the table — it is what the table is — and every section
+ * below this one moves with it.
+ */
+function TheRun({
+  table,
+  selected,
+  onSelect,
+}: {
+  table: PublishedTable;
+  selected: number;
+  onSelect: (index: number) => void;
+}): ReactNode {
+  const { run } = table;
+  const agentRuns = table.adapters.reduce((sum, adapter) => sum + adapter.runs, 0);
+
+  const config: readonly [string, string][] = [
+    ['Seed', String(run.seed)],
+    ['Runs per question', String(run.repeats)],
+    ['Questions', String(run.questions)],
+    ['Tool-call budget', String(run.maxToolCalls)],
+    ['Agent runs', count(agentRuns)],
+    ['Ingot column mapping', mappingWriter(run.mapping)],
+  ];
+
+  return (
+    <section className="bench-run" aria-label="The run">
+      <div className="bench-wrap">
+        <Rule
+          label="The run"
+          // Kept when the run stamp went, because how old a benchmark is changes
+          // what it is worth — a table with no date is a table nobody can age.
+          legend={BENCHMARK.generatedAt ? `Published ${BENCHMARK.generatedAt.slice(0, 10)}` : null}
+        />
+
+        {TABLES.length > 1 ? (
+          <div className="bench-switch label label-sm">
+            <span className="bench-switch-legend">measured over</span>
+            {TABLES.map((option, index) => (
+              <button
+                aria-pressed={index === selected}
+                className="bench-switch-option"
+                key={option.label}
+                onClick={() => onSelect(index)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="bench-spec">
+          <div className="bench-spec-cell bench-spec-lead">
+            <div className="bench-spec-label label">Model under test</div>
+            <div className="bench-spec-model">{run.model}</div>
+            <div className="bench-spec-sub">
+              on {run.provider} · reasoning {run.thinking ? run.effort : 'off'}
+            </div>
+            <p>
+              Every column below is answered by this one model through the same agent loop. Only the
+              retrieval tools change.
+            </p>
+          </div>
+          <div className="bench-spec-cell">
+            <div className="bench-spec-label label">Embedder</div>
+            <div className="bench-spec-value">{run.embedder}</div>
+            <p>One embedder across the whole table, including the hosted indexes.</p>
+          </div>
+          <div className="bench-spec-cell">
+            <div className="bench-spec-label label">Scoring</div>
+            <div className="bench-spec-value">No judge model</div>
+            <p>Counts exact, sets by F1, ordered lists in order.</p>
+          </div>
+        </div>
+
+        <dl className="bench-config">
+          {config.map(([term, value]) => (
+            <div key={term}>
+              <dt className="label">{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <Scoring />
+      </div>
+    </section>
+  );
+}
 
 /** How `packages/bench/src/score/score.ts` decides what the tables count. */
 const SCORING_TERMS: readonly [string, string][] = [
@@ -360,290 +653,10 @@ const SCORING_TERMS: readonly [string, string][] = [
   ],
 ];
 
-/**
- * What the selected corpus is, and what reading its numbers commits you to.
- *
- * Both branches are written, not just the drifted one. A caveat that appears
- * only when the numbers are worse is an excuse, and the one-shape-per-tool
- * assumption is the more consequential of the two — it is the case this
- * project is most flattered by, and it goes unstated everywhere else.
- */
-function CorpusMeaning({ run }: { run: NonNullable<PublishedTable['run']> }): ReactNode {
-  if (!run.drift) {
-    return (
-      <div className="bench-corpus-meaning">
-        <p>
-          <Prose
-            text={
-              'Every payload here keeps one shape from its first page to its last, and every ' +
-              'page carries byte-identical keys to every other. That is the friendliest ' +
-              'assumption on this page — a corpus that never changes shape is a table ' +
-              'already — and it is the case this project is most flattered by. The drifted ' +
-              'corpus is the same world with that assumption taken away.'
-            }
-          />
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bench-corpus-meaning">
-      <p>
-        <Prose
-          text={
-            'The same world as the ordinary corpus, written down the way a provider actually ' +
-            'writes things down. Two fifths of the way through each listing the shape moves ' +
-            'underneath the agent:'
-          }
-        />
-      </p>
-      <dl className="bench-terms">
-        {DRIFTS.map(([what, how]) => (
-          <div key={what}>
-            <dt className="label label-sm">{what}</dt>
-            <dd>
-              <Prose text={how} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <p>
-        <Prose
-          text={
-            'Nothing is lost. Every record still appears exactly once, so every question is ' +
-            'still answerable — by an adapter that notices. What drift costs is the ' +
-            'commitment: `remember` has to fix a column name and a column type before it has ' +
-            'seen the last page, while a vector index commits to nothing and embeds whatever ' +
-            'bytes arrive. So the expected result is that the Ingot columns fall, the dense ' +
-            'columns stay roughly flat, and the gap this benchmark exists to show gets ' +
-            'smaller. That is the point: a benchmark only ever run over the corpus its own ' +
-            'authors designed is not yet evidence.'
-          }
-        />
-      </p>
-      <p className="bench-corpus-meaning-rule">
-        <Prose
-          text={
-            'These numbers are not comparable with the ordinary corpus, and the harness will ' +
-            'not let you pretend otherwise. Read them beside it, never instead of it.'
-          }
-        />
-      </p>
-    </div>
-  );
-}
-
-/** What produced the numbers, beside the numbers. */
-function Provenance({ table }: { table: PublishedTable | null }): ReactNode {
-  const run = table?.run;
-  if (!run) return null;
-
-  const facts: readonly [string, string][] = [
-    ['seed', String(run.seed)],
-    ['agent', `${run.model} on ${run.provider}`],
-    ['reasoning', run.thinking ? run.effort : 'off'],
-    ['embedder', run.embedder],
-    ['runs per question', String(run.repeats)],
-    ['tool-call budget', String(run.maxToolCalls)],
-    ['ingot column mapping', mappingWriter(run.mapping)],
-    ['questions', String(run.questions)],
-    // Kept when the run stamp went, because how old a benchmark is changes
-    // what it is worth — a table with no date is a table nobody can age.
-    ...(BENCHMARK.generatedAt
-      ? ([['published', BENCHMARK.generatedAt.slice(0, 10)]] as [string, string][])
-      : []),
-  ];
-
-  return (
-    <div className="bench-prov">
-      <dl>
-        {facts.map(([term, value]) => (
-          <div key={term}>
-            <dt className="label label-sm">{term}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-/**
- * The workload, shown rather than characterised.
- *
- * Every figure and every sample here comes out of `results.json` the same way
- * the accuracies do — `packages/bench` rebuilds the corpus from the run's seed
- * at publish time, so what a card shows is the payload that adapter actually
- * ingested, down to the bytes. A hand-written "roughly five hundred records of
- * engineering data" would be a description of the fixture; this is the fixture.
- *
- * The sample matters more than the counts. "Tool results" is an abstraction a
- * reader has to take on trust, and one record of real JSON with a nested array
- * of file paths in it settles what kind of thing is being remembered in less
- * time than a paragraph does.
- */
-function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
-  const corpus = table?.corpus ?? null;
-  const run = table?.run ?? null;
-  const count = (value: number): string => value.toLocaleString('en-GB');
-
-  // Described by the catalogue, in the order the agent met them. With no
-  // published run there are no numbers to attach, and the section falls back
-  // to saying what the harness will collect — the same rule the adapter
-  // blurbs follow.
-  const entries = corpus
-    ? corpus.sources.map((source) => ({
-        source,
-        blurb: SOURCE_BLURBS.find((entry) => entry.tool === source.tool),
-      }))
-    : SOURCE_BLURBS.map((blurb) => ({ source: null, blurb }));
-
-  // What the whole thing weighs in the window, measured rather than estimated:
-  // `raw-context` puts the corpus in the prompt, so its input-token count is
-  // the corpus in tokens plus a question. A characters-to-tokens ratio would
-  // be this page guessing at the one number it can simply read.
-  const rawContext = table?.adapters.find((adapter) => adapter.name === 'raw-context');
-
-  return (
-    <>
-      {corpus ? (
-        <div className="bench-facts">
-          <dl>
-            <div>
-              <dt className="label label-sm">payloads</dt>
-              <dd>{count(corpus.results)}</dd>
-            </div>
-            <div>
-              <dt className="label label-sm">records</dt>
-              <dd>{count(corpus.records)}</dd>
-            </div>
-            <div>
-              <dt className="label label-sm">characters of JSON</dt>
-              <dd>{count(corpus.bytes)}</dd>
-            </div>
-            {rawContext ? (
-              <div>
-                <dt className="label label-sm">tokens, in raw-context’s prompt</dt>
-                <dd>{count(rawContext.contextTokens)}</dd>
-              </div>
-            ) : null}
-          </dl>
-        </div>
-      ) : null}
-
-      {/*
-        Between the totals and the samples, because it is the fact that makes
-        the samples mean something: six payloads that describe themselves and
-        nothing else, joined only by values that happen to match.
-      */}
-      <div className="bench-joins">
-        <div className="bench-rule label label-sm">
-          <span>What joins them</span>
-          <span className="bench-rule-line" aria-hidden="true" />
-          <span>No schema, no keys</span>
-        </div>
-        <dl>
-          {CORPUS_JOINS.map((join) => (
-            <div key={`${join.from}-${join.to}`}>
-              <dt>
-                <code>{join.from}</code>
-                <span aria-hidden="true"> → </span>
-                <code>{join.to}</code>
-              </dt>
-              <dd>
-                <Prose text={join.by} />
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      <div className="bench-sources">
-        {entries.map(({ source, blurb }) => {
-          const tool = source?.tool ?? blurb?.tool ?? '';
-          return (
-            <div className="bench-source" key={tool}>
-              <div className="bench-source-head">
-                <code className="bench-source-tool">{tool}</code>
-                {blurb ? (
-                  <span className="label label-sm bench-source-shape">{blurb.shape}</span>
-                ) : null}
-              </div>
-
-              {source ? <p className="bench-source-stat">{arrival(source)}</p> : null}
-
-              {blurb ? (
-                <p>
-                  <Prose text={blurb.blurb} />
-                </p>
-              ) : null}
-
-              {source?.sample ? (
-                <pre className="bench-sample">
-                  <code>{source.sample}</code>
-                </pre>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-
-      {run && run.logs === 0 ? (
-        <p className="bench-note">
-          <Prose
-            text={
-              'This run is the ordinary corpus — `--logs 0` — so every payload above is a ' +
-              'paginated listing that fits in a window. The other shape does not: one ' +
-              '`logs.search` that comes back with tens of thousands of lines in a single ' +
-              'result. It is a different experiment rather than a bigger one — `raw-context` ' +
-              'is refused before inference rather than scored, and top-k finds a shrinking ' +
-              'share of what an aggregate needs while a count over rows does not care how ' +
-              'many there are — and no such run is published here yet.'
-            }
-          />
-        </p>
-      ) : null}
-
-      {/*
-       * The corpus above is one shape per tool, and that is the assumption most
-       * worth naming out loud: it is the case this project is most flattered
-       * by, because a corpus that never changes shape is a table already. The
-       * note says so on the ordinary run rather than only on the drifted one —
-       * a caveat that appears only when the numbers are bad is an excuse.
-       */}
-      {run ? (
-        <p className="bench-note">
-          <Prose
-            text={
-              run.drift
-                ? 'The payloads above are the drifted ones — the samples move shape partway ' +
-                  'through exactly as the listings do, which is why `assignee` reads as an ' +
-                  'object in one and a string in another. Every record is still present ' +
-                  'exactly once, so every question above is still answerable, but not by ' +
-                  'anything that fixed its schema on the first page. What that costs each ' +
-                  'column is the table at the top of this page.'
-                : 'Every payload above also keeps one shape from first page to last, which is ' +
-                  'the friendliest assumption on this page: real tools rename fields, change ' +
-                  'units, and return an object where a string used to be. `--drift` is the ' +
-                  'run that does all of that, and it is the one where committing to a column ' +
-                  'mapping before the last page has a price — so it costs Ingot more than it ' +
-                  'costs a vector index. Switch the corpus at the top of this page to read it.'
-            }
-          />
-        </p>
-      ) : null}
-    </>
-  );
-}
-
-/** A number as a share of the row, for the bar behind it. */
-function bar(value: number): Record<string, string> {
-  return { ['--v' as string]: String(Math.round(value * 100)) };
-}
+/* ── results ───────────────────────────────────────────────────────────── */
 
 /** The three figures that lead the section, computed in `benchmarks.ts`. */
-function Tiles({ table }: { table: PublishedTable | null }): ReactNode {
+function Tiles({ table }: { table: PublishedTable }): ReactNode {
   const stats = leadStats(table);
   if (stats.length === 0) return null;
   return (
@@ -651,12 +664,12 @@ function Tiles({ table }: { table: PublishedTable | null }): ReactNode {
       {stats.map((stat) => (
         <div className="bench-tile" key={stat.label}>
           <div className="bench-tile-value">{stat.value}</div>
-          <div className="bench-tile-label label label-sm">
-            {stat.label} —{' '}
+          <div className="bench-tile-label label">
+            {stat.label} ·{' '}
             {stat.subjects.map((subject, index) => (
               <span key={subject}>
                 {index > 0 ? ' to ' : ''}
-                <span className="mark bench-tile-mark">{subject}</span>
+                <span className="bench-tile-subject">{subject}</span>
               </span>
             ))}
           </div>
@@ -666,114 +679,317 @@ function Tiles({ table }: { table: PublishedTable | null }): ReactNode {
   );
 }
 
+type SortKey = 'name' | 'accuracy' | 'tokens';
+
+/** Ingot's own surfaces, set in bold and the accent so the eye finds the thing under test. */
+function isProduct(adapter: string): boolean {
+  return adapter.startsWith('ingot');
+}
+
 /**
- * Overall accuracy as a ranked bar list.
+ * Overall accuracy as a ranked bar list, sortable by any of its columns.
  *
- * A bar you can compare by length beats a column of percentages you have to
- * compare by reading, and ranking makes the order the reading order. The
- * control keeps its own group: `raw-context` placed fourth in a race it was
- * not running is the wrong reading, and a flush list invites exactly that.
+ * The control keeps its own group below a rule, drawn as an unfilled outline:
+ * `raw-context` placed fourth in a race it was not running is the wrong
+ * reading, and a flush list invites exactly that.
  */
 function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
-  const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
-  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
-  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
+    key: 'accuracy',
+    desc: true,
+  });
 
-  // Context bars are scaled against the heaviest adapter in the run, controls
-  // included: the point of putting the two side by side is that `raw-context`
-  // reading the whole corpus is the thing the retrieval columns are cheaper
-  // than, and a scale that excluded it would hide that.
-  const peak = Math.max(...adapters.map((adapter) => adapter.contextTokens), 1);
+  const compare = (a: PublishedAdapter, b: PublishedAdapter): number => {
+    const flip = sort.desc ? -1 : 1;
+    if (sort.key === 'name') return adapterLabel(a.name).localeCompare(adapterLabel(b.name)) * flip;
+    if (sort.key === 'tokens') return (a.contextTokens - b.contextTokens) * flip;
+    return (a.accuracy - b.accuracy) * flip;
+  };
+  const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(compare);
+  const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name));
 
-  const row = (adapter: PublishedAdapter, muted: boolean): ReactNode => (
-    <li className={muted ? 'bench-rank bench-rank-muted' : 'bench-rank'} key={adapter.name}>
+  const head = (key: SortKey, label: string, end: boolean): ReactNode => {
+    const active = sort.key === key;
+    return (
+      <button
+        type="button"
+        className={`bench-sort${active ? ' bench-sort-on' : ''}${end ? ' bench-sort-end' : ''}`}
+        onClick={() =>
+          setSort((now) => ({
+            key,
+            // Names read A–Z first; figures read highest first.
+            desc: now.key === key ? !now.desc : key !== 'name',
+          }))
+        }
+      >
+        {label}
+        <span aria-hidden="true">{active ? (sort.desc ? '↓' : '↑') : '↕'}</span>
+        {active ? (
+          <span className="bench-sr">, sorted {sort.desc ? 'descending' : 'ascending'}</span>
+        ) : null}
+      </button>
+    );
+  };
+
+  const row = (adapter: PublishedAdapter, control: boolean): ReactNode => (
+    <li
+      className={`bench-rank${control ? ' bench-rank-ctl' : ''}${isProduct(adapter.name) ? ' bench-rank-ours' : ''}`}
+      key={adapter.name}
+    >
       <code className="bench-rank-name">{adapterLabel(adapter.name)}</code>
       <span className="bench-rank-track">
         <span className="bench-rank-fill" style={bar(adapter.accuracy)} aria-hidden="true" />
       </span>
       <span className="bench-rank-value">
-        <strong>{percent(adapter.accuracy)}</strong>{' '}
-        <span className="muted">±{percent(adapter.stderr)}</span>
+        <strong>{percent(adapter.accuracy)}</strong>
+        <span className="bench-rank-err">±{percent(adapter.stderr)}</span>
       </span>
-      <span className="bench-rank-track bench-rank-track-cost">
-        <span
-          className="bench-rank-fill bench-rank-fill-cost"
-          style={bar(adapter.contextTokens / peak)}
-          aria-hidden="true"
-        />
-      </span>
-      <span className="bench-rank-value bench-rank-cost">
-        {adapter.contextTokens.toLocaleString('en-GB')}
-      </span>
+      <span className="bench-rank-cost">{count(adapter.contextTokens)}</span>
     </li>
   );
 
   return (
     <div className="bench-ranked">
-      {/*
-        Accuracy and cost on one row, because the interesting reading of this
-        benchmark is the pair. An adapter that answers well by pulling eighty
-        thousand tokens through the model has not solved the problem the same
-        way as one that answers well on four thousand, and two separate tables
-        make a reader hold one in their head while looking at the other.
-      */}
       <div className="bench-rank bench-rank-head label label-sm">
-        <span>Overall accuracy</span>
-        <span />
-        <span />
-        <span />
-        <span className="bench-rank-cost">Context tokens</span>
+        {head('name', 'Adapter', false)}
+        <span className="bench-rank-head-bar">Overall accuracy</span>
+        {head('accuracy', 'Score', true)}
+        {head('tokens', 'Ctx tokens', true)}
       </div>
       <ol className="bench-ranks">{memories.map((adapter) => row(adapter, false))}</ol>
       {controls.length > 0 ? (
-        <>
-          <h3 className="bench-subhead label label-sm bench-subhead-quiet">The Control</h3>
+        <div className="bench-ceiling">
+          <h3 className="bench-ceiling-label label label-sm">
+            The ceiling — no retrieval, whole corpus in the prompt
+          </h3>
           <ol className="bench-ranks">{controls.map((adapter) => row(adapter, true))}</ol>
-        </>
+        </div>
       ) : null}
     </div>
   );
 }
 
-/**
- * A column header that carries its own definition.
- *
- * The categories are what the matrix means — "absence 0%" says nothing until
- * you know absence is the class whose answer is defined by what is missing —
- * and that belongs next to the number rather than in a section further down
- * the page, which a reader has already scrolled past by the time they need it.
- *
- * CSS-only, because this site is a static export and a tooltip is not worth
- * shipping a runtime for. `tabIndex` and `aria-describedby` are what keep it
- * reachable without a mouse: the icon takes focus, and the description is
- * announced rather than merely drawn.
- */
-function CategoryHead({ category, end }: { category: string; end: boolean }): ReactNode {
-  const blurb = CATEGORIES.find((entry) => entry.name === category)?.blurb;
-  if (!blurb) return <>{category}</>;
+/** A number as a share of the row, for the bar behind it. */
+function bar(value: number): Record<string, string> {
+  return { ['--v' as string]: String(Math.round(value * 100)) };
+}
 
-  const id = `bench-tip-${category}`;
+/**
+ * Runs that never happened, named beside the numbers they dragged down.
+ *
+ * A provider throwing is scored as a wrong answer — a memory that could not be
+ * asked did not answer — and that is the right call for the accuracy column.
+ * It is the wrong thing to leave unsaid, because "this adapter did badly" and
+ * "a fifth of this adapter's runs died on a rate limit" are different readings
+ * of the same figure, and only the first one is about retrieval.
+ */
+function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
+  const hit = adapters.filter((adapter) => adapter.failures > 0);
+  if (hit.length === 0) return null;
+
+  const total = hit.reduce((sum, adapter) => sum + adapter.failures, 0);
+  const runs = adapters.reduce((sum, adapter) => sum + adapter.runs, 0);
+
   return (
-    <span className="bench-th">
-      {category}
-      {/*
-        A button rather than a span with `tabindex`: this is a focusable
-        affordance, and the element that already means that gets keyboard
-        behaviour and the right role without being told.
-      */}
-      <button type="button" className="bench-info" aria-describedby={id}>
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          <rect x="7.1" y="6.6" width="1.8" height="5" fill="currentColor" />
-          <rect x="7.1" y="3.8" width="1.8" height="1.8" fill="currentColor" />
-        </svg>
-        <span className="bench-sr">what {category} means</span>
-        <span className={end ? 'bench-tip bench-tip-end' : 'bench-tip'} role="tooltip" id={id}>
-          {blurb}
+    <p className="bench-caption">
+      {`${total} of ${runs} agent runs failed outright — the provider threw and nothing was answered: `}
+      {hit.map((adapter, index) => (
+        <span key={adapter.name}>
+          {index > 0 ? ', ' : ''}
+          <code>{adapterLabel(adapter.name)}</code> {adapter.failures} of {adapter.runs}
         </span>
-      </button>
-    </span>
+      ))}
+      {'. They are scored wrong, because a memory that could not be asked did not answer — but ' +
+        'they are infrastructure failures rather than retrieval failures, and a column carrying ' +
+        'several of them is reading lower than what it did with the questions it got.'}
+    </p>
   );
+}
+
+function Scoring(): ReactNode {
+  return (
+    <div className="bench-block">
+      <Rule label="How it is scored" />
+      <dl className="bench-terms">
+        {SCORING_TERMS.map(([term, gloss]) => (
+          <div key={term}>
+            <dt className="label label-sm">{term}</dt>
+            <dd>
+              <Prose text={gloss} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/** One column of the averages table: what it reads, how it prints, which way is better. */
+interface CostColumn {
+  readonly key: string;
+  readonly label: string;
+  readonly value: (adapter: PublishedAdapter) => number | null;
+  readonly show: (value: number) => string;
+  /** The first click on a column puts the best first. */
+  readonly higherIsBetter: boolean;
+}
+
+const COST_COLUMNS: readonly CostColumn[] = [
+  {
+    key: 'f1',
+    label: 'set F1',
+    value: (a) => a.f1,
+    show: (v) => v.toFixed(2),
+    higherIsBetter: true,
+  },
+  {
+    key: 'recall',
+    label: 'evidence recall',
+    value: (a) => a.evidenceRecall,
+    show: percent,
+    higherIsBetter: true,
+  },
+  {
+    key: 'precision',
+    label: 'evidence precision',
+    value: (a) => a.evidencePrecision,
+    show: percent,
+    higherIsBetter: true,
+  },
+  {
+    key: 'calls',
+    label: 'tool calls',
+    value: (a) => a.toolCalls,
+    show: (v) => v.toFixed(1),
+    higherIsBetter: false,
+  },
+  {
+    key: 'tokens',
+    label: 'context tokens',
+    value: (a) => a.contextTokens,
+    show: count,
+    higherIsBetter: false,
+  },
+  {
+    key: 'callMs',
+    label: 'tool-call latency',
+    value: (a) => a.callMs ?? null,
+    show: formatMs,
+    higherIsBetter: false,
+  },
+  {
+    key: 'runMs',
+    label: 'run time',
+    value: (a) => a.runMs ?? null,
+    show: formatMs,
+    higherIsBetter: false,
+  },
+];
+
+/** Everything beyond accuracy, averaged per run and sortable by any column. */
+function CostTable({
+  adapters,
+  concurrency,
+}: {
+  adapters: readonly PublishedAdapter[];
+  concurrency: number;
+}): ReactNode {
+  // Null is the published order, which is the order the run bought them in.
+  const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(null);
+
+  const column = COST_COLUMNS.find((one) => one.key === sort?.key);
+  const rows = [...adapters];
+  if (sort?.key === 'name') {
+    rows.sort(
+      (a, b) => adapterLabel(a.name).localeCompare(adapterLabel(b.name)) * (sort.desc ? -1 : 1),
+    );
+  } else if (sort && column) {
+    rows.sort((a, b) => {
+      const left = column.value(a);
+      const right = column.value(b);
+      // A column with no value for an adapter (`—`) sorts last either way.
+      if (left === null) return right === null ? 0 : 1;
+      if (right === null) return -1;
+      return (left - right) * (sort.desc ? -1 : 1);
+    });
+  }
+
+  const header = (key: string, label: string, firstDesc: boolean): ReactNode => {
+    const active = sort?.key === key;
+    return (
+      <th
+        scope="col"
+        aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : undefined}
+        key={key}
+      >
+        <button
+          type="button"
+          className={`bench-sort${active ? ' bench-sort-on' : ''}${key === 'name' ? '' : ' bench-sort-end'}`}
+          onClick={() =>
+            setSort((now) => ({ key, desc: now?.key === key ? !now.desc : firstDesc }))
+          }
+        >
+          {label}
+          <span aria-hidden="true">{active ? (sort.desc ? '↓' : '↑') : '↕'}</span>
+        </button>
+      </th>
+    );
+  };
+
+  return (
+    <div className="bench-block">
+      <Rule label="Beyond the answer" legend="Averages per run" />
+      <div className="bench-scroll">
+        <table className="bench-table">
+          <thead>
+            <tr>
+              {header('name', 'adapter', false)}
+              {COST_COLUMNS.map((one) => header(one.key, one.label, one.higherIsBetter))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((adapter) => (
+              <tr key={adapter.name}>
+                <th scope="row">
+                  <code className={isProduct(adapter.name) ? 'bench-ours' : undefined}>
+                    {adapterLabel(adapter.name)}
+                  </code>
+                </th>
+                {COST_COLUMNS.map((one) => {
+                  const value = one.value(adapter);
+                  return <td key={one.key}>{value === null ? '—' : one.show(value)}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="bench-caption">
+        Tool-call latency is the time one retrieval call took; run time is the whole answer, the
+        model's own thinking included.
+        {concurrency > 1
+          ? ` Both were measured with ${concurrency} agent runs in flight at once, so they compare the columns with each other and not with a run that had the provider to itself.`
+          : ''}
+      </p>
+    </div>
+  );
+}
+
+/* ── by task class ─────────────────────────────────────────────────────── */
+
+/**
+ * The step of the accent ramp a value falls on, 1 to 5.
+ *
+ * Stepped rather than continuous so five fills can be told apart at a glance,
+ * and read against the legend under the matrix.
+ */
+function heatStep(value: number): number {
+  const pct = Math.round(value * 100);
+  if (pct >= 90) return 5;
+  if (pct >= 70) return 4;
+  if (pct >= 50) return 3;
+  if (pct >= 30) return 2;
+  return 1;
 }
 
 /**
@@ -781,9 +997,7 @@ function CategoryHead({ category, end }: { category: string; end: boolean }): Re
  *
  * A real table, because it is tabular data and a screen reader should get row
  * and column headers — but spaced and filled so the eye reads it as a grid of
- * blocks rather than a wall of numerals. The number is centred and set large
- * because at this size the *fill* is the first read and the digits are the
- * confirmation.
+ * blocks rather than a wall of numerals.
  *
  * Intensity is one hue getting darker, never a red-to-green ramp: it encodes
  * the value, which is a fact, where a good/bad palette would encode a verdict
@@ -812,223 +1026,346 @@ function HeatMatrix({
           </td>
         );
       }
+      const shown = Math.round(value * 100);
       if (control) {
         return (
           <td key={category} className="bench-heat bench-heat-ctl">
-            {Math.round(value * 100)}
+            {shown}
           </td>
         );
       }
-      // The flip point is where the fill stops being light enough to carry
-      // dark text. Below it the cell is pale and the ink stays dark.
-      const dark = value >= 0.55;
       return (
         <td
           key={category}
-          className={`bench-heat${value === 0 ? ' bench-heat-zero' : ''}${dark ? ' bench-heat-deep' : ''}`}
-          style={bar(value)}
+          className={`bench-heat ${value === 0 ? 'bench-heat-zero' : `bench-heat-${heatStep(value)}`}`}
         >
-          {Math.round(value * 100)}
+          {shown}
         </td>
       );
     });
 
   return (
-    <div className="bench-scroll">
-      <div className="bench-rule label label-sm">
-        <span>Accuracy by task class</span>
-        <span className="bench-rule-line" aria-hidden="true" />
-        <span>Darker = higher</span>
-      </div>
-
-      <table className="bench-matrix">
-        <thead>
-          <tr>
-            <th scope="col">
-              <span className="bench-sr">adapter</span>
-            </th>
-            {categories.map((category, index) => (
-              <th scope="col" key={category}>
-                <CategoryHead
-                  category={category}
-                  // The last two open leftward. The scroll container clips at
-                  // its own edge, and a tooltip centred on the final column
-                  // would open into that clip.
-                  end={index >= categories.length - 2}
-                />
+    <>
+      <div className="bench-scroll">
+        <table className="bench-matrix">
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="bench-sr">adapter</span>
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {memories.map((adapter, index) => (
-            <tr key={adapter.name}>
-              <th scope="row" className={index < 2 ? 'bench-lead' : ''}>
-                {adapterLabel(adapter.name)}
-              </th>
-              {cells(adapter, false)}
+              {categories.map((category) => (
+                <th scope="col" key={category}>
+                  <a href={`#shape-${category}`}>{category}</a>
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-        {controls.length > 0 ? (
-          <tbody className="bench-matrix-ctl">
-            {/*
-              A spacer row rather than a border on the tbody: under
-              `border-collapse: separate` only cells paint borders, so a rule
-              on the group would simply not appear.
-            */}
-            <tr className="bench-matrix-gap">
-              <td colSpan={categories.length + 1} />
-            </tr>
-            {controls.map((adapter) => (
+          </thead>
+          <tbody>
+            {memories.map((adapter) => (
               <tr key={adapter.name}>
-                <th scope="row">{adapterLabel(adapter.name)}</th>
-                {cells(adapter, true)}
+                <th scope="row" className={isProduct(adapter.name) ? 'bench-ours' : undefined}>
+                  {adapterLabel(adapter.name)}
+                </th>
+                {cells(adapter, false)}
               </tr>
             ))}
           </tbody>
-        ) : null}
-      </table>
-    </div>
+          {controls.length > 0 ? (
+            <tbody className="bench-matrix-ctl">
+              {/*
+                A spacer row rather than a border on the tbody: under
+                `border-collapse: separate` only cells paint borders, so a rule
+                on the group would simply not appear.
+              */}
+              <tr className="bench-matrix-gap">
+                <td colSpan={categories.length + 1} />
+              </tr>
+              {controls.map((adapter) => (
+                <tr key={adapter.name}>
+                  <th scope="row">{adapterLabel(adapter.name)}</th>
+                  {cells(adapter, true)}
+                </tr>
+              ))}
+            </tbody>
+          ) : null}
+        </table>
+      </div>
+
+      <div className="bench-legend label label-sm">
+        <span>Darker is higher</span>
+        <span className="bench-legend-ramp" aria-hidden="true">
+          {[1, 2, 3, 4, 5].map((step) => (
+            <span key={step} className={`bench-heat-${step}`} />
+          ))}
+        </span>
+        <span>
+          <span className="bench-legend-ctl" aria-hidden="true" /> the ceiling
+        </span>
+      </div>
+    </>
   );
 }
+
+/* ── the questions ─────────────────────────────────────────────────────── */
 
 /**
- * Runs that never happened, named beside the numbers they dragged down.
+ * One card per question class: what it is for, what its gold is, and — on a
+ * click — every question the run asked in it.
  *
- * A provider throwing is scored as a wrong answer — a memory that could not be
- * asked did not answer — and that is the right call for the accuracy column.
- * It is the wrong thing to leave unsaid, because "this adapter did badly" and
- * "a fifth of this adapter's runs died on a rate limit" are different readings
- * of the same figure, and only the first one is about retrieval.
- *
- * Rendered as a warning rather than a table column: it is almost always zero
- * for every row, and a column of noughts would earn its width about once a
- * year while making the table harder to read the rest of the time.
+ * The questions come out of the transcripts, so opening a card is the same
+ * fetch the transcripts section makes, and neither makes it twice.
  */
-function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
-  const hit = adapters.filter((adapter) => adapter.failures > 0);
-  if (hit.length === 0) return null;
+function QuestionShapes({
+  table,
+  transcripts,
+}: {
+  table: PublishedTable | null;
+  transcripts: Transcripts;
+}): ReactNode {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const runs = table ? runsFor(transcripts, table.label) : [];
 
-  const total = hit.reduce((sum, adapter) => sum + adapter.failures, 0);
-  const runs = adapters.reduce((sum, adapter) => sum + adapter.runs, 0);
+  const toggle = (name: string): void => {
+    void transcripts.load();
+    setOpen((now) => {
+      const next = new Set(now);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   return (
-    <div className="bench-prov">
-      <p className="bench-warning">
-        {`${total} of ${runs} agent runs failed outright — the provider threw and nothing was answered: `}
-        {hit.map((adapter, index) => (
-          <span key={adapter.name}>
-            {index > 0 ? ', ' : ''}
-            <code>{adapterLabel(adapter.name)}</code> {adapter.failures} of {adapter.runs}
-          </span>
-        ))}
-        {'. They are scored wrong, because a memory that could not be asked did not answer — but ' +
-          'they are infrastructure failures rather than retrieval failures, and a column carrying ' +
-          'several of them is reading lower than what it did with the questions it got.'}
-      </p>
-    </div>
+    <>
+      <div className="bench-shapes">
+        {CATEGORIES.map((category) => {
+          const asked = table?.run.categoryCounts[category.name];
+          const isOpen = open.has(category.name);
+          // One entry per question, not per run: the sidecar lists each question once.
+          const questions = runs
+            .filter(({ question }) => question.category === category.name)
+            .map(({ question }) => question)
+            .filter((question, index, all) => all.findIndex((q) => q.id === question.id) === index);
+
+          return (
+            <div
+              className={isOpen ? 'bench-shape bench-shape-open' : 'bench-shape'}
+              id={`shape-${category.name}`}
+              key={category.name}
+            >
+              <div className="bench-shape-name label">{category.name}</div>
+              <p>{category.blurb}</p>
+
+              {table && asked ? (
+                <button
+                  type="button"
+                  className="bench-shape-toggle"
+                  aria-expanded={isOpen}
+                  onClick={() => toggle(category.name)}
+                >
+                  <span className="bench-glyph" aria-hidden="true">
+                    {isOpen ? '−' : '+'}
+                  </span>
+                  <span className="label label-sm">
+                    {isOpen
+                      ? 'Hide the questions'
+                      : `Read the ${asked} question${asked === 1 ? '' : 's'} asked`}
+                  </span>
+                </button>
+              ) : null}
+
+              {isOpen ? (
+                <div className="bench-shape-list">
+                  {transcripts.state === 'loading' ? (
+                    <p className="bench-shape-note label label-sm">Loading the questions…</p>
+                  ) : null}
+                  {transcripts.state === 'error' ? (
+                    <p className="bench-shape-note label label-sm">
+                      The questions could not be loaded.
+                    </p>
+                  ) : null}
+                  {questions.map((question) => (
+                    <p className="bench-shape-q" key={question.id}>
+                      <Prose text={question.question} />
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {table ? (
+        <p className="bench-caption">
+          {`The corpus is ${count(table.corpus.results)} payloads and ${count(table.corpus.records)} records of tool output from ${table.corpus.sources.length} tools. Nothing declares a key, so the joins run on a file path in one payload and a service name in another.`}
+        </p>
+      ) : null}
+    </>
   );
 }
 
-function CostTable({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
+/* ── the corpus ────────────────────────────────────────────────────────── */
+
+/**
+ * The workload, shown rather than characterised.
+ *
+ * Every figure and every sample here comes out of `results.json` the same way
+ * the accuracies do — `packages/bench` rebuilds the corpus from the run's seed
+ * at publish time, so what a card shows is the payload that adapter actually
+ * ingested, down to the bytes. A hand-written "roughly five hundred records of
+ * engineering data" would be a description of the fixture; this is the fixture.
+ *
+ * The sample matters more than the counts. "Tool results" is an abstraction a
+ * reader has to take on trust, and one record of real JSON with a nested array
+ * of file paths in it settles what kind of thing is being remembered in less
+ * time than a paragraph does.
+ */
+function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
+  const corpus = table?.corpus ?? null;
+  const run = table?.run ?? null;
+
+  // Described by the catalogue, in the order the agent met them. With no
+  // published run there are no numbers to attach, and the section falls back
+  // to saying what the harness will collect — the same rule the adapter
+  // blurbs follow.
+  const entries = corpus
+    ? corpus.sources.map((source) => ({
+        source,
+        blurb: SOURCE_BLURBS.find((entry) => entry.tool === source.tool),
+      }))
+    : SOURCE_BLURBS.map((blurb) => ({ source: null, blurb }));
+
+  // What the whole thing weighs in the window, measured rather than estimated:
+  // `raw-context` puts the corpus in the prompt, so its input-token count is
+  // the corpus in tokens plus a question.
+  const rawContext = table?.adapters.find((adapter) => adapter.name === 'raw-context');
+
+  const facts: readonly [string, string][] = corpus
+    ? [
+        ['Payloads', count(corpus.results)],
+        ['Records', count(corpus.records)],
+        ['Characters of JSON', count(corpus.bytes)],
+        ...(rawContext
+          ? ([['Tokens, in raw-context’s prompt', count(rawContext.contextTokens)]] as [
+              string,
+              string,
+            ][])
+          : []),
+      ]
+    : [];
+
   return (
-    <div className="bench-scroll">
-      <table className="bench-table">
-        <thead>
-          <tr>
-            <th scope="col">adapter</th>
-            <th scope="col">set F1</th>
-            <th scope="col">evidence recall</th>
-            <th scope="col">evidence precision</th>
-            <th scope="col">tool calls</th>
-            <th scope="col">context tokens</th>
-          </tr>
-        </thead>
-        <tbody>
-          {adapters.map((adapter) => (
-            <tr key={adapter.name}>
-              <th scope="row">
-                <code>{adapterLabel(adapter.name)}</code>
-              </th>
-              <td>{adapter.f1.toFixed(2)}</td>
-              <td>{adapter.evidenceRecall === null ? '—' : percent(adapter.evidenceRecall)}</td>
-              <td>
-                {adapter.evidencePrecision === null ? '—' : percent(adapter.evidencePrecision)}
-              </td>
-              <td>{adapter.toolCalls.toFixed(1)}</td>
-              <td>{adapter.contextTokens.toLocaleString('en-GB')}</td>
-            </tr>
+    <>
+      {facts.length > 0 ? (
+        <dl className="bench-config bench-config-open">
+          {facts.map(([term, value]) => (
+            <div key={term}>
+              <dt className="label">{term}</dt>
+              <dd>{value}</dd>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </dl>
+      ) : null}
+
+      {/*
+        Between the totals and the samples, because it is the fact that makes
+        the samples mean something: six payloads that describe themselves and
+        nothing else, joined only by values that happen to match.
+      */}
+      <div className="bench-block bench-joins">
+        <Rule label="What joins them" legend="No schema, no keys" />
+        <dl>
+          {CORPUS_JOINS.map((join) => (
+            <div key={`${join.from}-${join.to}`}>
+              <dt>
+                <code>{join.from}</code>
+                <span aria-hidden="true"> → </span>
+                <code>{join.to}</code>
+              </dt>
+              <dd>
+                <Prose text={join.by} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="bench-block">
+        <Rule label="Each payload, verbatim" legend={table ? table.label : null} />
+        <div className="bench-sources">
+          {entries.map(({ source, blurb }) => {
+            const tool = source?.tool ?? blurb?.tool ?? '';
+            return (
+              <div className="bench-source" key={tool}>
+                <div className="bench-source-head">
+                  <code className="bench-source-tool">{tool}</code>
+                  {blurb ? (
+                    <span className="label label-sm bench-source-shape">{blurb.shape}</span>
+                  ) : null}
+                </div>
+
+                {source ? <p className="bench-source-stat">{arrival(source)}</p> : null}
+
+                {blurb ? (
+                  <p>
+                    <Prose text={blurb.blurb} />
+                  </p>
+                ) : null}
+
+                {source?.sample ? (
+                  <pre className="bench-sample">
+                    <code>{source.sample}</code>
+                  </pre>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {run && run.logs === 0 ? (
+        <p className="bench-caption">
+          <Prose
+            text={
+              'This run is the ordinary corpus — `--logs 0` — so every payload above is a ' +
+              'paginated listing that fits in a window. The other shape does not: one ' +
+              '`logs.search` that comes back with tens of thousands of lines in a single ' +
+              'result. It is a different experiment rather than a bigger one — `raw-context` ' +
+              'is refused before inference rather than scored, and top-k finds a shrinking ' +
+              'share of what an aggregate needs while a count over rows does not care how ' +
+              'many there are — and no such run is published here yet.'
+            }
+          />
+        </p>
+      ) : null}
+    </>
   );
 }
+
+/* ── transcripts ───────────────────────────────────────────────────────── */
 
 /**
  * What each column actually did, one run at a time.
  *
- * The section the whole change exists for. Every number above is a mean over
- * transcripts, and a mean asks to be trusted where a transcript can be checked:
- * one screen showing the same store answered two ways, one of them silently
- * wrong, is worth more than a percentage. The table lists the runs; a trace
- * opens the one a reader wants to check — the SQL it wrote or the searches it
- * ran, the rows that came back, and the answer it gave against the gold.
- *
- * The transcripts are not imported — they are tens of megabytes and would sit
- * in the bundle for a section most readers never open — so they are fetched,
- * and only when a reader asks. Nothing is fetched on load; the button below is
- * the fetch. With no published run there is no table and this renders nothing:
- * the empty state is method-only, and a control that loads data that will never
- * arrive is worse than no control.
+ * Every number above is a mean over transcripts, and a mean asks to be trusted
+ * where a transcript can be checked: one screen showing the same store
+ * answered two ways, one of them silently wrong, is worth more than a
+ * percentage. Runs are grouped by question with the gold on the group, and
+ * each opens in place; the browser lists every run beside one open trace.
  */
-function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
-  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [data, setData] = useState<PublishedTranscripts | null>(null);
-  const [trace, setTrace] = useState<TranscriptRun | null>(null);
-
-  // No run, no transcripts: degrade to nothing rather than to a dead control.
-  if (!table) return null;
-
-  const load = async (): Promise<void> => {
-    if (state === 'loading' || state === 'ready') return;
-    setState('loading');
-    try {
-      // Through BASE_PATH, so the fetch resolves when the site is served from a
-      // subdirectory (GitHub Pages puts a project site under `/<repo>/`). A
-      // root-relative path would 404 there and nowhere a developer would see it.
-      const response = await fetch(`${BASE_PATH}/${TRANSCRIPTS_FILE}`, {
-        headers: { accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(String(response.status));
-      setData((await response.json()) as PublishedTranscripts);
-      setState('ready');
-    } catch {
-      setState('error');
-    }
-  };
-
-  // The sidecar carries every corpus; which one the reader is looking at is the
-  // selected table's label. A run published before transcripts existed, or one
-  // whose sidecar entry has not caught up, simply has no match — said plainly
-  // rather than spun.
-  const forThis = data?.tables.find((one) => one.label === table.label) ?? null;
-
-  // One row per (question, adapter), grouped by question the way the sidecar
-  // already orders them — the order the summary shows the columns in.
-  const runs: readonly TranscriptRun[] =
-    forThis?.questions.flatMap((question) => question.adapters.map((run) => ({ question, run }))) ??
-    [];
+function Transcripts({
+  table,
+  transcripts,
+}: {
+  table: PublishedTable;
+  transcripts: Transcripts;
+}): ReactNode {
+  const { state } = transcripts;
+  const runs = runsFor(transcripts, table.label);
 
   return (
     <div className="bench-transcripts">
-      <div className="bench-rule label label-sm">
-        <span>What each column did</span>
-        <span className="bench-rule-line" aria-hidden="true" />
-        <span>Open a trace</span>
-      </div>
-
       {state === 'idle' ? (
         <div className="bench-transcripts-prompt">
           <p>
@@ -1037,28 +1374,26 @@ function Transcripts({ table }: { table: PublishedTable | null }): ReactNode {
             question — the SQL it wrote or the searches it ran, the rows that came back, and the
             answer it gave.
           </p>
-          <button className="btn-outline" type="button" onClick={() => void load()}>
+          <button className="btn-solid" type="button" onClick={() => void transcripts.load()}>
             Show the transcripts
           </button>
         </div>
       ) : null}
 
-      {state === 'loading' ? <p className="bench-note">Loading the transcripts…</p> : null}
+      {state === 'loading' ? <p className="bench-caption">Loading the transcripts…</p> : null}
 
       {state === 'error' ? (
-        <p className="bench-note">
+        <p className="bench-caption">
           The transcripts could not be loaded. They are a separate file published beside the
           numbers, and a run from before transcript publishing has none to show.
         </p>
       ) : null}
 
       {state === 'ready' && runs.length === 0 ? (
-        <p className="bench-note">No transcripts have been published for this corpus yet.</p>
+        <p className="bench-caption">No transcripts have been published for this corpus yet.</p>
       ) : null}
 
-      {runs.length > 0 ? <RunsTable runs={runs} onTrace={setTrace} /> : null}
-
-      <TraceDialog target={trace} onClose={() => setTrace(null)} />
+      {runs.length > 0 ? <RunList runs={runs} /> : null}
     </div>
   );
 }
@@ -1068,44 +1403,45 @@ function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 }
 
-/** Ingot's own surfaces, set in bold so the eye finds the thing under test. */
-function isProduct(adapter: string): boolean {
-  return adapter.startsWith('ingot');
-}
+const runKey = ({ question, run }: TranscriptRun): string => `${question.id}\u0000${run.adapter}`;
 
-/** The runs, flat, with a trace one click away from each. */
-function RunsTable({
-  runs,
-  onTrace,
-}: {
-  runs: readonly TranscriptRun[];
-  onTrace: (run: TranscriptRun) => void;
-}): ReactNode {
+/** The runs, grouped by question, each opening its trace in place. */
+function RunList({ runs }: { runs: readonly TranscriptRun[] }): ReactNode {
   /*
-   * Which class of question the table is showing, or every class.
-   *
-   * The state is here rather than in `Transcripts` because it is a reading of
-   * one table rather than of the page, and because the corpus switch above
-   * rebuilds these runs: a class the newly selected corpus has no questions in
-   * would otherwise leave an empty table with its cause two sections up. So the
-   * selection is checked against the classes actually present and falls back to
-   * all of them, which is that case and also the first render.
+   * Which class of question the list is showing, or every class. Checked
+   * against the classes actually present and falling back to all of them, so
+   * switching to a corpus with no questions in the chosen class never leaves
+   * an empty list with its cause two sections up.
    */
   const [chosen, setChosen] = useState<string | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [browsing, setBrowsing] = useState<number | null>(null);
+
   const classes = classesIn(runs);
   const showing = classes.some((one) => one.name === chosen) ? chosen : null;
   const shown =
     showing === null ? runs : runs.filter(({ question }) => question.category === showing);
   const correct = shown.filter(({ run }) => run.correct).length;
+  const allOpen = shown.length > 0 && shown.every((one) => open.has(runKey(one)));
+
+  const toggle = (key: string): void =>
+    setOpen((now) => {
+      const next = new Set(now);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  // Consecutive runs of one question make a group; the sidecar already orders them so.
+  const groups: TranscriptRun[][] = [];
+  for (const one of shown) {
+    const last = groups[groups.length - 1];
+    if (last && last[0]?.question.id === one.question.id) last.push(one);
+    else groups.push([one]);
+  }
 
   return (
     <>
-      {/*
-        The corpus switch's control, at the grain of a question class. It reads
-        as the same affordance because it is the same one — a pressed option
-        narrowing what is below it — and the counts are on the buttons so that
-        choosing a class is not how you find out it has four runs in it.
-      */}
       {classes.length > 1 ? (
         <div className="bench-switch bench-switch-inline label label-sm">
           <span className="bench-switch-legend">class</span>
@@ -1117,7 +1453,7 @@ function RunsTable({
           >
             all <span className="muted">{runs.length}</span>
           </button>
-          {classes.map(({ name, count }) => (
+          {classes.map(({ name, count: runsIn }) => (
             <button
               aria-pressed={showing === name}
               className="bench-switch-option"
@@ -1125,72 +1461,100 @@ function RunsTable({
               onClick={() => setChosen(name)}
               type="button"
             >
-              {name} <span className="muted">{count}</span>
+              {name} <span className="muted">{runsIn}</span>
             </button>
           ))}
         </div>
       ) : null}
 
-      <p className="bench-runs-summary label label-sm">
-        {shown.length} runs shown
-        {showing === null ? '' : ` of ${runs.length}`} <span aria-hidden="true">·</span> {correct}{' '}
-        correct <span aria-hidden="true">·</span> {shown.length - correct} wrong
-      </p>
-      <div className="bench-scroll">
-        <table className="bench-runs">
-          <thead>
-            <tr>
-              <th scope="col">run</th>
-              <th scope="col">class</th>
-              <th scope="col">adapter</th>
-              <th scope="col">result</th>
-              <th scope="col" className="bench-runs-num">
-                calls
-              </th>
-              <th scope="col" className="bench-runs-num">
-                tokens
-              </th>
-              <th scope="col" className="bench-runs-num">
-                time
-              </th>
-              <th scope="col">
-                <span className="bench-sr">trace</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map(({ question, run }) => (
-              <tr key={`${question.id}\u0000${run.adapter}`}>
-                <th scope="row" className="bench-runs-id">
-                  {question.id}
-                </th>
-                <td className="bench-runs-class label label-sm">{question.category}</td>
-                <td>
-                  <code className={isProduct(run.adapter) ? 'bench-runs-adapter-key' : undefined}>
-                    {adapterLabel(run.adapter)}
-                  </code>
-                </td>
-                <td>
-                  <Verdict correct={run.correct} />
-                </td>
-                <td className="bench-runs-num">{run.calls.length}</td>
-                <td className="bench-runs-num">{run.contextTokens.toLocaleString('en-GB')}</td>
-                <td className="bench-runs-num">{formatMs(run.ms)}</td>
-                <td className="bench-runs-trace">
+      <div className="bench-runs-bar">
+        <p className="bench-runs-summary label label-sm">
+          {shown.length} runs shown
+          {showing === null ? '' : ` of ${runs.length}`} <span aria-hidden="true">·</span> {correct}{' '}
+          correct <span aria-hidden="true">·</span> {shown.length - correct} wrong
+        </p>
+        <div className="bench-runs-actions label label-sm">
+          <button
+            type="button"
+            className="bench-btn"
+            onClick={() => setOpen(allOpen ? new Set() : new Set(shown.map(runKey)))}
+          >
+            {allOpen ? 'Collapse all' : 'Expand all'}
+          </button>
+          <button
+            type="button"
+            className="bench-btn bench-btn-primary"
+            onClick={() => setBrowsing(0)}
+          >
+            Browse all {shown.length} transcripts <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </div>
+
+      {groups.map((group) => {
+        const question = (group[0] as TranscriptRun).question;
+        return (
+          <div className="bench-group" key={question.id}>
+            <QuestionHead question={question} />
+            {group.map((one) => {
+              const key = runKey(one);
+              const isOpen = open.has(key);
+              const { run } = one;
+              return (
+                <div
+                  className={isOpen ? 'bench-attempt bench-attempt-open' : 'bench-attempt'}
+                  key={key}
+                >
                   <button
                     type="button"
-                    className="bench-trace-btn"
-                    onClick={() => onTrace({ question, run })}
+                    className="bench-run-row"
+                    aria-expanded={isOpen}
+                    onClick={() => toggle(key)}
                   >
-                    Trace <span aria-hidden="true">↗</span>
+                    <span className="bench-glyph" aria-hidden="true">
+                      {isOpen ? '−' : '+'}
+                    </span>
+                    <code className={isProduct(run.adapter) ? 'bench-ours' : undefined}>
+                      {adapterLabel(run.adapter)}
+                    </code>
+                    <Verdict correct={run.correct} />
+                    <span className="bench-run-num">
+                      {run.calls.length} call{run.calls.length === 1 ? '' : 's'}
+                    </span>
+                    <span className="bench-run-num">{count(run.contextTokens)} tok</span>
+                    <span className="bench-run-cta label label-sm">
+                      {isOpen ? 'Hide transcript' : 'Read transcript'}
+                    </span>
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  {isOpen ? (
+                    <div className="bench-run-trace">
+                      <Trace run={one} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      <Browser runs={shown} at={browsing} onPick={setBrowsing} onClose={() => setBrowsing(null)} />
     </>
+  );
+}
+
+/** A question as the head of its runs: id, class, and the words. */
+function QuestionHead({ question }: { question: TranscriptRun['question'] }): ReactNode {
+  return (
+    <div className="bench-q">
+      <div className="bench-q-meta label label-sm">
+        <span className="bench-q-id">{question.id}</span>
+        <span>{question.category}</span>
+      </div>
+      <p className="bench-q-text">
+        <Prose text={question.question} />
+      </p>
+    </div>
   );
 }
 
@@ -1198,29 +1562,34 @@ function RunsTable({
 function Verdict({ correct }: { correct: boolean }): ReactNode {
   return (
     <span className={correct ? 'bench-badge bench-badge-pass' : 'bench-badge bench-badge-fail'}>
-      {correct ? 'pass' : 'fail'}
+      {correct ? 'Correct' : 'Wrong'}
     </span>
   );
 }
 
 /**
- * One run's trace, in a modal.
+ * Every run in a modal: the list on the left, one trace on the right.
  *
  * A native `<dialog>` rather than a hand-rolled overlay: `showModal()` gives the
  * Escape key, the focus move, the inert background and the top-layer stacking
  * for free, and this is a static export with no room for a modal library. The
  * element is always in the tree so the ref is stable; an effect opens and
- * closes it as the selection changes, and its contents render only when there
- * is a run to show, so the empty page ships no trace markup.
+ * closes it as the selection changes.
  */
-function TraceDialog({
-  target,
+function Browser({
+  runs,
+  at,
+  onPick,
   onClose,
 }: {
-  target: TranscriptRun | null;
+  runs: readonly TranscriptRun[];
+  at: number | null;
+  onPick: (index: number) => void;
   onClose: () => void;
 }): ReactNode {
   const ref = useRef<HTMLDialogElement>(null);
+  const target = at === null ? null : (runs[at] ?? null);
+  const correct = runs.filter(({ run }) => run.correct).length;
 
   useEffect(() => {
     const element = ref.current;
@@ -1239,8 +1608,8 @@ function TraceDialog({
     // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard way out is Escape, which `showModal()` handles natively and fires through `onClose`; the onClick below is the mouse-only backdrop convenience on top of it.
     <dialog
       ref={ref}
-      className="bench-trace"
-      aria-labelledby="bench-trace-q"
+      className="bench-browser"
+      aria-label="All transcripts"
       onClose={onClose}
       // A click that lands on the dialog itself rather than on its content is a
       // click on the backdrop, and the expected way out of a modal.
@@ -1248,65 +1617,91 @@ function TraceDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      {target ? <Trace run={target} onClose={onClose} /> : null}
+      {target ? (
+        <div className="bench-browser-panel">
+          <div className="bench-browser-bar label">
+            <span>All transcripts</span>
+            <button type="button" className="bench-browser-close" onClick={onClose}>
+              Close <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <div className="bench-browser-body">
+            <div className="bench-browser-list">
+              <p className="bench-browser-count label label-sm">
+                {runs.length} runs · {correct} correct · {runs.length - correct} wrong
+              </p>
+              {runs.map((one, index) => (
+                <button
+                  type="button"
+                  key={runKey(one)}
+                  className={
+                    index === at ? 'bench-browser-item bench-browser-item-on' : 'bench-browser-item'
+                  }
+                  aria-current={index === at ? 'true' : undefined}
+                  onClick={() => onPick(index)}
+                >
+                  <span className="bench-browser-item-meta label label-sm">
+                    <span>{one.question.id}</span>
+                    <span>{one.question.category}</span>
+                    <Verdict correct={one.run.correct} />
+                  </span>
+                  <code className={isProduct(one.run.adapter) ? 'bench-ours' : undefined}>
+                    {adapterLabel(one.run.adapter)}
+                  </code>
+                  <span className="bench-browser-item-sub">
+                    {one.run.calls.length} call{one.run.calls.length === 1 ? '' : 's'} ·{' '}
+                    {count(one.run.contextTokens)} tok
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="bench-browser-detail">
+              <QuestionHead question={target.question} />
+              <Trace run={target} adapter />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </dialog>
   );
 }
 
-/** The trace itself: the question, what it cost, the calls in order, the answer. */
+/** One run's trace: what it cost, the calls in order, and the answer against the gold. */
 function Trace({
   run: { question, run },
-  onClose,
+  adapter,
 }: {
   run: TranscriptRun;
-  onClose: () => void;
+  adapter?: boolean;
 }): ReactNode {
+  const ours = isProduct(run.adapter);
   const stats: readonly [string, ReactNode][] = [
-    ['calls', run.calls.length],
-    ['tokens read', run.contextTokens.toLocaleString('en-GB')],
-    ['wall time', formatMs(run.ms)],
-    ['result', <Verdict key="v" correct={run.correct} />],
+    ...(adapter ? ([['Adapter', adapterLabel(run.adapter)]] as [string, ReactNode][]) : []),
+    ['Calls', run.calls.length],
+    ['Tokens read', count(run.contextTokens)],
+    ['Wall time', formatMs(run.ms)],
+    ...(adapter
+      ? ([['Result', <Verdict key="v" correct={run.correct} />]] as [string, ReactNode][])
+      : []),
   ];
 
   return (
-    <div className="bench-trace-inner">
-      <button
-        type="button"
-        className="bench-trace-close"
-        onClick={onClose}
-        aria-label="Close trace"
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-
-      <header className="bench-trace-card">
-        <div className="bench-trace-kicker label label-sm">
-          Question <span aria-hidden="true">·</span> Class: {question.category}
-        </div>
-        <h3 className="bench-trace-q" id="bench-trace-q">
-          {question.question}
-        </h3>
-        <dl className="bench-trace-stats">
-          {stats.map(([term, value]) => (
-            <div key={term}>
-              <dt className="label label-sm">{term}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </header>
-
-      <div className="bench-rule label label-sm bench-trace-rule">
-        <span>Tool calls in order</span>
-        <span className="bench-rule-line" aria-hidden="true" />
-      </div>
+    <div className="bench-trace">
+      <dl className="bench-trace-stats label label-sm">
+        {stats.map(([term, value]) => (
+          <div key={term}>
+            <dt>{term}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {run.calls.length === 0 ? (
-        <p className="bench-note bench-trace-empty">
+        <p className="bench-caption">
           No tool calls — {adapterLabel(run.adapter)} answered from the prompt.
         </p>
       ) : (
-        <ol className="bench-trace-calls">
+        <ol className={ours ? 'bench-calls bench-calls-ours' : 'bench-calls'}>
           {run.calls.map((call, index) => (
             <li
               className={call.failed ? 'bench-call bench-call-failed' : 'bench-call'}
@@ -1314,18 +1709,19 @@ function Trace({
               key={index}
             >
               <div className="bench-call-head">
-                <span className="bench-call-idx label label-sm">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <code className="bench-call-name">{call.name}</code>
-                {call.failed ? <span className="bench-call-tag label label-sm">failed</span> : null}
-                <span className="bench-call-ms label label-sm">{formatMs(call.ms)}</span>
+                <span className="bench-call-idx">{String(index + 1).padStart(2, '0')}</span>
+                {call.failed ? <span className="bench-call-pill">failed</span> : null}
+                <span className="bench-call-name">{call.name}</span>
+                <span className="bench-call-ms">{formatMs(call.ms)}</span>
               </div>
               <pre className="bench-call-io">
                 <code>{formatInput(call.input)}</code>
               </pre>
               <pre className="bench-call-io bench-call-out">
-                <code>{call.output}</code>
+                <code>
+                  <span aria-hidden="true">→ </span>
+                  {call.output}
+                </code>
               </pre>
             </li>
           ))}
@@ -1334,7 +1730,7 @@ function Trace({
 
       <div className="bench-trace-foot">
         <div>
-          <div className="label label-sm">answer given</div>
+          <div className="label label-sm">Answered</div>
           <p
             className={run.correct ? 'bench-trace-answer' : 'bench-trace-answer bench-trace-wrong'}
           >
@@ -1342,7 +1738,7 @@ function Trace({
           </p>
         </div>
         <div>
-          <div className="label label-sm">expected</div>
+          <div className="label label-sm">Expected</div>
           <p className="bench-trace-answer">{summariseAnswer(question.gold)}</p>
         </div>
       </div>

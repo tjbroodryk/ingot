@@ -154,11 +154,6 @@ function results(published: PublishedTable | null): readonly string[] {
     // second table exists to prevent, and two sections both headed "Results"
     // is an invitation to it.
     heading(2, TABLES.length > 1 ? `Results — ${published?.label ?? ''}` : 'Results'),
-    ...(run.drift
-      ? [
-          'This run was measured over a corpus whose payloads change shape partway through each listing: a field renamed, a unit changed with the name, a string that becomes an object, and a foreign key that arrives late. Every record is still present exactly once, so every question remains answerable — but not by an adapter that fixed its schema on the first page. These numbers are not comparable with the ordinary-corpus table.',
-        ]
-      : []),
     bullets([
       `Seed \`${run.seed}\`, ${run.questions} questions, ${run.repeats} run(s) each.`,
       `Agent: \`${run.model}\` on \`${run.provider}\`, reasoning ${run.thinking ? `\`${run.effort}\`` : 'off'}.`,
