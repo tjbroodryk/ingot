@@ -39,7 +39,7 @@ interface Measure {
   readonly difference: (small: MatchupCell, large: MatchupCell) => { text: string; ahead: boolean };
 }
 
-/** A smaller model with Ingot against a larger one with a vector store. */
+/** A smaller model with Ingot against a larger one on its best baseline. */
 export function SmallModels({ matchup }: { matchup: PublishedMatchup }): ReactNode {
   const pair = headline(matchup);
   if (!pair) return null;
@@ -161,9 +161,10 @@ export function SmallModels({ matchup }: { matchup: PublishedMatchup }): ReactNo
         <p>
           The churn questions ask which file or service changed most, which means adding up
           additions and deletions across every pull request. Ingot answers that with one grouped
-          query over all the rows. A vector store returns the records closest to a search, so the
-          larger model sums whichever pull requests came back. The leaders are close, and a partial
-          sum usually picks the wrong one. A bigger model doesn’t recover rows it never saw.
+          query over all the rows. The larger model can search the vector store and then fetch the
+          raw tool results behind it, so it can see every pull request. But it has to do the sum
+          itself, across hundreds of records in its context. That takes it longer, and it sometimes
+          runs out of time before it answers.
         </p>
       </aside>
 

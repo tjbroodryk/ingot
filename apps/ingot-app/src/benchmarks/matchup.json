@@ -15,7 +15,7 @@
   ],
   "adapters": [
     "ingot-rest",
-    "vector"
+    "vector-fetch"
   ],
   "cells": [
     {
@@ -32,15 +32,15 @@
     },
     {
       "model": "gpt-5.1",
-      "adapter": "vector",
+      "adapter": "vector-fetch",
       "runs": 9,
-      "correct": 4,
-      "accuracy": 0.4444444444444444,
-      "stderr": 0.16563466499998442,
-      "toolCalls": 11.333333333333334,
-      "atLimit": 7,
-      "contextTokens": 42079,
-      "runMs": 102283
+      "correct": 7,
+      "accuracy": 0.7777777777777778,
+      "stderr": 0.13857990321384966,
+      "toolCalls": 5.888888888888889,
+      "atLimit": 0,
+      "contextTokens": 11768,
+      "runMs": 144920
     }
   ]
 }

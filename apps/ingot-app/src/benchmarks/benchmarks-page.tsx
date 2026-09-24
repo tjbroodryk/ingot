@@ -158,7 +158,7 @@ export function BenchmarksPage(): ReactNode {
                 id="small-models"
                 kicker="Small models"
                 title="Get more out of small models"
-                lede="Exact tool answers leave the model less to reason about. So a small model with Ingot should keep up with a large one using a vector store."
+                lede="Exact tool answers leave the model less to reason about. So a small model with Ingot should keep up with a large one that searches a vector store and reads the raw data behind it."
               >
                 <SmallModels matchup={MATCHUP} />
               </Band>
