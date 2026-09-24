@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { MAX_BODY_CHARS, SUMMARISER, type Summariser, clamp } from '../../../ai/summariser.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
+import { errorMessage } from '../../../shared/error-message.js';
 import { ClaimReceipt, type ClaimedReceipt } from './commands/claim-receipt.command.js';
 import type { Drained } from './drained.js';
 import { FailReceipt } from './commands/fail-receipt.command.js';
@@ -76,7 +77,7 @@ export class ReceiptWorker {
     } catch (error) {
       this.measure(Outcome.Error, started);
       await this.dispatcher.send(
-        new FailReceipt(job.batch, job.sourceTable, job.attempts, message(error)),
+        new FailReceipt(job.batch, job.sourceTable, job.attempts, errorMessage(error)),
       );
     }
     return true;
@@ -106,8 +107,4 @@ function render(body: unknown): string {
     // builds this command from a tool call without a parse.
     return String(body);
   }
-}
-
-function message(error: unknown): string {
-  return String(error instanceof Error ? error.message : error);
 }

@@ -1,6 +1,7 @@
 import { access, constants } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
+import { errorMessage } from '../shared/error-message.js';
 import type { LocalOcr as LocalSettings } from './ai-settings.js';
 import { type Ocr, type PageImage, type PageText, transcriptFrom } from './ocr.port.js';
 
@@ -32,7 +33,7 @@ export class TesseractOcr implements Ocr {
         out.push(text === null ? null : { text, engine: this.engine });
       } catch (error) {
         // One page, not the document.
-        this.logger.warn(`Tesseract could not read page ${page.number}: ${message(error)}`);
+        this.logger.warn(`Tesseract could not read page ${page.number}: ${errorMessage(error)}`);
         out.push(null);
       }
     }
@@ -71,7 +72,7 @@ export class TesseractOcr implements Ocr {
       cacheMethod: 'none',
       // Its own logging is per-page progress; the failures worth hearing about are caught in `read`.
       logger: () => undefined,
-      errorHandler: (error: unknown) => this.logger.warn(`Tesseract: ${message(error)}`),
+      errorHandler: (error: unknown) => this.logger.warn(`Tesseract: ${errorMessage(error)}`),
     });
   }
 }
@@ -101,8 +102,4 @@ export async function checkTessdata(settings: LocalSettings): Promise<void> {
         'https://github.com/tesseract-ocr/tessdata_fast.',
     );
   }
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

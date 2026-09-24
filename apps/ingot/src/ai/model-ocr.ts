@@ -3,6 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { APICallError, generateText, type LanguageModel } from 'ai';
 import { Logger } from '@nestjs/common';
 import type { GcpOcr as GcpSettings, OpenAiOcr as OpenAiSettings } from './ai-settings.js';
+import { errorMessage } from '../shared/error-message.js';
 import { VERTEX_CREDENTIAL_ADVICE } from './google-auth.js';
 import {
   type Ocr,
@@ -106,7 +107,7 @@ export class ModelOcr implements Ocr {
       );
     }
 
-    return `${this.engine} could not be reached — ${firstLine(error)} ${this.advice()}`.trim();
+    return `${this.engine} could not be reached — ${preview(errorMessage(error))} ${this.advice()}`.trim();
   }
 
   private advice(): string {
@@ -202,8 +203,4 @@ export function vertexOcr(settings: GcpSettings): ModelOcr {
 function isTimeout(error: unknown): boolean {
   const name = (error as { name?: string } | null)?.name ?? '';
   return name === 'TimeoutError' || name === 'AbortError';
-}
-
-function firstLine(error: unknown): string {
-  return preview(error instanceof Error ? error.message : String(error));
 }

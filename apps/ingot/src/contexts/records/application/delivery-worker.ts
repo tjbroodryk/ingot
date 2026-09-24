@@ -6,6 +6,7 @@ import {
 } from '../../../delivery/delivery-transport.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
+import { errorMessage } from '../../../shared/error-message.js';
 import { ClaimDelivery } from './commands/claim-delivery.command.js';
 import { CompleteDelivery } from './commands/complete-delivery.command.js';
 import { FailDelivery } from './commands/fail-delivery.command.js';
@@ -80,7 +81,7 @@ export class DeliveryWorker {
     } catch (error) {
       this.measure(job, Outcome.Error, started);
       await this.dispatcher.send(
-        new FailDelivery(job.batch, job.attempts, this.settings.maxAttempts, message(error)),
+        new FailDelivery(job.batch, job.attempts, this.settings.maxAttempts, errorMessage(error)),
       );
     }
     return true;
@@ -97,8 +98,4 @@ export class DeliveryWorker {
       (performance.now() - started) / 1000,
     );
   }
-}
-
-function message(error: unknown): string {
-  return String(error instanceof Error ? error.message : error);
 }

@@ -12,6 +12,7 @@ import { ListIngots } from '../contexts/ingots/application/queries/list-ingots.q
 import { AddRecords } from '../contexts/records/application/commands/add-records.command.js';
 import { DeleteRecords } from '../contexts/records/application/commands/delete-records.command.js';
 import { QueryIngot } from '../contexts/query/application/queries/query-ingot.query.js';
+import { errorMessage } from '../shared/error-message.js';
 import { McpScope, McpTool, type ToolDefinition, toolsFor } from './tool-catalogue.js';
 
 /**
@@ -101,7 +102,7 @@ export class IngotMcpServer {
         // Tool errors are reported to the model, not thrown at the transport,
         // so it can fix the call.
         return {
-          content: [{ type: 'text', text: message(error) }],
+          content: [{ type: 'text', text: errorMessage(error) }],
           isError: true,
         };
       }
@@ -206,10 +207,6 @@ export class IngotMcpServer {
 
 function reply(result: unknown): ToolReply {
   return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** The schema, rendered for a tool description; names and types only. */
