@@ -4,7 +4,7 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { proofCards, TABLES } from '../benchmarks/benchmarks';
-import { SampleLang, SampleTone } from '../docs/reference';
+import { SampleLang } from '../docs/reference';
 import { BENCHMARKS_HREF, DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
 import './landing.css';
 import {
@@ -13,8 +13,6 @@ import {
   HARNESS,
   HARNESS_RETURN,
   LEDE,
-  MCP_CONFIG,
-  MCP_TOOLS,
   RAG_LEFT_OUT,
   RAG_REPLACED,
   RECALL,

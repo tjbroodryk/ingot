@@ -417,7 +417,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'control-same-store-top-k',
     blurb:
-      'This is a "control". Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. The idea is that this row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot (via MCP)` is what SQL over typed rows is worth.',
+      'This is a “control”.Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. The idea is that this row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot (via MCP)` is what SQL over typed rows is worth.',
   },
   {
     name: 'control-same-store-top-k-rest',
