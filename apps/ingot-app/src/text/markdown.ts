@@ -11,6 +11,8 @@
  * cell, because a `|` inside one ends the cell and a newline ends the row.
  */
 
+import { formatWire } from '../docs/format-wire';
+
 /**
  * One page of the site, as the plain-text build sees it.
  *
@@ -39,9 +41,23 @@ export function heading(depth: number, text: string): string {
  * and several are more than one of those at once — a `curl` and the body it
  * answers with. Tagging them would mean guessing, and a wrong tag is worse
  * than none, so the fence carries no language.
+ *
+ * Whatever is passed comes out byte for byte. A benchmark quotes a corpus
+ * record through here as evidence, and evidence that had been re-laid on the
+ * way is not the record.
  */
 export function fence(code: string): string {
   return ['```', code, '```'].join('\n');
+}
+
+/**
+ * A fenced sample of the API, laid out as `CodeBlock` lays out the page's.
+ *
+ * These files are the pages in another form, so a request that wrapped one way
+ * in the browser and another in `docs.md` would read as two requests.
+ */
+export function wire(code: string): string {
+  return fence(formatWire(code));
 }
 
 /** A cell that cannot end its own row. */

@@ -53,8 +53,8 @@ const PROOF = proofCards(TABLES[0] ?? null);
  */
 const PROOF_RUN = TABLES[0]?.run ?? null;
 const PROOF_LEDE = PROOF_RUN
-  ? `${PROOF_RUN.questions} questions, ${TABLES[0]?.categories.length ?? 0} task classes, ` +
-    `${PROOF_RUN.repeats} runs each. Accuracy above, what it cost to get there below.`
+  ? `${PROOF_RUN.questions} questions across ${TABLES[0]?.categories.length ?? 0} task classes ` +
+    `with ${PROOF_RUN.repeats} runs each.`
   : '';
 
 /**
@@ -135,6 +135,7 @@ export function LandingPage(): ReactNode {
               <br />
               <span className="mark">memory</span>
             </h2>
+            <p className="hero-lede">Think of it as a small database for your conversation or agent.</p>
             {WHY_HREF ? (
               <a className="target-more landhead-more" href={WHY_HREF}>
                 The argument, in full →
@@ -225,8 +226,8 @@ export function LandingPage(): ReactNode {
               once, <span className="mark">query</span> it back
             </h3>
             <p>
-              No embedding step, and no re-reading the transcript. The tool result becomes a table
-              the model can select from, in the same second it was written.
+              No embedding step, and no re-reading the transcript. The tool result immediately becomes a table
+              the model can select from.
             </p>
 
             <div className="panel">
@@ -244,13 +245,6 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          The README's "Against RAG", and it is here rather than at the bottom
-          of the page on purpose: the sections below this one are all API, and
-          a reader is owed the boundary of the thing before they are walked
-          through its calls. Somebody deciding whether to run this should know
-          what it leaves to something else before they bring one up.
-        */}
         <section className="landblock" id="not">
           <div className="landhead">
             <span className="label kicker kicker-n">What it&rsquo;s not</span>
@@ -313,8 +307,7 @@ export function LandingPage(): ReactNode {
               read it back
             </h2>
             <p>
-              Three calls is the whole loop. That is genuinely it — everything else you might want,
-              like keys, retention, schema or MCP, hangs off the same bearer token.
+              First create an ingot, then add memories to it. <br/>Its will then be available to query.
             </p>
             <a className="target-more landhead-more" href="#ai-sdk">
               The same thing as a file you can type ↓
@@ -379,7 +372,7 @@ export function LandingPage(): ReactNode {
         */}
         <section className="landblock" id="ai-sdk">
           <div className="landhead">
-            <span className="label kicker kicker-n">Vercel AI SDK</span>
+            <span className="label kicker kicker-n">Vercel AI SDK Example</span>
             <h2 className="landtitle">
               It fits inside
               <br />
@@ -513,49 +506,15 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        <section className="split" id="mcp">
-          <div className="split-figure">
-            <CodeBlock code={MCP_CONFIG} tone={SampleTone.Ink} />
-          </div>
-          <div className="split-copy">
-            <span className="label kicker kicker-n">MCP native</span>
-            <h3>
-              Same key.
-              <br />
-              No second auth path.
-            </h3>
-            <p>
-              MCP over streamable HTTP, stateless, behind the same bearer key and the same guards.
-              The schema is handed over as the server&rsquo;s instructions at{' '}
-              <code>initialize</code>, so getting to the point where the model can write SQL costs
-              no tool call at all.
-            </p>
-            <div className="tools">
-              {MCP_TOOLS.map((row) => (
-                <div className="tool" key={row.scope}>
-                  <span className="tool-scope">{row.scope}</span>
-                  <span>{row.tools}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/*
-          Where the design put "Sign up. The secret is shown once." There is
-          nothing to sign up to, so this is the same band saying the true
-          version: the sign-up route is real, and it is on the instance you
-          brought up yourself. The commands for that live on the deployment
-          page, so that the bring-up is written down once.
-        */}
         <section className="cta">
           <span className="label kicker kicker-n">Self-hosted, for now</span>
-          <h2>Bring it up. Sign up against your own address.</h2>
+          <h2>Bring it up. Your account is in your config.</h2>
           <p>
             There is no hosted Ingot yet, and we would rather say that at the top than let you find
             out three scrolls down. It is a NestJS service, a Postgres and a bucket. However you
-            choose to run those three, sign-up is the same open POST, and the secret still comes
-            back exactly once.
+            choose to run those three, there is nothing to sign up for: set{' '}
+            <code>INGOT_ACCOUNT</code> and <code>INGOT_API_KEY</code>, and that key is your first
+            bearer token.
           </p>
 
           <div className="cta-actions">

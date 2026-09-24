@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { formatWire } from './format-wire';
 import { SampleLang, SampleTone } from './reference';
 
 /**
@@ -65,9 +66,14 @@ export function CodeBlock({
     .filter(Boolean)
     .join(' ');
 
+  // The wire samples are JSON with an HTTP transcript around them, so their
+  // layout is derived rather than written; see `format-wire.ts`. A TypeScript
+  // sample is a program and is left exactly as its author wrote it.
+  const text = lang === SampleLang.Wire ? formatWire(code) : code;
+
   return (
     <pre className={classes}>
-      {code.split('\n').map((line, index) => (
+      {text.split('\n').map((line, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: line number is the identity of a line in a static sample.
         <span key={index}>
           {renderLine(line, lang)}

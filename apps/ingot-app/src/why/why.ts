@@ -1,408 +1,229 @@
+import {
+  adapterLabel,
+  countWord,
+  type PublishedAdapter,
+  type PublishedTable,
+  TABLES,
+} from '../benchmarks/benchmarks';
+
 /**
- * What `/why` says, as data — the same argument
- * `src/landing/sections.ts` makes for its own page.
+ * What `/why` says, drawn to the Ingot Why artboard: a short argument in four
+ * parts, written like a paper.
  *
- * This one is the only page on the site that is a *position* rather than a
- * description, which raises rather than lowers the bar on it: a claim about
- * why something is built this way is checkable against the thing it is built
- * into, and every claim below is. Where one of them is a fact about the
- * repository, the file that decides it is named in the comment above it, so
- * that a reader who does not believe the page can go and disagree with the
- * code instead.
- *
- * The samples obey the same rule the landing page's do — real requests against
- * `@ingot/shared/ingot-v1`, `localhost` addresses because that is the only
- * kind Ingot has, and no line wider than the pane it renders in.
+ * The prose is here. The evidence is not: every figure in section 03, and the
+ * verdict on each hypothesis, is computed from `results.json`, so a new run
+ * can overturn a claim on this page without anybody editing it.
  */
 
-/** What the tab, the index entry and the metadata description call this. */
-export const WHY_TITLE = 'Similarity is not a join';
+export const WHY_TITLE = 'Memory is a query problem';
 
 export const WHY_DESCRIPTION =
-  'Why Ingot is a query engine rather than a vector store: models write SQL, tool results are tables, and the questions worth asking are joins across them. What an ingot is scoped to, what it costs to keep, and who owns what is in it.';
+  'Why Ingot keeps tool results as typed tables: agents mostly ask counts, orderings, absences and joins, which similarity search cannot answer. The hypothesis, the benchmark that tests it, and what is still unproven.';
 
-/**
- * The paragraph under the title, and the page's `description`.
- *
- * A constant for the reason `LEDE` is one over on the landing page: it is read
- * in either order — a visitor who arrives from a search has read the preview
- * first — and two copies drift on the edit that only remembers one.
- */
-export const WHY_LEDE =
-  'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think an ingot’s job is to hold tool results as tables and then get out of the way.';
+export const ABSTRACT =
+  'Agents store what their tools return as text and retrieve it by similarity. That works for questions phrased like the record, and fails for counts, ordering, absence and joins, which are most of the questions an agent asks about its own work. We argue that tool output is already structured, that memory should keep that structure, and that doing so makes answers both more accurate and cheaper to produce.';
 
-/* ── 01 · what happens to a tool result today ────────────────────────────── */
-
-/** One of the three cells under "Three ways to lose a tool result". */
-export interface Loss {
-  readonly kicker: string;
-  readonly title: string;
-  readonly body: string;
-  /** What it costs, printed under it. */
-  readonly cost: string;
-}
-
-/**
- * The three, and they are the three because they are exhaustive rather than
- * illustrative: a tool result is kept in the window, replaced by prose about
- * itself, or turned into vectors. There is no fourth thing anybody does with
- * one, which is what makes the section an argument rather than a list of
- * complaints.
- */
-export const LOSSES: readonly Loss[] = [
-  {
-    kicker: 'Kept',
-    title: 'It stays in the window',
-    body: 'Four hundred objects, read once and paid for on every turn after that. Until the window gets trimmed, and then it is as if the call never happened at all.',
-    cost: 'about 48,000 tokens',
-  },
-  {
-    kicker: 'Summarised',
-    title: 'A model writes a paragraph about it',
-    body: 'The prose survives, the numbers do not. Nothing downstream can filter it, sort it or count it, and the rows it was written from are already gone.',
-    cost: 'lossy, and final',
-  },
-  {
-    kicker: 'Embedded',
-    title: 'It is chunked into a vector store',
-    body: 'Now there is one question you can ask of it, and you have to ask it by example: what is this like? Not how many. Not which of these also. Not in what order.',
-    cost: 'top-k, and no more',
-  },
-];
-
-/** The strip under the three, which is the claim they add up to. */
-export const LOSS_CLAIM =
-  'All three lose the same thing, which is the structure. The fact that this was four hundred rows of six typed fields, and that you could have asked a real question of them.';
-
-/* ── 02 · why SQL ────────────────────────────────────────────────────────── */
-
-/**
- * Three tools that have never heard of each other, writing into one ingot.
- *
- * The point of the sample is the `"table"` line in each block and nothing
- * else: three calls, three tables, one ingot. Each is a real `/add` — a JSON
- * path per column, a `type` per column, and `key` only on the one that has an
- * identity worth upserting on.
- */
-export const THREE_TOOLS = `# three tools. one ingot. three tables.
-POST /api/v1/acme/ing_01H8Z…/add
-{
-  "table": "contacts",
-  "rows": "$.contacts[*]",
-  "columns": {
-    "id":      { "from": "$.id",       "type": "VARCHAR" },
-    "company": { "from": "$.org.name", "type": "VARCHAR" },
-    "arr":     { "from": "$.deal.arr", "type": "DOUBLE"  }
-  },
-  "key": ["id"],
-  "result": crmResult
-}
-
-POST /api/v1/acme/ing_01H8Z…/add
-{
-  "table": "invoices",
-  "rows": "$.data[*]",
-  "columns": {
-    "account": { "from": "$.customer",  "type": "VARCHAR" },
-    "due":     { "from": "$.due_date",  "type": "DATE"    },
-    "status":  { "from": "$.status",    "type": "VARCHAR" }
-  },
-  "result": stripeResult
-}
-
-POST /api/v1/acme/ing_01H8Z…/add
-{
-  "table": "tickets",
-  "rows": "$.tickets[*]",
-  "columns": {
-    "account": { "from": "$.org",       "type": "VARCHAR" },
-    "opened":  { "from": "$.created",   "type": "DATE"    },
-    "subject": { "from": "$.subject",   "type": "VARCHAR" }
-  },
-  "result": deskResult
-}`;
-
-/**
- * The question none of the three tools could have answered.
- *
- * Three tables in one FROM clause, which works because a query is offered
- * every table its ingot holds and the engine narrows to the ones the
- * statement names — `sessions.all(tables)` in
- * `apps/ingot/src/contexts/query/application/queries/query-ingot.query.ts`.
- *
- * `INTERVAL '30 days'` rather than `INTERVAL 30 DAY`: both are DuckDB, and the
- * quoted form is the one that is also every other dialect, so a reader porting
- * the shape somewhere else is not copying a DuckDB-ism they did not ask for.
- */
-export const THE_JOIN = `# a question no tool call could have answered
-POST /api/v1/acme/ing_01H8Z…/query
-{
-  "sql": "SELECT c.company, c.arr, count(*) AS raised
-          FROM invoices i
-          JOIN contacts c ON c.company = i.account
-          JOIN tickets  t ON t.account = i.account
-          WHERE i.status = 'past_due'
-            AND t.opened BETWEEN i.due
-                AND i.due + INTERVAL '30 days'
-          GROUP BY 1, 2
-          ORDER BY c.arr DESC"
-}
-
-200 OK · 41ms
-{
-  "columns": ["company", "arr", "raised"],
-  "rows": [
-    { "company": "Northwind", "arr": 184000, "raised": 7 },
-    { "company": "Contoso",   "arr": 96500,  "raised": 3 }
+export const INTRODUCTION = {
+  title: 'Agents remember in the wrong shape',
+  before: [
+    'An agent calls a CRM, a CI system, an issue tracker. Each returns JSON with fields, types and keys. The usual memory layer throws that away: it flattens the payload to text, cuts it into chunks and embeds them.',
+    'Later the agent asks which three builds were slowest, or how many deals closed last quarter. A similarity index can return records that look relevant. It can’t sort them, count them, or show what’s missing.',
   ],
-  "truncated": false
-}`;
+  quote: 'The structure was there when the data arrived. Memory is where it gets lost.',
+  joins: [
+    'It gets worse when an answer spans more than one tool. Take an incident report that names a service, a service catalogue that names the owning team, and an on-call rota that names who was holding the pager that night. Nobody declared a key between them. The only link is a value that happens to appear in both: `catalog` in one payload, `svc:catalog` in the next.',
+    'Similarity search can’t join. It can put two chunks side by side because they read alike, and hope the model links them correctly. When there are two services called catalog, or a team renamed halfway through the quarter, it links the wrong ones and gives no sign it has.',
+  ],
+  /** The same question answered both ways, side by side. */
+  contrast: {
+    guess: {
+      label: 'Associated by similarity',
+      tag: 'Guess',
+      chunks: [
+        'chunk 14 · "INC-01 hit catalog, pool exhausted…"',
+        'chunk 31 · "catalog-legacy owned by platform…"',
+        'chunk 52 · "on-call week 11: mensah, okafor…"',
+      ],
+      note: 'Three chunks that read alike. The model links them itself and answers **platform**, the owner of the wrong catalog.',
+    },
+    exact: {
+      label: 'Joined on a value',
+      tag: 'Exact',
+      // `'svc:' || i.service` is the link the paragraph above describes: the
+      // same value, spelled differently in each payload.
+      sql: `SELECT s.owner, r.engineer
+FROM incidents i
+JOIN services s ON s.id = 'svc:' || i.service
+JOIN oncall r   ON r.team = s.owner
+ AND i.started_at BETWEEN r.starts_at AND r.ends_at
+WHERE i.id = 'INC-01'`,
+      note: 'Each step follows a value from one table to the next. The answer is **payments, mensah**, or no rows at all. Never a wrong owner.',
+    },
+  },
+  after:
+    'So the agent reads more to make up for it: more chunks, more calls, more tokens. It still guesses the answer.',
+} as const;
 
-/** One of the three notes under the join. */
-export interface SqlNote {
-  readonly kicker: string;
-  readonly title: string;
-  readonly body: string;
-  /** The thing in the service that makes it true, printed under it. */
-  readonly source: string;
+export const HYPOTHESIS = {
+  title: 'Keep the structure, and ask it directly',
+  body: 'If tool output is stored as typed tables, and the model can use SQL alongside similarity search, it will answer more questions correctly while reading less.',
+  claims: [
+    {
+      n: 'H1',
+      text: 'Structured memory is more accurate on aggregate, ordering, absence and join questions.',
+    },
+    {
+      n: 'H2',
+      text: 'It gets there with less context: fewer tokens read per answer, and fewer tool calls.',
+    },
+    {
+      n: 'H3',
+      text: 'It gives up nothing on semantic questions, because similarity search is still available.',
+    },
+  ],
+  falsifier:
+    'A vector store matching Ingot on structured questions, or Ingot falling behind on semantic ones. Either result means the structure isn’t worth what it costs.',
+} as const;
+
+export const CONCLUSION = {
+  title: 'Store it the way it arrived',
+  body: [
+    'Most of what an agent needs to remember came from a tool, and tools (normally) return structured data. Keeping that structure means you or an llm needs to think about a schema when writing the data. In return, the model gets exact answers and reads far less.',
+    'Similarity search still matters, but it should work alongside SQL rather than replace it. That’s what Ingot is.',
+  ],
+  open: [
+    'That the result holds on corpora a thousand times larger than this one.',
+    'That it holds when payloads change shape between pages.',
+    'What the column mapping costs to write, which this benchmark does not score.',
+  ],
+} as const;
+
+/** The sections, in order, as the contents rail lists them. */
+export const WHY_SECTIONS = [
+  { id: 'introduction', title: 'Introduction' },
+  { id: 'hypothesis', title: 'Hypothesis' },
+  { id: 'evidence', title: 'Evidence' },
+  { id: 'conclusion', title: 'Conclusion' },
+] as const;
+
+/* ── 03 · evidence, from the published run ───────────────────────────────── */
+
+/** Ingot's column and the one it is argued against, as the design pairs them. */
+const OURS = 'ingot-rest';
+const BASELINE = 'vector';
+
+/** The classes H1 is about, in the order the benchmark lists them. */
+const STRUCTURED = ['aggregate', 'absence', 'ordering', 'join'] as const;
+
+export interface ClassBar {
+  readonly name: string;
+  readonly ours: number;
+  readonly baseline: number;
+}
+
+export interface Evidence {
+  readonly oursLabel: string;
+  readonly baselineLabel: string;
+  /** `2026-09-22`, from the run id. */
+  readonly runDate: string;
+  readonly method: string;
+  readonly ours: PublishedAdapter;
+  readonly baseline: PublishedAdapter;
+  /** How many times more context the baseline read per answer. */
+  readonly contextRatio: number;
+  readonly classes: readonly ClassBar[];
+  readonly findings: string;
+}
+
+const pct = (value: number): string => `${Math.round(value * 100)}%`;
+
+/**
+ * The evidence section, or `null` while no run has published both columns.
+ *
+ * The verdicts are computed rather than written, because the design's own
+ * test says what would disprove each one and a run is allowed to.
+ */
+export function evidence(table: PublishedTable | null = TABLES[0] ?? null): Evidence | null {
+  const ours = table?.adapters.find((adapter) => adapter.name === OURS);
+  const baseline = table?.adapters.find((adapter) => adapter.name === BASELINE);
+  if (!table || !ours || !baseline || ours.contextTokens <= 0) return null;
+
+  const { run } = table;
+  const classes = table.categories.map((name) => ({
+    name,
+    ours: ours.byCategory[name] ?? 0,
+    baseline: baseline.byCategory[name] ?? 0,
+  }));
+  const contextRatio = baseline.contextTokens / ours.contextTokens;
+  const oursLabel = adapterLabel(OURS);
+
+  const structured = classes.filter((bar) =>
+    (STRUCTURED as readonly string[]).includes(bar.name),
+  );
+  const h1 = structured.length > 0 && structured.every((bar) => bar.ours > bar.baseline);
+  const h2 = ours.contextTokens < baseline.contextTokens && ours.toolCalls < baseline.toolCalls;
+  const widest = [...structured].sort(
+    (a, b) => b.ours - b.baseline - (a.ours - a.baseline),
+  )[0];
+  const semantic = classes.find((bar) => bar.name === 'semantic');
+
+  const sentences: string[] = [];
+  if (h1 && h2 && widest) {
+    sentences.push(
+      `H1 and H2 hold: the gap is widest on ${widest.name}, where ${BASELINE} scores ${pct(widest.baseline)}, and ${oursLabel} reads ${contextRatio.toFixed(1)}× less context.`,
+    );
+  } else {
+    sentences.push(
+      h1
+        ? 'H1 holds: every structured class scores higher.'
+        : `H1 does not hold on this run: ${BASELINE} matches or beats ${oursLabel} on at least one structured class.`,
+      h2
+        ? `H2 holds: ${contextRatio.toFixed(1)}× less context, in fewer calls.`
+        : `H2 does not hold on this run: ${oursLabel} did not read less and call less.`,
+    );
+  }
+  if (semantic) {
+    sentences.push(
+      semantic.ours >= semantic.baseline
+        ? `H3 holds: on semantic questions ${oursLabel} scores ${pct(semantic.ours)} against ${pct(semantic.baseline)}.`
+        : `H3 does not hold on this run. On semantic questions ${oursLabel} scores ${pct(semantic.ours)} against ${pct(semantic.baseline)}, which is the result the hypothesis said would count against it.`,
+    );
+  }
+
+  return {
+    oursLabel,
+    baselineLabel: adapterLabel(BASELINE),
+    runDate: run.runId.slice(0, 10),
+    method: `${run.questions} questions, ${countWord(table.adapters.length).toLowerCase()} columns, one model (${run.model}), the same budget of ${run.maxToolCalls} tool calls for each, and ${run.repeats} runs per question. An answer counts only if it’s exactly right.`,
+    ours,
+    baseline,
+    contextRatio,
+    classes,
+    findings: sentences.join(' '),
+  };
 }
 
 /**
- * What the sample above is standing on. Each is a fact about a named file
- * rather than a property of SQL in general, because the interesting half of
- * this argument is that the guard rails exist — a model writing SQL against a
- * ingot is only a good idea if the worst statement it can write is a slow
- * SELECT.
+ * Minutes at 230 words a minute, over the prose a reader actually reads.
+ * Counted rather than claimed, so it cannot drift from the page.
  */
-export const SQL_NOTES: readonly SqlNote[] = [
-  {
-    kicker: 'Scope',
-    title: 'Every table of the ingot is in scope',
-    body: 'A statement gets offered every table its ingot holds, and the engine narrows to the ones it actually names. Three tools that have never heard of each other are three tables in one FROM clause.',
-    source: 'sessions.all(tables)',
-  },
-  {
-    kicker: 'Sandbox',
-    title: 'The worst case is a slow SELECT',
-    body: 'One statement, and it has to be a read. No ATTACH, no COPY, no second statement, no writes. The one thing that does run has a row cap and a timeout on it.',
-    source: 'assertStartsAsSelect()',
-  },
-  {
-    kicker: 'Schema',
-    title: 'It is told what is there first',
-    body: 'Tables, columns and types come out of Postgres with no bucket read behind them, so asking is cheap enough to do every turn. Over MCP they arrive as the server’s instructions, before the model has spent a single tool call.',
-    source: 'GET /:ingot/info',
-  },
-];
-
-/* ── 03 · where the embeddings went ──────────────────────────────────────── */
-
-/**
- * Meaning as one predicate among several.
- *
- * Deliberately not the landing page's retrieval sample: that one ranks a
- * single table and makes the "no vector database" argument. This one *joins*
- * while it ranks, which is the argument this page is making — the cosine is an
- * expression in a SELECT list, so it composes with everything else a SELECT
- * can do. The version with a vector store beside it cannot write this
- * statement at all.
- *
- * `$q` is bound only when `text` and `sql` arrive together, so the `text` line
- * is load-bearing rather than decorative.
- */
-export const VECTOR_COLUMN = `# rank by meaning, inside a join
-POST /api/v1/acme/ing_01H8Z…/query
-{
-  "text": "unhappy about the renewal price",
-  "sql": "SELECT c.company, c.arr, n.body,
-                 array_cosine_similarity(n.body_vec, $q)
-                   AS near
-          FROM notes n
-          JOIN contacts c ON c.id = n.contact_id
-          WHERE c.arr > 100000
-            AND n.written > '2026-01-01'
-          ORDER BY near DESC
-          LIMIT 10"
-}`;
-
-/* ── 04 · what an ingot is scoped to ─────────────────────────────────────── */
-
-/** One of the four cells under "One ingot per whatever you say". */
-export interface Grain {
-  /** The `retainFor` it implies, or the fact that there is none. */
-  readonly retention: string;
-  readonly title: string;
-  readonly body: string;
+export function readingMinutes(): number {
+  const found = evidence();
+  const prose = [
+    ABSTRACT,
+    ...INTRODUCTION.before,
+    INTRODUCTION.quote,
+    ...INTRODUCTION.joins,
+    INTRODUCTION.contrast.guess.note,
+    INTRODUCTION.contrast.exact.note,
+    INTRODUCTION.after,
+    HYPOTHESIS.body,
+    ...HYPOTHESIS.claims.map((claim) => claim.text),
+    HYPOTHESIS.falsifier,
+    found?.method ?? '',
+    found?.findings ?? '',
+    ...CONCLUSION.body,
+    ...CONCLUSION.open,
+  ].join(' ');
+  return Math.max(1, Math.ceil(prose.split(/\s+/).length / 230));
 }
-
-/**
- * Four scopes, and the point is that Ingot has an opinion about none of them.
- *
- * The retentions are real: `retainFor` takes a whole number and a unit from
- * one minute to ten years, or is omitted to keep an ingot until something
- * deletes it — `apps/ingot/src/contexts/ingots/domain/retention.vo.ts`. The
- * four below are the shapes people actually have, not the four the grammar
- * allows.
- */
-export const GRAINS: readonly Grain[] = [
-  {
-    retention: 'retainFor: "30m"',
-    title: 'Per chat',
-    body: 'A scratch ingot for one conversation. This session’s tool results, joinable to each other and to nothing else, gone half an hour after the last one lands. Nobody has to run a cleanup.',
-  },
-  {
-    retention: 'retainFor: "12h"',
-    title: 'Per run',
-    body: 'One agent run, one batch, one incident. Long enough that a retry an hour later reads what the first attempt wrote, and short enough that a failed run is not something you have to go and tidy up.',
-  },
-  {
-    retention: 'retainFor: "4w"',
-    title: 'Per project',
-    body: 'What a piece of work accumulates: every tool that touches the project writing into tables of the same ingot, and a month in which to ask questions across all of them.',
-  },
-  {
-    retention: 'no retainFor',
-    title: 'Per user, per tenant, per agent',
-    body: 'Kept until something deletes it. That is the right answer when the lifetime is somebody’s account rather than a clock — and expiry is opt-in precisely because you cannot undo it.',
-  },
-];
-
-/**
- * The constraint that makes the choice above a real one.
- *
- * Said plainly rather than left to be discovered, because it is the single
- * thing on this page that could disappoint somebody after they had built on
- * it: a query resolves the tables of one ingot, and there is no statement that
- * spans two.
- */
-export const GRAIN_LIMIT =
-  'A statement sees the tables of one ingot, and there is no query across two. So this is the one decision worth making deliberately: **the grain you pick is the grain you can join across**. Casting an ingot is one POST, though, so it is also a decision you are allowed to change your mind about.';
-
-/** How the ingots themselves are managed, at the account scope. */
-export const GRAIN_CHIPS: readonly string[] = [
-  'POST /:account/cast',
-  'POST /:account/:ingot/clone',
-  'GET /:account/ingots',
-  'cast_ingot',
-  'clone_ingot',
-  'list_ingots',
-  'delete_ingot',
-];
-
-/* ── 05 · what it costs to keep ──────────────────────────────────────────── */
-
-/** One of the three tiers, in the order a row passes through them. */
-export interface Tier {
-  readonly n: string;
-  readonly title: string;
-  readonly body: string;
-  /** What the tier is for, in three words, printed under it. */
-  readonly note: string;
-}
-
-/**
- * The storage model, which is an LSM tree and nothing more exotic. Every
- * number here is read off the service: the roll-up is `minutes(5)` in
- * `apps/ingot/src/sweepers/roll-up.sweeper.ts`, and one generation is one
- * complete rewrite of the table rather than a delta —
- * `compact-table.command.ts` writes a single part per generation from the base
- * files unioned with the overlay.
- */
-export const TIERS: readonly Tier[] = [
-  {
-    n: '01',
-    title: 'The overlay',
-    body: 'Rows land in Postgres and are queryable the same second, next to the manifest that says where the folded ones went. This is the only tier a write ever touches.',
-    note: 'queryable on arrival',
-  },
-  {
-    n: '02',
-    title: 'The base tier',
-    body: 'Every five minutes a sweeper folds the overlay into a new Parquet generation — one file per table, columnar and compressed, in a bucket you named.',
-    note: 'one file per table',
-  },
-  {
-    n: '03',
-    title: 'The engine',
-    body: 'DuckDB is a library inside the process, never a server. A query builds an in-memory session from the manifest, runs one statement against it, and throws the whole thing away.',
-    note: 'nothing stays warm',
-  },
-];
-
-/** One line of the ledger under the tiers. */
-export interface Cost {
-  readonly item: string;
-  /** Backticks render as code. */
-  readonly body: string;
-}
-
-/**
- * What an ingot actually costs, including the three lines that are zero.
- *
- * The zeroes are the argument. A vector database is priced on being resident —
- * an index sized to the corpus, kept warm whether or not anybody is asking —
- * and none of the three tiers above is resident, so the bill for an ingot
- * nobody is querying is the bytes it occupies.
- */
-export const COSTS: readonly Cost[] = [
-  {
-    item: 'Bucket bytes',
-    body: 'Parquet, columnar and compressed. This is the ingot at rest, and the only thing an idle one costs.',
-  },
-  {
-    item: 'A Postgres',
-    body: 'The catalogue, the rows written since the last roll-up, and the queues. Almost certainly a Postgres you were already running for something else.',
-  },
-  {
-    item: 'CPU, while a query runs',
-    body: 'A DuckDB session is built from the manifest, used once, and dropped. Between two queries an ingot is consuming nothing you could scale up even if you wanted to.',
-  },
-  {
-    item: 'Nothing per vector',
-    body: 'Embeddings are Parquet in the same bucket, keyed by `_row_id` beside the rows they belong to. There is no per-dimension price and no index node.',
-  },
-  {
-    item: 'Nothing per ingot',
-    body: 'Casting an ingot writes a row. Ten thousand scratch ingots that expire tonight are ten thousand rows tonight and nothing tomorrow.',
-  },
-  {
-    item: 'Nothing while idle',
-    body: 'No index to keep warm, no cluster sized to the corpus, no minimum. An ingot nobody is querying is some Parquet in a bucket.',
-  },
-];
-
-/* ── 06 · whose ingot it is ─────────────────────────────────────────────── */
-
-/**
- * The base tier, read without Ingot in the picture.
- *
- * Honest in the two places it would be easy not to be. The highest `gen-`
- * directory is the current one *and* is the whole table, because a compaction
- * rewrites rather than appends — so this is not a partial view somebody would
- * have to reassemble. And the last few minutes of writes are not in it, which
- * the sample says out loud rather than leaving to be found.
- */
-export const OWN_IT = `# ingot is not running. the ingot still is.
-# the highest gen- directory is the whole table.
-
-$ duckdb
-D SELECT company, sum(arr) AS book
-  FROM read_parquet(
-    'acct_…/ing_…/tables/contacts/gen-000003/*.parquet'
-  )
-  GROUP BY 1
-  ORDER BY book DESC;
-
-# there is no export step, because there was
-# never a second format to export from. what is
-# missing is the last five minutes, which are
-# still in your Postgres.`;
-
-/** The chips under the ownership split. */
-export const OWNERSHIP_CHIPS: readonly string[] = [
-  'your bucket',
-  'your Postgres',
-  'Parquet',
-  'no export step',
-  'no vendor',
-];

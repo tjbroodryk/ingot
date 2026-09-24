@@ -5,12 +5,8 @@
  * `.mark`, the framed panel, the code tokens, the closing band — comes from
  * `src/app/globals.css` and is used here rather than restated.
  *
- * `src/why/` imports this sheet too, and that is deliberate rather than a
- * shortcut: `/why` is the same shape of document in the same idiom — a ruled
- * frame, centred heads, three-up grids, splits — and two copies of a hero
- * would be two heroes that disagree on the first edit. What that page needs
- * and this one does not is in `src/why/why.css`, and nothing here is written
- * for it.
+ * `/why`, `/features` and `/benchmarks` import this sheet too, for the frame
+ * and the closing band. What each needs beyond that is in its own sheet.
  *
  * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
  * is over there. Every value here resolves to a token.
@@ -775,6 +771,27 @@
 .cta-secondary:hover {
   background: color-mix(in srgb, var(--color-ink-inverse) 12%, transparent);
   color: var(--color-ink-inverse);
+}
+
+/* The closing band set as a row, head left and buttons right: `/features` and `/why`. */
+.landframe .cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  text-align: left;
+}
+
+.landframe .cta-row h2 {
+  max-width: 14ch;
+  margin: 0;
+  font-size: clamp(36px, 5vw, 64px);
+  line-height: 0.92;
+}
+
+.cta-row .kicker {
+  margin-bottom: 18px;
 }
 
 /* ══ narrower ═══════════════════════════════════════════════════════════

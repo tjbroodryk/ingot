@@ -4,10 +4,22 @@ import {
   DASHBOARD_HREF,
   DEPLOYMENT_HREF,
   DOCS_HREF,
+  FEATURES_HREF,
   WHAT_HREF,
   WHY_HREF,
 } from '../site/mode';
 import { BrandMark } from './brand-mark';
+
+/**
+ * Whether the nav's first list — the pages that make the argument — has
+ * anything in it. A dashboard build has none of them, and the rule that parts
+ * the two lists would lead the bar as a stray mark.
+ */
+const HAS_ARGUMENT =
+  WHAT_HREF !== DOCS_HREF ||
+  WHY_HREF !== null ||
+  BENCHMARKS_HREF !== null ||
+  FEATURES_HREF !== null;
 
 /** Which nav item is the page you are on. */
 export enum SiteSection {
@@ -17,6 +29,7 @@ export enum SiteSection {
   Why = 'why',
   Deployment = 'deployment',
   Benchmarks = 'benchmarks',
+  Features = 'features',
 }
 
 /**
@@ -43,8 +56,7 @@ export function SiteHeader({
   current: SiteSection;
   /**
    * The buttons at the right-hand end, which are the caller's for the same
-   * reason the footer's links are: "Get a key" is an anchor on the reference
-   * and is nothing anywhere else, and a header that picked one for you would
+   * reason the footer's links are: a header that picked them for you would
    * sooner or later offer a jump to a section the page does not have.
    */
   actions?: ReactNode;
@@ -81,6 +93,16 @@ export function SiteHeader({
             Benchmarks
           </a>
         ) : null}
+        {FEATURES_HREF ? (
+          <a
+            href={FEATURES_HREF}
+            aria-current={current === SiteSection.Features ? 'page' : undefined}
+          >
+            Features
+          </a>
+        ) : null}
+        {/* Above here the pages argue; below it, the pages you work from. */}
+        {HAS_ARGUMENT ? <span className="topbar-divider" /> : null}
         <a href={DOCS_HREF} aria-current={current === SiteSection.Docs ? 'page' : undefined}>
           Docs
         </a>

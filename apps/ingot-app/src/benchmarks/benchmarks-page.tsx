@@ -9,10 +9,11 @@
 // the sortable tables, the transcripts and the sticky contents are all state.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { BrandMark } from '../chrome/brand-mark';
+import { ContentsRail, type RailItem } from '../chrome/contents-rail';
+import { sectionNumber } from '../chrome/section-number';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHAT_HREF, WHY_HREF } from '../site/mode';
+import { BASE_PATH, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
 // The hero, the badge and the buttons are the landing page's, used rather than
 // restated. The bands below them are this page's own.
 import '../landing/landing.css';
@@ -72,7 +73,7 @@ export function BenchmarksPage(): ReactNode {
   const [selected, setSelected] = useState(0);
   const table = TABLES[selected] ?? TABLES[0] ?? null;
   const transcripts = useTranscripts();
-  // Memoised so the sticky bar's scroll listener is not re-bound on every render.
+  // Memoised so the rail's scroll listener is not re-bound on every render.
   const sections = useMemo(() => contents(table), [table]);
 
   return (
@@ -85,8 +86,6 @@ export function BenchmarksPage(): ReactNode {
           </a>
         }
       />
-
-      <StickyContents sections={sections} transcripts={Boolean(table)} />
 
       <div className="landframe">
         <section className="hero">
@@ -110,162 +109,163 @@ export function BenchmarksPage(): ReactNode {
           </div>
         </section>
 
-        <Contents sections={sections} />
+        <div className="railbody">
+          <aside className="railbody-aside">
+            <ContentsRail items={sections} />
+          </aside>
 
-        {table ? <TheRun table={table} selected={selected} onSelect={setSelected} /> : null}
+          <div className="railbody-main">
+            {table ? <TheRun table={table} selected={selected} onSelect={setSelected} /> : null}
 
-        <Band
-          id="results"
-          kicker="Results"
-          title="Accuracy, and what it cost"
-          lede="An answer counts only when it is exactly right. The bar is overall accuracy; the number beside it is the mean prompt the model had to read to produce each answer."
-        >
-          {table ? (
-            <>
-              <Tiles table={table} />
-              <RankedAccuracy adapters={table.adapters} />
-              <Failures adapters={table.adapters} />
-              <CostTable adapters={table.adapters} concurrency={table.run.concurrency} />
-            </>
-          ) : (
-            <div className="bench-empty">
-              <h3>No run has been published yet.</h3>
-              <p>
-                The harness is in <code>packages/bench</code> and the method below is what it does.
-                This page fills in when a run is published into it:
-              </p>
-              <pre className="bench-pre">
-                <code>
-                  bun run bench --publish ../../apps/ingot-app/src/benchmarks/results.json
-                </code>
-              </pre>
-            </div>
-          )}
-        </Band>
-
-        {table ? (
-          <Band
-            id="classes"
-            kicker="By task class"
-            title="Where each one breaks"
-            lede="Aggregates, absence, ordering and joins are where structure should tell; the semantic questions are where embeddings should perform better."
-          >
-            <HeatMatrix categories={table.categories} adapters={table.adapters} />
-          </Band>
-        ) : null}
-
-        <Band
-          id="questions"
-          kicker="The questions"
-          title={
-            table
-              ? `${table.run.questions} questions, ${countWord(table.categories.length).toLowerCase()} shapes`
-              : 'The questions'
-          }
-          lede="A generator builds a world, renders it as the paginated JSON an agent would have received, and computes the gold answer from the world objects. Nothing is annotated by hand. Open a shape to read the questions it asks."
-        >
-          <QuestionShapes table={table} transcripts={transcripts} />
-        </Band>
-
-        <Band
-          id="corpus"
-          kicker="What it is asked about"
-          title="Tool results, not documents"
-          lede={CORPUS_LEDE}
-        >
-          <CorpusShape table={table} />
-        </Band>
-
-        {table ? (
-          <Band
-            id="transcripts"
-            kicker="Transcripts"
-            title="Read the runs"
-            lede="Every number above is a mean over transcripts. Open one to see the SQL it wrote or the searches it ran, what came back, and the answer it gave."
-          >
-            <Transcripts table={table} transcripts={transcripts} />
-          </Band>
-        ) : null}
-
-        <Band
-          id="method"
-          kicker="What is compared"
-          // "Columns" rather than "memories", because `raw-context` is not one:
-          // it answers from the prompt and is a reference point. The heading
-          // counting the columns and the grid listing that many cells is the
-          // agreement that matters.
-          title={`${countWord(ADAPTERS.length)} comparisons, same agent harness`}
-          lede={
-            <>
-              One agent harness implementation serves every test case, with the same model, the same
-              tool-call budget and the same answer channel. Only the retrieval tools differ, so a
-              gap between two columns <i>should</i> only be down to the tool results.
-            </>
-          }
-        >
-          <div className="bench-cells">
-            {ADAPTERS.map((adapter) => (
-              <div className="bench-cell" key={adapter.name}>
-                <div className="bench-cell-key">{adapterLabel(adapter.name).toUpperCase()}</div>
-                <p>{adapter.blurb}</p>
-              </div>
-            ))}
-          </div>
-        </Band>
-
-        <Band
-          id="limits"
-          kicker="Caveats"
-          title="What this does not measure"
-          lede="We are publishing a benchmark of our own software. Discount it accordingly, and start here."
-        >
-          <div className="bench-cells">
-            {LIMITS.map((limit) => (
-              <div className="bench-cell" key={limit.title}>
-                <h3 className="bench-cell-title">{limit.title}</h3>
-                <p>{limit.body}</p>
-              </div>
-            ))}
-          </div>
-        </Band>
-
-        <Band
-          id="check"
-          kicker="Check it"
-          title="View our test cases"
-          lede="This is worth exactly as much as your ability to go and check it, so every part of it is one file, linked below by the question it answers. If you want to know whether we shaped the questions to flatter ourselves, you can read the generator."
-        >
-          <div className="bench-cells">
-            {SOURCES.map((source) => (
-              <div className="bench-cell" key={source.path}>
-                <h3 className="bench-cell-title">
-                  <a href={sourceHref(source.path)}>{source.question}</a>
-                </h3>
-                <p>{source.detail}</p>
-                <code className="bench-cell-path">{source.path}</code>
-              </div>
-            ))}
-          </div>
-
-          <p className="bench-caption">
-            Or run it yourself against a seed of your own — <code>--dry-run</code> prints every
-            question and every gold answer without spending anything.
-          </p>
-          <div className="bench-actions label">
-            <a className="btn-solid" href={sourceHref('packages/bench/README.md')}>
-              The methodology <span aria-hidden="true">→</span>
-            </a>
-            <a
-              className="btn-outline"
-              href={sourceHref('packages/bench/src/questions/questions.ts')}
+            <Band
+              id="results"
+              kicker="Results"
+              title="Accuracy, and what it cost"
+              lede="An answer counts only when it is exactly right. The bar is overall accuracy; the number beside it is the mean prompt the model had to read to produce each answer."
             >
-              Read the question set
-            </a>
-            <a className="btn-outline" href={DOCS_HREF}>
-              View docs
-            </a>
+              {table ? (
+                <>
+                  <Tiles table={table} />
+                  <RankedAccuracy adapters={table.adapters} />
+                  <Failures adapters={table.adapters} />
+                  <CostTable adapters={table.adapters} concurrency={table.run.concurrency} />
+                </>
+              ) : (
+                <div className="bench-empty">
+                  <h3>No run has been published yet.</h3>
+                  <p>
+                    The harness is in <code>packages/bench</code> and the method below is what it
+                    does. This page fills in when a run is published into it:
+                  </p>
+                  <pre className="bench-pre">
+                    <code>
+                      bun run bench --publish ../../apps/ingot-app/src/benchmarks/results.json
+                    </code>
+                  </pre>
+                </div>
+              )}
+            </Band>
+
+            {table ? (
+              <Band
+                id="classes"
+                kicker="By task class"
+                title="Where each one breaks"
+                lede="Aggregates, absence, ordering and joins are where structure should tell; the semantic questions are where embeddings should perform better."
+              >
+                <HeatMatrix categories={table.categories} adapters={table.adapters} />
+              </Band>
+            ) : null}
+
+            <Band
+              id="questions"
+              kicker="The questions"
+              title={table ? `${table.run.questions} questions` : 'The questions'}
+              lede="A generator builds a world, renders it as the paginated JSON an agent would have received, and computes the gold answer from the world objects. Nothing is annotated by hand. Open a shape to read the questions it asks."
+            >
+              <QuestionShapes table={table} transcripts={transcripts} />
+            </Band>
+
+            <Band
+              id="corpus"
+              kicker="What it is asked about"
+              title="Tool results, not documents"
+              lede={CORPUS_LEDE}
+            >
+              <CorpusShape table={table} />
+            </Band>
+
+            {table ? (
+              <Band
+                id="transcripts"
+                kicker="Transcripts"
+                title="Read the runs"
+                lede="All of the above results are derived from these transcripts."
+              >
+                <Transcripts table={table} transcripts={transcripts} />
+              </Band>
+            ) : null}
+
+            <Band
+              id="method"
+              kicker="What is compared"
+              // "Columns" rather than "memories", because `raw-context` is not one:
+              // it answers from the prompt and is a reference point. The heading
+              // counting the columns and the grid listing that many cells is the
+              // agreement that matters.
+              title={`${countWord(ADAPTERS.length)} comparisons, same agent harness`}
+              lede={
+                <>
+                  One agent harness implementation serves every test case, with the same model and
+                  settings so results <i>should</i> only differ due to the tool results.
+                </>
+              }
+            >
+              <div className="bench-cells">
+                {ADAPTERS.map((adapter) => (
+                  <div className="bench-cell" key={adapter.name}>
+                    <div className="bench-cell-key">{adapterLabel(adapter.name).toUpperCase()}</div>
+                    <p>{adapter.blurb}</p>
+                  </div>
+                ))}
+              </div>
+            </Band>
+
+            <Band
+              id="limits"
+              kicker="Caveats"
+              title="What this does not measure"
+              lede="We are publishing a benchmark of our own software. Discount it accordingly, and start here."
+            >
+              <div className="bench-cells">
+                {LIMITS.map((limit) => (
+                  <div className="bench-cell" key={limit.title}>
+                    <h3 className="bench-cell-title">{limit.title}</h3>
+                    <p>{limit.body}</p>
+                  </div>
+                ))}
+              </div>
+            </Band>
+
+            <Band
+              id="check"
+              kicker="Check it"
+              title="View our test cases"
+              lede="This is worth exactly as much as your ability to go and check it, so every part of it is one file, linked below by the question it answers. If you want to know whether we shaped the questions to flatter ourselves, you can read the generator."
+            >
+              <div className="bench-cells">
+                {SOURCES.map((source) => (
+                  <div className="bench-cell" key={source.path}>
+                    <h3 className="bench-cell-title">
+                      <a href={sourceHref(source.path)}>{source.question}</a>
+                    </h3>
+                    <p>{source.detail}</p>
+                    <code className="bench-cell-path">{source.path}</code>
+                  </div>
+                ))}
+              </div>
+
+              <p className="bench-caption">
+                Or run it yourself against a seed of your own — <code>--dry-run</code> prints every
+                question and every gold answer without spending anything.
+              </p>
+              <div className="bench-actions label">
+                <a className="btn-solid" href={sourceHref('packages/bench/README.md')}>
+                  The methodology <span aria-hidden="true">→</span>
+                </a>
+                <a
+                  className="btn-outline"
+                  href={sourceHref('packages/bench/src/questions/questions.ts')}
+                >
+                  Read the question set
+                </a>
+                <a className="btn-outline" href={DOCS_HREF}>
+                  View docs
+                </a>
+              </div>
+            </Band>
           </div>
-        </Band>
+        </div>
       </div>
 
       <SiteFooter />
@@ -273,189 +273,28 @@ export function BenchmarksPage(): ReactNode {
   );
 }
 
-/** One numbered section, as the contents and the sticky bar list it. */
-interface Section {
-  readonly id: string;
-  readonly title: string;
-  /** The sticky bar's name for it, where the title is too long for one line of chrome. */
-  readonly short: string;
-  readonly about: string;
-}
-
 /**
- * The page's numbered sections, in the order they render.
+ * The rail's entries, in the order they render: the run's setup as `00`, then
+ * the numbered bands.
  *
  * Filtered by the same conditions the bands are, so the numbers here always
  * agree with the `[ 0n ]` counters on the kickers.
  */
-function contents(table: PublishedTable | null): readonly Section[] {
-  const columns = table ? countWord(table.adapters.length).toLowerCase() : null;
-  const all: readonly (Section & { readonly needsRun: boolean })[] = [
-    {
-      id: 'results',
-      title: 'Results',
-      short: 'Results',
-      about: columns
-        ? `Overall accuracy and context cost for ${columns} columns, sortable by any of them.`
-        : 'What the page will show once a run has been published.',
-      needsRun: false,
-    },
-    {
-      id: 'classes',
-      title: 'By task class',
-      short: 'Task class',
-      about: 'Where each one breaks: aggregates, absence, ordering, joins, semantic, multi-hop.',
-      needsRun: true,
-    },
-    {
-      id: 'questions',
-      title: 'The questions',
-      short: 'Questions',
-      about: table
-        ? `${table.run.questions} questions in ${countWord(table.categories.length).toLowerCase()} shapes. Open a shape to read the questions it asks.`
-        : 'The shapes of question the generator asks.',
-      needsRun: false,
-    },
-    {
-      id: 'corpus',
-      title: 'What it is asked about',
-      short: 'Corpus',
-      about: 'The tool results every column was asked about, and one record from each.',
-      needsRun: false,
-    },
-    {
-      id: 'transcripts',
-      title: 'Transcripts',
-      short: 'Transcripts',
-      about: 'Every call each run made, the rows that came back, and the answer it gave.',
-      needsRun: true,
-    },
-    {
-      id: 'method',
-      title: 'What is compared',
-      short: 'Compared',
-      about: 'Each column, and what it is in the table to test.',
-      needsRun: false,
-    },
-    {
-      id: 'limits',
-      title: 'Caveats',
-      short: 'Caveats',
-      about: 'What this does not measure, and where the benchmark flatters its author.',
-      needsRun: false,
-    },
-    {
-      id: 'check',
-      title: 'Check it',
-      short: 'Check it',
-      about: 'The file behind each claim, named by the question it answers.',
-      needsRun: false,
-    },
+function contents(table: PublishedTable | null): readonly RailItem[] {
+  const bands: readonly (RailItem & { readonly needsRun: boolean })[] = [
+    { id: 'results', title: 'Results', needsRun: false },
+    { id: 'classes', title: 'Task class', needsRun: true },
+    { id: 'questions', title: 'Questions', needsRun: false },
+    { id: 'corpus', title: 'Corpus', needsRun: false },
+    { id: 'transcripts', title: 'Transcripts', needsRun: true },
+    { id: 'method', title: 'Compared', needsRun: false },
+    { id: 'limits', title: 'Caveats', needsRun: false },
+    { id: 'check', title: 'Check it', needsRun: false },
   ];
-  return all.filter((section) => table || !section.needsRun);
-}
-
-const sectionNumber = (index: number): string => String(index + 1).padStart(2, '0');
-
-/** The contents, under the hero: every section, what it holds, and a link to it. */
-function Contents({ sections }: { sections: readonly Section[] }): ReactNode {
-  return (
-    <nav className="bench-contents" id="contents" aria-label="Contents">
-      <div className="bench-contents-label label">[ Contents ]</div>
-      <ol className="bench-contents-list">
-        {sections.map((section, index) => (
-          <li key={section.id}>
-            <a href={`#${section.id}`}>
-              <span className="bench-contents-n label">{sectionNumber(index)}</span>
-              <span className="bench-contents-title label">{section.title}</span>
-              <span className="bench-contents-about">{section.about}</span>
-            </a>
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
-}
-
-/**
- * The contents again, as a bar pinned to the top once the list above has
- * scrolled away, with the section being read underlined.
- *
- * Read off the layout on scroll, throttled to a frame. Hidden, it is `inert`,
- * so a keyboard never tabs into links nobody can see.
- */
-function StickyContents({
-  sections,
-  transcripts,
-}: {
-  sections: readonly Section[];
-  transcripts: boolean;
-}): ReactNode {
-  const [stuck, setStuck] = useState(false);
-  const [active, setActive] = useState<string | null>(null);
-
-  useEffect(() => {
-    let frame = 0;
-    const tick = (): void => {
-      frame = 0;
-      const list = document.getElementById('contents');
-      setStuck(list ? list.getBoundingClientRect().bottom < 0 : false);
-      // The last section whose top has passed under the bar.
-      let current: string | null = null;
-      for (const section of sections) {
-        const element = document.getElementById(section.id);
-        if (element && element.getBoundingClientRect().top <= 140) current = section.id;
-      }
-      setActive(current);
-    };
-    const onScroll = (): void => {
-      if (!frame) frame = window.requestAnimationFrame(tick);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    tick();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, [sections]);
-
-  // The bar stands in for the site header while it shows. The header wraps to
-  // two rows on a phone and would otherwise peek out underneath.
-  useEffect(() => {
-    document.documentElement.toggleAttribute('data-bench-stuck', stuck);
-    return () => document.documentElement.removeAttribute('data-bench-stuck');
-  }, [stuck]);
-
-  return (
-    <div className={stuck ? 'bench-sticky bench-sticky-on' : 'bench-sticky'} inert={!stuck}>
-      <nav className="bench-sticky-bar label" aria-label="Sections">
-        <a className="bench-sticky-brand" href={WHAT_HREF}>
-          <BrandMark className="brand-mark" />
-          <span className="brand-word">Ingot</span>
-        </a>
-        <span className="bench-sticky-divider" aria-hidden="true" />
-        {sections.map((section, index) => (
-          <a
-            key={section.id}
-            href={`#${section.id}`}
-            className="bench-sticky-link"
-            aria-current={active === section.id ? 'location' : undefined}
-          >
-            <span className="bench-sticky-n">{sectionNumber(index)}</span>
-            {section.short}
-          </a>
-        ))}
-        <span className="bench-sticky-fill" aria-hidden="true" />
-        {transcripts ? (
-          <a className="btn-solid bench-sticky-cta" href="#transcripts">
-            Transcripts
-          </a>
-        ) : null}
-      </nav>
-    </div>
-  );
+  const numbered = bands
+    .filter((band) => table || !band.needsRun)
+    .map(({ id, title }, index) => ({ id, title, n: sectionNumber(index) }));
+  return table ? [{ id: 'setup', title: 'Setup', n: '00' }, ...numbered] : numbered;
 }
 
 /** A numbered band: a centred kicker, title and lede over whatever it holds. */
@@ -572,7 +411,7 @@ function TheRun({
   ];
 
   return (
-    <section className="bench-run" aria-label="The run">
+    <section className="bench-run" id="setup" aria-label="The run">
       <div className="bench-wrap">
         <Rule
           label="The run"
@@ -1345,15 +1184,6 @@ function CorpusShape({ table }: { table: PublishedTable | null }): ReactNode {
 
 /* ── transcripts ───────────────────────────────────────────────────────── */
 
-/**
- * What each column actually did, one run at a time.
- *
- * Every number above is a mean over transcripts, and a mean asks to be trusted
- * where a transcript can be checked: one screen showing the same store
- * answered two ways, one of them silently wrong, is worth more than a
- * percentage. Runs are grouped by question with the gold on the group, and
- * each opens in place; the browser lists every run beside one open trace.
- */
 function Transcripts({
   table,
   transcripts,
@@ -1369,10 +1199,8 @@ function Transcripts({
       {state === 'idle' ? (
         <div className="bench-transcripts-prompt">
           <p>
-            Every number above is a mean over transcripts, and a transcript can be checked where a
-            mean has to be trusted. Load them to see what each column actually did to answer a
-            question — the SQL it wrote or the searches it ran, the rows that came back, and the
-            answer it gave.
+            Load the transcripst to see how the model actually, interacted with the various
+            questions and tools
           </p>
           <button className="btn-solid" type="button" onClick={() => void transcripts.load()}>
             Show the transcripts

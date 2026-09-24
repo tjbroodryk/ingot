@@ -1,72 +1,40 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { ContentsRail } from '../chrome/contents-rail';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
-import { DEPLOYMENT_HREF, DOCS_HREF, WHAT_HREF, REPO_URL } from '../site/mode';
-// The landing page's layout, used rather than restated — see the note at the
-// top of that file. This page is the same shape of argument in the same
-// idiom: a hero, ruled bands, three-up grids and two splits.
+import { BENCHMARKS_HREF, DOCS_HREF, FEATURES_HREF, REPO_URL } from '../site/mode';
+// The frame and the closing band are the landing page's.
 import '../landing/landing.css';
 import './why.css';
 import {
-  COSTS,
-  GRAIN_CHIPS,
-  GRAIN_LIMIT,
-  GRAINS,
-  LOSS_CLAIM,
-  LOSSES,
-  OWN_IT,
-  OWNERSHIP_CHIPS,
-  SQL_NOTES,
-  THE_JOIN,
-  THREE_TOOLS,
-  TIERS,
-  VECTOR_COLUMN,
+  ABSTRACT,
+  CONCLUSION,
+  type Evidence,
+  evidence,
+  HYPOTHESIS,
+  INTRODUCTION,
+  readingMinutes,
   WHY_DESCRIPTION,
-  WHY_LEDE,
+  WHY_SECTIONS,
 } from './why';
 
 export const whyMetadata: Metadata = {
-  // The nav's word rather than the headline, the way `/deployment` uses
-  // "Deployment" and not "Three places, two dependencies". A tab is read at
-  // 90px wide, and "Similarity is not a join · Ingot" truncates to nothing
-  // that says which page it is.
+  // The nav's word rather than the headline: a tab is read at 90px wide.
   title: 'Why Ingot',
   description: WHY_DESCRIPTION,
 };
 
+const pct = (value: number): string => `${Math.round(value * 100)}%`;
+
 /**
- * Why this exists at all — the one page on the site that argues rather than
- * describes.
- *
- * The reference says what Ingot serves and `/deployment` says how to have one.
- * Neither answers the question somebody asks before either of those is worth
- * reading: why is this not a vector store, like everything else that calls
- * itself agent memory. That question has an answer, the answer is the reason
- * the service is shaped the way it is, and burying it in a landing-page
- * section would make it look like a feature.
- *
- * The order is the argument, and each section is load-bearing for the one
- * after it:
- *
- *   #problem     what happens to a tool result today, and why all three
- *                answers lose the same thing
- *   #sql         the swap — tables and one SELECT — with the join no single
- *                tool call could have answered
- *   #vectors     where the embeddings went, so that this does not read as an
- *                argument against them
- *   #grain       what one ingot is scoped to, which is the caller's decision
- *                and the page says so, limit included
- *   #cost        why keeping it all is affordable, which is what makes the
- *                grain a free choice rather than a budget
- *   #ownership   whose it is, which is the only claim self-hosting is what
- *                makes true
- *
- * A server component with nothing to fetch: it renders once, at build time.
+ * Why Ingot is shaped the way it is, drawn to the Ingot Why artboard: a short
+ * argument in four parts, set as a paper with a contents rail beside it.
  */
 export function WhyPage(): ReactNode {
+  const found = evidence();
+
   return (
     <>
       <SiteHeader
@@ -79,330 +47,159 @@ export function WhyPage(): ReactNode {
       />
 
       <div className="landframe">
-        <section className="hero">
-          <div className="hero-badge label">
-            <span className="badge">The argument</span>
-            <a href="#problem">Why this is not a vector store</a>
-          </div>
-
-          <h1 className="hero-title">
-            Similarity is
-            <br />
-            not <span className="mark">a join</span>
-          </h1>
-
-          <p className="hero-lede">{WHY_LEDE}</p>
-
-          <div className="hero-actions label">
-            <a className="btn-solid btn-lg" href="#sql">
-              Read the argument
-            </a>
-            <a className="btn-outline btn-lg" href={DOCS_HREF}>
-              View docs
-            </a>
-          </div>
-        </section>
-
-        {/*
-          The problem, stated as an exhaustive list rather than a complaint.
-
-          Three cells because there are three things anybody does with a tool
-          result, and the section only works if a reader cannot think of a
-          fourth — otherwise it is an argument against two of the options
-          somebody has.
-        */}
-        <section className="landblock" id="problem">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What happens today</span>
-            <h2 className="landtitle">
-              Three ways to lose
-              <br />
-              <span className="mark">a tool result</span>
-            </h2>
-            <p>
-              You have watched this happen. A tool returns four hundred rows of structured JSON, and
-              by the next turn one of these three things has happened to it. You cannot query any of
-              them.
-            </p>
-          </div>
-
-          <div className="steps">
-            {LOSSES.map((loss) => (
-              <div className="step" key={loss.kicker}>
-                <div className="step-num">{loss.kicker.toUpperCase()}</div>
-                <h4>{loss.title}</h4>
-                <p>{loss.body}</p>
-                <code>{loss.cost}</code>
-              </div>
-            ))}
-          </div>
-
-          <div className="why-strip">
-            <Prose text={LOSS_CLAIM} />
-          </div>
-        </section>
-
-        {/*
-          The swap, and the whole page turns on the figure rather than on the
-          copy: three writes on the left that know nothing about each other,
-          one statement on the right that joins all three. A reader who reads
-          only the right-hand pane has had the argument.
-        */}
-        <section className="landblock" id="sql">
-          <div className="landhead">
-            <span className="label kicker kicker-n">Why SQL</span>
-            <h2 className="landtitle">
-              Models write SQL.
-              <br />
-              <span className="mark">Let them.</span>
-            </h2>
-            <p>
-              It is the most written-down query language there is, and a model is fluent in it in a
-              way it will never be fluent in your retrieval API. It also fails loudly, which is the
-              part we care about most: a SELECT either returns rows or it errors with a reason, and
-              a model that got it wrong can narrow it and try again. A ranking always returns
-              something. Being wrong looks exactly like being right — and that is a horrible
-              property in a system you are trying to learn to trust.
-            </p>
-          </div>
-
-          <div className="landfigure">
-            <div className="panel panel-wide">
-              <div className="panel-bar">
-                <span className="panel-glyph">≡ ×</span>
-                <span className="panel-rule" />
-                <span>Ingot · one ingot, three tools</span>
-                <span className="panel-rule" />
-              </div>
-              <div className="panel-split">
-                <CodeBlock code={THREE_TOOLS} />
-                <CodeBlock code={THE_JOIN} />
-              </div>
+        <section className="why-title">
+          <div className="why-wrap">
+            <div className="why-badge label">
+              <span className="badge">Why Ingot</span>
+              <span className="muted">A short argument in four parts</span>
             </div>
-          </div>
 
-          {/*
-            `.steps` again, because these are the same object the landing
-            page's SDK notes are: a kicker, a claim, and the line of the
-            service it is true because of.
-          */}
-          <div className="steps">
-            {SQL_NOTES.map((note) => (
-              <div className="step" key={note.kicker}>
-                <div className="step-num">{note.kicker.toUpperCase()}</div>
-                <h4>{note.title}</h4>
-                <p>{note.body}</p>
-                <code>{note.source}</code>
+            <h1 className="why-h1">
+              Memory is a
+              <br />
+              <span className="mark">query problem</span>
+            </h1>
+
+            <dl className="why-meta label">
+              <div>
+                <dt>Author</dt>
+                <dd>The Ingot team</dd>
               </div>
-            ))}
+              <div>
+                <dt>Published</dt>
+                <dd>September 2026</dd>
+              </div>
+              <div>
+                <dt>Reading time</dt>
+                <dd>{readingMinutes()} minutes</dd>
+              </div>
+              {found ? (
+                <div>
+                  <dt>Evidence</dt>
+                  <dd>
+                    {BENCHMARKS_HREF ? (
+                      <a href={BENCHMARKS_HREF}>Run {found.runDate}</a>
+                    ) : (
+                      `Run ${found.runDate}`
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
           </div>
         </section>
 
-        {/*
-          Said immediately after the join, and not later, because a page that
-          spends a screen on "similarity is not a join" and only reconciles it
-          three sections down has been read as anti-embedding by then.
-        */}
-        <section className="split" id="vectors">
-          <div className="split-copy">
-            <span className="label kicker kicker-n">Where the embeddings went</span>
-            <h3>
-              Not a database.
-              <br />
-              A column.
-            </h3>
-            <p>
-              We use embeddings. None of this is an argument against them — it is an argument about
-              where they belong. A vector is a column sitting beside the row it was made from, and{' '}
-              <code>array_cosine_similarity(body_vec, $q)</code> is an expression in a SELECT list
-              like any other.
-            </p>
-            <p>
-              So meaning becomes one predicate in a statement that also joins two tables, filters on
-              a real date, and counts. The setup with a vector store bolted on the side cannot write
-              that statement at all: the vectors are over there, the columns are over here, and the
-              only thing that ever crosses between them is a list of ids.
-            </p>
-            <div className="chips">
-              <span className="chip chip-accent">one SELECT</span>
-              <span className="chip">cosine</span>
-              <span className="chip">BM25</span>
-              <span className="chip">a real WHERE</span>
-              <span className="chip">no second store</span>
+        <div className="railbody why-body">
+          <aside className="railbody-aside">
+            <ContentsRail items={WHY_SECTIONS} />
+          </aside>
+
+          <article className="railbody-main">
+            <div className="why-abstract">
+              <div className="why-kicker label label-sm">Abstract</div>
+              <p>{ABSTRACT}</p>
             </div>
-            <a className="target-more" href={`${WHAT_HREF}#read`}>
-              How retrieval works, on the landing page →
-            </a>
-          </div>
-          <div className="split-figure">
-            <CodeBlock code={VECTOR_COLUMN} />
-          </div>
-        </section>
 
-        {/*
-          The reader's decision, and the section that answers "per what?".
-
-          The limit under the grid is not a caveat tucked at the end — it is
-          the thing that makes the choice a choice, and it is the one claim on
-          this page somebody could build on and be disappointed by later.
-        */}
-        <section className="landblock" id="grain">
-          <div className="landhead">
-            <span className="label kicker kicker-n">One ingot per what</span>
-            <h2 className="landtitle">
-              One ingot per
-              <br />
-              <span className="mark">whatever you say</span>
-            </h2>
-            <p>
-              Ingot has no opinion about what an ingot is for. Casting one is a POST with a name and
-              a retention, so the boundary can just be the boundary your system already has — a
-              chat, a run, a project, a tenant.
-            </p>
-          </div>
-
-          {/*
-            `.features` for the cell, `.grains` for the grid: four across
-            rather than three, because these are a sequence — shortest
-            retention to none at all — and a 3 + 1 wrap reads as three options
-            and an afterthought.
-          */}
-          <div className="features grains">
-            {GRAINS.map((grain) => (
-              <div className="feature" key={grain.title}>
-                <div className="feature-kicker">{grain.retention}</div>
-                <h4>{grain.title}</h4>
-                <p>{grain.body}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grain-limit">
-            <p>
-              <Prose text={GRAIN_LIMIT} />
-            </p>
-            <div className="chips">
-              {GRAIN_CHIPS.map((chip) => (
-                <span className="chip" key={chip}>
-                  {chip}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/*
-          Why the section above is a free choice. Keeping an ingot per chat is
-          only reasonable if an ingot per chat is nearly free, so the storage
-          model has to be on this page rather than only on `/deployment`.
-        */}
-        <section className="landblock" id="cost">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What it costs to keep</span>
-            <h2 className="landtitle">
-              Cheap enough
-              <br />
-              <span className="mark">to keep it all</span>
-            </h2>
-            <p>
-              An LSM tree, and nothing more exotic than that. None of it is resident: no index to
-              keep warm, no cluster sized to the corpus, and nothing that bills you per vector.
-            </p>
-          </div>
-
-          <div className="steps">
-            {TIERS.map((tier) => (
-              <div className="step" key={tier.n}>
-                <div className="step-num">{tier.n}</div>
-                <h4>{tier.title}</h4>
-                <p>{tier.body}</p>
-                <code>{tier.note}</code>
-              </div>
-            ))}
-          </div>
-
-          {/*
-            The ledger, including the lines that are zero — which are the
-            argument. Everything above is a mechanism; this is the bill it
-            produces.
-          */}
-          <div className="why-table">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="cost-item-col">What an ingot costs</th>
-                  <th>What that is</th>
-                </tr>
-              </thead>
-              <tbody>
-                {COSTS.map((cost) => (
-                  <tr key={cost.item}>
-                    <td>{cost.item}</td>
-                    <td className="prose">
-                      <Prose text={cost.body} />
-                    </td>
-                  </tr>
+            <section className="why-section" id="introduction">
+              <div className="why-measure">
+                <span className="label kicker kicker-n">Introduction</span>
+                <h2 className="why-h2">{INTRODUCTION.title}</h2>
+                {INTRODUCTION.before.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                <blockquote className="why-quote">{INTRODUCTION.quote}</blockquote>
+                {INTRODUCTION.joins.map((paragraph) => (
+                  <p key={paragraph}>
+                    <Prose text={paragraph} />
+                  </p>
+                ))}
+              </div>
 
-        {/*
-          Last, because it is the only claim the previous five do not make on
-          their own: everything above would still be true of a hosted service,
-          and none of it would be yours.
-        */}
-        <section className="split" id="ownership">
-          <div className="split-figure">
-            <CodeBlock code={OWN_IT} />
-          </div>
-          <div className="split-copy">
-            <span className="label kicker kicker-n">Self-deployed</span>
-            <h3>
-              Your bucket.
-              <br />
-              Your rows.
-            </h3>
-            <p>
-              There is no hosted Ingot, and on this page that is the point rather than the caveat.
-              The Postgres is yours, the bucket is yours, and what sits in the bucket is Parquet.
-              Not an index. Not a proprietary segment file. Not something that needs this service
-              running before you can read it.
-            </p>
-            <p>
-              Which means there is no export step, because there is no second format to export from.
-              A table&rsquo;s current generation is one file, and anything that reads Parquet reads
-              it — DuckDB on your laptop, pandas, Spark, whatever you already pay for. If Ingot
-              stops, the ingot does not.
-            </p>
-            <div className="chips">
-              {OWNERSHIP_CHIPS.map((chip) => (
-                <span className="chip" key={chip}>
-                  {chip}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
+              <Contrast />
 
-        <section className="cta">
-          <span className="label kicker kicker-n">The argument is a repository</span>
-          <h2>Every claim above is a file you can go and disagree with</h2>
-          <p>
-            The join is the query handler, the five minutes is a sweeper, the sandbox is two hundred
-            lines of guard, and the bucket layout is one object. Nothing on this page is a position
-            the code does not already hold — so if you think we have got one of them wrong, the
-            place to say so is the repository.
-          </p>
+              <div className="why-measure">
+                <p>{INTRODUCTION.after}</p>
+              </div>
+            </section>
 
+            <section className="why-section" id="hypothesis">
+              <div className="why-measure">
+                <span className="label kicker kicker-n">Hypothesis</span>
+                <h2 className="why-h2">{HYPOTHESIS.title}</h2>
+                <p>{HYPOTHESIS.body}</p>
+              </div>
+
+              <div className="why-claim">
+                <div className="why-claim-bar label label-sm">Stated claim</div>
+                <div className="why-claim-cells">
+                  {HYPOTHESIS.claims.map((claim) => (
+                    <div className="why-claim-cell" key={claim.n}>
+                      <div className="why-claim-n label label-sm">{claim.n}</div>
+                      <div>{claim.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="why-falsifier">
+                <div className="why-kicker label label-sm">What would prove it wrong</div>
+                <p>{HYPOTHESIS.falsifier}</p>
+              </div>
+            </section>
+
+            <section className="why-section" id="evidence">
+              <div className="why-measure">
+                <span className="label kicker kicker-n">Evidence</span>
+                <h2 className="why-h2">What the benchmark shows</h2>
+                {found ? (
+                  <p>{found.method}</p>
+                ) : (
+                  <p>No run has been published yet with both columns this section compares.</p>
+                )}
+              </div>
+              {found ? <Findings found={found} /> : null}
+              {BENCHMARKS_HREF ? (
+                <div className="why-measure">
+                  <a className="why-more label" href={BENCHMARKS_HREF}>
+                    Full results, questions and transcripts →
+                  </a>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="why-section" id="conclusion">
+              <div className="why-measure">
+                <span className="label kicker kicker-n">Conclusion</span>
+                <h2 className="why-h2">{CONCLUSION.title}</h2>
+                {CONCLUSION.body.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+
+              <div className="why-open">
+                <div className="why-open-label label label-sm">Still to show</div>
+                <ol>
+                  {CONCLUSION.open.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          </article>
+        </div>
+
+        <section className="cta cta-row">
+          <div>
+            <span className="label kicker">[ Next ]</span>
+            <h2>Test the claim yourself</h2>
+          </div>
           <div className="cta-actions">
             <a className="cta-primary" href={REPO_URL}>
               Get the source
             </a>
-            {DEPLOYMENT_HREF ? (
-              <a className="btn-outline btn-lg cta-secondary" href={DEPLOYMENT_HREF}>
-                Run one yourself
+            {FEATURES_HREF ? (
+              <a className="btn-outline btn-lg cta-secondary" href={FEATURES_HREF}>
+                See the features
               </a>
             ) : null}
           </div>
@@ -413,6 +210,101 @@ export function WhyPage(): ReactNode {
         <a href={DOCS_HREF}>API reference</a>
         <a href={REPO_URL}>GitHub</a>
       </SiteFooter>
+    </>
+  );
+}
+
+/** One join question answered twice: by chunks that read alike, and by SQL. */
+function Contrast(): ReactNode {
+  const { guess, exact } = INTRODUCTION.contrast;
+  return (
+    <div className="why-contrast">
+      <div className="why-contrast-cell">
+        <div className="why-contrast-head">
+          <span className="label label-sm muted">{guess.label}</span>
+          <span className="why-tag label label-sm">{guess.tag}</span>
+        </div>
+        <div className="why-chunks">
+          {guess.chunks.map((chunk) => (
+            <div className="why-chunk" key={chunk}>
+              {chunk}
+            </div>
+          ))}
+        </div>
+        <p className="why-contrast-note">
+          <Prose text={guess.note} />
+        </p>
+      </div>
+
+      <div className="why-contrast-cell why-contrast-exact">
+        <div className="why-contrast-head">
+          <span className="label label-sm why-accent">{exact.label}</span>
+          <span className="why-tag why-tag-exact label label-sm">{exact.tag}</span>
+        </div>
+        <pre className="why-join">{exact.sql}</pre>
+        <p className="why-contrast-note">
+          <Prose text={exact.note} />
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Findings({ found }: { found: Evidence }): ReactNode {
+  return (
+    <>
+      <div className="why-stats">
+        <div>
+          <div className="why-stat-value">{pct(found.ours.accuracy)}</div>
+          <div className="why-stat-label label label-sm">{found.oursLabel} accuracy</div>
+        </div>
+        <div>
+          <div className="why-stat-value">{pct(found.baseline.accuracy)}</div>
+          <div className="why-stat-label label label-sm">{found.baselineLabel} accuracy</div>
+        </div>
+        <div>
+          <div className="why-stat-value">{found.contextRatio.toFixed(1)}×</div>
+          <div className="why-stat-label label label-sm">
+            Less context than {found.baselineLabel}
+          </div>
+        </div>
+      </div>
+
+      <figure className="why-bars">
+        <figcaption className="why-bars-rule label label-sm">
+          <span>
+            Accuracy by task class · {found.oursLabel} vs {found.baselineLabel}
+          </span>
+          <span className="why-bars-line" aria-hidden="true" />
+        </figcaption>
+        {found.classes.map((bar) => (
+          <div className="why-bar" key={bar.name}>
+            <div className="why-bar-name label label-sm">{bar.name}</div>
+            <div className="why-bar-track">
+              <div className="why-bar-fill why-bar-ours" style={{ width: pct(bar.ours) }} />
+            </div>
+            <div className="why-bar-value why-bar-value-ours">{pct(bar.ours)}</div>
+            <div className="why-bar-track">
+              <div className="why-bar-fill" style={{ width: pct(bar.baseline) }} />
+            </div>
+            <div className="why-bar-value">{pct(bar.baseline)}</div>
+          </div>
+        ))}
+        <div className="why-legend label label-sm">
+          <span>
+            <span className="why-swatch why-bar-ours" />
+            {found.oursLabel}
+          </span>
+          <span>
+            <span className="why-swatch" />
+            {found.baselineLabel}
+          </span>
+        </div>
+      </figure>
+
+      <div className="why-measure">
+        <p>{found.findings}</p>
+      </div>
     </>
   );
 }

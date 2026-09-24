@@ -43,20 +43,14 @@ export function ReferencePage() {
         actions={
           <>
             {/*
-              The sign-up route, which is the page's own first section — and a
-              landing build points at the repository instead, because a
-              self-hosted service has no account to hand out until somebody has
-              brought one up.
+              A dashboard build has no key to hand out here: the account and
+              its root key come from the deployment's configuration.
             */}
             {IS_LANDING ? (
               <a className="btn-solid" href={REPO_URL}>
                 Get the source
               </a>
-            ) : (
-              <a className="btn-solid" href="#account-create">
-                Get a key
-              </a>
-            )}
+            ) : null}
             {DASHBOARD_HREF ? (
               <a className="btn-outline" href={DASHBOARD_HREF}>
                 Dashboard

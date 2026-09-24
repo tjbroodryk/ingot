@@ -415,7 +415,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'control-same-store-top-k',
     blurb:
-      'The control, and the most important column on this page. It is the sceptic’s question, run rather than argued. Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. This row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot (via MCP)` is what SQL over typed rows is worth, and nothing else.',
+      'This is a "control". Ingot contains a vector index, so a win over a vector store could be the structure — or it could be nothing more than a better chunker. The idea is that this row holds the store constant and takes the structure away: same rows, same vectors, same server, reachable only through top-k semantic search. Whatever separates it from `ingot (via MCP)` is what SQL over typed rows is worth.',
   },
   {
     name: 'control-same-store-top-k-rest',
@@ -425,7 +425,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'vector',
     blurb:
-      'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. Chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available, given deliberately. Same embedding model as Ingot, and brute-force exact cosine rather than an approximate index. What it cannot do is a property of top-k retrieval, not of a baseline built to lose.',
+      'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. Chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available. It uses the same embedding model as Ingot in these benchmarks.',
   },
   {
     name: 'pinecone',
@@ -435,7 +435,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   {
     name: 'turbopuffer',
     blurb:
-      'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only, and hybrid retrieval deserves a column of its own rather than a silent edge in this one.',
+      'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only.',
   },
   {
     name: 'hyperspell',
@@ -480,8 +480,8 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
  * not after.
  */
 export const CORPUS_LEDE =
-  'The initial thesis behind this library was developed on the idea that it could provide better' +
-  'answers when recalling and linking structured tool results,' +
+  'The initial thesis behind this library was developed on the idea that it could provide better ' +
+  'answers when recalling and linking structured tool results, ' +
   'thus we benchmark against JSON tool results from a catelogue.';
 
 /**
@@ -778,18 +778,6 @@ export const LIMITS: readonly { readonly title: string; readonly body: string }[
   {
     title: 'There is no model judging the answers',
     body: 'Every category is machine-scorable by construction: counts, sets of record ids, ordered lists of record ids. A judge would be a second model whose mistakes land in the same column as the retrieval failures being measured.',
-  },
-  {
-    title: 'Write cost is not scored',
-    body: 'Ingot asks for a column mapping up front and a vector store does not. Ingestion is timed, but that asymmetry is real and this page does not put a number on it.',
-  },
-  {
-    title: 'There is one ceiling, and it has a size limit',
-    body: '`raw-context` reads the whole corpus and answers from it, which makes it the upper bound on what this model does with complete information — but only for as long as the corpus fits in a context window. Above that the request is refused before inference, and a run at that size has no ceiling on the page at all. This one is around five hundred records, well inside the window, so the bound holds here. It would not for a memory a thousand times larger.',
-  },
-  {
-    title: 'The generator moves faster than the runs',
-    body: 'Question templates get added to the harness as the workload it models gets better understood, so a published table is a snapshot of the set as it stood on its date. The run id, the seed and the date above pin exactly which questions were asked, and the generator is one link away. But a category is described here by what it is for, which may be broader than the sample any one run drew from it.',
   },
   {
     title: 'One corpus, one size',

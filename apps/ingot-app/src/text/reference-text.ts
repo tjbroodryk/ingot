@@ -30,7 +30,7 @@ import {
   endpointsIn,
 } from '../docs/reference';
 import type { Article } from './markdown';
-import { blocks, bullets, fence, heading, table } from './markdown';
+import { blocks, bullets, heading, table, wire } from './markdown';
 
 /** The reference, as `llms.txt` lists it and as the file it links to. */
 export const REFERENCE: Article = {
@@ -46,10 +46,10 @@ function renderReference(): string {
     REFERENCE_LEDE,
 
     ...BASICS.map((basic) =>
-      blocks(heading(2, `${basic.kicker} — ${basic.title}`), basic.body, fence(basic.sample)),
+      blocks(heading(2, `${basic.kicker} — ${basic.title}`), basic.body, wire(basic.sample)),
     ),
 
-    blocks(heading(2, 'Quickstart'), fence(QUICKSTART)),
+    blocks(heading(2, 'Quickstart'), wire(QUICKSTART)),
 
     blocks(
       heading(2, 'Status codes'),
@@ -88,7 +88,7 @@ function renderEndpoint(endpoint: Endpoint): string {
         ['Field', 'What it is'],
         endpoint.fields.map((field) => [field.name, field.doc]),
       ),
-    endpoint.sample && fence(endpoint.sample),
+    endpoint.sample && wire(endpoint.sample),
     // The tool list of an MCP route, which the page sets in the column the
     // sample would have taken. Nothing in a text file has two columns, so it
     // is a list under the prose like any other.

@@ -2,50 +2,44 @@
  * `/benchmarks`, drawn to the Ingot Benchmarks Page artboard.
  *
  * The frame, the hero and the buttons are the landing page's and come from
- * that sheet. Everything below the hero is this page's own: bands on a 1180px
- * measure, divided by the frame's rule, each under a centred head, with the
+ * that sheet; the contents rail and the column beside it are `.railbody`, in
+ * globals. Everything in that column is this page's own: bands on a 1000px
+ * measure, divided by the frame's rule, each under a flush-left head, with the
  * data blocks the brief names — stat strip, ranked bars, heat matrix, labelled
- * rules, log entries — ranged left beneath it.
+ * rules, log entries — beneath it.
  *
  * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
  * is over there. Every value here resolves to a token.
  */
 
 .bench-wrap {
-  max-width: 1180px;
-  margin: 0 auto;
+  max-width: 1000px;
 }
 
 /* ══ bands ══════════════════════════════════════════════════════════════ */
 
 .bench-band {
-  padding: 80px var(--space-8) 72px;
+  padding: 64px 40px 60px;
   border-top: var(--rule);
-  /* A jump from the contents lands clear of the sticky bar. */
-  scroll-margin-top: 48px;
 }
 
-/* The head is centred, like every other page's; what it heads is not. */
 .bench-band .kicker {
   margin-bottom: 16px;
-  text-align: center;
 }
 
 .bench-title {
   max-width: 24ch;
-  margin: 0 auto 14px;
+  margin: 0 0 14px;
   font-size: clamp(32px, 4.4vw, 52px);
   line-height: 0.94;
-  text-align: center;
   text-transform: uppercase;
 }
 
 .bench-lede {
-  max-width: 60ch;
-  margin: 0 auto 36px;
+  max-width: 58ch;
+  margin: 0 0 36px;
   font-size: 16px;
   line-height: 1.5;
-  text-align: center;
   color: var(--ink-70);
 }
 
@@ -114,163 +108,6 @@
 
 .bench-scroll {
   overflow-x: auto;
-}
-
-/* ══ contents ═══════════════════════════════════════════════════════════ */
-
-.bench-contents {
-  padding: 26px var(--space-8) 32px;
-  border-bottom: var(--rule);
-}
-
-.bench-contents-label {
-  margin-bottom: 18px;
-  letter-spacing: 0.12em;
-  color: var(--ink-60);
-}
-
-.bench-contents-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: var(--rule);
-  border-bottom: 0;
-}
-
-.bench-contents-list a {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 18px;
-  padding: 18px 24px;
-  border-bottom: var(--rule);
-}
-
-.bench-contents-list a:hover {
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-  color: inherit;
-}
-
-.bench-contents-n {
-  flex: 0 0 40px;
-  font-size: 11.5px;
-  letter-spacing: 0.1em;
-  color: var(--color-accent);
-}
-
-.bench-contents-title {
-  flex: 0 0 auto;
-  min-width: 220px;
-  font-size: 13.5px;
-  font-weight: 700;
-}
-
-.bench-contents-about {
-  flex: 1 1 240px;
-  min-width: 0;
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--ink-70);
-}
-
-/*
- * The contents as a bar, fixed over the site header once the list has scrolled
- * away. It slides rather than appears, so the swap reads as the same object
- * moving rather than a second header arriving.
- */
-.bench-sticky {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 40;
-  background: var(--color-bg);
-  border-bottom: var(--rule);
-  transform: translateY(-100%);
-  opacity: 0;
-  transition:
-    transform 220ms ease,
-    opacity 220ms ease;
-}
-
-.bench-sticky-on {
-  transform: none;
-  opacity: 1;
-}
-
-:root[data-bench-stuck] .topbar {
-  visibility: hidden;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bench-sticky {
-    transition: none;
-  }
-}
-
-.bench-sticky-bar {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  padding: 11px var(--gutter);
-  overflow-x: auto;
-  font-size: 11.5px;
-  letter-spacing: 0.09em;
-  white-space: nowrap;
-}
-
-.bench-sticky-brand {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.bench-sticky-brand .brand-mark {
-  height: 12px;
-}
-
-.bench-sticky-brand .brand-word {
-  font-size: 15px;
-}
-
-.bench-sticky-divider {
-  flex: none;
-  width: 1px;
-  height: 18px;
-  background: var(--ink-20);
-}
-
-.bench-sticky-link {
-  display: flex;
-  flex: none;
-  align-items: baseline;
-  gap: 7px;
-  padding-bottom: 2px;
-  border-bottom: 2px solid transparent;
-  color: var(--ink-60);
-}
-
-.bench-sticky-n {
-  color: var(--ink-45);
-}
-
-.bench-sticky-link[aria-current] {
-  border-bottom-color: var(--color-accent);
-  color: var(--color-ink);
-}
-
-.bench-sticky-link[aria-current] .bench-sticky-n {
-  color: var(--color-accent);
-}
-
-.bench-sticky-fill {
-  flex: 1 1 auto;
-  min-width: 8px;
-}
-
-.bench-sticky-cta {
-  flex: none;
-  padding: 8px 14px;
-  font-size: 11.5px;
 }
 
 /* ══ the run ════════════════════════════════════════════════════════════ */

@@ -1,193 +1,478 @@
 /*
- * `/why`, and only the parts of it the landing page did not already have.
+ * `/why`, drawn to the Ingot Why artboard: a title block, then a contents rail
+ * beside a reading column set like a paper.
  *
- * This page is drawn in the landing page's idiom and imports that sheet, so
- * the frame, the hero, the ruled bands, the three-up grids and the two splits
- * are all over there and are used here rather than restated. What is left is
- * three things this page needs and that one does not: a strip that closes a
- * grid with the claim the grid adds up to, the same shape again under the
- * scopes, and a table sitting inside a band whose children own their padding.
- *
- * The same rule holds as in globals: **no hex outside `:root`**, and `:root`
- * is over there. Every value here resolves to a token.
+ * The frame and the closing band come from `landing.css`. Same rule as the
+ * other sheets: **no hex outside `:root`**.
  */
 
-/*
- * A band that closes a grid with the sentence the grid was making.
- *
- * The landing page has one of these — `.wire-return`, the hop that runs
- * backwards under the wire diagram — and this is not that class because that
- * one belongs inside a panel and draws the panel's strong rule. This sits
- * directly on the section, under a grid whose cells already drew the rules
- * either side of them, so it needs the ordinary one.
- *
- * The arrowhead is drawn rather than typed, for the reason the wire's are:
- * `next/font` subsets both faces to `latin`, so a `→` here would arrive in
- * whatever face the reader happens to have, at whatever metrics that face
- * sets. A clipped square has no font in it.
- */
-.why-strip {
+.why-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* ══ title block ════════════════════════════════════════════════════════ */
+
+.why-title {
+  padding: 88px var(--space-8) 64px;
+  border-bottom: var(--rule);
+}
+
+.why-badge {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-  padding: 22px var(--space-8);
-  border-top: var(--rule);
-  background: var(--ink-08);
-  font-size: 15px;
-  color: var(--ink-70);
+  gap: 14px;
+  margin-bottom: 40px;
 }
 
-.why-strip::before {
-  content: '';
-  flex: none;
-  width: 14px;
-  height: 14px;
-  background: var(--color-accent);
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
+.why-h1 {
+  max-width: 14ch;
+  margin: 0 0 40px;
+  font-size: clamp(40px, 8vw, 96px);
+  line-height: 0.92;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
 }
 
-/*
- * The limit under the four scopes, which is the same band with something in
- * it that wraps: a sentence at a reading measure and the calls that manage a
- * ingot, rather than one line with an arrow in front of it.
- *
- * It is not a `.why-strip` with extra rules for that reason — the two look
- * alike and are laid out differently, and a shared class with a modifier that
- * changes the display would be one class doing two jobs.
- */
-.grain-limit {
-  padding: 30px var(--space-8) 34px;
-  border-top: var(--rule);
-  background: var(--ink-08);
+.why-meta {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  border-top: var(--rule-heavy);
+  border-bottom: var(--rule);
+  font-size: 11.5px;
 }
 
-.grain-limit p {
-  max-width: 76ch;
-  margin: 0 0 18px;
-  font-size: 15px;
-  color: var(--ink-70);
+.why-meta > div {
+  flex: 1 1 180px;
+  padding: 14px 20px;
 }
 
-/*
- * The one place on this page a `strong` appears: the sentence that says the
- * grain you pick is the grain you can join across, which is the sentence
- * somebody skimming this section has to leave with.
- */
-.grain-limit strong {
-  font-weight: 600;
-  color: var(--color-ink);
+.why-meta > div:first-child {
+  padding-left: 0;
 }
 
-/* ══ the four scopes ════════════════════════════════════════════════════
-   `.features` in `landing.css` is a three-column grid that draws its rules
-   from a three-column arithmetic — `3n + 1` starts a row, `n + 4` starts the
-   second one. The four scopes want four columns, so every one of those
-   statements is false here and has to be replaced rather than added to: cell
-   4 begins a row in this grid and ends one in that.
-
-   Each rule below is one selector more specific than the one it is undoing,
-   which is what makes the order of the two sheets irrelevant.
-   ═══════════════════════════════════════════════════════════════════════ */
-
-.grains {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.grains .feature:not(:nth-child(4n + 1)) {
+.why-meta > div + div {
   border-left: var(--rule);
 }
 
-.grains .feature:nth-child(4n + 1) {
-  border-left: 0;
+.why-meta dt {
+  margin-bottom: 5px;
+  font-size: 10px;
+  color: var(--ink-60);
 }
 
-/* One row, so nothing starts a second one. */
-.grains .feature:nth-child(n + 4) {
-  border-top: 0;
+.why-meta dd {
+  margin: 0;
 }
 
-/*
- * A `.landblock` lets its children own their padding, because its grids need
- * to reach the section's edges for their own rules to meet it. A table is not
- * a grid and has no rules to line up, so it brings the padding back.
- */
-.why-table {
-  padding: 8px var(--space-8) 56px;
-  border-top: var(--rule);
+.why-meta a {
+  color: var(--color-accent);
 }
 
-/*
- * Wide enough for the longest item — "CPU, while a query runs" — on one line,
- * because the left column of this table is a list somebody reads down and a
- * two-line entry in the middle of it breaks the scan.
- */
-.cost-item-col {
-  width: 210px;
-}
-
-/* ══ narrower ═══════════════════════════════════════════════════════════
-   The splits and the three-up grids collapse in `landing.css`, at the two
-   widths that page sets. What is left here is the four-up, which has one more
-   step to take than a three-up does, and the bands' padding.
+/* ══ article ════════════════════════════════════════════════════════════
+   The rail and the column it sits beside are `.railbody`, in globals.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/*
- * Four across goes to two before it goes to one. A four-column grid at this
- * width is four columns of about eleven characters, which is a scope title
- * broken over three lines — and the pairing is not arbitrary either: it puts
- * the two clock-bounded scopes on one row and the two that outlive a clock on
- * the other.
- */
-@media (max-width: 1000px) {
-  .grains {
-    grid-template-columns: repeat(2, 1fr);
-  }
+/* The paper's rail is a little wider than the benchmarks'. */
+.why-body .railbody-aside {
+  flex-basis: 260px;
+  padding-right: 28px;
+}
 
-  .grains .feature:not(:nth-child(4n + 1)) {
-    border-left: 0;
-  }
+.why-kicker {
+  margin-bottom: 14px;
+  color: var(--color-accent);
+}
 
-  .grains .feature:not(:nth-child(2n + 1)) {
-    border-left: var(--rule);
-  }
+.why-abstract {
+  padding: 40px 48px 44px;
+  border-bottom: var(--rule);
+  background: var(--color-stock);
+}
 
-  .grains .feature:nth-child(n + 3) {
-    border-top: var(--rule);
+.why-abstract p {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+.why-section {
+  padding: 64px 48px 56px;
+  border-bottom: var(--rule);
+}
+
+.why-section:last-child {
+  border-bottom: 0;
+}
+
+.why-section .kicker {
+  margin-bottom: 16px;
+}
+
+.why-measure {
+  max-width: 68ch;
+}
+
+.why-measure p {
+  margin: 0 0 20px;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.why-h2 {
+  margin: 0 0 28px;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.why-quote {
+  margin: 36px 0;
+  padding: 6px 0 6px 24px;
+  border-left: 3px solid var(--color-accent);
+  font-size: 26px;
+  line-height: 1.3;
+}
+
+.why-measure code {
+  padding: 1px 5px;
+  font-size: 15px;
+  background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+}
+
+/* ══ the contrast ═══════════════════════════════════════════════════════ */
+
+.why-contrast {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 12px 0 36px;
+  border: var(--rule-strong);
+}
+
+/* The cells overlap by a pixel so neighbouring rules draw once. */
+.why-contrast-cell {
+  flex: 1 1 320px;
+  min-width: 0;
+  margin: 0 -1px -1px 0;
+  padding: 22px 22px 24px;
+  border-right: var(--rule-strong);
+  border-bottom: var(--rule-strong);
+}
+
+.why-contrast-exact {
+  background: var(--color-stock);
+}
+
+.why-contrast-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.why-accent {
+  color: var(--color-accent);
+}
+
+.why-tag {
+  padding: 2px 7px;
+  border: 1px solid var(--ink-35);
+  font-size: 10px;
+  color: var(--ink-70);
+}
+
+.why-tag-exact {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+.why-chunks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.why-chunk,
+.why-join {
+  padding: 9px 12px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.why-chunk {
+  border-left: 3px solid var(--ink-30);
+  background: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
+}
+
+.why-join {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.why-contrast-note {
+  margin: 14px 0 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-70);
+}
+
+.why-contrast-note strong {
+  color: var(--color-ink);
+}
+
+/* ══ hypothesis ═════════════════════════════════════════════════════════ */
+
+.why-claim {
+  max-width: 900px;
+  margin: 10px 0 30px;
+  border: var(--rule-heavy);
+}
+
+.why-claim-bar {
+  padding: 10px 18px;
+  background: var(--color-ink);
+  color: var(--color-ink-inverse);
+}
+
+/* The cells overlap by a pixel so neighbouring rules draw once. */
+.why-claim-cells {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.why-claim-cell {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0 -1px -1px 0;
+  padding: 22px 20px;
+  border-right: var(--rule);
+  border-bottom: var(--rule);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.why-claim-n {
+  margin-bottom: 10px;
+  color: var(--color-accent);
+}
+
+.why-falsifier {
+  max-width: 68ch;
+  padding: 16px 20px;
+  border-left: 3px solid var(--ink-30);
+  background: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
+}
+
+.why-falsifier .why-kicker {
+  margin-bottom: 8px;
+  color: var(--ink-60);
+}
+
+.why-falsifier p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--ink-80);
+}
+
+/* ══ evidence ═══════════════════════════════════════════════════════════ */
+
+.why-stats {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 12px 0 32px;
+  border-top: var(--rule-heavy);
+  border-bottom: var(--rule-heavy);
+}
+
+.why-stats > div {
+  flex: 1 1 200px;
+  padding: 20px 22px;
+}
+
+.why-stats > div:first-child {
+  padding-left: 0;
+}
+
+.why-stats > div + div {
+  border-left: var(--rule);
+}
+
+.why-stat-value {
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.why-stat-label {
+  margin-top: 8px;
+  color: var(--ink-60);
+}
+
+.why-bars {
+  max-width: 900px;
+  margin: 0 0 32px;
+}
+
+.why-bars-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--ink-60);
+}
+
+.why-bars-line {
+  flex: 1;
+  height: 1px;
+  background: var(--ink-20);
+}
+
+/* Two bars a class: ours above, the baseline under it, the name spanning both. */
+.why-bar {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 9px 0;
+  border-bottom: var(--rule-row);
+}
+
+.why-bar-name {
+  grid-row: span 2;
+}
+
+.why-bar-track {
+  position: relative;
+  height: 12px;
+  background: var(--ink-08);
+}
+
+.why-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink-30);
+}
+
+.why-bar-ours {
+  background: var(--color-accent);
+}
+
+.why-bar-value {
+  font-family: var(--font-code);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-70);
+}
+
+.why-bar-value-ours {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.why-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--ink-60);
+}
+
+.why-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.why-swatch {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: var(--ink-30);
+}
+
+.why-more {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+/* ══ conclusion ═════════════════════════════════════════════════════════ */
+
+.why-open {
+  max-width: 900px;
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: var(--rule-heavy);
+}
+
+.why-open-label {
+  margin-bottom: 6px;
+  color: var(--ink-60);
+}
+
+.why-open ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: open;
+}
+
+.why-open li {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: var(--rule-row);
+  font-size: 15.5px;
+  line-height: 1.55;
+  counter-increment: open;
+}
+
+.why-open li::before {
+  content: counter(open, decimal-leading-zero);
+  flex: 0 0 24px;
+  padding-top: 3px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--color-accent);
+}
+
+/* ══ narrower ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  .why-abstract,
+  .why-section {
+    padding-inline: var(--space-8);
   }
 }
 
-@media (max-width: 820px) {
-  .grains {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 620px) {
+  .why-title {
+    padding: 56px 20px 40px;
   }
 
-  /*
-   * Written with the same selector the rule above uses rather than a shorter
-   * one: that media query still matches at this width, and a `.grains
-   * .feature` here would lose to it on specificity and leave every second
-   * cell with a left border and nothing to its left.
-   */
-  .grains .feature:not(:nth-child(2n + 1)) {
-    border-left: 0;
+  .why-abstract,
+  .why-section {
+    padding-inline: 20px;
   }
 
-  .grains .feature + .feature {
-    border-top: var(--rule);
-  }
-
-  .why-strip,
-  .grain-limit,
-  .why-table {
-    padding-right: var(--space-6);
-    padding-left: var(--space-6);
-  }
-
-  /*
-   * The item column stops being a column: at this width the table is already
-   * as narrow as it goes, and 210px of it reserved for two words is the rest
-   * of the sentence wrapping four times beside it.
-   */
-  .cost-item-col {
-    width: auto;
+  .why-quote {
+    font-size: 21px;
   }
 }

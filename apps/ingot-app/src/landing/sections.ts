@@ -438,15 +438,15 @@ export interface SdkNote {
 export const SDK_NOTES: readonly SdkNote[] = [
   {
     kicker: 'Stream',
-    title: 'The write is not a model call',
+    title: 'The write is cheap',
     body: '/add returns the moment the rows land. The summary is written behind it and the receipt says pending, so your tool result is never sitting there waiting on a second model to finish a sentence.',
     hint: 'receipt.status: pending',
   },
   {
     kicker: 'Loop',
     title: 'Give it something to run SQL with',
-    body: 'A receipt hands back a SELECT, which is only worth having if the model can run one. Wrap /query as a second tool, or point it at the MCP server and write neither.',
-    hint: 'stopWhen: stepCountIs(8)',
+    body: 'You will need to include the query tool for this to really be useful.',
+    hint: 'tools: { query: ingot.tools.query }',
   },
   {
     kicker: 'Your UI',
@@ -512,7 +512,7 @@ export const RAG_REPLACED: readonly RagContrast[] = [
   {
     job: 'Embed',
     rag: 'A pipeline writing vectors into another system.',
-    ingot: 'Opt in per table. A sweeper works the queue.',
+    ingot: 'Handled automatically, via an opt-in per table/tool result type',
   },
   {
     job: 'Store vectors',
@@ -537,17 +537,12 @@ export const RAG_REPLACED: readonly RagContrast[] = [
   {
     job: 'What goes in',
     rag: 'Documents.',
-    ingot: 'An agent’s own tool results, typed. Documents are a second way into the same tables.',
+    ingot: 'Tool results, documents or external data you want to pre-populate the table with.',
   },
 ];
 
 /** The half that writes the answer, and the rest of what a mature stack has. */
 export const RAG_LEFT_OUT: readonly RagContrast[] = [
-  {
-    job: 'Write the answer',
-    rag: 'Top-k chunks into the prompt, then a model call.',
-    ingot: 'Not done here. Rows come back; the agent writes the answer.',
-  },
   {
     job: 'Rerank and rewrite',
     rag: 'A reranker, often a query rewriter.',
@@ -556,13 +551,13 @@ export const RAG_LEFT_OUT: readonly RagContrast[] = [
   {
     job: 'ANN index',
     rag: 'HNSW or similar.',
-    ingot: 'None. Brute-force cosine, a good trade until the low millions of rows per table.',
+    ingot: 'Currently none. Cosine similarity is a good trade-off until the low millions of rows per table.',
   },
   {
     job: 'Schema',
     rag: 'None asked for.',
     ingot:
-      'Required up front for `/add`. A real cost, and one the benchmark does not put a number on.',
+      'Defined dynamically when adding a memory. It can be inferred or declared explicitly.',
   },
 ];
 

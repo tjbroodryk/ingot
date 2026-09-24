@@ -235,6 +235,14 @@ pre {
   background: var(--ink-25);
 }
 
+/* Shorter than the meta one and pulled in against the 28px nav gap: a full
+   22px rule with 28px either side parts the nav into two navs, which is more
+   than the grouping is worth. */
+.topbar-nav .topbar-divider {
+  height: 12px;
+  margin: 0 -10px;
+}
+
 /* — the two buttons, flush-left labels and all —
    The base strips native-button chrome so an <a> and a <button> with the same
    class render identically, and carries the label voice (globals.css:.label)
@@ -1005,6 +1013,126 @@ pre {
   overflow-wrap: anywhere;
 }
 
+/* ══ contents rail ══════════════════════════════════════════════════════
+   A page's contents pinned in a column beside its main one, under the sticky
+   top bar. `/why`, `/benchmarks` and `/features`.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.railbody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.railbody-aside {
+  position: sticky;
+  top: var(--topbar-height);
+  flex: 0 0 240px;
+  max-width: 100%;
+  padding: 40px 24px 40px 32px;
+}
+
+.railbody-main {
+  flex: 1 1 560px;
+  min-width: 0;
+  border-left: var(--rule);
+}
+
+/* A jump from the rail lands clear of the top bar. */
+.railbody-main [id] {
+  scroll-margin-top: var(--topbar-height);
+}
+
+.rail-label {
+  margin-bottom: 16px;
+  color: var(--ink-60);
+}
+
+.rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: var(--rule);
+}
+
+.rail-link {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 0 12px 12px;
+  border-bottom: var(--rule-row);
+  border-left: 3px solid transparent;
+  font-size: 12px;
+  color: var(--ink-60);
+}
+
+.rail-n {
+  flex: 0 0 22px;
+  color: var(--ink-45);
+}
+
+.rail-link[aria-current] {
+  border-left-color: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.rail-link[aria-current] .rail-n {
+  color: var(--color-accent);
+}
+
+/* An entry with a summary under its title: `/features`. */
+.rail-link-rich {
+  display: block;
+  padding: 10px 8px 10px 12px;
+  color: var(--ink-70);
+}
+
+.rail-link-rich:hover {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.rail-link-rich[aria-current] {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+}
+
+.rail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.rail-title {
+  font-weight: 700;
+}
+
+.rail-summary {
+  display: block;
+  padding-left: 34px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-60);
+}
+
+.rail-link-rich[aria-current] .rail-summary {
+  color: var(--ink-80);
+}
+
+/* Narrower, the rail stops being a column and sits above the main one, unpinned. */
+@media (max-width: 900px) {
+  .railbody-aside {
+    position: static;
+    flex-basis: 100%;
+    padding: 28px var(--space-8) 8px;
+  }
+
+  .railbody-main {
+    border-top: var(--rule);
+    border-left: 0;
+  }
+}
+
 /* ══ footer ═════════════════════════════════════════════════════════════ */
 
 .sitefoot {
@@ -1179,7 +1307,7 @@ pre {
    * The alternative is a header of three or four rows for a chip.
    */
   .topbar-meta > .muted,
-  .topbar-divider {
+  .topbar-meta > .topbar-divider {
     display: none;
   }
 

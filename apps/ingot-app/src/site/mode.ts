@@ -130,6 +130,11 @@ export interface SiteRoutes {
    * property of this project rather than of anybody's deployment.
    */
   readonly benchmarks: string | null;
+  /**
+   * What the store can be asked, one search mode at a time. `null` in a
+   * dashboard build: its reader has the reference, and is past the pitch.
+   */
+  readonly features: string | null;
 }
 
 /**
@@ -155,6 +160,7 @@ export function routesFor(mode: SiteMode, basePath: string = BASE_PATH): SiteRou
     why: landing ? `${basePath}/why/` : null,
     deployment: landing ? `${basePath}/deployment/` : null,
     benchmarks: landing ? `${basePath}/benchmarks/` : null,
+    features: landing ? `${basePath}/features/` : null,
   };
 }
 
@@ -166,6 +172,7 @@ export const DASHBOARD_HREF = ROUTES.dashboard;
 export const WHY_HREF = ROUTES.why;
 export const DEPLOYMENT_HREF = ROUTES.deployment;
 export const BENCHMARKS_HREF = ROUTES.benchmarks;
+export const FEATURES_HREF = ROUTES.features;
 
 /**
  * Where the source is, which on a self-hosted-only project is the sign-up

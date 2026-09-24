@@ -233,6 +233,7 @@ describe('the origin a build writes', () => {
       `${LANDING_ORIGIN}/docs/`,
       `${LANDING_ORIGIN}/deployment/`,
       `${LANDING_ORIGIN}/benchmarks/`,
+      `${LANDING_ORIGIN}/features/`,
     ]);
   });
 
@@ -257,6 +258,7 @@ describe('the origin a build writes', () => {
       `${SITE}/docs/`,
       `${SITE}/deployment/`,
       `${SITE}/benchmarks/`,
+      `${SITE}/features/`,
     ]);
   });
 

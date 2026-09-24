@@ -1,0 +1,231 @@
+/*
+ * `/features`, drawn to the Ingot Features artboard.
+ *
+ * The frame, the hero and the closing band come from `landing.css`, and the
+ * contents rail from globals. What is here is the feature bands and the
+ * request/response panel each band opens with.
+ *
+ * Same rule as the other sheets: **no hex outside `:root`**.
+ */
+
+.feat-hero-title {
+  max-width: 15ch;
+}
+
+.feat-hero-lede {
+  max-width: 52ch;
+}
+
+/* The rail carries a summary per entry, so it is wider, and scrolls on its own
+   when it is taller than the window. */
+.feat-body .railbody-aside {
+  flex-basis: 290px;
+  max-height: calc(100vh - var(--topbar-height));
+  overflow-y: auto;
+  padding-block: 32px;
+}
+
+@media (max-width: 900px) {
+  .feat-body .railbody-aside {
+    max-height: none;
+  }
+}
+
+/* ══ bands ══════════════════════════════════════════════════════════════ */
+
+.feat-band {
+  padding: 64px 40px 60px;
+  border-bottom: var(--rule);
+}
+
+.feat-band:last-child {
+  border-bottom: 0;
+}
+
+.feat-wrap {
+  max-width: 1000px;
+}
+
+.feat-band .kicker {
+  margin-bottom: 16px;
+}
+
+.feat-title {
+  max-width: 22ch;
+  margin: 0 0 16px;
+  font-size: clamp(32px, 4.4vw, 52px);
+  line-height: 0.94;
+  text-transform: uppercase;
+}
+
+.feat-lede {
+  max-width: 62ch;
+  margin: 0 0 40px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-70);
+}
+
+.feat-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+/* ══ the exchange ═══════════════════════════════════════════════════════ */
+
+.feat-exchange {
+  flex: 1.25 1 460px;
+  min-width: 0;
+  background: var(--color-stock);
+}
+
+.feat-path {
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+/* A sample inside the panel: the panel draws the frame, so the block does not. */
+.feat-code {
+  padding: 18px 20px;
+  border: 0;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.feat-response {
+  color: var(--ink-80);
+}
+
+.feat-status {
+  padding: 8px 20px;
+  border-top: var(--rule);
+  border-bottom: var(--rule);
+  color: var(--ink-60);
+}
+
+/* ══ when, and when not ═════════════════════════════════════════════════ */
+
+.feat-aside {
+  display: flex;
+  flex: 1 1 300px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feat-aside-label {
+  margin-bottom: 12px;
+  color: var(--color-accent);
+}
+
+.feat-when {
+  padding: 18px 0 20px;
+  border-top: var(--rule-heavy);
+}
+
+.feat-when ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feat-when li {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: var(--rule-row);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.feat-when li::before {
+  content: '→';
+  flex: none;
+  font-family: var(--font-code);
+  color: var(--color-accent);
+}
+
+.feat-not {
+  padding: 14px 16px;
+  border-left: 3px solid var(--ink-30);
+  background: color-mix(in srgb, var(--color-ink) 3.5%, transparent);
+}
+
+.feat-not .feat-aside-label {
+  margin-bottom: 8px;
+  color: var(--ink-60);
+}
+
+.feat-not p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-80);
+}
+
+/* ══ combined ═══════════════════════════════════════════════════════════ */
+
+.feat-combo {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.feat-combo .feat-code {
+  flex: 1.3 1 440px;
+  min-width: 0;
+  border-right: var(--rule);
+}
+
+.feat-steps {
+  flex: 1 1 280px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feat-steps li {
+  display: flex;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: var(--rule-row);
+}
+
+.feat-steps li:last-child {
+  border-bottom: 0;
+}
+
+.feat-step-n {
+  flex: 0 0 26px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--color-accent);
+}
+
+.feat-step-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.feat-step-text {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-70);
+}
+
+@media (max-width: 1000px) {
+  .feat-combo .feat-code {
+    border-right: 0;
+    border-bottom: var(--rule);
+  }
+}
