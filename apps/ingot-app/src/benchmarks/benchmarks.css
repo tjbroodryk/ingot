@@ -1641,6 +1641,26 @@ td.bench-heat-5 {
   color: var(--color-ink-inverse);
 }
 
+.bench-scale-note {
+  margin: 0 0 20px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--ink-100);
+  background: var(--ink-08);
+}
+
+.bench-scale-note-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-60);
+}
+
+.bench-scale-note p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-100);
+}
+
 .bench-scale-plot {
   padding: 16px 12px 8px;
   border: 1px solid var(--ink-16);

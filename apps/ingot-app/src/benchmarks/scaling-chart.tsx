@@ -101,6 +101,16 @@ export function ScalingChart({ scaling }: { scaling: PublishedScaling }): ReactN
         </div>
       </div>
 
+      {metric === 'tokens' ? (
+        <aside className="bench-scale-note">
+          <span className="bench-scale-note-kicker label label-sm">Read tokens with care</span>
+          <p>
+            These are tokens the model read while answering. They don’t include getting the tool
+            output into memory: every store was filled before the run, not through the agent loop.
+          </p>
+        </aside>
+      ) : null}
+
       <div className="bench-scale-plot">
         <div
           className="bench-scale-frame"
