@@ -13,13 +13,8 @@ import { type ColumnMapping, ReceiptKind } from '@ingot/shared/ingot-v1';
 
 /**
  * The shape of an `/add`, checked here; the meaning is checked by `RowMapping`.
- *
- * The split is the house one — the pipe rejects a body that is not the right
- * kind of thing, the domain rejects one that does not make sense — and it
- * matters more than usual here. class-validator can say `columns` is an
- * object; it cannot say that `$.files[*.` is not a path, that a column has
- * both `from` and `value`, or that `INTEGER` is wrong for the value that
- * arrived. Those produce better errors from the code that understands them.
+ * The pipe rejects a body of the wrong kind; the domain rejects a bad path, a
+ * column with both `from` and `value`, or a type wrong for the value.
  */
 export class AddDto {
   @IsString()
@@ -34,10 +29,7 @@ export class AddDto {
   @IsObject()
   columns!: Record<string, ColumnMapping>;
 
-  /**
-   * Which columns identify a row. Whether they are real columns is checked by
-   * the table, since it is the table the key belongs to.
-   */
+  /** Which columns identify a row. Whether they are real columns is checked by the table. */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(8)
@@ -49,19 +41,16 @@ export class AddDto {
   raw?: boolean;
 
   /**
-   * Opt-in, because a receipt costs a read the write itself does not need.
-   * Checked again in `ReceiptBuilder.kindOf`, which is the path the MCP
-   * surface takes — it builds the same command without passing through a pipe.
+   * Opt-in, since a receipt costs an extra read. Checked again in
+   * `ReceiptBuilder.kindOf`, the path the MCP surface takes without a pipe.
    */
   @IsOptional()
   @IsIn(Object.values(ReceiptKind))
   receipt?: ReceiptKind;
 
   /**
-   * The caller's own handle for this result — a tool call id, a job id.
-   *
-   * Bounded again in the command, which is the path the MCP surface takes:
-   * it builds the same command without passing through this pipe.
+   * The caller's own handle for this result (a tool call id, a job id). Bounded
+   * again in the command, the path the MCP surface takes without a pipe.
    */
   @IsOptional()
   @IsString()
@@ -69,9 +58,8 @@ export class AddDto {
   externalId?: string;
 
   /**
-   * `@IsDefined` rather than a type check: the whole point is that this is an
-   * arbitrary tool result. `null` is a legitimate one; an absent key is a
-   * caller who forgot the payload.
+   * `@IsDefined` rather than a type check: this is an arbitrary tool result.
+   * `null` is legitimate; an absent key is a caller who forgot the payload.
    */
   @IsDefined()
   result!: unknown;

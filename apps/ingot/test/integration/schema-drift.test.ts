@@ -6,15 +6,8 @@ import * as schema from '../../src/database/schema.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 
 /**
- * Two hand-written descriptions of the same schema, held to each other.
- *
- * The migrations are the truth Postgres runs on; the Drizzle tables are the
- * truth the code compiles against. Nothing generates one from the other — that
- * is a deliberate choice, so migrations can carry comments and be idempotent —
- * which means the only thing stopping them drifting is this.
- *
- * The drift is silent until it is not: a column added to `schema.ts` and not
- * to a migration compiles, deploys, and fails on the first insert.
+ * Holds the Drizzle tables (what the code compiles against) to the migrated
+ * database (what Postgres runs), since neither is generated from the other.
  */
 describe('the Drizzle schema and the database', () => {
   let pool: pg.Pool;
@@ -25,13 +18,12 @@ describe('the Drizzle schema and the database', () => {
 
   afterAll(closeDatabase);
 
-  // Not a type predicate: the exports are each their own narrow
-  // `PgTableWithColumns<…>` literal type, and a predicate widening them to
-  // `PgTable` is not assignable back. The runtime check is the real one.
+  // Runtime filter, not a type predicate: each export is its own narrow
+  // `PgTableWithColumns<…>` and does not widen back to `PgTable`.
   const tables = Object.values(schema).filter((value) => is(value, PgTable)) as PgTable[];
 
   it('describes some tables at all', () => {
-    // Otherwise the loop below is vacuous, which is how this stops testing.
+    // Guards against the loop below being vacuous.
     expect(tables.length).toBeGreaterThan(5);
   });
 
@@ -63,8 +55,6 @@ describe('the Drizzle schema and the database', () => {
     const declared = new Set<string>(tables.map((table) => getTableName(table)));
     const orphans = actual.rows.map((row) => row.table_name).filter((name) => !declared.has(name));
 
-    // A table nothing maps is either a migration nobody finished or a schema
-    // export somebody forgot — both worth knowing about.
     expect(orphans).toEqual([]);
   });
 });

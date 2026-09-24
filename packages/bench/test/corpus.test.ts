@@ -31,10 +31,8 @@ describe('the corpus', () => {
   });
 
   /**
-   * The invariant the semantic category rests on. If a paraphrase leaked into
-   * the corpus, keyword search would answer those questions and the category
-   * would stop measuring meaning — which is exactly the failure that would
-   * flatter the wrong side of the comparison.
+   * The invariant the semantic category rests on: if a paraphrase leaked into
+   * the corpus, keyword search would answer those questions.
    */
   test('never contains the paraphrase a semantic question asks with', () => {
     const world = buildWorld({ seed: 5 });

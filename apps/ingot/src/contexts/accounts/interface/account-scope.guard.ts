@@ -11,21 +11,8 @@ import { ACCOUNT_BINDING, type AccountBinding } from './account.decorator.js';
 import { principalOf } from './principal-resolution.js';
 
 /**
- * Authorization, and the fail-closed rule of this service.
- *
- * A route that declares no `@Account()` is refused. Not allowed-by-default,
- * not warned about — refused, with a message that says what is missing. The
- * alternative is that forgetting a decorator silently publishes an endpoint,
- * which is the failure nobody notices until it is in someone else's logs.
- *
- * `route-accounts.test.ts` catches this before it ships by walking every
- * controller on disk; this guard is what catches the one the test could not
- * see, such as a route added by a dynamically registered module.
- *
- * The second job is the one that actually separates tenants: the `:account` in
- * the path must be the account the key belongs to. Without this, every key is
- * a key to every account, since the ingot id in the next segment is the only
- * other thing identifying the data.
+ * Fail-closed authorization. Refuses any route that declares no `@Account()`,
+ * and requires the `:account` path segment to match the key's account.
  */
 @Injectable()
 export class AccountScopeGuard implements CanActivate {
@@ -51,8 +38,7 @@ export class AccountScopeGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const principal = principalOf(request);
     if (!principal) {
-      // AuthenticationGuard runs first and would have thrown. Reaching here means the
-      // guards were reordered, so this is a wiring bug rather than a caller's.
+      // AuthenticationGuard runs first; reaching here with no principal is a guard-order bug.
       throw new ForbiddenException(
         'Authentication did not run before authorization — check the APP_GUARD order',
       );
@@ -66,7 +52,7 @@ export class AccountScopeGuard implements CanActivate {
     }
 
     if (slug !== principal.account.slug.value) {
-      // Deliberately the same answer whether the other account exists or not.
+      // Same answer whether the other account exists or not.
       throw new ActionNotPermitted(
         `This key belongs to "${principal.account.slug.value}" and cannot reach "${slug}"`,
       );

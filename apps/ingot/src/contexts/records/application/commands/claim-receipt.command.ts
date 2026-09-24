@@ -10,13 +10,8 @@ import {
 } from '../ports/overlay-store.port.js';
 
 /**
- * How many times a model is asked about one tool result before we stop.
- *
- * Low, because the failures worth retrying are transient and the ones that are
- * not repeat exactly: a body the model will not summarise, a response that is
- * never JSON, a safety filter. `remote.ts` has already absorbed the single
- * retry that fixes a rate limit, so each of these is a genuinely fresh attempt
- * some ticks apart.
+ * How many times a model is asked about one tool result before giving up. Low:
+ * the non-transient failures repeat exactly.
  */
 export const MAX_RECEIPT_ATTEMPTS = 4;
 
@@ -26,18 +21,9 @@ export interface ClaimedReceipt extends PendingReceipt {
 }
 
 /**
- * Takes one queued receipt, leases it, and hands it over.
- *
- * The first of three, and the split is the point. A receipt is claimed, a model
- * is asked, and the answer is written — with the transaction held for only the
- * first and the last. Doing all three in one command would keep a Postgres
- * connection for the length of an LLM call, and there are ten in the pool: a
- * few concurrent receipts would starve the requests this service exists to
- * answer, while looking like a database problem.
- *
- * So the connection is given back before the model is asked, and a lease on
- * the row is what stops a second worker taking the same one. `ReceiptWorker`
- * is what runs the three in order.
+ * Takes one queued receipt, leases it, and hands it over. First of three steps
+ * run by `ReceiptWorker`; the connection is given back before the model is
+ * asked, and the lease stops a second worker taking the same row.
  */
 export class ClaimReceipt extends Command<ClaimedReceipt | null> {}
 
@@ -57,13 +43,8 @@ export class ClaimReceiptHandler implements ICommandHandler<ClaimReceipt> {
   }
 
   /**
-   * The source table's schema, so a summary can name real fields.
-   *
-   * Read here rather than by the worker because it is a read of the same rows
-   * the claim just touched, and because the worker should hold nothing but
-   * what it needs to ask a question. Best effort: a table dropped between the
-   * `/add` and this tick is not a reason to abandon the receipt — the body is
-   * still there and is most of what the model reads.
+   * The source table's schema, so a summary can name real fields. Best effort:
+   * a table dropped between `/add` and this tick does not abandon the receipt.
    */
   private async schemaOf(
     pending: PendingReceipt,

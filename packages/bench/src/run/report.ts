@@ -2,9 +2,8 @@ import type { ToolCallRecord } from '../agent/loop.js';
 import type { Category, Gold } from '../questions/questions.js';
 
 /**
- * One row per (adapter, question, repeat). Written as JSONL so a scoring
- * change can be replayed over an existing run instead of buying it again —
- * the transcripts are the expensive part and they are all here.
+ * One row per (adapter, question, repeat). JSONL so a scoring change can be
+ * replayed over an existing run instead of buying it again.
  */
 export interface RunRecord {
   readonly runId: string;
@@ -63,9 +62,8 @@ export function summarise(rows: readonly RunRecord[]): Cell {
     evidencePrecision: precisions.length === 0 ? null : mean(precisions),
     finalInputTokens: mean(rows.map((row) => row.finalInputTokens)),
     toolCalls: mean(rows.map((row) => row.toolCalls)),
-    // Binomial standard error. Rows from repeats of the same question are not
-    // independent, so this understates the true spread — it is a guide to
-    // whether a gap is worth believing, not a p-value.
+    // Binomial standard error. Repeats of one question are not independent, so
+    // this understates the spread; a guide, not a p-value.
     stderr: rows.length === 0 ? 0 : Math.sqrt((accuracy * (1 - accuracy)) / rows.length),
   };
 }
@@ -81,33 +79,21 @@ export interface ReportHeader {
   readonly perTemplate: number;
   readonly maxToolCalls: number;
   /**
-   * Agent runs in flight at once. Provenance rather than trivia: above 1 the
-   * `ms` on every row was measured against a loaded provider, so latency is
-   * comparable within the run and not with a run that had the API to itself.
+   * Agent runs in flight at once. Above 1, every `ms` was measured against a
+   * loaded provider, so latency is comparable within the run only.
    */
   readonly concurrency: number;
   readonly embedder: string;
   readonly mapping: string;
   /**
-   * Log lines in the corpus, as one unpaginated tool result. 0 for the
-   * ordinary corpus.
-   *
-   * Provenance rather than trivia: at any interesting value this is the run
-   * where `raw-context` is refused rather than scored, so a report that did
-   * not say which kind of run it was would be two different experiments under
-   * one heading.
+   * Log lines in the corpus, as one unpaginated tool result. 0 for the ordinary
+   * corpus; at any interesting value `raw-context` is refused rather than scored.
    */
   readonly logs: number;
   /**
-   * Operational facts about how the run was executed, kept out of the
-   * published summary.
-   *
-   * The split is between "you should read the numbers differently" and "here
-   * is how the machine was driven". An offline embedder or reasoning switched
-   * off changes what the table means and belongs in front of every reader; a
-   * concurrency setting that moves only the `ms` column, or an adapter that
-   * was skipped and is present anyway, is operator detail. Publishing the
-   * second kind trains readers to skip the block that carries the first.
+   * Operational facts about how the run was executed, kept out of the published
+   * summary — "how the machine was driven" rather than "read the numbers
+   * differently".
    */
   readonly notes: readonly string[];
   /** Where the agent ran. Two providers are two runs, never two columns. */
@@ -143,20 +129,10 @@ export function renderReport(
   for (const note of header.notes ?? []) lines.push(`> ${note}`);
   if ((header.notes ?? []).length > 0) lines.push('');
 
-  // Runs that never produced an answer, counted apart from runs that produced
-  // a wrong one. They are scored wrong either way — nothing came back — but a
-  // column whose zeroes are timeouts is not evidence about retrieval, and a
-  // reader has to be able to see that before reading the tables.
-  // `provider-error` is the string `loop.ts` actually writes when the provider
-  // throws — a rate limit, a 500, a socket closed mid-stream. The filter here
-  // looked for `error:`, which nothing has ever produced, so the banner has
-  // been silent through every run that had infrastructure failures in it. That
-  // is the worst way for this to be wrong: a column with a fifth of its runs
-  // dead reads as a column that simply did badly.
-  //
-  // `context-overflow` is deliberately not counted. A request refused because
-  // the corpus does not fit is the most interesting outcome this benchmark can
-  // produce, not a failure of the harness, and it has its own note.
+  // Runs that never produced an answer, counted apart from wrong ones.
+  // `provider-error` is what `loop.ts` writes when the provider throws.
+  // `context-overflow` is not counted: a refused-for-size request is a finding
+  // with its own note, not a harness failure.
   const failed = rows.filter(
     (row) => row.stopReason === 'provider-error' || row.stopReason?.startsWith('error:'),
   );

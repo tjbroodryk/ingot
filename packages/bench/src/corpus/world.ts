@@ -1,14 +1,9 @@
 import { Rng } from './rng.js';
 
 /**
- * The ground truth the whole benchmark is derived from.
- *
- * Nothing here is ever shown to a model. The corpus (`stream.ts`) is a lossy,
- * paginated view of these objects — the shape a real agent's tool results
- * arrive in — and the questions (`../questions/questions.ts`) are answered
- * against the objects directly. That is the trick that makes the benchmark
- * affordable: gold answers are computed, not annotated, so five hundred
- * questions cost the same as five.
+ * The ground truth the benchmark is derived from. Never shown to a model: the
+ * corpus (`stream.ts`) is a lossy view of it, and gold answers are computed
+ * from these objects directly rather than annotated.
  */
 
 /** Every record carries one of these, and it is what retrieval is scored on. */
@@ -20,7 +15,7 @@ export type Ref = string;
 export interface Service {
   readonly ref: Ref;
   readonly name: string;
-  /** Null is the point: absence is a thing vector search cannot rank for. */
+  /** Null is deliberate: the absence questions depend on it. */
   readonly owner: string | null;
   readonly tier: 1 | 2 | 3;
 }
@@ -68,8 +63,7 @@ export interface Incident {
   readonly summary: string;
   /**
    * The question generator's handle on this incident. Never written into the
-   * corpus — the paraphrase is what the question asks with, and the words in
-   * it deliberately do not appear in `summary`.
+   * corpus; the paraphrase deliberately shares no words with `summary`.
    */
   readonly cause: Cause;
 }
@@ -86,27 +80,9 @@ export interface Issue {
 }
 
 /**
- * One line from a log search, and the reason this fixture exists.
- *
- * A tool that returns four hundred rows is the ordinary case the rest of the
- * corpus models. This is the other one: a single `logs.search` that comes back
- * with forty thousand lines and does not fit in the window at all. It is the
- * shape of result an agent meets constantly and currently throws away, because
- * there is nowhere to put it.
- *
- * What it separates is not what a reader might first assume. *Any* retrieval
- * survives it — a vector index chunks it per line and ranks the same as ever —
- * so this is not an argument for structure over embeddings. Two things are
- * genuinely different here:
- *
- *   - `raw-context` stops working. Not scores badly: the request is refused
- *     before inference, so the honest ceiling for a memory this size is that
- *     there is no ceiling, and the report has to say so rather than print 0%.
- *   - top-k gets relatively worse as the corpus grows. Ten lines out of forty
- *     thousand is a smaller share of the evidence than ten out of five
- *     hundred, while `SELECT count(*)` is indifferent to the row count. That
- *     is the Ingot-versus-vector result, and it is a property of scale rather
- *     than of this fixture being unusual.
+ * One line from a log search. Unlike the paginated tools, a `logs.search` can
+ * come back with tens of thousands of lines that do not fit in the window — the
+ * case `--logs` exists to model.
  */
 export interface LogLine {
   readonly ref: Ref;
@@ -140,12 +116,9 @@ interface Cause {
 }
 
 /**
- * Distinct failure modes, each assigned to at most one incident, so a
- * paraphrase identifies exactly one record and the gold answer is a single id.
- *
- * The pairs are written so that the paraphrase and the statement share no
- * distinctive term. If they shared one, BM25 would answer the semantic
- * category and the category would stop measuring meaning.
+ * Distinct failure modes, one per incident, so a paraphrase identifies exactly
+ * one record. Paraphrase and statement share no distinctive term, so BM25
+ * cannot shortcut the semantic category.
  */
 const CAUSES: readonly Cause[] = [
   {
@@ -298,14 +271,9 @@ export interface WorldOptions {
   readonly incidents?: number;
   readonly issues?: number;
   /**
-   * How many log lines to add, as ONE unpaginated tool result.
-   *
-   * Zero by default, because it changes what the benchmark is: at any
-   * interesting size this single result does not fit in a context window, so
-   * `raw-context` stops being a ceiling and starts being a failure, and the
-   * question set gains a category no amount of top-k can answer well.
-   *
-   * Opt in with `--logs N`. See `LogLine` for what it is for.
+   * How many log lines to add, as ONE unpaginated tool result. Zero by default;
+   * at any interesting size it does not fit in a context window. Opt in with
+   * `--logs N`. See `LogLine`.
    */
   readonly logs?: number;
 }
@@ -320,9 +288,7 @@ export function buildWorld(options: WorldOptions): World {
   const at = (daysAgo: number, hour = 0): string =>
     new Date(nowMs - daysAgo * DAY + hour * 3_600_000).toISOString();
 
-  // Two services deliberately have no owner. The absence category depends on
-  // there being some, and on there being fewer of them than a top-k would
-  // return by luck.
+  // Two services deliberately have no owner, for the absence category.
   const ownerless = new Set(rng.sample(SERVICE_NAMES, 2));
   const services: Service[] = SERVICE_NAMES.map((name) => ({
     ref: `svc:${name}`,
@@ -427,9 +393,7 @@ export function buildWorld(options: WorldOptions): World {
   const logCount = options.logs ?? 0;
   for (let index = 0; index < logCount; index += 1) {
     const service = rng.pick(services);
-    // Skewed on purpose: errors are the minority, which is what makes
-    // "how many errors did X emit" a question worth asking and a hard one to
-    // answer from ten nearest neighbours.
+    // Skewed so errors are the minority, which makes the error-count questions hard.
     const level = rng.chance(0.04)
       ? 'error'
       : rng.chance(0.1)

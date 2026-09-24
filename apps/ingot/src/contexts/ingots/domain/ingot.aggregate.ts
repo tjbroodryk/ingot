@@ -4,14 +4,7 @@ import { Delivery } from './delivery.vo.js';
 import { IngotId } from './ingot-id.vo.js';
 import { Retention } from './retention.vo.js';
 
-/**
- * The vector space a memory's embeddings live in.
- *
- * Recorded on the memory rather than read from configuration at query time,
- * because a stored vector is only meaningful next to vectors from the same
- * model. `INGOT_EMBEDDER` is a property of the process; this is a property of
- * the data, and the two stop agreeing the moment somebody changes the first.
- */
+/** The vector space a memory's embeddings live in; recorded on the memory, not read at query time. */
 export interface EmbeddingSpace {
   readonly model: string;
   readonly dimensions: number;
@@ -29,15 +22,7 @@ interface IngotProps {
   delivery: Delivery;
 }
 
-/**
- * One memory.
- *
- * Deliberately thin. Everything interesting about an ingot — what tables it
- * has, what shape they are, where their Parquet lives — belongs to the tables
- * themselves, because that is the granularity writes contend at. This holds
- * only what is true of the memory as a whole, which is who owns it and what it
- * is called.
- */
+/** One memory. Thin: table schemas and data belong to the tables, which is where writes contend. */
 export class Ingot extends AggregateRoot<IngotId> {
   private props: IngotProps;
 
@@ -47,9 +32,7 @@ export class Ingot extends AggregateRoot<IngotId> {
   }
 
   static cast(input: { accountId: string; name: string; retainFor?: string; now: Date }): Ingot {
-    // Parsed here rather than by the caller, so that both the HTTP surface and
-    // the MCP one — which builds the same command without passing through a
-    // validation pipe — get the same answer to what `14d` means.
+    // Parsed here so both the HTTP and MCP surfaces agree on what `14d` means.
     const retention = input.retainFor ? Retention.of(input.retainFor) : null;
 
     return new Ingot(IngotId.generate(), {
@@ -57,14 +40,9 @@ export class Ingot extends AggregateRoot<IngotId> {
       name: Guard.maxLength(Guard.notBlank(input.name, 'ingot.name'), 120, 'ingot.name'),
       createdAt: input.now,
       expiresAt: retention ? retention.from(input.now) : null,
-      // Not chosen at creation. A memory that never embeds anything never
-      // acquires one, and a memory that does acquires whichever model was
-      // configured when its first vector was written.
+      // Acquired on the first embedding written, not at creation.
       embedding: null,
-      // Nor is this. Receipts are collected by the SELECT `/add` hands back
-      // until somebody nominates somewhere to push them to, which is a second
-      // call rather than a field on `create` — a delivery target is a property
-      // of the system holding the memory, not of the moment it was cast.
+      // Set by a later config call, not at creation.
       delivery: Delivery.none(),
     });
   }
@@ -87,14 +65,7 @@ export class Ingot extends AggregateRoot<IngotId> {
     return this.props.expiresAt;
   }
 
-  /**
-   * Whether this memory is past its retention.
-   *
-   * Asked by the reaper immediately before it deletes, and not only by the
-   * query that selected it. A row selected as expired and deleted several
-   * seconds later is a row nothing re-checked, and the thing on the other end
-   * of that is irreversible.
-   */
+  /** Whether this memory is past its retention. */
   hasExpired(now: Date): boolean {
     return this.props.expiresAt !== null && this.props.expiresAt.getTime() <= now.getTime();
   }
@@ -114,18 +85,7 @@ export class Ingot extends AggregateRoot<IngotId> {
     return { delivery: this.props.delivery.toWire() };
   }
 
-  /**
-   * Applies a caller's patch, and says whether anything moved.
-   *
-   * A patch, so an absent field keeps what is already set: a config call sent
-   * to change one thing must not quietly undo another, which is what makes an
-   * endpoint like this safe to call twice. Turning delivery off is therefore
-   * `{ t: "none" }` and not an omission.
-   *
-   * The boolean is what stops a no-op taking the aggregate's version. Saving
-   * for a patch that changed nothing makes whatever is writing to this memory
-   * right now lose an optimistic-concurrency race for no reason at all.
-   */
+  /** Applies a patch; returns whether anything moved. Absent fields keep their current value. */
   configure(patch: { readonly delivery?: unknown }): boolean {
     if (patch.delivery === undefined) return false;
 
@@ -142,18 +102,8 @@ export class Ingot extends AggregateRoot<IngotId> {
   }
 
   /**
-   * Claims a vector space for this memory, on the first embedding written.
-   *
-   * Idempotent for the same model at the same width, and a conflict for any
-   * other — which is the point. Cosine similarity between vectors from two
-   * different models is a number, and it means nothing; a memory that quietly
-   * accumulated both would return rankings that are wrong in a way no error
-   * ever surfaces and no test would catch. So the first write decides, and
-   * everything afterwards is held to it.
-   *
-   * Changing model is therefore not a configuration change — it is a re-embed,
-   * which is what the `Embedder` port has always said and what nothing until
-   * now enforced.
+   * Claims a vector space on the first embedding. Idempotent for the same model
+   * and width; any other is a conflict — vectors from two models cannot be compared.
    */
   useEmbedding(space: EmbeddingSpace): void {
     const current = this.props.embedding;
@@ -173,13 +123,7 @@ export class Ingot extends AggregateRoot<IngotId> {
     );
   }
 
-  /**
-   * Refuses a question embedded by the wrong model.
-   *
-   * The read half of `useEmbedding`. A memory with no embeddings has nothing
-   * to be incompatible with, so it accepts anything — the first write is what
-   * decides.
-   */
+  /** The read half of `useEmbedding`: refuses a query embedded by the wrong model. */
   assertEmbeddingMatches(space: EmbeddingSpace): void {
     if (this.props.embedding === null) return;
     this.useEmbedding(space);

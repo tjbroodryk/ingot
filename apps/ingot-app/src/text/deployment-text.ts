@@ -1,12 +1,4 @@
-/**
- * The deployment page, as markdown. See `./reference-text.ts` for why.
- *
- * This one has more to lose from being written twice than the reference does.
- * Every variable name and default on the page is read off the repository, and
- * a plain-text copy that fell behind would be a list of environment variables
- * that does not match the service — which is the one kind of documentation
- * that costs a reader an outage rather than a minute.
- */
+/** The deployment page, as markdown. Rendered from the same data as the HTML page. */
 
 import {
   BRING_IT_UP_LEDE,
@@ -25,8 +17,7 @@ import { blocks, bullets, fence, heading, table } from './markdown';
 
 /** The deployment page, as `llms.txt` lists it and as the file it links to. */
 export const DEPLOYMENT: Article = {
-  // What the tab says, rather than the headline — this is the entry in an
-  // index, and an index is read by scanning the left edge of it.
+  // The tab's word, not the headline: this is an index entry.
   title: 'Deployment',
   summary: DEPLOYMENT_DESCRIPTION,
   render: renderDeployment,
@@ -85,10 +76,7 @@ function renderDependency(dependency: Dependency): string {
         ['Variable', 'Default', 'Note'],
         dependency.settings.map((setting) => [
           `\`${setting.name}\``,
-          // The page marks a variable with nothing to fall back to rather than
-          // leaving the cell blank, because that is the interesting case: it
-          // is the difference between a service that starts with a default you
-          // did not choose and one that refuses to start at all.
+          // No fallback is marked, not left blank: it is what makes the service refuse to boot.
           setting.fallback ?? '**none — refuses to boot**',
           setting.note,
         ]),

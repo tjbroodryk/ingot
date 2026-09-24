@@ -15,25 +15,7 @@ interface Dependencies {
   readonly clock: Clock;
 }
 
-/**
- * How this deployment authenticates, chosen once at boot.
- *
- * `forRoot` rather than a plain module because the settings are parsed in
- * `main.ts`, before the container exists — a mode named without the values it
- * needs has to be fatal before anything is listening, not on the first request
- * that discovers it. See the note there.
- *
- * Global because `AuthenticationGuard` is bound with `APP_GUARD` in
- * `AppModule` and runs on every route in the service; it resolves
- * `AUTHENTICATOR` from here and never learns which adapter it got, which is
- * the whole point of the selector.
- *
- * This module imports `AccountsModule` rather than the other way round, and
- * the direction matters: the accounts context knows how to store an account
- * and check a digest, and this decides whether that is what a deployment does.
- * A context that imported its own selector would be a context that could only
- * be assembled one way.
- */
+/** Binds the configured `Authenticator`, chosen once at boot. */
 @Global()
 @Module({})
 export class AuthModule {
@@ -51,9 +33,7 @@ export class AuthModule {
             clock: Clock,
           ): Authenticator => {
             const authenticator = build(settings, { accounts, keys, clock });
-            // One line per port, the way `AiModule` and `StorageModule` each
-            // say what they resolved to. Which credentials a running service
-            // honours should be readable off the start of a pod log.
+            // Log which credentials this deployment honours.
             Logger.log(authenticator.describe(), 'Auth');
             return authenticator;
           },
@@ -64,10 +44,7 @@ export class AuthModule {
   }
 }
 
-/**
- * Keyed on the mode, so adding one to `AuthMode` without an adapter fails to
- * compile rather than falling through to a default at runtime.
- */
+/** Keyed on the mode, so a mode without an adapter fails to compile. */
 const AUTHENTICATORS: {
   [K in AuthMode]: (settings: Extract<AuthSettings, { mode: K }>, of: Dependencies) => Authenticator;
 } = {
@@ -76,9 +53,8 @@ const AUTHENTICATORS: {
 };
 
 export function build(settings: AuthSettings, dependencies: Dependencies): Authenticator {
-  // The cast is for the indexed call alone: the record narrows its argument
-  // per key, and TypeScript cannot see that `settings` was narrowed by the
-  // same discriminant it was just indexed with.
+  // Cast for the indexed call: TS can't see `settings` narrowed by the same
+  // discriminant it was indexed with.
   const make = AUTHENTICATORS[settings.mode] as (
     of: AuthSettings,
     with_: Dependencies,

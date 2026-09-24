@@ -6,13 +6,9 @@ import { FORMATS } from '../../src/contexts/files/domain/formats/index.js';
 import { MediaType } from '../../src/contexts/files/domain/media-type.js';
 
 /**
- * How a document is cut up, which is the decision this feature lives or dies on.
- *
- * The rule being asserted throughout: **split on the strongest boundary the
- * format actually gives you, and fall back exactly one level at a time.** Every
- * test here is one format's version of that, and the reason they are all in one
- * file is that the *differences* are the interesting part — a strategy is three
- * booleans, and what those booleans buy is only visible side by side.
+ * How a document is cut up. The rule throughout: split on the strongest boundary
+ * the format gives, and fall back one level at a time. Each test is one format's
+ * version of that.
  */
 describe('chunking', () => {
   const block = (text: string, over: Partial<Block> = {}): Block => ({
@@ -29,11 +25,8 @@ describe('chunking', () => {
 
   describe('a slide deck', () => {
     /**
-     * The one that would be worst to get wrong, and the easiest to.
-     *
-     * A slide is a unit somebody authored. Merging two of them produces a chunk
-     * that exists in no deck, and a budget-driven splitter merges them
-     * constantly, because slides are small.
+     * A slide is a unit somebody authored; merging two produces a chunk that
+     * exists in no deck, and a budget splitter would merge them since they're small.
      */
     it('never merges two slides, however small they are', () => {
       const slides = ['Q3 pricing', 'Up 4%', 'Questions?'].map((text) =>
@@ -70,8 +63,7 @@ describe('chunking', () => {
     ];
 
     it('splits on the heading rather than on the budget', () => {
-      // All three would fit in one chunk twice over. They are still three,
-      // because the author already said where the boundaries are.
+      // All three would fit in one chunk, but the author drew the boundaries.
       const chunks = cut(handbook, MediaType.Markdown);
 
       expect(chunks).toHaveLength(3);
@@ -83,13 +75,9 @@ describe('chunking', () => {
     });
 
     /**
-     * The single highest-value line in the chunker, asserted directly.
-     *
-     * A chunk's body is usually the *answer* and its heading is usually the
-     * *question's vocabulary* — and they are in different blocks. "Any engineer
-     * may roll back" contains no form of the word somebody would search for.
-     * Embedding it without "2.2 Rollback" attached throws away the half that
-     * makes it findable, and nothing downstream can put it back.
+     * A chunk's body is the answer and its heading the question's vocabulary,
+     * and they are in different blocks. Embedding "Any engineer may roll back"
+     * without "2.2 Rollback" throws away the half that makes it findable.
      */
     it('carries the heading path into the text that gets embedded', () => {
       const chunks = cut(handbook, MediaType.Markdown);
@@ -99,8 +87,8 @@ describe('chunking', () => {
     });
 
     it('keeps the heading out of a PDF, where headings are guessed', () => {
-      // Inferred from font runs rather than declared, so a wrong one poisons
-      // the embedding instead of merely failing to help it.
+      // A PDF's headings are guessed from font runs, so a wrong one poisons the
+      // embedding rather than merely failing to help.
       expect(FORMATS[MediaType.Pdf].chunking.carryHeadings).toBe(false);
       expect(FORMATS[MediaType.Pdf].chunking.boundary).toBe(Boundary.Page);
 
@@ -124,18 +112,13 @@ describe('chunking', () => {
 
       expect(chunks).toHaveLength(2);
       expect(chunks.map((piece) => piece.page)).toEqual([1, 2]);
-      // The two paragraphs of page two are one chunk: a paragraph break inside
-      // a page is incidental, and merging across it is what a chunker is for.
+      // Page two's two paragraphs are one chunk: a break inside a page is incidental.
       expect(chunks[1]?.text).toContain('second paragraph');
     });
 
     /**
-     * A blank page is a fact, and the only format where that is true.
-     *
-     * It is how somebody discovers that page 40 came out empty because the OCR
-     * failed on it, rather than because nothing was printed there. A blank
-     * paragraph run in a Word document is not a fact about anything, and a
-     * chunk of it would be an embedding of whitespace sitting in every ranking.
+     * A blank page is a fact — how somebody finds page 40 came out empty because
+     * OCR failed. A blank paragraph run in a Word document is not, so it's dropped.
      */
     it('keeps an empty page, and drops an empty paragraph run', () => {
       const withBlankPage = cut(
@@ -193,20 +176,16 @@ describe('chunking', () => {
       const chunks = cut([block(words)], MediaType.Text, 32, 8);
 
       expect(chunks.length).toBeGreaterThan(1);
-      // The overlap is real text rather than half a token, which is the whole
-      // point of taking it from a boundary: half a word carries no meaning.
+      // The overlap is real text from a word boundary, not half a token.
       expect(chunks[1]?.text).toMatch(/^word\d+/);
     });
   });
 
   describe('the knobs a caller may and may not turn', () => {
     /**
-     * Which boundary is not a knob, and this is the assertion that says so.
-     *
-     * There is no case where cutting a deck every 512 tokens beats cutting it
-     * every slide, so exposing the choice would be a footgun with no upside.
-     * What a caller *can* set is the budget, because that is a function of
-     * their embedder and their context window and this service knows neither.
+     * The boundary is not a knob: cutting a deck every 512 tokens never beats
+     * cutting it every slide. The budget is a knob, because it depends on the
+     * caller's embedder and context window.
      */
     it('honours the budget without letting it override a format boundary', () => {
       const slides = Array.from({ length: 4 }, () =>
@@ -221,8 +200,7 @@ describe('chunking', () => {
       const chunks = cut([block('Body.', { headings: ['A Heading'] })], MediaType.Markdown);
 
       expect(chunks[0]?.text).toBe('A Heading\n\nBody.');
-      // Not a count of `Body.` alone: a caller budgeting context is handed all
-      // of it, so the number they budget against has to describe all of it.
+      // Not `Body.` alone: the caller is handed all of it, so the count covers all.
       expect(chunks[0]?.tokens).toBeGreaterThan(2);
     });
 
@@ -236,8 +214,8 @@ describe('chunking', () => {
         MediaType.Pdf,
       );
 
-      // Ordinals are what `abs(c.ordinal - hit.ordinal) <= 1` expands on, so
-      // they have to run continuously over the document rather than per group.
+      // `abs(c.ordinal - hit.ordinal) <= 1` expands on ordinals, so they run
+      // continuously over the document, not per group.
       expect(chunks.map((piece) => piece.ordinal)).toEqual([0, 1, 2]);
     });
   });
@@ -252,8 +230,7 @@ describe('chunking', () => {
       const chunks = cut(rows, MediaType.Csv);
 
       expect(chunks[0]?.kind).toBe(ChunkKind.Table);
-      // No overlap: repeating half a record into the next chunk is duplication
-      // that ranks against nothing.
+      // No overlap: half a record repeated into the next chunk ranks against nothing.
       expect(FORMATS[MediaType.Csv].chunking.overlap).toBe(false);
     });
   });

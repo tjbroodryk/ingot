@@ -11,19 +11,7 @@ import {
 import type { MemoryAdapter } from '../adapters/types.js';
 import type { Question } from '../questions/questions.js';
 
-/**
- * The agent under test.
- *
- * One loop, used for every adapter and every provider, with only the tool list
- * differing. That is the whole fairness argument in one file: same model, same
- * system prompt skeleton, same budget, same answer channel. If two columns
- * differ, the tools are the only thing that could have caused it.
- *
- * The AI SDK owns the transcript, so Claude's Messages API and the
- * OpenAI-shaped Chat Completions that Foundry serves for GPT deployments run
- * the identical control flow rather than two loops that have to be argued as
- * equivalent.
- */
+/** The agent under test. One loop for every adapter and provider, only the tool list differing. */
 
 export interface AgentConfig {
   readonly effort: string;
@@ -55,13 +43,8 @@ export interface AgentRun {
 }
 
 /**
- * Whether the provider refused because the prompt was too big.
- *
- * Matched on the message because the four providers spell it four ways and
- * none of them gives it a stable code — OpenAI says `context_length_exceeded`,
- * Anthropic talks about the maximum number of tokens, and Azure wraps both.
- * A miss here costs an outcome label, not a wrong number: the run is recorded
- * as a failure either way, and only the reason is less specific.
+ * Whether the provider refused because the prompt was too big. Matched on the
+ * message because providers spell it several ways with no stable code.
  */
 function overflowed(error: unknown): boolean {
   const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
@@ -156,9 +139,7 @@ export async function runAgent(
         try {
           output = await adapter.call(spec.name, (input ?? {}) as Record<string, unknown>);
         } catch (error) {
-          // Returned rather than thrown: the model is the one who can fix a
-          // mistyped column, and a run where it recovers from its own bad SQL
-          // reflects how the product behaves.
+          // Returned, not thrown, so the model can recover from a mistyped column.
           failed = true;
           output = `Tool error: ${error instanceof Error ? error.message : String(error)}`;
         }
@@ -184,30 +165,19 @@ export async function runAgent(
     system: note ? `${SYSTEM}\n\n${note}` : SYSTEM,
     prompt: question.text,
     tools,
-    // Stop as soon as the answer is in, and hard-stop a model that will not
-    // use the answer channel. The +2 leaves room for the budget-exhausted turn
-    // and one nudge, so "ran out of calls" stays distinguishable from "wrong".
+    // Stop when the answer is submitted, or hard-stop after the budget. The +2
+    // leaves room for the budget-exhausted turn and one nudge.
     stopWhen: [hasToolCall(SUBMIT), stepCountIs(config.maxToolCalls + 2)],
-    // Once the retrieval budget is spent the tools come off the table and only
-    // the answer channel is left. Cutting the run off entirely would score
-    // "ran out of calls" the same as "answered wrongly".
+    // Once the retrieval budget is spent, only the answer channel is left.
     prepareStep: () =>
       retrievalCalls >= config.maxToolCalls ? { activeTools: [SUBMIT] } : {},
       ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
       ...(config.maxTokens ? { maxOutputTokens: config.maxTokens } : {}),
     });
   } catch (error) {
-    // A provider that refuses the request is a result, not a crash.
-    //
-    // The case this exists for is a memory too large to put in a prompt:
-    // `raw-context` is handed the whole corpus and the request is rejected
-    // before inference. Letting that throw would abandon every question after
-    // it in the same adapter, and would report the most interesting outcome
-    // this benchmark can produce as a harness bug.
-    //
-    // It is recorded as its own outcome rather than as a wrong answer, because
-    // "there is no ceiling for a memory this size" and "the ceiling is 0%" are
-    // different findings and the report has to be able to tell them apart.
+    // A provider that refuses the request is a result, not a crash — recorded
+    // as its own outcome (context-overflow or provider-error) so the questions
+    // after it still run.
     return {
       answer: undefined,
       submitted: false,
@@ -225,8 +195,7 @@ export async function runAgent(
     inputTokens: result.usage?.inputTokens ?? 0,
     outputTokens: result.usage?.outputTokens ?? 0,
     cacheReadTokens: result.usage?.inputTokenDetails?.cacheReadTokens ?? 0,
-    // The last step's input is what the model had to read to answer, which is
-    // the number that separates a three-row query from a fifty-row search.
+    // The last step's input is what the model read to answer.
     finalInputTokens: steps.at(-1)?.usage?.inputTokens ?? 0,
   };
 

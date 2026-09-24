@@ -5,22 +5,9 @@ import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * The most important test in this service.
- *
- * `POST /query` takes SQL from whoever holds an API key and runs it. Two
- * layers stand between that and the machine, and both are here:
- *
- *  - the session lockdown (`enable_external_access = false`,
- *    `lock_configuration = true`), which stops anything reaching the
- *    filesystem, the network, or another tenant's Parquet; and
- *  - the statement check (`extractStatements` + `prepare().statementType`),
- *    which refuses anything that is not exactly one SELECT.
- *
- * The second is not a second opinion. Phase 0 established that the lockdown
- * does **not** contain `ATTACH ':memory:'` — it touches no filesystem and no
- * network, so nothing refuses it, and once attached a caller can allocate
- * freely. The statement check is what stops that, which makes it load bearing.
- * Anyone tempted to delete it as redundant should read the ATTACH case below.
+ * Two layers guard `POST /query`: the session lockdown and the statement check
+ * that refuses anything but a single SELECT. Both are needed — the lockdown
+ * does not stop `ATTACH ':memory:'` (see the ATTACH case below).
  */
 describe('the query sandbox', () => {
   let world: World;
@@ -41,9 +28,8 @@ describe('the query sandbox', () => {
     await closeDatabase();
   });
 
-  // Each of these is a way out of the session: onto the filesystem, onto the
-  // network, into another tenant's data, into the configuration, or into more
-  // memory than the caller is entitled to.
+  // Each is a way out of the session: filesystem, network, another tenant's
+  // data, the configuration, or more memory than allowed.
   const attacks: ReadonlyArray<readonly [string, string]> = [
     ['writing a file', `COPY (SELECT 1) TO '/tmp/ingot-escaped.csv'`],
     ['reading a local file', `SELECT * FROM read_csv('/etc/passwd')`],
@@ -55,7 +41,7 @@ describe('the query sandbox', () => {
     ['installing an extension', 'INSTALL spatial'],
     ['loading an extension', 'LOAD spatial'],
     ['attaching a database file', `ATTACH 'smuggled.db' AS other`],
-    // The one the lockdown misses. See the note on this describe block.
+    // The one the lockdown misses; only the statement check refuses it.
     ['attaching memory', `ATTACH ':memory:' AS smuggled`],
     ['detaching', 'DETACH notes'],
     ['restoring external access', 'SET enable_external_access = true'],
@@ -67,9 +53,8 @@ describe('the query sandbox', () => {
     ['updating rows', "UPDATE notes SET body = 'tampered'"],
     ['inserting rows', "INSERT INTO notes VALUES ('forged')"],
     ['a pragma', 'PRAGMA database_list'],
-    // Every session loads `fts`, so this one is reachable in a way the others
-    // are not — and it builds tables over a whole column. Search is asked for
-    // through /config, which decides what it costs; not through a query.
+    // Reachable because every session loads `fts`; index building goes through
+    // /config, not a query.
     ['building an index of its own', "PRAGMA create_fts_index('notes', '_row_id', 'body')"],
     ['calling a table function', 'CALL pragma_version()'],
     ['chaining a second statement', 'SELECT 1; DROP TABLE notes'],
@@ -82,16 +67,13 @@ describe('the query sandbox', () => {
   });
 
   it('says why, in terms a caller can act on', async () => {
-    // Which layer answers depends on the attack, and both messages say the
-    // same thing in the caller's terms rather than the engine's.
     await expect(world.query(ingot, { sql: 'DROP TABLE notes' })).rejects.toThrow(
       /must begin with SELECT/,
     );
     await expect(world.query(ingot, { sql: 'SELECT 1; SELECT 2' })).rejects.toThrow(
       /Send one statement/,
     );
-    // Reaches the type check rather than the shape check: it is written as a
-    // select and only the parse tree knows better.
+    // Reaches the type check, not the shape check: it reads as a SELECT until parsed.
     await expect(
       world.query(ingot, { sql: `SELECT * FROM read_csv('/etc/passwd')` }),
     ).rejects.toThrow(/file system operations are disabled|Permission/i);
@@ -110,9 +92,8 @@ describe('the query sandbox', () => {
   });
 
   it('allows the read-only things a caller legitimately wants', async () => {
-    // A WITH clause, a window function and an information_schema read are all
-    // SELECTs. Refusing them would make the endpoint useless for the thing it
-    // exists for, so the check is on statement *type*, not on keywords.
+    // The check is on statement type, not keywords, so CTEs and
+    // information_schema reads pass.
     const cte = await world.query(ingot, {
       sql: 'WITH counted AS (SELECT count(*) AS n FROM notes) SELECT n FROM counted',
     });
@@ -125,9 +106,8 @@ describe('the query sandbox', () => {
   });
 
   describe('the delete predicate', () => {
-    // /delete takes a predicate, not a statement — it is wrapped in a SELECT
-    // this service writes. That wrapping is only true if a predicate cannot
-    // close it and start something else, which is what these check.
+    // /delete wraps a predicate in a SELECT, so a predicate must not be able to
+    // close it and start another statement.
     it('refuses a predicate that closes the statement', async () => {
       await expect(world.forget(ingot, 'notes', '1=1); DROP TABLE notes; --')).rejects.toThrow();
     });

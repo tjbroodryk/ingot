@@ -12,26 +12,9 @@ import type { SealedAuth } from './auth-settings.js';
 /**
  * One account and one root key, both from configuration.
  *
- * The self-hosting mode, and the shape of it is the point: the root credential
- * is checked against a digest held in this process, not against a row. There
- * is nothing in the database that grants access, so there is nothing to
- * reconcile, nothing to leave behind on a rotation, and no stale row that is
- * quietly still a live credential. Rotation is a change to the secret and a
- * restart — the old key stops working as each pod comes up.
- *
- * Keys minted at runtime still authenticate, through the ordinary digest
- * lookup, and are still revocable. That is deliberate: one shared secret
- * across every agent means revoking one means rotating all of them, and the
- * root key exists so that doing so can never lock the account out. It is the
- * credential that cannot be revoked, not the only one that works.
- *
- * The two paths take measurably different time — the root key answers without
- * touching Postgres, a minted one does not. That distinguishes "this is not
- * the root key" from "this is not a key at all", which is a difference a
- * caller holding neither can already see in the 401 they get for both. It is
- * not the distinction `Account.authenticate` walks revoked keys to avoid; that
- * one would separate two kinds of failure for a caller who had held a valid
- * key, and this one does not.
+ * The root key is checked against an in-process digest, not a row. Keys minted
+ * at runtime still authenticate through the ordinary digest lookup and remain
+ * revocable.
  */
 export class SealedAuthenticator implements Authenticator, OnApplicationBootstrap {
   private readonly logger = new Logger('Auth');
@@ -52,22 +35,14 @@ export class SealedAuthenticator implements Authenticator, OnApplicationBootstra
   }
 
   /**
-   * The account exists, whichever replica gets here first.
-   *
-   * The chart defaults to two replicas and scales past that, so this runs
-   * concurrently by design. It is safe because `account.slug` is unique: the
-   * losers of the race get a `ConflictingState` out of the repository and take
-   * the account the winner wrote.
-   *
-   * Nothing is written for the key. See the class note.
+   * Seeds the sealed account. Safe to race: `account.slug` is unique, so
+   * losers take the account the winner wrote. Nothing is written for the key.
    */
   async onApplicationBootstrap(): Promise<void> {
     try {
       await this.seed();
     } catch (error) {
-      // The likeliest cause by a distance is an unmigrated database, and the
-      // raw error for that is a relation-does-not-exist nobody reads as
-      // "you skipped a step".
+      // Likeliest cause is an unmigrated database, whose raw error is opaque.
       throw new Error(
         `Could not open the account "${this.settings.slug}" this deployment is sealed to. ` +
           'If this is a fresh database, its schema is not applied yet — ' +
@@ -80,24 +55,19 @@ export class SealedAuthenticator implements Authenticator, OnApplicationBootstra
     if (this.isRootKey(presented)) {
       return { via: 'root', account: await this.account() };
     }
-    // Not the root key, which is not the same as not a key. A key minted under
-    // it is looked up, stamped and revocation-checked exactly as before.
+    // Not the root key: a minted key is looked up, stamped and revocation-checked.
     return this.keys.authenticate(presented);
   }
 
   private isRootKey(presented: string): boolean {
-    // Shape first, so a request carrying something long and arbitrary is not
-    // hashed before it is dismissed. `matches` is the constant-time half.
+    // Shape check first so arbitrary input isn't hashed; `matches` is constant-time.
     return ApiKey.looksLikeOurs(presented) && ApiKey.matches(presented, this.settings.keyDigest);
   }
 
   private async account(): Promise<Account> {
     const account = await this.accounts.findBySlug(this.settings.slug);
     if (!account) {
-      // Seeded at boot, so this is the row having been removed underneath a
-      // running process rather than anything the caller did. Same answer as
-      // any other failure regardless: they presented a key, and it does not
-      // currently reach anything.
+      // Seeded at boot, so a missing row means it was removed out from under the process.
       this.logger.error(
         `The sealed account "${this.settings.slug}" is not in the database. ` +
           'Every request will be refused until it is back.',
@@ -120,7 +90,7 @@ export class SealedAuthenticator implements Authenticator, OnApplicationBootstra
       await this.accounts.save(account);
       this.logger.log(`Opened the account "${this.settings.slug}".`);
     } catch (error) {
-      // Another replica got there between the read above and this write.
+      // Another writer got there between the read above and this write.
       if (!(error instanceof ConflictingState)) throw error;
     }
   }

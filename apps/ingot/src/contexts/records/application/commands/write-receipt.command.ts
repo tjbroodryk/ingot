@@ -38,13 +38,9 @@ import {
 } from '../ports/overlay-store.port.js';
 
 /**
- * Stores a receipt a model has already written.
- *
- * The last of three, and it takes the answer rather than fetching it: the
- * model was asked outside any transaction, precisely so that this one is short.
- * Everything here is Postgres — create the table if this is the memory's first
- * receipt, append the row, leave the queue — and it is measured as its own
- * command, so "receipts are slow" resolves into which of the three is slow.
+ * Stores a receipt a model has already written. The last of three; the model
+ * was asked outside any transaction so this one is short — create the table on
+ * first receipt, append the row, leave the queue.
  */
 export class WriteReceipt extends Command<void> {
   constructor(
@@ -77,8 +73,8 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
     const row: Record<string, Coerced> = {
       [ROW_ID]: newIdValue('row'),
       [INGESTED_AT]: now.toISOString(),
-      // Its own batch: this write is not the caller's write. `source_batch` is
-      // what ties the two together, and what a receipt's query is keyed on.
+      // Its own batch: this write is not the caller's. `source_batch` ties the
+      // two together and is what a receipt's query is keyed on.
       [BATCH]: newIdValue('batch'),
       [RECEIPT_BATCH]: job.batch,
       [RECEIPT_EXTERNAL_ID]: job.externalId,
@@ -90,10 +86,9 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
       [RECEIPT_MODEL]: command.model,
     };
 
-    // Through the ordinary overlay, which is the whole point of making
-    // `ingot_receipts` a table: this queues the three embeddings, the roll-up folds
-    // them into Parquet, and `/query` unions the tiers — none of it written
-    // twice for receipts.
+    // Through the ordinary overlay, which is the point of making
+    // `ingot_receipts` a table: embeddings are queued, the roll-up folds them
+    // into Parquet, and `/query` unions the tiers, none of it written twice.
     await this.overlay.append({
       ingotId: job.ingotId,
       tableId: table.id.value,
@@ -103,11 +98,9 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
 
     await this.overlay.completeReceipt(job.batch);
 
-    // Announced inside the transaction that wrote it, and that is the point:
-    // the notifier writes an outbox row rather than calling anybody, so the
-    // receipt and the promise to announce it land together or not at all. The
-    // port says implementations must not throw — a notifier that failed would
-    // unwind a summary a model has already been paid for.
+    // Announced inside the transaction that wrote it: the notifier writes an
+    // outbox row rather than calling anybody, so the receipt and the promise to
+    // announce it land together. Implementations must not throw.
     await this.notifier.ready({
       ingotId: job.ingotId,
       batch: job.batch,
@@ -121,11 +114,9 @@ export class WriteReceiptHandler implements ICommandHandler<WriteReceipt> {
       readyAt: now,
     });
 
-    // And sent afterwards. `afterCommit` for the reason the port gives:
-    // anything with an effect outside this transaction belongs there, and a
-    // wake that ran inside it would send the worker looking for an outbox row
-    // a rollback could still take away. The sweeper is the floor under a wake
-    // that never happened.
+    // Sent afterwards, via `afterCommit`: a wake inside the transaction would
+    // send the worker after an outbox row a rollback could remove. The sweeper
+    // is the floor under a wake that never happened.
     this.uow.afterCommit(async () => this.background.wakeDeliveries());
   }
 

@@ -8,20 +8,9 @@ import {
 } from '../ports/overlay-store.port.js';
 
 /**
- * Puts a claimed batch back, unembedded.
- *
- * There is no attempt counter here, and that is deliberate — it is the
- * behaviour embedding has always had. A model that is down is a model that
- * will be up, and a text left in the queue is a column that fills in late; a
- * text given up on is a column that stays empty for ever, silently, in a
- * table nobody is watching. Embedding is cheap enough to keep trying.
- *
- * (Receipts are the opposite call: an LLM call costs real money per attempt, so
- * `ClaimReceipt` counts them and stops at four.)
- *
- * Without this the batch would still come back — the lease expires — but not
- * for five minutes, which is a long time to wait out for work already known to
- * have failed.
+ * Puts a claimed batch back, unembedded. No attempt counter: embedding is cheap
+ * to retry and a text left queued fills in late, whereas one given up on stays
+ * empty. Releasing the lease returns the batch before it would expire.
  */
 export class ReleaseEmbeddings extends Command<void> {
   constructor(readonly entries: readonly PendingEmbedding[]) {

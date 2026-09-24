@@ -4,14 +4,7 @@ import type { Embedder } from './embedder.port.js';
 import { type GoogleCredentials, vertexUrl } from './google-auth.js';
 import { callModel } from './remote.js';
 
-/**
- * Vertex caps `instances` per `:predict`, and the cap is small.
- *
- * Low enough to be safe across the embedding models Vertex publishes rather
- * than tuned to one of them — `EmbedPending` hands over 128 texts and a
- * rejected batch costs the whole tick, where an extra round trip costs
- * milliseconds.
- */
+/** Texts per `:predict`. Small enough to be safe across all Vertex embedding models. */
 const CHUNK = 5;
 
 interface PredictResponse {
@@ -21,18 +14,8 @@ interface PredictResponse {
 }
 
 /**
- * Vertex AI embeddings.
- *
- * The credential is not ours to hold, which is why there is no key here and
- * only `INGOT_GCP_PROJECT` in the configuration — the same argument
- * `GcsObjectStore` makes, and it is the reason the two Vertex adapters share
- * `GoogleCredentials` rather than each minting their own.
- *
- * `outputDimensionality` is sent for the reason the OpenAI adapter sends
- * `dimensions`: the port declares the width, every stored vector is that wide,
- * and a model quietly returning a different one produces vectors that
- * `SessionBuilder` drops from every ranking. Asking, then checking, turns that
- * from a silent degradation into a refusal at the point of configuration.
+ * Vertex AI embeddings. No key: authenticated via shared `GoogleCredentials`.
+ * Sends `outputDimensionality` and checks the returned width against the port.
  */
 export class GcpEmbedder implements Embedder {
   constructor(
@@ -66,10 +49,7 @@ export class GcpEmbedder implements Embedder {
       url: vertexUrl({ ...this.settings, method: 'predict' }),
       headers: { authorization: `Bearer ${token}` },
       body: {
-        // `RETRIEVAL_DOCUMENT` because this is the stored side of the search.
-        // A query is embedded by the same adapter for want of a second one,
-        // which costs a little asymmetry in ranking and keeps one model, one
-        // width, and one vector space — the property everything else rests on.
+        // `RETRIEVAL_DOCUMENT`: the stored side of the search. Queries use the same adapter.
         instances: texts.map((content) => ({ content, task_type: 'RETRIEVAL_DOCUMENT' })),
         parameters: { outputDimensionality: this.settings.dimensions },
       },

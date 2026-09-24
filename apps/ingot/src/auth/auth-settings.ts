@@ -3,58 +3,27 @@ import { Guard } from '../shared/domain/index.js';
 import { AccountSlug, ApiKey, KEY_PREFIX } from '../contexts/accounts/domain/index.js';
 import { AuthMode } from './auth-mode.js';
 
-/**
- * How this deployment authenticates, read once at boot.
- *
- * The same shape as `storage-settings.ts` and `ai-settings.ts`, for the same
- * reasons: parsed into a discriminated union rather than passed round as a bag
- * of optional strings, so an adapter's constructor cannot be reached without
- * the values it needs; and a pure function over a reader, which is what lets
- * the whole matrix be asserted in a unit test rather than by booting the
- * service once per mode and reading a log line.
- *
- * One thing is different, and it is the reason this file exists rather than
- * the settings being parsed inside the module: a credential is involved. The
- * secret is turned into a digest here and discarded. Nothing downstream of
- * this function has ever seen it, which is the same bargain `ApiKey` makes
- * with Postgres and is worth making with the process too.
- */
+/** How authentication is configured, parsed once at boot. */
 export type AuthSettings = SealedAuth;
 
 export interface SealedAuth {
   readonly mode: AuthMode.Sealed;
-  /** The one account. Validated as an `AccountSlug` at boot, not at first use. */
+  /** The one account, validated as an `AccountSlug` at boot. */
   readonly slug: string;
   readonly name?: string;
-  /** The root key, as a digest. The secret does not leave `authSettings`. */
+  /** The root key, as a digest; the secret is discarded. */
   readonly keyDigest: string;
-  /** Enough of the key to recognise it in a log line. Never enough to use. */
+  /** Enough of the key to recognise it in a log line, never enough to use. */
   readonly keyPrefix: string;
 }
 
-/**
- * The shortest root key this service will accept.
- *
- * `ApiKey.looksLikeOurs` only asks that a key be shaped like one of ours,
- * which is the right question on the request path and the wrong one here: it
- * would accept `ing_sk_test` from a deployment template nobody finished
- * filling in. A minted key carries 24 random bytes; this asks for a comparable
- * amount of typing and refuses anything an operator could have thought up.
- */
+/** Shortest root key accepted: prefix plus the 24 random bytes a minted key carries. */
 const MIN_SECRET_LENGTH = KEY_PREFIX.length + 24;
 
-/** Reads one environment variable. `ConfigService.get` is one of these. */
+/** Reads one environment variable. */
 export type Setting = (key: string) => string | undefined;
 
-/**
- * A deployment that cannot authenticate anybody.
- *
- * Fatal, for the reason `StorageMisconfigured` and `AiMisconfigured` are — and
- * more so than either. A service that boots without knowing how to tell
- * callers apart either refuses every request, or, if it were allowed a
- * fallback, accepts the wrong ones. Refusing to start says it once, to the
- * person holding the deployment, before anything is listening.
- */
+/** Thrown at boot when authentication cannot be configured. */
 export class AuthMisconfigured extends Error {
   constructor(message: string) {
     super(message);
@@ -74,9 +43,7 @@ const MODE_PARSERS: Record<AuthMode, (read: Setting) => AuthSettings> = {
 
     return {
       mode: AuthMode.Sealed,
-      // Checked here rather than at the seed, so `INGOT_ACCOUNT=accounts` — a
-      // slug that would shadow this service's own routes — is a boot failure
-      // naming the variable rather than a confusing insert error later.
+      // Validated at boot rather than at the seed, so a bad slug fails here.
       slug: accountSlug(slug),
       name: value(read('INGOT_ACCOUNT_NAME')),
       keyDigest: key.digest,
@@ -85,18 +52,7 @@ const MODE_PARSERS: Record<AuthMode, (read: Setting) => AuthSettings> = {
   },
 };
 
-/**
- * A reader that also answers from a file.
- *
- * `INGOT_API_KEY_FILE=/run/secrets/ingot-key` is the Docker and Kubernetes
- * convention for a secret that should not be an environment variable —
- * `/proc/<pid>/environ`, a crash dump and anything that logs the environment
- * all read those, and a mounted file is none of those things.
- *
- * Written as a decorator over a reader rather than as a branch inside each
- * parser, so it holds for every key uniformly and the parsers stay pure
- * functions over strings. The impure edge is here, and it is four lines.
- */
+/** A reader that also answers from a `<KEY>_FILE` pointing at a mounted file. */
 export function fileBackedReader(read: Setting): Setting {
   return (key) => value(read(key)) ?? fileAt(value(read(`${key}_FILE`)), key);
 }
@@ -113,14 +69,7 @@ function fileAt(path: string | undefined, key: string): string | undefined {
   }
 }
 
-/**
- * The mode this deployment named. There is no default.
- *
- * `INGOT_STORAGE` refuses to guess where Parquet goes; this refuses to guess
- * who may read it. The two selectors that do have defaults — the embedder and
- * the summariser — default to something offline and harmless that announces
- * itself as a stand-in. There is no harmless stand-in for authentication.
- */
+/** The named `INGOT_AUTH` mode. There is no default. */
 function mode(read: Setting): AuthMode {
   const named = value(read('INGOT_AUTH'));
   if (named === undefined) {
@@ -169,13 +118,7 @@ function accountSlug(raw: string): string {
   }
 }
 
-/**
- * Every value a mode cannot work without, or a message naming the ones that
- * are missing.
- *
- * All of them at once rather than the first, so an operator filling in a
- * deployment template learns what is left in one restart rather than in three.
- */
+/** Every value a mode needs, or throws naming all the missing ones at once. */
 function demand<const K extends readonly string[]>(
   read: Setting,
   named: AuthMode,
@@ -190,12 +133,11 @@ function demand<const K extends readonly string[]>(
         'Each may also be given as <NAME>_FILE pointing at a mounted file.',
     );
   }
-  // Every element was just proved present, which is a fact about the loop
-  // above rather than one the type of `map` can carry.
+  // Every element was proved present above; the type of `map` can't carry that.
   return found as { [I in keyof K]: string };
 }
 
-/** Blank is unset. A variable exported as `""` is one somebody meant to omit. */
+/** Blank is treated as unset. */
 function value(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;

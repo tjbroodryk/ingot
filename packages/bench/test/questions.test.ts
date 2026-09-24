@@ -35,8 +35,7 @@ describe('the question set', () => {
   test('cites only evidence the corpus actually contains', () => {
     for (const question of questions) {
       for (const ref of question.evidence ?? []) {
-        // The multi-hop answers name a team rather than a record, but their
-        // evidence is still records, so every ref must be reachable.
+        // Multi-hop answers name a team, but their evidence is still records.
         expect(knownRefs.has(ref)).toBe(true);
       }
     }
@@ -50,19 +49,10 @@ describe('the question set', () => {
 });
 
 /**
- * The questions whose answer is in no single payload.
- *
- * These are the ones with a way of going quietly wrong that the other
- * categories do not have. A question is generated from the world, where every
- * object holds a reference to every other; it is *answered* from the corpus,
- * which is a lossy view of that world. So a join can be perfectly well defined
- * over the world and unanswerable from what the agent actually received — the
- * incident's `cause` is dropped on the way out, and a join through a field
- * that got dropped the same way would score every adapter at zero and read as
- * a finding about retrieval.
- *
- * Hence: recompute the gold answer from the payloads alone, and check that the
- * link the question turns on is genuinely split across results.
+ * Questions whose answer is in no single payload. A join can be well-defined
+ * over the world yet unanswerable from the lossy corpus (a dropped field), so
+ * recompute the gold from the payloads alone and check the link is genuinely
+ * split across results.
  */
 describe('joins across tool results', () => {
   const records = flattenRecords(corpus);
@@ -122,13 +112,9 @@ describe('joins across tool results', () => {
   });
 
   /**
-   * The property that makes these worth their cost.
-   *
-   * Similarity is computed per record, and no answer-bearing record here
-   * contains the term the question asks with — a pull request has never heard
-   * of a team, and an incident names a service and not its owner. A top-k over
-   * the question text therefore ranks the answer no higher than anything else,
-   * which is exactly the case a memory that can join is supposed to win.
+   * No answer-bearing record contains the term the question asks with, so a
+   * top-k ranks the answer no higher than anything else — the case a memory
+   * that can join is supposed to win.
    */
   test('name nothing the answer-bearing records contain', () => {
     const joins = questions.filter((candidate) => /owned by the \w+ team/.test(candidate.text));
@@ -162,18 +148,12 @@ describe('joins across tool results', () => {
     const [busiest] = [...churn.entries()].sort((a, b) => b[1] - a[1]);
 
     expect(question.gold.values).toEqual([owners.get(busiest?.[0] as string) as string]);
-    // Scored on the answer alone. The cheapest right path is one grouped sum,
-    // which returns a team and a total and no record at all — citing evidence
-    // here would mark that path as a total retrieval failure, which is the
-    // same trap the aggregate questions avoid by carrying no evidence either.
+    // Scored on the answer alone: the cheapest right path is a grouped sum that
+    // returns no record.
     expect(question.evidence).toBeNull();
   });
 
-  /**
-   * The anti-join. Seed 11 has no service without an incident, so this one is
-   * asked of a world that does — a question that cannot be generated is not a
-   * question that can go untested.
-   */
+  /** The anti-join. Seed 11 has no service without an incident, so ask it of seed 1, which does. */
   test('the anti-join names services no incident payload mentions', () => {
     const quietWorld = buildWorld({ seed: 1 });
     const quietRecords = flattenRecords(buildCorpus(quietWorld));
@@ -193,9 +173,7 @@ describe('joins across tool results', () => {
       .map((record) => record.ref);
 
     expect(new Set(answer)).toEqual(new Set(question.gold.values));
-    // The point of the category: the emptiness is stated nowhere. No payload
-    // says a service had no incidents; it is a fact about two results held
-    // together, and there is no text for a nearest-neighbour search to find.
+    // The emptiness is stated nowhere; it is a fact about two results held together.
     expect(answer.length).toBeGreaterThan(0);
   });
 });
@@ -256,8 +234,7 @@ describe('scoring', () => {
   });
 
   test('a correct answer with no retrieved evidence still scores as correct', () => {
-    // The aggregate case: `SELECT count(*)` returns a number and no refs, and
-    // scoring it as a retrieval failure would punish the cheapest right answer.
+    // The aggregate case: a count returns a number and no refs.
     const question = questions.find((candidate) => candidate.evidence === null);
     if (question?.gold.kind !== 'number') throw new Error('no aggregate question');
 

@@ -14,28 +14,12 @@ import {
 import { retryOnce } from './remote.js';
 import { preview } from './summariser.port.js';
 
-/**
- * How much text one page may come back as.
- *
- * A dense A4 page of prose is around a thousand tokens, and a page that claims
- * to be eight thousand is a model that has started repeating itself — which is
- * the classic vision-model failure on a page of ruled table. Cut it off rather
- * than pay for the loop and then embed it.
- */
+/** Cap on one page's text. Past this a vision model is looping on a ruled table. */
 const MAX_OUTPUT_TOKENS = 4_000;
 
 /**
- * A scanned page read by a hosted vision model.
- *
- * One class for both providers, like `ModelSummariser`, and for the same
- * reason: the difference between them stopped being interesting once the AI
- * SDK normalised how an image is attached to a message. What is left here is
- * the part that is about *this* service — a deadline, a bounded number of
- * pages in the air at once, a refusal recognised as a refusal, and a failure
- * that names the host.
- *
- * **The prompt lives in `ocr.port.ts`**, so that switching provider changes
- * which machine reads the page and not what it was asked to do.
+ * A scanned page read by a hosted vision model. One class for both providers.
+ * The prompt lives in `ocr.port.ts` so switching provider does not change it.
  */
 export class ModelOcr implements Ocr {
   private readonly logger = new Logger(ModelOcr.name);
@@ -50,16 +34,7 @@ export class ModelOcr implements Ocr {
     private readonly concurrency: number,
   ) {}
 
-  /**
-   * Pages in flight together, bounded.
-   *
-   * Sequential would be honest and slow: eleven pages at three seconds each is
-   * most of a parse deadline spent waiting on a socket. Unbounded would be
-   * worse in the other direction — a fifty-page scan opening fifty requests at
-   * once is a rate limit for this document and for every other one the pod is
-   * working on. A handful at a time is the shape that fits inside
-   * `PARSE_TIMEOUT_MS` without making the provider angry.
-   */
+  /** Reads pages with bounded concurrency. */
   async read(pages: readonly PageImage[]): Promise<readonly (PageText | null)[]> {
     const out: (PageText | null)[] = new Array(pages.length).fill(null);
     let next = 0;
@@ -81,14 +56,7 @@ export class ModelOcr implements Ocr {
     return out;
   }
 
-  /**
-   * One page, and a failure that costs one page.
-   *
-   * Nothing thrown from here reaches the parse. A model that refuses one page
-   * of a fifty-page scan should cost that page and not the document — the
-   * blank it leaves is the blank the page already was, and `ocr` on the rows
-   * that did come back still says which of them a machine read.
-   */
+  /** One page; failures return null rather than throwing, so one page is lost, not the document. */
   private async page(image: PageImage): Promise<string | null> {
     try {
       const text = await retryOnce(this.host, 'ocr', async (span) => {
@@ -106,13 +74,9 @@ export class ModelOcr implements Ocr {
             },
           ],
           maxOutputTokens: MAX_OUTPUT_TOKENS,
-          // A transcription has one right answer, and this is the knob that
-          // says so. It does not stop a model inventing a digit — nothing
-          // does, which is why the `ocr` column exists — but sampling for
-          // variety on a page of figures is asking for it.
+          // A transcription has one right answer.
           temperature: 0,
-          // Zero, and the retry is `retryOnce`. The SDK's own ladder would
-          // sleep inside the parse deadline; see `ModelSummariser`.
+          // Retry is `retryOnce`; the SDK's own ladder would sleep inside the deadline.
           maxRetries: 0,
           abortSignal: AbortSignal.timeout(this.timeoutMs),
         });
@@ -152,19 +116,7 @@ export class ModelOcr implements Ocr {
 
 /**
  * A model first, and the offline engine for the pages it did not read.
- *
- * The fallback is **declared, not silent**, which is the distinction this
- * codebase already draws about the embedder and the summariser: a provider
- * named without its credentials refuses to boot rather than quietly becoming a
- * stand-in, because a service that answers with the wrong thing leaves no
- * evidence. Here the evidence is in the data — `ocr` on each chunk names the
- * engine that produced it, so a page Tesseract picked up after the model timed
- * out says `tesseract-eng` and can be found with a `WHERE` — and the boot line
- * says the arrangement out loud.
- *
- * What it is for: a rate limit, a five-minute provider outage, a page the model
- * refused. None of those should turn a scan into eleven blank rows when there
- * is a perfectly good engine sitting in the process.
+ * `ocr` on each chunk names the engine that produced it.
  */
 export class FallbackOcr implements Ocr {
   private readonly logger = new Logger(FallbackOcr.name);
@@ -195,9 +147,7 @@ export class FallbackOcr implements Ocr {
         `${this.secondary.engine} is picking them up. Those chunks will say so in "ocr".`,
     );
 
-    // Each entry carries the engine that produced it, so filling the holes is
-    // an ordinary merge and the column comes out right per page with nothing
-    // reconstructing which half a row came from.
+    // Each entry carries its own engine, so filling the holes is an ordinary merge.
     const second = await this.secondary.read(missed);
     let taken = 0;
 
@@ -218,10 +168,7 @@ export function openAiOcr(settings: OpenAiSettings): ModelOcr {
     settings.model,
     'openai',
     'openai',
-    // `.chat()` for the reason the summariser uses it: an Azure deployment or
-    // a proxy is the case this adapter exists to serve, and chat completions
-    // is the endpoint every one of them implements. Images ride in the message
-    // content either way.
+    // `.chat()`: chat completions is the endpoint every gateway implements.
     openai.chat(settings.model),
     settings.maxPages,
     settings.timeoutMs,

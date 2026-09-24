@@ -6,18 +6,7 @@ import { MediaType } from '../../src/contexts/files/domain/media-type.js';
 import { pdfHandler } from '../../src/contexts/files/domain/formats/pdf.js';
 import { mixedPdf, pdf, scannedPdf } from '../support/pdf.js';
 
-/**
- * Reading the pages a PDF has no text for.
- *
- * The whole feature is a fallback, and every assertion here is about the edge
- * of it rather than about OCR itself: which pages are sent, which are not,
- * what happens when nothing comes back, and what the chunk says about where
- * its text came from. Whether Tesseract can read a fax is Tesseract's business
- * and not something a unit test should be re-litigating.
- *
- * The engine is a stub throughout — no WASM, no model, no network — so this
- * runs in milliseconds and asserts the part this codebase actually wrote.
- */
+/** OCR on the pages a PDF has no text layer for; the engine is a stub throughout. */
 
 /** An engine that reads every page, and remembers what it was given. */
 class StubOcr implements Ocr {
@@ -59,17 +48,10 @@ describe('a PDF with no text layer', () => {
       'page 2 says something',
       'page 3 says something',
     ]);
-    // The provenance every one of these carries to a column.
     expect(parsed.blocks.map((block) => block.ocr)).toEqual(['stub', 'stub', 'stub']);
   });
 
-  /**
-   * A PNG, made without a renderer.
-   *
-   * The signature is the assertion worth making: it says the image XObject was
-   * found, decoded by `pdfjs`, and wrapped by `page-image.ts` — the three steps
-   * that let this work with no canvas and no native module in the image.
-   */
+  /** The PNG signature confirms the image XObject was decoded by `pdfjs` and wrapped by `page-image.ts`. */
   it('hands over each page as a PNG of the right size', async () => {
     const ocr = new StubOcr();
     await pdfHandler.parse({ content: scannedPdf(1, { width: 12, height: 20 }), ...file, ocr });
@@ -95,12 +77,7 @@ describe('a PDF with no text layer', () => {
     ]);
   });
 
-  /**
-   * A page an engine would not read stays exactly as blank as it was.
-   *
-   * The alternative — storing the refusal, or failing the document — would put
-   * an apology in a chunk or throw away the pages that did work.
-   */
+  /** A page the engine declines stays blank rather than storing the refusal. */
   it('leaves a page the engine declined the blank it already was', async () => {
     const ocr = new StubOcr('stub', 20, (page) =>
       page.number === 2 ? null : { text: `page ${page.number}`, engine: 'stub' },
@@ -126,11 +103,7 @@ describe('a PDF that has its own text', () => {
     expect(parsed.blocks[0]?.ocr).toBeUndefined();
   });
 
-  /**
-   * The mixed document, which is the case the narrow condition is for: a scan
-   * stapled into the middle of a text export. Only the scanned page is paid
-   * for, and only its chunks are marked.
-   */
+  /** A scan in the middle of a text export: only the scanned page is OCR-read and marked. */
   it('reads only the page that is a scan', async () => {
     const ocr = new StubOcr();
     const parsed = await pdfHandler.parse({
@@ -149,14 +122,7 @@ describe('a PDF that has its own text', () => {
     expect(parsed.blocks[1]?.text).toBe('page 2 says something');
   });
 
-  /**
-   * A page that is blank because it is blank.
-   *
-   * There is no photograph to lift, so there is nothing to send and nothing to
-   * pay for — and the page stays the blank the chunker already records as a
-   * fact. It is also the honest edge of the trick `page-image.ts` plays: no
-   * renderer means no image, no OCR.
-   */
+  /** A page with no image to lift sends nothing and stays blank. */
   it('sends nothing for an empty page that is not a scan', async () => {
     const ocr = new StubOcr();
     const parsed = await pdfHandler.parse({
@@ -170,12 +136,7 @@ describe('a PDF that has its own text', () => {
   });
 });
 
-/**
- * The column, which is the point of carrying provenance this far.
- *
- * `WHERE ocr IS NULL` has to mean "text the document actually contained", so
- * the chunker must not lose the mark on its way from a block to a row.
- */
+/** The chunker must carry the ocr mark from a block onto its chunks. */
 describe('what a chunk says about where its text came from', () => {
   it('carries the engine onto every chunk of an OCR-read page', async () => {
     const parsed = await pdfHandler.parse({
@@ -212,14 +173,7 @@ describe('what a chunk says about where its text came from', () => {
   });
 });
 
-/**
- * A model in front, and the offline engine for what it missed.
- *
- * The arrangement `INGOT_OCR=openai` with a tessdata directory buys. What
- * matters is that the result is per page: a document can come back part
- * model-read and part Tesseract-read, and the column has to say which for each
- * of them rather than for the deployment.
- */
+/** A model first, a fallback engine for the pages it missed; the result is per page. */
 describe('a fallback behind a model', () => {
   it('asks the second engine only about the pages the first did not read', async () => {
     const model = new StubOcr('model', 20, (page) =>
@@ -245,7 +199,6 @@ describe('a fallback behind a model', () => {
       'tesseract read 2',
       'model read 3',
     ]);
-    // The half of this that ends up in a column, and the reason for it.
     expect(read.map((found) => found?.engine)).toEqual(['model', 'tesseract-eng', 'model']);
   });
 

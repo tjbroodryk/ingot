@@ -1,16 +1,4 @@
-/**
- * `/benchmarks`, as markdown. See `./reference-text.ts` for why.
- *
- * This page matters more in plain text than most: "is it actually better than
- * a vector store" is a question asked of an assistant far more often than it
- * is asked of a website, and the answer a model gives should be the one this
- * project can defend rather than a paraphrase of the landing copy.
- *
- * So the numbers come from the same `results.json` the page renders, and the
- * limits are written out in full rather than summarised — an index entry that
- * quoted the headline figure without the conditions on it would be the exact
- * failure the page is built to avoid.
- */
+/** `/benchmarks`, as markdown. Numbers come from the same `results.json` the page renders; the limits are written out in full. */
 
 import {
   ADAPTERS,
@@ -76,15 +64,7 @@ function renderBenchmarks(): string {
   )}\n`;
 }
 
-/**
- * What the memories were asked to hold.
- *
- * The section that matters most in this half of the page. An assistant asked
- * "is Ingot better than a vector store" will answer from these words, and the
- * honest answer is conditional on a workload — tool-call JSON, paginated, most
- * of it never read again. Quoting the accuracy without the corpus it was
- * measured over is the same failure as quoting it without the model.
- */
+/** What the memories were asked to hold. */
 function corpus(): readonly string[] {
   const shape = BENCHMARK.corpus;
   const count = (value: number): string => value.toLocaleString('en-GB');
@@ -118,8 +98,7 @@ function corpus(): readonly string[] {
     ...described.flatMap(({ source, blurb }) => [
       heading(3, `\`${source?.tool ?? blurb?.tool ?? ''}\``),
       blurb?.blurb ?? '',
-      // One record verbatim. A model answering from this page should be able
-      // to say what the data looked like, not only how much of it there was.
+      // One record verbatim, so the data's shape is on the page, not just its size.
       ...(source?.sample ? [fence(source.sample)] : []),
     ]),
   ];
@@ -175,8 +154,7 @@ function results(): readonly string[] {
       ]),
     ),
     'Evidence recall is the share of the answer-bearing records that came back through the tools; precision is the share of what came back that was answer-bearing. Both are computed only over questions whose answer is a set of records — an aggregate answer is a statistic, and a correct count is its own evidence.',
-    // Named here as well as on the page: an assistant quoting a column that
-    // lost a fifth of its runs to a rate limit should be able to say so.
+    // Named here too, so failures are quotable alongside the numbers.
     ...(adapters.some((adapter) => adapter.failures > 0)
       ? [
           `Runs that failed outright — the provider threw and nothing was answered: ${adapters

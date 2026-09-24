@@ -1,23 +1,9 @@
 /**
- * Pulling text out of OOXML without an XML parser, deliberately.
+ * Pulling text out of OOXML with regexes, not an XML parser.
  *
- * **This is a security decision before it is a dependency one.** A real XML
- * parser handed an untrusted document is an entity-expansion target — the
- * billion laughs, and external entities that turn a document into a request for
- * a file on this host or a URL on this network. Defending against that means
- * knowing which knobs a given parser exposes and getting every one of them
- * right, for ever, across upgrades.
- *
- * A regex over a well-known element name cannot expand an entity, cannot
- * dereference one, and cannot be talked into opening anything. What it gives up
- * is generality — it works because OOXML's text lives in exactly two elements
- * and this only ever wants those — and generality is precisely what is not
- * wanted when reading somebody else's upload.
- *
- * The cost is real and worth naming: this does not understand namespaces, so a
- * producer that emitted `<x:t>` instead of `<a:t>` would read as empty. Every
- * tool anybody actually uses writes the conventional prefixes, and a deck that
- * comes out with no text is visible immediately rather than subtly wrong.
+ * A regex over a known element name cannot expand or dereference an entity — the
+ * attack an untrusted XML parser exposes. The cost: no namespace support, so a
+ * producer emitting `<x:t>` instead of `<a:t>` would read as empty.
  */
 
 /** Text runs in a DrawingML shape — `<a:t>`, which is where slide text lives. */
@@ -26,15 +12,7 @@ const RUN = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g;
 /** Paragraph ends. A slide's lines are `<a:p>` elements, not newlines. */
 const PARAGRAPH = /<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g;
 
-/**
- * One shape's text, with its paragraphs kept apart.
- *
- * Paragraphs matter because a slide's body is a bullet list and the bullets are
- * separate `<a:p>` elements with no whitespace between them in the markup.
- * Concatenating the runs alone turns "Revenue up 4%" and "Costs flat" into
- * "Revenue up 4%Costs flat", which is one nonsense token where there were two
- * real lines — and it is the embedding that pays for it.
- */
+/** One shape's text, with its paragraphs kept apart. */
 export function textOf(xml: string): string {
   const lines: string[] = [];
 
@@ -43,8 +21,7 @@ export function textOf(xml: string): string {
     if (line.length > 0) lines.push(line);
   }
 
-  // A fragment with no paragraphs at all — a title placeholder written
-  // unusually, say — still has its runs read rather than coming back empty.
+  // A fragment with no paragraphs still has its runs read.
   return lines.length > 0 ? lines.join('\n') : runsIn(xml);
 }
 
@@ -55,12 +32,8 @@ function runsIn(xml: string): string {
 }
 
 /**
- * The five predefined entities and numeric references, and nothing else.
- *
- * Nothing else is the point. A document that declares its own entity gets it
- * left as literal text rather than resolved, which is the safe direction to be
- * wrong in: a stray `&foo;` in a chunk is cosmetic, and resolving one is how a
- * parser gets talked into reading `/etc/passwd`.
+ * The five predefined entities and numeric references, and nothing else. A
+ * declared entity is left literal rather than resolved.
  */
 export function decode(text: string): string {
   return text

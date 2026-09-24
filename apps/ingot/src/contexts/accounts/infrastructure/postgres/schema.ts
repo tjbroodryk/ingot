@@ -1,9 +1,6 @@
 import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
-/**
- * Tenants. `slug` is unique because it is addressable — it is the first
- * segment of every route in the service.
- */
+/** Tenants. `slug` is unique; it is the first path segment of every route. */
 export const account = pgTable(
   'account',
   {
@@ -17,15 +14,8 @@ export const account = pgTable(
 );
 
 /**
- * Credentials, as digests.
- *
- * `digest` is unique across the whole table, not merely within an account:
- * that is what makes authentication one indexed lookup rather than a scan, and
- * it also means two accounts cannot end up sharing a key even in principle.
- *
- * There is deliberately no index on `revoked_at`. Revoked keys are walked and
- * rejected rather than filtered out in SQL, so that "revoked" and "never
- * existed" take the same time to answer.
+ * Credentials, as digests. `digest` is unique table-wide, making authentication
+ * one indexed lookup. No index on `revoked_at`: revoked keys are walked, not filtered.
  */
 export const accountKey = pgTable(
   'account_key',

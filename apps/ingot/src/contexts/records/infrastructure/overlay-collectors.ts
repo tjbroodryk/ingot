@@ -4,16 +4,9 @@ import { MAX_RECEIPT_ATTEMPTS } from '../application/commands/claim-receipt.comm
 import { OVERLAY_STORE, type OverlayStore } from '../application/ports/overlay-store.port.js';
 
 /**
- * The numbers that say whether the background is keeping up.
- *
- * Registered here rather than with the pool collector because they count rows
- * in tables this context owns — `observability/` should not have to know what
- * an overlay is to report on one.
- *
- * Read at scrape time from Postgres rather than maintained by increments, for
- * the reason gauges usually are: an incremented gauge drifts, and drifts
- * plausibly. If the depth climbs steadily, roll-up has stopped; if pending
- * embeddings climb, the embedder has.
+ * Gauges for whether the background is keeping up. Here rather than with the
+ * pool collector since they count rows in this context's tables. Read at scrape
+ * time rather than incremented, since an incremented gauge drifts.
  */
 @Injectable()
 export class OverlayCollectors implements OnApplicationBootstrap {
@@ -38,10 +31,9 @@ export class OverlayCollectors implements OnApplicationBootstrap {
       );
     });
 
-    // Kept apart from the pending count on purpose: an abandoned receipt is not
-    // a backlog that will clear, it is a caller holding a query that will stay
-    // empty for good. Summed into one gauge, a growing pile of those would
-    // read as a sweeper falling behind and be waited out.
+    // Kept apart from the pending count: an abandoned receipt is not a backlog
+    // that will clear. Summed in, a growing pile would read as the sweeper
+    // falling behind and be waited out.
     Metrics.ReceiptsAbandoned.collectWith(async (gauge) => {
       await this.safely('abandoned receipts', async () =>
         gauge.set({}, await this.overlay.receiptsAbandoned(MAX_RECEIPT_ATTEMPTS)),
@@ -50,10 +42,8 @@ export class OverlayCollectors implements OnApplicationBootstrap {
   }
 
   /**
-   * A collector that throws fails the whole scrape, not just its own series —
-   * so a database blip would take the pool gauge and every application metric
-   * with it, at exactly the moment they matter. The last value stands until a
-   * scrape gets an answer.
+   * Swallows a read failure, since a throwing collector fails the whole scrape.
+   * The last value stands until a scrape gets an answer.
    */
   private async safely(what: string, read: () => Promise<void>): Promise<void> {
     try {

@@ -22,12 +22,8 @@ const NOTES_REL =
   /<Relationship\b[^>]*Type="[^"]*\/notesSlide"[^>]*Target="([^"]+)"|<Relationship\b[^>]*Target="([^"]+)"[^>]*Type="[^"]*\/notesSlide"/;
 
 /**
- * A shape on a slide, with the placeholder role the layout gave it.
- *
- * `<p:sp>` is the element; the role is on a `<p:ph type="…">` inside its
- * non-visual properties. Splitting on the closing tag rather than matching
- * balanced elements is safe here because `<p:sp>` does not nest inside itself
- * in any slide any tool produces.
+ * A shape on a slide. Split on the closing `</p:sp>` rather than matching
+ * balanced elements, which is safe since `<p:sp>` does not nest.
  */
 const SHAPE = /<p:sp(?:\s[^>]*)?>([\s\S]*?)<\/p:sp>/g;
 
@@ -37,36 +33,16 @@ const TITLE_ROLE = /<p:ph[^>]*type="(?:ctrTitle|title)"/;
 /**
  * A PowerPoint deck, read as one chunk per slide.
  *
- * **A slide is the easiest structural boundary in any format and the one it
- * would be worst to ignore.** It is a unit somebody deliberately authored:
- * merging two produces a chunk that exists in no deck, and splitting one
- * produces half an argument. Because slides are small, a budget-driven splitter
- * merges them constantly — which is exactly why `STRATEGIES` gives this format
- * `Boundary.Page` with no overlap, and why every block here is `hard`.
- *
- * Three decisions inside a slide are worth stating, because they are what makes
- * the chunk worth embedding rather than merely correct:
- *
- * - **The title becomes the heading**, so `carryHeadings` puts it at the top of
- *   the embedded text. A slide body reading "Up 4% year on year" ranks against
- *   nothing anybody would type; with "Q3 revenue" attached it ranks against the
- *   question actually being asked.
- * - **Speaker notes join the slide.** They are usually the sentence the slide
- *   is missing — the deck says "Up 4%" and the notes say why — and they are in
- *   a different part of the archive, so nothing else would ever bring them
- *   together.
- * - **Paragraphs are kept apart.** A bulleted list is separate `<a:p>` elements
- *   with no whitespace between them, so concatenating runs turns two real lines
- *   into one nonsense token.
+ * A slide is an authored unit, so every block is `hard` and
+ * `Boundary.Page` keeps it whole. The title becomes the heading, speaker notes
+ * join the slide, and paragraphs are kept apart.
  */
 export const pptxHandler: FormatHandler = {
   mediaType: MediaType.Pptx,
   extensions: ['pptx'],
   shape: ByteShape.Zip,
   tabular: false,
-  // One slide, one chunk, always — and never merged with the slide beside it,
-  // whatever the budget says. Nothing to overlap either: a slide does not
-  // continue into the next one.
+  // One slide, one chunk; never merged and nothing to overlap.
   chunking: { boundary: Boundary.Page, overlap: false, carryHeadings: true },
 
   async parse(input: ParseInput): Promise<ParsedDocument> {
@@ -75,11 +51,7 @@ export const pptxHandler: FormatHandler = {
       (name) => SLIDE.test(name) || NOTES.test(name) || RELS.test(name) || name === CORE,
     );
 
-    // Numerically, never lexically. A real deck came back `slide1, slide10,
-    // slide11, …, slide2`, and a lexical sort would have numbered thirteen
-    // slides in an order nobody's deck is in — invisibly, since every chunk
-    // would still look perfectly well-formed. `ordinal` is what neighbour
-    // expansion joins on, so it has to mean what the deck means.
+    // Numerically, never lexically: `slide10` must not sort before `slide2`.
     const slides = byNumber([...parts.keys()].filter((name) => SLIDE.test(name)));
 
     if (slides.length === 0) {
@@ -95,8 +67,7 @@ export const pptxHandler: FormatHandler = {
     return {
       blocks,
       pages: slides.length,
-      // The deck's own title if it recorded one, else the first slide's. Never
-      // invented: a model may write a real one later, and that is a rung above.
+      // The deck's declared title, else the first slide's. Never invented.
       title: declaredTitle(parts) ?? blocks[0]?.headings[0] ?? null,
       rows: null,
     };
@@ -112,9 +83,7 @@ function slideBlock(parts: Map<string, string>, name: string, number: number): B
   const spoken = notes ? textOf(notes).trim() : '';
 
   return {
-    // The notes are marked rather than run together with the body. A chunk that
-    // quietly mixes what is on the slide with what the presenter meant to say is
-    // one nobody can quote from with confidence.
+    // Notes are marked, not run together with the body.
     text: [body, spoken.length > 0 ? `Speaker notes: ${spoken}` : '']
       .filter((part) => part.length > 0)
       .join('\n\n'),
@@ -127,23 +96,11 @@ function slideBlock(parts: Map<string, string>, name: string, number: number): B
 }
 
 /**
-   * A slide's speaker notes, found the way the format says to find them.
-   *
-   * **`notesSlide7.xml` is not the notes for `slide7.xml`**, and assuming it is
-   * was a bug this very nearly shipped with. The parts are numbered in the order
-   * they were *created*, so a deck where only slides 2, 5 and 9 have notes has
-   * `notesSlide1`, `notesSlide2` and `notesSlide3` — and a positional guess
-   * would have quietly stapled slide 9's notes onto slide 2. That text would
-   * then be chunked, embedded and returned as though somebody had said it about
-   * the wrong slide, with nothing anywhere reporting a problem.
-   *
-   * The mapping is in `ppt/slides/_rels/slideN.xml.rels`, which is the file
-   * whose entire job is to say what this slide points at. Reading it costs one
-   * more small part per slide and is the only correct answer.
-   *
- * The positional guess survives as a fallback for a deck with no rels part at
- * all — some minimal generators omit them — where it is the only thing left to
- * try and is right whenever every slide has notes.
+ * A slide's speaker notes, via `slideN.xml.rels`.
+ *
+ * The parts are numbered by creation order, not slide order, so a positional
+ * guess would staple the wrong notes to a slide. That guess survives only as a
+ * fallback for a deck with no rels part.
  */
 function notesFor(parts: Map<string, string>, slide: string): string | undefined {
   const rels = parts.get(`${slide.replace('ppt/slides/', 'ppt/slides/_rels/')}.rels`);
@@ -151,8 +108,7 @@ function notesFor(parts: Map<string, string>, slide: string): string | undefined
   if (rels) {
     const found = NOTES_REL.exec(rels);
     const target = found?.[1] ?? found?.[2];
-    // No relationship of that type is the ordinary case for a slide with no
-    // notes, and it is an answer rather than a reason to go guessing.
+    // No relationship of that type: the slide has no notes.
     if (!target) return undefined;
     return parts.get(resolve(target));
   }
@@ -173,12 +129,8 @@ function titleOf(xml: string): string | null {
 }
 
 /**
- * Everything on the slide except the title, which is carried separately.
- *
- * Read shape by shape rather than over the whole slide at once, so that two text
- * boxes do not run into each other — and so the title can be left out without a
- * string replace, which would also have removed a body line that happened to
- * repeat it.
+ * Everything on the slide except the title, read shape by shape so two text
+ * boxes do not run into each other.
  */
 function bodyOf(xml: string, title: string | null): string {
   const parts: string[] = [];
@@ -191,9 +143,7 @@ function bodyOf(xml: string, title: string | null): string {
     if (text.length > 0) parts.push(text);
   }
 
-  // A slide whose text is all outside `<p:sp>` — inside a table or a graphic
-  // frame — would otherwise come back empty. Falling back to the whole slide
-  // costs a little ordering and saves the content.
+  // Fall back to the whole slide for text outside any `<p:sp>`.
   if (parts.length === 0) {
     const whole = textOf(xml).trim();
     return title ? whole.replace(title, '').trim() : whole;
@@ -201,24 +151,15 @@ function bodyOf(xml: string, title: string | null): string {
   return parts.join('\n\n');
 }
 
-/**
- * The deck's declared title. Often absent — a real deck had no `core.xml` at all
- * — so this is a bonus rather than something to rely on.
- */
+/** The deck's declared title, often absent. */
 function declaredTitle(parts: Map<string, string>): string | null {
   const core = parts.get(CORE);
   return core ? elementText(core, 'title') : null;
 }
 
 /**
- * A relationship target, resolved against `ppt/slides/` where they are written.
- *
- * Targets are relative — `../notesSlides/notesSlide1.xml` — so the `..` has to
- * be walked rather than pattern-matched. Segments that would climb above the
- * archive root are dropped rather than followed: these names are only ever used
- * as keys into a map read out of the same archive, so nothing here can reach a
- * filesystem, but a target that resolves to nothing is a better outcome than
- * one that resolves to something unexpected.
+ * A relative relationship target, resolved against `ppt/slides/`. Segments that
+ * climb above the root are dropped; these names only key into a map.
  */
 function resolve(target: string): string {
   const segments = 'ppt/slides'.split('/');

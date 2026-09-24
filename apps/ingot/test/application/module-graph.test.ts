@@ -32,17 +32,8 @@ import { IngotMcpServer } from '../../src/mcp/ingot-server.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 
 /**
- * The real `AppModule`, compiled.
- *
- * Every other test in this suite assembles only the modules it needs, which is
- * what keeps them quick and what makes them blind to this: a port bound in one
- * module and injected in another fails here rather than at four in the morning
- * on the first request that happens to need it.
- *
- * Adding a context, a port, or a cross-context adapter means adding its token
- * to the table below. `CLAUDE.md` is explicit that this is the alternative to
- * booting the server to check your work — a boot proves it once, on one
- * machine, for as long as somebody is looking at it.
+ * Compiles the real `AppModule` and resolves every port, catching a token bound
+ * in one module but injected in another. Add new tokens to the table below.
  */
 describe('the real module graph', () => {
   let app: TestingModule;
@@ -63,9 +54,7 @@ describe('the real module graph', () => {
     ['the unit of work', UNIT_OF_WORK],
     ['the clock', CLOCK],
     ['the account repository', ACCOUNT_REPOSITORY],
-    // The port the guard resolves, and the digest lookup every mode composes.
-    // Both, because binding one without the other is a service that either
-    // cannot authenticate or cannot honour a minted key.
+    // Both the guard's port and the digest lookup behind it.
     ['the authenticator the guards use', AUTHENTICATOR],
     ['the key lookup behind it', AccountAuthenticator],
     ['the ingot repository', INGOT_REPOSITORY],
@@ -78,22 +67,17 @@ describe('the real module graph', () => {
     ['the embedder', EMBEDDER],
     ['the summariser', SUMMARISER],
     ['the receipt notifier', RECEIPT_NOTIFIER],
-    // All three halves of delivery, because binding one without the others is
-    // a service that either announces receipts nothing sends, or sends them
-    // with no settings to say where. The outbox is bound in `OverlayModule`
-    // and the transport in `DeliveryModule` — two modules away from the worker
-    // that needs both, which is exactly the arrangement this file exists for.
+    // All three parts of delivery; the outbox and transport are bound in
+    // different modules from the worker that needs both.
     ['the delivery outbox', DELIVERY_OUTBOX],
     ['the delivery transport', DELIVERY_TRANSPORT],
     ['the delivery settings', DELIVERY_SETTINGS],
-    // The three workers the sweepers call directly rather than dispatching, so
-    // that nobody else's model or endpoint is called while a transaction is open.
+    // The three workers the sweepers call directly rather than dispatching.
     ['the embed worker', EmbedWorker],
     ['the receipt worker', ReceiptWorker],
     ['the delivery worker', DeliveryWorker],
-    // Not a port, but bound the same way and for the same reason: a constructor
-    // default is not optional to Nest, so an unbound limit is a container that
-    // refuses to build the thing every wake goes through.
+    // Not a port, but bound the same way: a constructor default is not optional
+    // to Nest.
     ['the background concurrency bound', BACKGROUND_CONCURRENCY],
     ['the MCP bridge', IngotMcpServer],
   ])('resolves %s', (_name, token) => {
@@ -104,8 +88,7 @@ describe('the real module graph', () => {
     for (const kind of Object.values(SweptKind)) {
       const sweeper = SWEEPERS[kind];
       expect(sweeper).toBeDefined();
-      // Resolvable, not merely listed: a sweeper whose dependencies are not
-      // bound is a schedule that stops on its first tick.
+      // Resolvable, not merely listed.
       expect(app.get(sweeper, { strict: false })).toBeDefined();
       expect(typeof app.get(sweeper, { strict: false }).tick).toBe('function');
     }

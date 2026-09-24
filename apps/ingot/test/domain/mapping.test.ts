@@ -4,13 +4,7 @@ import { RowMapping } from '../../src/contexts/records/domain/row-mapping.vo.js'
 import { coerce } from '../../src/contexts/records/domain/coercion.js';
 import { parsePath, readPath } from '../../src/contexts/records/domain/json-path.js';
 
-/**
- * The mapping DSL, with no database anywhere near it.
- *
- * This is where a caller's mistakes are supposed to surface — at `/add`, while
- * they are still holding the response — so the interesting assertions are all
- * about *refusing* well, not about the happy path.
- */
+/** The mapping DSL: where a caller's mistakes surface, so refusing well is the point. */
 const context = {
   rowId: () => 'row_fixed',
   at: new Date('2026-08-26T09:00:00Z'),
@@ -24,8 +18,7 @@ describe('paths', () => {
   });
 
   it('reads a missing step as nothing rather than throwing', () => {
-    // A tool result that omitted a field is an ordinary thing; the column just
-    // reads null. Throwing here would make an absent field a failed write.
+    // A missing field reads null; throwing would make it a failed write.
     expect(readPath({ a: {} }, parsePath('$.a.b.c', 'x'))).toBeUndefined();
   });
 
@@ -40,13 +33,8 @@ describe('paths', () => {
   });
 
   /**
-   * The quoted subscript, which arrived with `/file` and a spreadsheet.
-   *
-   * `Invoice #`, `Total (USD)` and `Ship Date` are what real header rows say,
-   * and every one of them is a key the caller has no choice about — it is in
-   * the file they were sent. Widening the dotted grammar to admit them would
-   * have made `$.a.b` ambiguous about where a key ends, so this is the escape
-   * hatch instead, and it is the one JSONPath itself uses.
+   * Quoted subscripts reach keys the dotted form can't spell (`Invoice #`,
+   * `Total (USD)`) — JSONPath's own escape hatch.
    */
   it('reaches a key the dotted form cannot spell', () => {
     const blob = { 'Invoice #': 'ACME-4471', 'Total (USD)': 18400 };
@@ -56,8 +44,7 @@ describe('paths', () => {
   });
 
   it('keeps a quoted key and a numeric index apart', () => {
-    // A JSON object may perfectly well have `"0"` as a field name, and an array
-    // never does. Collapsing the two forms would make one of them unreachable.
+    // An object key `"0"` and an array index `0` are different reachable things.
     expect(readPath({ '0': 'by key' }, parsePath('$["0"]', 'x'))).toBe('by key');
     expect(readPath(['by index'], parsePath('$[0]', 'x'))).toBe('by index');
   });
@@ -97,8 +84,7 @@ describe('coercion', () => {
   });
 
   it('refuses an object in a text column rather than stringifying it', () => {
-    // Silently stringifying gives a column full of surprises that only show up
-    // in a query, months later, to somebody else.
+    // Silently stringifying would hide surprises until a later query.
     expect(() => coerce({ a: 1 }, ColumnType.Varchar, 's')).toThrow(/declare this column JSON/);
     expect(coerce({ a: 1 }, ColumnType.Json, 's')).toBe('{"a":1}');
   });

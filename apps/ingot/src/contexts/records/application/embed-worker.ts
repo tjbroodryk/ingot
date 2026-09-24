@@ -12,17 +12,10 @@ import type { PendingEmbedding } from './ports/overlay-store.port.js';
 const PASSES = 8;
 
 /**
- * Embeds one batch: claim, call the model, store the vectors.
- *
- * The same shape as `ReceiptWorker` and for the same reason. `Dispatcher.send`
- * opens a transaction around every command, so a single command that claimed
- * *and* embedded would hold one of ten pooled connections across an HTTP round
- * trip to OpenAI or Vertex — a background job taking the foreground with it.
- *
- * That was invisible for as long as the only embedder ran in-process and
- * finished in microseconds. It stops being invisible the moment somebody sets
- * `INGOT_EMBEDDER`, which is what makes this worth splitting now rather than
- * when the graphs get strange.
+ * Embeds one batch: claim, call the model, store the vectors. A service, not a
+ * command: `Dispatcher.send` wraps each command in a transaction, so a single
+ * command that claimed and embedded would hold a pooled connection across the
+ * embedder call.
  *
  * ```
  * ClaimEmbeddings   tx ~1ms    leases up to 128 texts
@@ -30,9 +23,8 @@ const PASSES = 8;
  * SaveEmbeddings    tx ~5ms    the vectors, and out of the queue
  * ```
  *
- * Never call it from inside a command: `PgUnitOfWork.run` joins an open
- * transaction rather than nesting, so the three dispatches would land back
- * inside the one this exists to avoid.
+ * Never call from inside a command: `PgUnitOfWork.run` joins an open transaction
+ * rather than nesting.
  */
 @Injectable()
 export class EmbedWorker {
@@ -44,17 +36,9 @@ export class EmbedWorker {
   ) {}
 
   /**
-   * Works the queue until it is empty or the pass is spent.
-   *
-   * The one implementation of "embed what is waiting", called by the sweeper on
-   * its timer and by `/add` the moment a write commits. It lives here rather
-   * than in the sweeper so those two cannot come to disagree about what a pass
-   * is — and because "how much work to do in one go" is a property of the work,
-   * not of what woke it up.
-   *
-   * Two passes arriving at once is safe and is expected: the claim leases its
-   * rows with `FOR UPDATE SKIP LOCKED`, so they take different work rather than
-   * the same work twice.
+   * Works the queue until it is empty or the pass is spent. Called by the
+   * sweeper and by `/add` when a write commits. Two passes at once is safe: the
+   * claim leases with `FOR UPDATE SKIP LOCKED`.
    */
   async drain(): Promise<Drained> {
     let embedded = 0;
@@ -63,12 +47,9 @@ export class EmbedWorker {
     for (let pass = 0; pass < PASSES; pass++) {
       const done = await this.next();
       embedded += done;
-      // A short batch means the queue is empty; stop rather than spending the
-      // rest of the pass asking again.
+      // A short batch means the queue is empty; stop.
       if (done < EMBED_BATCH) break;
-      // A full batch on the last pass means the queue outlasted this drain.
-      // Saying so is what gets another one booked immediately rather than at
-      // the next sweep — see `Drained`.
+      // A full batch on the last pass means the queue outlasted this drain; see `Drained`.
       more = pass === PASSES - 1;
     }
 
@@ -89,9 +70,8 @@ export class EmbedWorker {
       vectors = await this.embedder.embed(pending.map((entry) => entry.text));
     } catch (error) {
       this.measure(Outcome.Error, started);
-      // Handed back rather than dropped: a model that is down is a model that
-      // will be up, and the next tick tries again. Dropping the work here
-      // would leave a column permanently and silently empty.
+      // Handed back rather than dropped, so the next tick retries; dropping
+      // would leave a column silently empty.
       await this.dispatcher.send(new ReleaseEmbeddings(pending));
       throw error;
     }
@@ -99,9 +79,8 @@ export class EmbedWorker {
 
     const embedded = pending.flatMap<EmbeddedText>((entry, at) => {
       const vector = vectors[at];
-      // A model that returned fewer vectors than texts is a model behaving
-      // badly; skipping the mismatch pairs nobody's text with somebody else's
-      // vector, and the release below puts those rows back.
+      // Fewer vectors than texts: skip the unpaired rows so no text gets the
+      // wrong vector; the release below requeues them.
       return vector ? [{ ...entry, vector }] : [];
     });
 
@@ -114,8 +93,8 @@ export class EmbedWorker {
       await this.dispatcher.send(new ReleaseEmbeddings(short));
     }
 
-    // The space, not just the model name: the width is half of what makes two
-    // vectors comparable, and the memory records both.
+    // The space, not just the model name: dimensions are part of what makes two
+    // vectors comparable.
     return this.dispatcher.send(
       new SaveEmbeddings(embedded, {
         model: this.embedder.model,

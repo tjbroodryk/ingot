@@ -12,35 +12,9 @@ import { GCS_ENDPOINT, type GcsSettings } from './storage-settings.js';
 
 /**
  * The base tier in a Google Cloud Storage bucket, held by a service account.
- *
- * This adapter is shaped by one fact about DuckDB, established by running it
- * rather than by reading about it (`scripts/spike-duckdb.ts` keeps checking):
- *
- *   **DuckDB cannot write to GCS with a service account.** Its `gcs` secret
- *   takes an HMAC interoperability key and nothing else — there is no
- *   `credential_chain` provider for it — and the other way in, a bearer token
- *   on an `https://` URL, is read-only: `COPY … TO 'https://…'` answers
- *   "Writing to HTTP files not implemented".
- *
- * An HMAC key is a static secret somebody has to mint, store and rotate, which
- * is exactly what a workload identity exists to avoid. So the two directions
- * are split rather than forced through one credential:
- *
- *  - **Reads stay in DuckDB**, over `https://storage.googleapis.com/…` with an
- *    access token installed as an HTTP secret. That keeps the property the
- *    whole engine rests on — projections and filters are pushed into the
- *    Parquet and the bytes never pass through this process.
- *  - **Writes go through the client library**: DuckDB copies to a scratch file
- *    on local disk, and `commit` uploads it. A roll-up is a handful of large
- *    sequential files, so the round trip through disk costs little, and it is
- *    the only thing that works.
- *
- * The credential is whatever Application Default Credentials find: the
- * metadata server under GKE Workload Identity, `GOOGLE_APPLICATION_CREDENTIALS`
- * pointing at a mounted key file, or a developer's `gcloud auth
- * application-default login`. Nothing here reads a credential out of our own
- * configuration, which is why `INGOT_GCS_BUCKET` is the only variable this
- * driver needs.
+ * DuckDB cannot write to GCS with a service account, so reads go through DuckDB
+ * over `https://` with a bearer token and writes go through the client library
+ * via a scratch file. The credential is whatever Application Default Credentials find.
  */
 @Injectable()
 export class GcsObjectStore implements ObjectStore {
@@ -48,11 +22,7 @@ export class GcsObjectStore implements ObjectStore {
   private readonly storage: Storage;
   private staging?: Promise<string>;
 
-  /**
-   * The client is a parameter so a test can hand in one pointed at an
-   * emulator with a stubbed credential. Production never passes it: the whole
-   * point of this driver is that the credential is found rather than supplied.
-   */
+  /** Production omits `storage` and lets the credential be found. */
   constructor(
     private readonly settings: GcsSettings,
     storage?: Storage,
@@ -61,12 +31,8 @@ export class GcsObjectStore implements ObjectStore {
   }
 
   /**
-   * The XML API URL for an object.
-   *
-   * Deliberately not `gs://`. That scheme sends DuckDB down its GCS provider,
-   * which signs with an HMAC key it does not have; the same object over
-   * `https://` is served by the same API and authenticates with the token
-   * below.
+   * The XML API URL for an object. Not `gs://`: that sends DuckDB down its GCS
+   * provider, which needs an HMAC key; `https://` uses the bearer token instead.
    */
   uri(key: string): string {
     return `${this.settings.endpoint}/${this.settings.bucket}/${key}`;
@@ -78,13 +44,9 @@ export class GcsObjectStore implements ObjectStore {
     return [
       'INSTALL httpfs',
       'LOAD httpfs',
-      // Scoped to this bucket rather than to the host, so a URL naming
-      // somebody else's bucket does not get handed our token.
-      //
-      // The token is safe to leave in the session: `duckdb_secrets()` reports
-      // `bearer_token` redacted, and a caller's SQL cannot run until after the
-      // lockdown anyway. Both halves of that are asserted in the spike, because
-      // the first is a property of DuckDB rather than of this code.
+      // Scoped to this bucket so a URL naming another bucket isn't handed our
+      // token. Safe to leave in the session: `bearer_token` is redacted in
+      // `duckdb_secrets()`, and caller SQL runs only after lockdown.
       `CREATE OR REPLACE SECRET ingot_base (TYPE HTTP, BEARER_TOKEN ${quote(token)}, ` +
         `SCOPE ${quote(`${this.settings.endpoint}/${this.settings.bucket}/`)})`,
     ];
@@ -103,9 +65,7 @@ export class GcsObjectStore implements ObjectStore {
               .upload(scratch, { destination: key, resumable: true }),
           );
         } finally {
-          // Whether or not it uploaded: the scratch copy is not the record of
-          // anything, and a roll-up that leaves one behind on every failure
-          // fills the disk it needs for the next one.
+          // Remove the scratch copy either way; it's not the record of anything.
           await rm(scratch, { force: true });
         }
       },
@@ -115,15 +75,7 @@ export class GcsObjectStore implements ObjectStore {
     };
   }
 
-  /**
-   * Bytes straight at the object, with no staging directory in the way.
-   *
-   * The round trip through disk that `beginWrite` does exists because DuckDB
-   * cannot write to GCS with a service account and has to be given a local
-   * path. Nothing about that applies here: the client library authenticates
-   * with the same credential the rest of this adapter uses, and we are holding
-   * the bytes already.
-   */
+  /** Bytes straight at the object; no staging, since the client library writes GCS directly and we hold the bytes. */
   async put(key: string, body: Buffer): Promise<void> {
     await upstream('gcs', 'save_object', () =>
       this.storage.bucket(this.settings.bucket).file(key).save(body, { resumable: false }),
@@ -151,9 +103,8 @@ export class GcsObjectStore implements ObjectStore {
   async remove(keys: readonly string[]): Promise<void> {
     if (keys.length === 0) return;
 
-    // There is no batch delete in this API, so it is one request per object.
-    // `ignoreNotFound` because removing what is already gone is the outcome
-    // asked for, and a retried compaction reaps the same generation twice.
+    // No batch delete in this API, so one request per object. `ignoreNotFound`,
+    // since removing what's gone is the outcome and a retried compaction reaps twice.
     await upstream('gcs', 'delete_objects', () =>
       Promise.all(
         keys.map((key) =>
@@ -164,8 +115,7 @@ export class GcsObjectStore implements ObjectStore {
   }
 
   async removePrefix(prefix: string): Promise<void> {
-    // The trailing slash is load bearing: `removePrefix('a/b')` must not take
-    // `a/bc`, and an ingot id is a prefix of another one by luck alone.
+    // Trailing slash is load-bearing: `removePrefix('a/b')` must not take `a/bc`.
     await upstream('gcs', 'delete_prefix', () =>
       this.storage.bucket(this.settings.bucket).deleteFiles({ prefix: `${prefix}/`, force: true }),
     );
@@ -177,20 +127,14 @@ export class GcsObjectStore implements ObjectStore {
   }
 
   /**
-   * An access token for the service account this pod runs as.
-   *
-   * Minted per session rather than cached here, because the auth library
-   * already caches one until shortly before it expires — a second cache in
-   * front of it would only ever be the one holding a token that has died.
+   * An access token for the service account. Minted per session, not cached: the
+   * auth library already caches until near expiry.
    */
   private async accessToken(): Promise<string> {
     const token = await upstream('gcs', 'access_token', () =>
       this.storage.authClient.getAccessToken(),
     ).catch((error: unknown) => {
-      // The failure an operator will actually hit: a Kubernetes service
-      // account with no binding to a Google one, so the metadata server is
-      // there and answers that it has nothing. Saying which credential was
-      // attempted is the difference between a five-minute fix and an hour.
+      // Name which credential was attempted, so the error points at the fix.
       throw new DependencyUnavailable(
         'google cloud storage',
         'Could not get an access token for Google Cloud Storage. This service authenticates ' +

@@ -15,12 +15,8 @@ import { QueryIngot } from '../contexts/query/application/queries/query-ingot.qu
 import { McpScope, McpTool, type ToolDefinition, toolsFor } from './tool-catalogue.js';
 
 /**
- * The slice of the SDK's `McpServer` this file uses.
- *
- * Structural rather than imported, because the SDK is ESM-only and this app is
- * CommonJS — see `mcp.controller.ts`, which is the one place that reaches for
- * it, dynamically. Declaring the shape here keeps the rest of the MCP code
- * ordinary TypeScript with no import boundary to think about.
+ * The slice of the SDK's `McpServer` this file uses. Structural because the SDK
+ * is ESM-only; `mcp.controller.ts` imports it dynamically.
  */
 export interface ServerLike {
   registerTool(name: string, config: Record<string, unknown>, handler: ToolHandler): unknown;
@@ -41,29 +37,14 @@ interface ToolReply {
 /**
  * Builds the MCP surface over the same `Dispatcher` the controllers use.
  *
- * The rule here is the one webhooks get in `CLAUDE.md`: this is another
- * *interface*, never a second implementation. Every handler below constructs
- * the identical command an HTTP route would and hands it to the same bus, so
- * there is no path by which the two can start behaving differently — and
- * `mcp-parity.test.ts` asserts the operation sets still match.
- *
- * Scoping a connection to one ingot is deliberate. The tools then take no ids,
- * which is one less thing for a model to get wrong, and a client pointed at
- * one memory cannot address another.
+ * Another interface, not a second implementation: each handler builds the same
+ * command an HTTP route would. Scoping to one ingot means the tools take no ids.
  */
 @Injectable()
 export class IngotMcpServer {
   constructor(private readonly dispatcher: Dispatcher) {}
 
-  /**
-   * Tool descriptions carry the live schema.
-   *
-   * This is the part that makes the difference between a model that writes
-   * working SQL and one that invents column names. It reads the manifest once
-   * per connection and splices the tables, their columns and their types into
-   * the `query` tool's description — so the schema is in context before the
-   * model has spent a tool call asking for it.
-   */
+  /** Reads the manifest so the `query` tool's description can carry the live schema. */
   async describeIngot(ingotId: string, account: Account): Promise<IngotInfo> {
     return this.dispatcher.ask(new GetIngotInfo(ingotId, account.id.value, account.slug.value));
   }
@@ -117,9 +98,8 @@ export class IngotMcpServer {
       try {
         return reply(await this.dispatch(tool.name, args, accountId, ingotId, context.account));
       } catch (error) {
-        // A tool error is reported to the model rather than thrown at the
-        // transport: the model is the one who can fix a bad mapping or a
-        // mistyped column, and it can only do that if it is told.
+        // Tool errors are reported to the model, not thrown at the transport,
+        // so it can fix the call.
         return {
           content: [{ type: 'text', text: message(error) }],
           isError: true,
@@ -147,11 +127,9 @@ export class IngotMcpServer {
             columns: (args.columns ?? {}) as never,
             key: Array.isArray(args.key) ? args.key.map(String) : undefined,
             raw: Boolean(args.raw),
-            // Left as it arrived: `ReceiptBuilder.kindOf` parses it, which is
-            // the one place both surfaces go through — this one takes no pipe.
+            // Left as it arrived; `ReceiptBuilder.kindOf` parses it.
             receipt: args.receipt as AddBody['receipt'],
-            // Same reasoning: bounded by the command, not by a pipe this
-            // surface does not have.
+            // Same: bounded by the command, not a pipe.
             externalId: args.externalId as AddBody['externalId'],
             result: args.result,
           }),
@@ -190,16 +168,14 @@ export class IngotMcpServer {
             ingotId,
             accountId,
             String(args.table),
-            // Left as it arrived: `FtsSettings` parses the two enums, which is
-            // the one place both surfaces go through — this one takes no pipe.
+            // Left as it arrived; `FtsSettings` parses the enums.
             (args.fts === undefined ? {} : { fts: args.fts }) as ConfigureTableBody,
           ),
         );
 
       case McpTool.ConfigureDelivery:
         return this.dispatcher.send(
-          // Left as it arrived: `Delivery` parses the strategy, which is the
-          // one place both surfaces go through — this one takes no pipe.
+          // Left as it arrived; `Delivery` parses the strategy.
           new ConfigureIngot(ingotId, accountId, { delivery: args.delivery }),
         );
 
@@ -236,12 +212,7 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * The schema, rendered for a tool description.
- *
- * Terse on purpose: this goes into every connection's context window, so it
- * spends tokens on names and types and nothing else.
- */
+/** The schema, rendered for a tool description; names and types only. */
 export function schemaSummary(info: IngotInfo): string {
   if (info.tables.length === 0) {
     return 'This memory is empty. Use remember to store something first.';
@@ -251,9 +222,7 @@ export function schemaSummary(info: IngotInfo): string {
       const columns = table.columns
         .map((column) => `${column.name} ${column.type}${column.embedded ? ' (embedded)' : ''}`)
         .join(', ');
-      // Said only when true. A model that knows `fts_main_<table>.match_bm25`
-      // is available here will use it; one told nothing writes LIKE '%…%',
-      // and a note on every table would be a note it learns to skip.
+      // Noted only when enabled.
       const searchable = table.config.fts.enabled ? ', keyword-searchable' : '';
       return `  ${table.name} (${table.rows} rows${searchable}): ${columns}`;
     })

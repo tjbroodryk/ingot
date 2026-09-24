@@ -3,18 +3,8 @@ import { ConflictingState } from '../../src/shared/domain/index.js';
 import { Ingot } from '../../src/contexts/ingots/domain/index.js';
 
 /**
- * A memory is embedded with one model, and only one.
- *
- * The failure this rule exists for is the quietest in the service. Cosine
- * similarity between vectors from two different models is a perfectly ordinary
- * number between -1 and 1 — it is just meaningless. So a memory embedded with
- * one model and then queried through another does not error, does not warn,
- * and does not return nothing: it returns a confident, plausible, wrongly
- * ordered result set, for as long as nobody checks the rankings by hand.
- *
- * `INGOT_EMBEDDER` is a property of a process and this is a property of the
- * data, so the two stop agreeing the moment somebody edits a deployment. The
- * first embedding written decides, and everything afterwards is held to it.
+ * A memory is embedded with one model: mixing models makes cosine similarity
+ * meaningless without erroring. The first embedding written decides.
  */
 const OPENAI = { model: 'text-embedding-3-small', dimensions: 1536 };
 const VERTEX = { model: 'text-embedding-004', dimensions: 768 };
@@ -37,8 +27,7 @@ describe('the vector space a memory lives in', () => {
   });
 
   it('accepts the same model again, without contending', () => {
-    // The steady state: every batch after the first re-states what is already
-    // recorded, and must not be a conflict or a write.
+    // Every batch re-states the recorded model; not a conflict or a write.
     const ingot = memory();
     ingot.useEmbedding(OPENAI);
 
@@ -50,8 +39,7 @@ describe('the vector space a memory lives in', () => {
     const ingot = memory();
     ingot.useEmbedding(VERTEX);
 
-    // The message is most of the value: whoever hits this is looking at a
-    // deployment they changed and needs to know what it was before.
+    // The message names both models.
     expect(() => ingot.useEmbedding(OPENAI)).toThrow(ConflictingState);
     expect(() => ingot.useEmbedding(OPENAI)).toThrow(/text-embedding-004.*text-embedding-3-small/s);
   });

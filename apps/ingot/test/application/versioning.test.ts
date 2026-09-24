@@ -17,14 +17,8 @@ import { INGOT_VERSIONS, VERSION_HEADER } from '../../src/versioning/changeset.j
 import { WireShape } from '../../src/versioning/shapes.js';
 
 /**
- * The versioning contract, held mechanically.
- *
- * Two releases now: the baseline, which transforms nothing, and `2026-08-27`,
- * which renders a table's settings away for a caller from before they existed.
- * That one is asserted directly below rather than only through the invariants —
- * the invariants are traps that arm themselves for the *next* release, and a
- * transform nobody exercises is machinery that can quietly stop working. The
- * engine itself is covered by `@ingot/versioning`'s own suite.
+ * The versioning contract: route/shape invariants, and the `2026-08-27`
+ * transform that renders a table's settings away for an older caller.
  */
 
 interface Route {
@@ -70,12 +64,8 @@ describe('every route', () => {
     expect((await routes()).length).toBeGreaterThan(10);
   });
 
-  /**
-   * A route with no `@Wire` is served untransformed whatever version was
-   * asked for — silently. That is correct for a health check and wrong for
-   * anything carrying the contract, and the difference is invisible until a
-   * version ships and one endpoint does not move with it.
-   */
+  // A route with no `@Wire` is served untransformed, so every route must declare
+  // its shapes or declare that none cross it.
   it('says which wire shapes cross it, or says explicitly that none do', async () => {
     const undeclared = (await routes())
       .filter((route) => route.wire === null)
@@ -99,12 +89,9 @@ describe('every route', () => {
 
 describe('the shape catalogue', () => {
   it('names only types the wire contract exports', async () => {
-    // Types are erased, so this reads the contract's source. Crude, and it
-    // catches the thing that actually happens: a shape renamed in the contract
-    // and left behind in the enum.
-    // Relative to the package root, which is where `bun test` runs — the same
-    // convention the other source-reading tests here use. `import.meta` is not
-    // available: this package compiles to CommonJS.
+    // Types are erased, so this reads the contract's source to catch a shape
+    // renamed in the contract but left in the enum. Path is relative to the
+    // package root, where `bun test` runs.
     const contract = await Bun.file('../../packages/shared/src/ingot-v1.ts').text();
 
     const missing = Object.values(WireShape).filter(
@@ -126,18 +113,8 @@ describe('the changeset', () => {
     expect(INGOT_VERSIONS.shapes().filter((shape) => !known.has(shape))).toEqual([]);
   });
 
-  /**
-   * The trap this file exists for.
-   *
-   * `QueryResult.rows` holds whatever a caller stored in their own tables, and
-   * `AddBody.result` is an arbitrary tool result. A transform that reached into
-   * either would corrupt somebody's data in the name of an envelope rename —
-   * silently, and for the callers least able to notice.
-   *
-   * With an empty changeset this passes trivially. It stops being trivial the
-   * moment anybody adds a change to those shapes, which is exactly when
-   * somebody needs to be told.
-   */
+  // `QueryResult.rows` and `AddBody.result` hold caller-owned data, so no
+  // transform may reach into them.
   it('never rewrites caller-owned data', () => {
     const rows = [
       { _row_id: 'row_1', total: 5, pending: 2, rows: 'a string called rows' },
@@ -159,16 +136,8 @@ describe('the changeset', () => {
     }
   });
 
-  /**
-   * The first release that does real work, doing it.
-   *
-   * `config` was added to every `TableInfo` on 2026-08-27. A caller pinned to
-   * the baseline was written against a shape with no such field, so it is
-   * removed on the way out — and *removed*, not nulled, because a null is
-   * still a field. The trap in the other direction is the receipt: `AddResult`
-   * carries a `TableInfo` too, and a release that moved one and forgot the
-   * other would render two different shapes for the same thing.
-   */
+  // `config` was added to `TableInfo` on 2026-08-27, so it is removed (not
+  // nulled) for a baseline caller — on `AddResult`'s nested `TableInfo` too.
   it('renders a table’s settings away for a caller from before they existed', () => {
     const table = { name: 'notes', columns: [], key: [], rows: 1, pending: 0, generation: 0 };
     const config = { fts: { enabled: true, stopwords: 'none' } };
@@ -191,7 +160,7 @@ describe('the changeset', () => {
     expect(rendered.receipt.table).toEqual(table);
     expect(rendered.receipt.batch).toBe('b');
 
-    // The current version is the implemented one and is left exactly as it is.
+    // The latest version is left exactly as it is.
     expect(INGOT_VERSIONS.backward(WireShape.IngotInfo, info, INGOT_VERSIONS.latest)).toEqual(info);
   });
 
@@ -201,8 +170,7 @@ describe('the changeset', () => {
   });
 
   it('round-trips every shape it touches, at every version', () => {
-    // A forward/backward pair that is not the identity is a version that
-    // silently rewrites what a caller sent them.
+    // forward then backward must be the identity.
     const fixtures: Partial<Record<string, Record<string, unknown>>> = {
       [WireShape.AddBody]: { table: 't', columns: {}, result: {}, rows: '$.a[*]', raw: true },
       [WireShape.QueryBody]: { sql: 'SELECT 1', limit: 10 },
@@ -249,7 +217,6 @@ describe('the wiring', () => {
     expect(app.get(SHAPE_RESOLVER, { strict: false })).toBeInstanceOf(WireShapeResolver);
   });
 
-  // That the interceptor is bound *globally* is asserted in the package, over
-  // the DynamicModule itself — Nest does not expose APP_INTERCEPTOR providers
-  // through the container, and the running-server proof lives there too.
+  // Global binding of the interceptor is asserted in the package itself; Nest
+  // does not expose APP_INTERCEPTOR providers through the container.
 });

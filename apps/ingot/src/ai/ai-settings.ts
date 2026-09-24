@@ -2,22 +2,7 @@ import { tooLongForLease } from '../shared/claim-lease.js';
 import { Guard } from '../shared/domain/index.js';
 import { AiProvider } from './providers.js';
 
-/**
- * Which models this deployment thinks with, read once at boot.
- *
- * The same shape as `storage-settings.ts`, for the same reasons: parsed into a
- * discriminated union rather than passed round as a bag of optional strings,
- * so an adapter's constructor cannot be reached without the values it needs;
- * and a pure function over a reader, so the whole matrix is asserted in a unit
- * test rather than by booting the service once per provider and reading a log
- * line.
- *
- * Two selectors rather than one — `INGOT_EMBEDDER` and `INGOT_SUMMARISER` —
- * because they are separate purchases. Semantic search over stored columns is
- * a per-row cost paid once; an LLM-written receipt is a per-call cost paid
- * every time somebody asks for one, and a deployment should be able to have
- * the first without the second.
- */
+/** Model settings, parsed once at boot into a discriminated union per port. */
 
 // ── embedding ───────────────────────────────────────────────────────────────
 
@@ -32,15 +17,7 @@ export interface OpenAiEmbedder {
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly model: string;
-  /**
-   * Declared, never discovered from a response.
-   *
-   * The width is baked into every stored vector and into the `FLOAT[N]` column
-   * a query session builds, so a model swap that changes it is a re-embed
-   * rather than a configuration change — and this is where that becomes
-   * obvious. `text-embedding-3-*` honours it as a request parameter, so what
-   * is asked for here is what comes back.
-   */
+  /** Vector width, declared not discovered; sent as a request parameter. */
   readonly dimensions: number;
   readonly timeoutMs: number;
 }
@@ -52,7 +29,7 @@ export interface GcpEmbedder {
   readonly model: string;
   /** As above. Vertex takes it as `outputDimensionality`. */
   readonly dimensions: number;
-  /** The Vertex API root. Overridden only for a local stand-in. */
+  /** Vertex API root. Overridden only for a local stand-in. */
   readonly endpoint?: string;
   readonly timeoutMs: number;
 }
@@ -84,15 +61,7 @@ export interface GcpSummariser {
 
 // ── reading scans ───────────────────────────────────────────────────────────
 
-/**
- * The third purchase, and the only one that is off unless asked for.
- *
- * Embedding and summarising both have a free stand-in, so their selector picks
- * *which* rather than *whether*. OCR has no sensible stand-in — there is no
- * cheap approximation of reading a photograph of a page — and it is paid per
- * page of a scan, so the honest default is that a deployment which never
- * uploads one installs nothing and pays nothing.
- */
+/** OCR is off unless `INGOT_OCR` names a provider. */
 export const OCR_OFF = 'off';
 
 export type OcrSettings = OcrDisabled | LocalOcr | OpenAiOcr | GcpOcr;
@@ -105,15 +74,7 @@ export interface LocalOcr {
   readonly provider: AiProvider.Local;
   /** The traineddata language, and half of `engine` on every chunk it writes. */
   readonly language: string;
-  /**
-   * Where `<language>.traineddata` is, and it is required rather than defaulted.
-   *
-   * `tesseract.js` fetches its language data from a CDN when it is not given a
-   * path — a parse reaching the network on behalf of an uploaded document,
-   * which is the one thing every handler in `formats/` is built not to do. So
-   * the path is named, checked at boot, and baked into the image, exactly as
-   * `INGOT_DUCKDB_EXTENSION_DIR` is and for the same reason.
-   */
+  /** Directory holding `<language>.traineddata`. Required; checked at boot. */
   readonly tessdataDir: string;
   readonly maxPages: number;
 }
@@ -144,13 +105,6 @@ export interface GcpOcr {
 
 // ── defaults ────────────────────────────────────────────────────────────────
 
-/**
- * Every default is a *setting*, not a decision this service makes for you.
- *
- * They are named here rather than inline so that the models a deployment gets
- * without configuring anything can be read in one screen — and so that
- * upgrading the default is a one-line change with a test over it.
- */
 export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 export const OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
 export const OPENAI_EMBEDDING_DIMENSIONS = 1536;
@@ -160,26 +114,13 @@ export const OPENAI_OCR_MODEL = 'gpt-4.1-mini';
 export const GCP_OCR_MODEL = 'gemini-2.5-flash';
 export const OCR_LANGUAGE = 'eng';
 
-/**
- * How many pages of one document may be sent to an engine.
- *
- * The cap is a budget, not a limit on what a scan can be, and twenty is where
- * both costs cross. A hosted model is seconds a page and money a page, and a
- * three-hundred-page scan is neither a bill anybody chose nor a parse that
- * fits inside the deadline `file-worker.ts` holds itself to — it would lapse
- * its claim mid-document and be picked up by another replica, which would pay
- * for the same pages again.
- *
- * Pages past the cap stay blank, with the row saying how many were read. That
- * is a fact somebody can act on; a document that quietly cost forty pounds is
- * not.
- */
+/** How many pages of one document may be sent to an engine. Pages past it stay blank. */
 export const OCR_MAX_PAGES = 20;
 
 /** Pages in flight at once, for a hosted model. Tesseract is always one. */
 export const OCR_CONCURRENCY = 4;
 
-/** A typo guard on the cap, not a claim about what is sensible. */
+/** Typo guard on the cap. */
 const MAX_OCR_PAGES = 500;
 const MAX_OCR_CONCURRENCY = 16;
 
@@ -188,24 +129,15 @@ export const GCP_EMBEDDING_MODEL = 'text-embedding-004';
 export const GCP_EMBEDDING_DIMENSIONS = 768;
 export const GCP_SUMMARY_MODEL = 'gemini-2.5-flash';
 
-/** A model that has not answered in this long is not going to. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** The widest vector `FLOAT[N]` is worth building. Guards a typo, not a model. */
+/** Widest vector width accepted. Typo guard. */
 const MAX_DIMENSIONS = 8192;
 
 /** Reads one environment variable. `ConfigService.get` is one of these. */
 export type Setting = (key: string) => string | undefined;
 
-/**
- * A deployment that asked for a model it cannot reach.
- *
- * Fatal, for the reason `StorageMisconfigured` is. A service that boots with a
- * provider named and no key for it either falls back to the stand-in — which
- * silently makes every search lexical — or fails on the first `/add` that
- * wanted a receipt, hours later, to somebody who cannot see the configuration.
- * Refusing to start says it once, to the person holding the deployment.
- */
+/** A provider was named without the values it needs. Fatal at boot. */
 export class AiMisconfigured extends Error {
   constructor(message: string) {
     super(message);
@@ -222,19 +154,8 @@ export function summariserSettings(read: Setting): SummariserSettings {
 }
 
 /**
- * What reads a scanned page, and what happens when it cannot.
- *
- * `INGOT_OCR` unset means off, which is the one place this differs from the
- * other two selectors: an unset embedder is the stand-in, an unset OCR is
- * nothing at all. See `OCR_OFF`.
- *
- * **The fallback is declared, never inferred.** Naming a hosted model and a
- * tessdata directory together means "model first, Tesseract for the pages it
- * did not read" — and the boot line says so, and the `ocr` column on every
- * chunk says which engine produced it. That is the same rule the rest of this
- * file follows: a deployment never silently gets something other than what it
- * asked for. Naming a model without a tessdata directory is equally valid and
- * means a page the model refuses stays blank.
+ * OCR settings. `INGOT_OCR` unset means off (unlike the other two selectors).
+ * A hosted model plus a tessdata directory means model first, Tesseract behind.
  */
 export function ocrSettings(read: Setting): OcrSettings {
   const named = value(read('INGOT_OCR'));
@@ -244,8 +165,8 @@ export function ocrSettings(read: Setting): OcrSettings {
 }
 
 const OCR_PARSERS: Record<AiProvider, (read: Setting) => OcrSettings> = {
-  // `required`, so this never returns null: a local engine with no tessdata
-  // directory throws rather than resolving to "no OCR after all".
+  // `required`, so a local engine with no tessdata directory throws rather
+  // than resolving to null.
   [AiProvider.Local]: (read) => local(read, true) as LocalOcr,
 
   [AiProvider.OpenAi]: (read) => {
@@ -280,13 +201,7 @@ const OCR_PARSERS: Record<AiProvider, (read: Setting) => OcrSettings> = {
 
 /**
  * The Tesseract half, as the engine itself or as the fallback behind a model.
- *
- * `required` is the difference between the two, and it is the whole of it:
- * `INGOT_OCR=local` with no tessdata directory is a deployment that asked for
- * an engine it has not given the data to, and refusing is the rule this file
- * applies to every other provider named without what it needs. The same
- * omission alongside `INGOT_OCR=openai` is just a deployment that did not want
- * a fallback.
+ * When `required`, a missing tessdata directory throws; otherwise it means no fallback.
  */
 function local(read: Setting, required: boolean): LocalOcr | null {
   const tessdataDir = value(read('INGOT_TESSDATA_DIR'));
@@ -417,13 +332,7 @@ function provider(read: Setting, key: string): AiProvider {
   }
 }
 
-/**
- * Every value a provider cannot work without, or a message naming the ones
- * that are missing.
- *
- * All of them at once rather than the first: an operator filling in a
- * deployment template should learn what is left in one restart, not in three.
- */
+/** Every value a provider needs, or a message naming all the missing ones at once. */
 function demand<const K extends readonly string[]>(
   read: Setting,
   selector: string,
@@ -438,8 +347,7 @@ function demand<const K extends readonly string[]>(
       `${selector}=${named} needs ${keys.join(', ')}. Missing: ${missing.join(', ')}.`,
     );
   }
-  // Every element was just proved present, which is a fact about the loop
-  // above rather than one the type of `map` can carry.
+  // Every element was just proved present, which `map`'s type cannot carry.
   return found as { [I in keyof K]: string };
 }
 
@@ -467,22 +375,20 @@ function timeout(read: Setting): number {
         'and anything under a second is a typo rather than a deadline.',
     );
   }
-  // Bounded above by the claim lease, not by taste. A model call still running
-  // when the lease it is held under lapses is a batch a second replica may
-  // claim as well — paid for twice, and invisible.
+  // Bounded above by the claim lease.
   const tooLong = tooLongForLease('INGOT_AI_TIMEOUT_MS', parsed);
   if (tooLong) throw new AiMisconfigured(tooLong);
 
   return parsed;
 }
 
-/** Blank is unset. A variable exported as `""` is one somebody meant to omit. */
+/** Blank is unset. */
 function value(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;
 }
 
-/** So that a base URL with a trailing slash does not produce `//embeddings`. */
+/** Drops a trailing slash so a base URL does not produce `//embeddings`. */
 function trimSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }

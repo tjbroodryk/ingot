@@ -1,25 +1,10 @@
 import { InvariantViolation } from '../../../shared/domain/index.js';
 
 /**
- * A deliberately small path language, read in TypeScript.
- *
- * `$.a.b[0]` walks the current row; `$$.a.b` walks the whole blob, which is
- * what lets rows fanned out of an array still carry a field from their parent.
- * `[*]` selects an array to fan out and is only legal in the `rows` selector.
- *
- * `$["Invoice #"]` is the way to a key the dotted form cannot spell. That form
- * arrived with `/file`, and a spreadsheet is why: `Invoice #`, `Total (USD)`
- * and `Ship Date` are what real header rows say, and every one of them is a key
- * a caller has no choice about — it is in the file they were sent. Widening the
- * dotted grammar to admit them would have made `$.a.b` ambiguous about where a
- * key ends, so the quoted subscript is the escape hatch instead, and it is the
- * one JSONPath itself uses.
- *
- * Not JSONPath, and not evaluated by DuckDB. Full JSONPath brings filters and
- * expressions — an evaluator, in other words — for something that only ever
- * needs to walk a decoded object. And handing the path to DuckDB would make it
- * one more piece of caller-supplied text on the SQL path, which is the surface
- * this service works hardest to keep small.
+ * A small path language, read in TypeScript, not JSONPath and not evaluated by
+ * DuckDB. `$.a.b[0]` walks the current row; `$$.a.b` walks the whole blob; `[*]`
+ * fans an array out and is only legal in the `rows` selector. `$["Invoice #"]`
+ * reaches a key the dotted form cannot spell.
  */
 export type Segment =
   { kind: 'key'; key: string } | { kind: 'index'; index: number } | { kind: 'each' };
@@ -51,9 +36,8 @@ export function parsePath(raw: string, field: string, allowEach = false): Parsed
       continue;
     }
     if (rest.startsWith('[')) {
-      // A quoted key first, because `["0"]` is a key and `[0]` is an index and
-      // the two must not collapse into each other: a JSON object may perfectly
-      // well have `"0"` as a field name, and an array never has `"0"` as one.
+      // Quoted key first: `["0"]` is a key and `[0]` is an index, and an object
+      // may have `"0"` as a field name.
       const quoted = /^\[(["'])((?:\\.|(?!\1)[^\\])*)\1\]/.exec(rest);
       if (quoted) {
         const key = (quoted[2] ?? '').replace(/\\(.)/g, '$1');
@@ -88,9 +72,8 @@ export function parsePath(raw: string, field: string, allowEach = false): Parsed
 }
 
 /**
- * Walks a path to a single value. A missing step yields `undefined` rather
- * than throwing: a tool result that omitted a field is an ordinary thing, and
- * the column simply reads null.
+ * Walks a path to a single value. A missing step yields `undefined`, not an
+ * error: an omitted field just reads null.
  */
 export function readPath(value: unknown, path: ParsedPath): unknown {
   let current = value;
@@ -111,11 +94,9 @@ export function readPath(value: unknown, path: ParsedPath): unknown {
 }
 
 /**
- * Resolves a fan-out selector to the rows it names.
- *
- * A selector that lands on something other than an array is an error rather
- * than an empty result: "no rows were written" and "your path was wrong" look
- * identical from the outside, and the second is much more likely.
+ * Resolves a fan-out selector to the rows it names. A selector that lands on a
+ * non-array throws rather than returning empty, since a wrong path and no rows
+ * look identical otherwise.
  */
 export function readRows(blob: unknown, path: ParsedPath, field: string): unknown[] {
   const each = path.segments.findIndex((segment) => segment.kind === 'each');

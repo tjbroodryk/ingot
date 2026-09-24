@@ -28,20 +28,9 @@ const stamp = (path: string): ColumnMapping => ({ from: path, type: 'TIMESTAMP' 
 const json = (path: string): ColumnMapping => ({ from: path, type: 'JSON' });
 
 /**
- * The hand-authored schemas: the ceiling for what Ingot can be given.
- *
- * This is the configuration a careful engineer would write once, knowing the
- * shape of each tool's output. It is *not* the realistic configuration — an
- * agent meeting a tool result for the first time has to invent this — which is
- * why `--mapping agent` exists and why both are reported. A benchmark that
- * gave Ingot hand-tuned schemas and the baselines a raw dump would be rigged,
- * and the gap between the two columns is the honest measure of how much of
- * Ingot's advantage survives an agent doing the work.
- *
- * One column is embedded per table that has prose in it, matching what the
- * baselines embed. The `ref` is always a plain column: it is the join key and
- * the thing retrieval is scored on, and embedding an opaque id would be
- * theatre.
+ * Hand-authored schemas: the ceiling for what Ingot can be given. One embedded
+ * column per table that has prose; `ref` stays a plain column, being the join
+ * key retrieval is scored on.
  */
 const AUTHORED: Record<ToolName, RememberMapping> = {
   'catalog.list_services': {
@@ -114,16 +103,8 @@ const AUTHORED: Record<ToolName, RememberMapping> = {
       summary: text('$.summary', true),
     },
   },
-  /**
-   * The oversized one, and the schema is the whole argument.
-   *
-   * Every field a question asks about is a real column with a real type —
-   * `level` filterable, `duration_ms` an INTEGER that can be ordered and
-   * averaged, `status` a number rather than text. Nothing is embedded: these
-   * rows are identifiers, levels and durations, and embedding `message` would
-   * buy a ranking over eight repeated phrases while costing an embedding call
-   * per line. That is the case `configure_table` exists to decline.
-   */
+  // Every queried field is a real typed column; nothing is embedded, since
+  // these rows are identifiers, levels and durations.
   'logs.search': {
     table: 'logs',
     rows: '$.items[*]',

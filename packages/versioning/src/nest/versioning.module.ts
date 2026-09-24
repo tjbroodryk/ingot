@@ -7,19 +7,14 @@ import { VersionInterceptor } from './version.interceptor.js';
 export interface VersioningModuleOptions extends VersioningOptions {
   /**
    * How this service names the shapes on its routes. Defaults to reading the
-   * `@Wire` decorator; `@forge/api` supplies one that reads the `@Returns` and
-   * `@WireBody` metadata it already carries.
+   * `@Wire` decorator.
    */
   readonly resolver?: Type<ShapeResolver>;
 }
 
 /**
- * Registers the version header and the transformation chain for a service.
- *
- * Global because the interceptor is global: every HTTP route is versioned,
- * including the ones that turn out not to need transforming, because "which
- * version am I being served" is a question a caller may ask of any of them and
- * get a straight answer.
+ * Registers the version header and transformation chain. Global because every
+ * HTTP route is versioned, so any of them answers "which version am I served".
  */
 @Global()
 @Module({})

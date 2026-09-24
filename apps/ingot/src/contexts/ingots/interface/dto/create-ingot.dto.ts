@@ -6,11 +6,7 @@ export class CreateIngotDto {
   @MaxLength(120)
   name!: string;
 
-  /**
-   * Shape checked here, meaning checked by `Retention` — which is also the path
-   * the MCP surface takes, since it builds the command without a pipe. The
-   * bounds and the arithmetic live there.
-   */
+  /** Shape only; `Retention` enforces the bounds and does the arithmetic. */
   @IsOptional()
   @IsString()
   @Matches(/^\d+[mhdw]$/i, {

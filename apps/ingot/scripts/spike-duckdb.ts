@@ -1,10 +1,6 @@
 /**
- * Phase 0 — does DuckDB work under Bun, and does the query sandbox hold?
- *
- * The whole of Ingot rests on two claims that were assumptions when the plan
- * was written: that `@duckdb/node-api` (a native N-API addon) runs under Bun
- * at all, and that `enable_external_access=false` + `lock_configuration=true`
- * actually contains hostile SQL. Neither is worth discovering in Phase 2.
+ * Checks that DuckDB runs under Bun and that a locked-down session contains
+ * hostile SQL.
  *
  * Run under both runtimes; they must agree:
  *   bun apps/ingot/scripts/spike-duckdb.ts
@@ -70,8 +66,7 @@ async function main(): Promise<void> {
   });
 
   await check('create / insert / select round trip', async () => {
-    // "at" and "start" are DuckDB keywords. A caller will name a column that way
-    // sooner or later, so every generated identifier is quoted, everywhere.
+    // "at" and "start" are DuckDB keywords, so every generated identifier is quoted.
     await connection.run(`CREATE TABLE probe (id INTEGER, name VARCHAR, "at" TIMESTAMP)`);
     await connection.run(`INSERT INTO probe VALUES (1, 'anvil', '2026-08-26 09:00:00')`);
     const rows = (await connection.runAndReadAll('SELECT * FROM probe')).getRowObjectsJson();
@@ -176,14 +171,9 @@ async function main(): Promise<void> {
     return `single=${one.count}, chained=${three.count}`;
   });
 
-  // getTableNames() decides which of an ingot's tables a query needs, so we do
-  // not materialise all of them every time. It works against an empty catalog,
-  // which is the case that matters \u2014 we ask before creating anything. But it
-  // returns [] for any JOIN ... USING (...), and [] is also what an unparseable
-  // query returns, so [] is ambiguous between "no tables" and "I could not read
-  // this". It is therefore a hint, never an authority: narrow when it reports
-  // something, materialise everything when it reports nothing, and retry wide
-  // if the query still raises a catalog error.
+  // getTableNames() narrows which of an ingot's tables a query needs. It returns
+  // [] both for JOIN ... USING (...) and for an unparseable query, so [] is a
+  // hint, not an authority: materialise everything when it reports nothing.
   await check('getTableNames() reads tables from an empty catalog', async () => {
     const names = connection.getTableNames('SELECT a.id FROM absent_a a, absent_b b', false);
     if (!names.includes('absent_a') || !names.includes('absent_b')) {
@@ -233,7 +223,7 @@ async function main(): Promise<void> {
     return 'accepted';
   });
 
-  // ── 7. THE claim: does locking down actually contain hostile SQL? ─────
+  // ── 7. does locking down actually contain hostile SQL? ────────────────
   process.stdout.write('\n  … locking the session down\n');
   await connection.run(`SET enable_external_access = false`);
   await connection.run(`SET lock_configuration = true`);
@@ -287,11 +277,9 @@ async function main(): Promise<void> {
   instance.closeSync();
 
   // ── 6. what each object store can and cannot ask DuckDB to do ──────────
-  // The storage adapters are shaped by a handful of facts about this build of
-  // DuckDB, and every one of them was found by running it rather than reading
-  // about it. They need `httpfs`, which is fetched rather than statically
-  // linked, so they live here and not in the suite — `bun run test` is not
-  // allowed to need the network.
+  // The storage adapters are shaped by facts about this build of DuckDB. They
+  // need `httpfs`, which is fetched rather than statically linked, so they live
+  // here rather than in the suite.
   const remote = await DuckDBInstance.create(':memory:');
   const remoteConnection = await remote.connect();
 
@@ -306,9 +294,8 @@ async function main(): Promise<void> {
   });
 
   await check('an S3 secret is accepted', async () => {
-    // `S3ObjectStore`. `CREATE SECRET` rather than `SET s3_access_key_id`,
-    // because the setting form is instance-wide and this service runs
-    // untrusted SQL on those instances.
+    // `CREATE SECRET` rather than `SET s3_access_key_id`: the setting form is
+    // instance-wide and this service runs untrusted SQL on those instances.
     await remoteConnection.run(
       "CREATE OR REPLACE SECRET s3_probe (TYPE S3, KEY_ID 'k', SECRET 's', " +
         "REGION 'us-east-1', USE_SSL false, URL_STYLE 'path', ENDPOINT 'localhost:9000')",
@@ -316,10 +303,8 @@ async function main(): Promise<void> {
     return 'TYPE S3, with an endpoint and a URL style';
   });
 
-  // The two findings `GcsObjectStore` exists because of. If either of these
-  // ever starts passing, that adapter can lose its staging path and read
-  // `gs://` like any other bucket — which would be a simplification worth
-  // making, and this is what would notice.
+  // Why `GcsObjectStore` stages writes: if either check starts passing, it can
+  // drop its staging path and read `gs://` like any other bucket.
   await check('a GCS secret still takes an HMAC key and nothing else', async () => {
     await refuses(
       remoteConnection,
@@ -333,14 +318,12 @@ async function main(): Promise<void> {
       remoteConnection,
       "SELECT secret_string AS s FROM duckdb_secrets() WHERE name = 'gcs_probe'",
     );
-    // No region, no URL style, and no way to hand it a service account: a
-    // workload identity cannot reach gs://, which is why reads go over https.
+    // No region, no URL style, no service account: reads go over https instead.
     return String(row.s).replace(/^name=[^;]+;/, '');
   });
 
   await check('writing an https object is still not implemented', async () => {
-    // The reason a GCS roll-up copies to local disk and uploads with the
-    // client library instead of letting DuckDB `COPY … TO` the bucket.
+    // Why a GCS roll-up copies to local disk and uploads with the client library.
     try {
       await remoteConnection.run(
         "COPY (SELECT 1 AS x) TO 'https://storage.googleapis.com/b/k.parquet' (FORMAT PARQUET)",
@@ -353,9 +336,8 @@ async function main(): Promise<void> {
 
   // ── the read path a Google service account actually takes ──────────────
   // A local server standing in for the XML API: it serves a real Parquet file
-  // and only to a request carrying the right bearer token. That is the whole
-  // mechanism `GcsObjectStore.session()` depends on, and none of it involves
-  // Google — so it can be proved here, on a laptop, with no bucket.
+  // only to a request carrying the right bearer token, which is what
+  // `GcsObjectStore.session()` depends on.
   const TOKEN = 'ya29.a-token-of-the-kind-a-metadata-server-hands-out';
   await remoteConnection.run(
     `COPY (SELECT range AS n FROM range(500)) TO '${join(scratch, 'served.parquet')}' (FORMAT PARQUET)`,
@@ -408,10 +390,8 @@ async function main(): Promise<void> {
   });
 
   await check('the token cannot be read back out of the session', async () => {
-    // Load bearing. `duckdb_secrets()` is a table function, so a tenant's own
-    // SELECT can call it and it passes every check the engine makes. If this
-    // ever stops redacting, one tenant's query returns a credential that
-    // reaches every other tenant's Parquet.
+    // `duckdb_secrets()` is a table function a tenant's own SELECT can call, so
+    // the secret must be redacted or one query leaks a credential to every tenant.
     const row = await one(
       remoteConnection,
       "SELECT secret_string AS s FROM duckdb_secrets() WHERE name = 'ingot_base'",

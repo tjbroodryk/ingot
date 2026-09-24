@@ -1,23 +1,6 @@
-/**
- * What a running Ingot talks to, whichever of `./targets.ts` you brought it up
- * with — the second half of the deployment page.
- *
- * Data rather than markup, for the reason `src/docs/reference.ts` is: the
- * sidebar is derived from these lists, so a dependency added here appears in
- * the nav and one removed leaves no dead anchor behind.
- *
- * Every claim on this page is a fact about the repository rather than a
- * position — `docker-compose.yml` for what runs, `apps/ingot/.env.example` for
- * the names, and `apps/ingot/src/storage/storage-settings.ts` for which of
- * them are refused. A page that describes a deployment somebody else has to
- * bring up is worth exactly what it is accurate.
- */
+/** What a running Ingot talks to, whichever target brought it up — the second half of the deployment page. The sidebar is derived from these lists. */
 
-/**
- * The head of the page, as data, for the reason the reference's is — see
- * `src/docs/page-sections.ts`. The HTML page and the markdown build both
- * render these, and neither renders the other's copy.
- */
+/** The head of the page, as data. Rendered by both the HTML page and the markdown build. */
 export const DEPLOYMENT_TITLE = 'Three places, two dependencies';
 
 export const DEPLOYMENT_DESCRIPTION =
@@ -354,10 +337,7 @@ export interface Absence {
   readonly body: string;
 }
 
-/**
- * The other half of a dependency list, and the half that is usually missing
- * from one: what somebody would otherwise go and provision.
- */
+/** What a deployment might expect to provision, and what stands in for each. */
 export const NOT_NEEDED: readonly Absence[] = [
   {
     title: 'A message broker',
@@ -376,11 +356,3 @@ export const NOT_NEEDED: readonly Absence[] = [
     body: 'DuckDB is a library in the process, not a server: a query materialises the tables it names into an in-memory session bounded by `INGOT_QUERY_MEMORY_LIMIT` and `INGOT_MAX_TABLE_ROWS`. The one thing it wants from a deployment is `INGOT_DUCKDB_EXTENSION_DIR` pointed at a directory baked into the image, so a cold container’s first query is not off fetching `httpfs` from the internet. On a closed network, that is a first query that just fails.',
   },
 ];
-
-/*
- * The bring-up was a constant here, and it was the local one only. It is
- * `./targets.ts` now — one entry per place you can run this, rendered above
- * these sections rather than instead of them, because "what to type" and "what
- * it is talking to" are two questions and this file only ever answered the
- * second.
- */

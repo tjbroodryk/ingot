@@ -7,12 +7,8 @@ import { DuckDbEngine, type EngineLimits } from './duckdb-engine.js';
 import { SessionBuilder } from './session-builder.js';
 
 /**
- * The engine and the limits it runs under.
- *
- * Global because the query path, the delete path and the roll-up all reach for
- * it, and they live in different contexts. The limits are configuration rather
- * than constants because they are the knobs an operator turns when a tenant's
- * queries start costing more than the tenant does.
+ * The engine and the limits it runs under. Global because the query, delete and
+ * roll-up paths all use it, across different contexts.
  */
 @Global()
 @Module({

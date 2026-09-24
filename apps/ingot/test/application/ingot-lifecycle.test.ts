@@ -4,14 +4,7 @@ import { ColumnType } from '@ingot/shared/ingot-v1';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
-/**
- * One memory, from empty to destroyed, through the commands a caller uses.
- *
- * Written as a sequence rather than as independent cases because the thing
- * under test is the sequence: a row is stored, becomes queryable, survives a
- * roll-up unchanged, and then stops existing. Each step depends on the last,
- * which is exactly the property that a set of isolated tests would not check.
- */
+/** One memory as an ordered sequence: store, query, widen, embed, forget. */
 describe('an ingot, end to end', () => {
   let world: World;
   let ingot: string;

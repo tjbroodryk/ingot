@@ -5,13 +5,7 @@ import { MAX_RECEIPT_ITEMS } from '../../src/contexts/records/application/receip
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
-/**
- * What an `/add` says back, and whether it is true.
- *
- * A receipt's whole value is that the queries in it work. Asserting their
- * *text* would pass for a receipt that is confidently wrong, so every
- * assertion below runs the query it is checking and looks at what comes back.
- */
+/** The receipt an `/add` returns; each test runs the queries it hands back. */
 let world: World;
 
 beforeAll(async () => {
@@ -55,8 +49,7 @@ describe('a receipt', () => {
   });
 
   it('hands back a batch query that returns exactly what this call wrote', async () => {
-    // Two rows here, one row already in the table from the test above — so a
-    // query that returned "everything" would pass a weaker assertion.
+    // A row already exists from the test above, so "return everything" would not pass.
     const added = await world.add(ingot, mapping(42, ['src/engine.ts', 'README.md']));
     const receipt = added.receipt;
     if (!receipt) throw new Error('no receipt');
@@ -82,13 +75,8 @@ describe('a receipt', () => {
     }
   });
 
-  /**
-   * The reason a caller-declared key is worth having at all.
-   *
-   * A `_batch` or `_row_id` query finds what was written *this time*. A key
-   * query finds the thing — including the copy stored later, which is what an
-   * agent re-reading the same file actually produces.
-   */
+  // A key query finds the thing across writes, where a `_batch` query finds
+  // only this call's rows.
   it('still finds the item after the same item is stored again', async () => {
     const first = await world.add(ingot, mapping(50, ['stable.ts']));
     const item = first.receipt?.items[0];
@@ -98,9 +86,8 @@ describe('a receipt', () => {
 
     await world.add(ingot, mapping(50, ['stable.ts']));
 
-    // Two rows now — the key identifies the thing, it does not deduplicate it,
-    // and the contract says so. The batch query from the first write would
-    // still return only one.
+    // Two rows: the key identifies the thing, it does not deduplicate it. The
+    // first write's batch query still returns one.
     expect(await world.sql(ingot, item.query)).toHaveLength(2);
     expect(await world.sql(ingot, first.receipt?.query as string)).toHaveLength(1);
   });
@@ -130,8 +117,7 @@ describe('a receipt', () => {
     });
 
     expect(added.columnsAdded).toEqual(['status']);
-    // The receipt describes the table *after* the write, so the column this
-    // call introduced is in it — which is the point of building it afterwards.
+    // The receipt describes the table after the write, so this call's new column is in it.
     expect(added.receipt?.table.columns.map((column) => column.name)).toContain('status');
     expect(added.receipt?.table.key).toEqual(['pr', 'path']);
   });
@@ -142,8 +128,7 @@ describe('a receipt', () => {
 
     expect(added.rowsAdded).toBe(names.length);
     expect(added.receipt?.items).toHaveLength(MAX_RECEIPT_ITEMS);
-    // Said rather than silently short: a caller reading 100 items would
-    // otherwise take them for all of them.
+    // Flagged rather than silently short.
     expect(added.receipt?.itemsTruncated).toBe(true);
 
     // …and the batch query still covers every row.
@@ -152,8 +137,7 @@ describe('a receipt', () => {
 });
 
 describe('declaring a key', () => {
-  // The same world as above: `closeDatabase` ends a pool every world in the
-  // process shares, so a file builds one and hands out ingots from it.
+  // Reuses the world above; the pool is shared process-wide.
   let ingot: string;
 
   beforeAll(async () => {

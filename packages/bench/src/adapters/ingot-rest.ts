@@ -3,29 +3,10 @@ import { authoredMapping, FTS_COLUMNS, type MappingSource } from './ingot-mappin
 import { schema, type AdapterTool, type MemoryAdapter } from './types.js';
 
 /**
- * Ingot over the REST API, with the tool surface authored *here*.
- *
- * The sibling adapter in `ingot.ts` connects over MCP, which is what an agent
- * actually does — and that is the right measurement of the product. It is the
- * wrong measurement of the *claim*, which is that typed rows and SQL, on top of
- * the same embeddings, retrieve better than the embeddings alone.
- *
- * The confound is not the transport. It is who wrote the words. Over MCP,
- * Ingot's tool names, descriptions and schema summary come from the server,
- * tuned by the people shipping it; `vector` and `hyperspell` get descriptions
- * hand-written in this repository. So some unknown share of an Ingot win could
- * be that the product ships better prompt copy, and no column in the table can
- * tell you how big that share is.
- *
- * This adapter removes that share. Same server, same application code — MCP's
- * `query` and `recall` dispatch the identical `QueryIngot` that `POST /query`
- * does — but the tool names, the descriptions and the schema note are written
- * in the same register, by the same hand, as the baselines'. What is left in
- * the column is the data model.
- *
- * Neither column is the honest one on its own. The gap between them is the
- * measurement: how much of Ingot's advantage is the substrate, and how much is
- * the surface it is reached through.
+ * Ingot over the REST API, with the tool surface authored here in the same
+ * voice as the baselines'. The sibling in `ingot.ts` reaches the same store
+ * over MCP, whose tool descriptions the server writes; the gap between the two
+ * columns separates the data model from the prompt copy.
  */
 
 const READ_TOOLS: Record<IngotRestMode, readonly string[]> = {
@@ -74,14 +55,7 @@ interface QueryResult {
 
 const MAX_LIMIT = 50;
 
-/**
- * The tools, written to say what the store does and nothing about how well it
- * does it.
- *
- * Held as a constant rather than built in a method so that the exact words in
- * the benchmark are readable in one place, next to the baselines' — which is
- * the only way anyone can check the claim that they are evenly matched.
- */
+/** The tools, in one place so their exact words are readable next to the baselines'. */
 const TOOLS: readonly AdapterTool[] = [
   {
     name: 'query',
@@ -147,9 +121,7 @@ export class IngotRestAdapter implements MemoryAdapter {
     });
     this.ingotId = created.id;
 
-    // Writes go in corpus order, one page at a time, exactly as they would if
-    // the agent had produced them: no bulk path, no privileged ingestion. The
-    // same loop as the MCP adapter's, so the two columns are the same store.
+    // Writes go in corpus order, one page at a time, as an agent would produce them.
     const mappings = new Map<ToolName, Awaited<ReturnType<MappingSource>>>();
     for (const result of corpus) {
       let mapping = mappings.get(result.tool);
@@ -165,8 +137,7 @@ export class IngotRestAdapter implements MemoryAdapter {
       await this.send('POST', `${this.memory()}/add`, { ...mapping, result: result.result });
     }
 
-    // Keyword search is off until asked for, so a run that did not ask for it
-    // would be measuring Ingot with a documented feature switched off.
+    // Keyword search is off until enabled.
     for (const [table, columns] of Object.entries(FTS_COLUMNS)) {
       if (!this.tables.has(table)) continue;
       await this.send('POST', `${this.memory()}/config/${table}`, {
@@ -178,11 +149,7 @@ export class IngotRestAdapter implements MemoryAdapter {
     this.note = renderSchema(await this.send<IngotInfo>('GET', `${this.memory()}/info`));
   }
 
-  /**
-   * Embedding happens on a sweeper, not on the write path, so querying
-   * immediately after ingest would rank against a half-filled column. Poll a
-   * semantic query until it comes back with rows.
-   */
+  /** Embedding runs on a sweeper, not the write path; poll a semantic query until it returns rows. */
   private async waitForEmbeddings(): Promise<void> {
     const embedded = this.embedded;
     if (!embedded) return;
@@ -199,8 +166,8 @@ export class IngotRestAdapter implements MemoryAdapter {
         });
         if (probe.rows.length > 0) return;
       } catch {
-        // A query against a column with no vectors in it yet is an error, not
-        // an empty result. Both mean "not ready", and both are worth retrying.
+        // A query before any vectors exist errors rather than returning empty;
+        // both mean not ready.
       }
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * 2, 15_000);
@@ -245,14 +212,11 @@ export class IngotRestAdapter implements MemoryAdapter {
 
     try {
       const result = await this.send<QueryResult>('POST', `${this.memory()}/query`, body);
-      // The same serialisation the MCP server sends back, so the token column
-      // compares two interfaces rather than two ways of printing a row.
+      // Same serialisation the MCP server returns.
       return JSON.stringify(result, null, 2);
     } catch (error) {
-      // Ingot reports tool errors to the model rather than throwing, because
-      // the model is the one who can fix a mistyped column. Passing the error
-      // text through preserves that, and a run where the model recovers from
-      // its own bad SQL is a run that reflects how the product behaves.
+      // Tool errors are returned to the model, not thrown, so it can recover
+      // from a mistyped column.
       return error instanceof Error ? error.message : String(error);
     }
   }
@@ -262,8 +226,7 @@ export class IngotRestAdapter implements MemoryAdapter {
     this.ingotId = null;
     if (!ingotId) return;
     try {
-      // The memory carries `retainFor: 12h`, so this is tidiness rather than
-      // correctness — a failed delete must not fail the run.
+      // `retainFor` handles expiry; a failed delete must not fail the run.
       await this.send('DELETE', `${this.account()}/${ingotId}`);
     } catch {
       // Ignored on purpose: see above.
@@ -296,15 +259,7 @@ export class IngotRestAdapter implements MemoryAdapter {
   }
 }
 
-/**
- * `/info` rendered as the schema note.
- *
- * Terse on purpose. It is the same information the MCP server sends as
- * instructions and it costs no tool call either way, so withholding it would
- * benchmark a version of Ingot nobody ships — but it is written here, in the
- * same voice as the baselines' notes, which is the entire point of this
- * adapter.
- */
+/** `/info` rendered as the schema note, in the same voice as the baselines'. */
 export function renderSchema(info: IngotInfo): string {
   const lines = info.tables.map((table) => {
     const columns = table.columns

@@ -12,19 +12,9 @@ import {
 export const EMBED_BATCH = 128;
 
 /**
- * Leases a batch of texts waiting to be embedded.
- *
- * A claim of its own, rather than the first half of an `EmbedPending` that
- * also did the embedding, because a hosted embedder is an HTTP round trip and
- * `Dispatcher.send` wraps a command in a transaction. Embedding inside the
- * claim would hold one of ten pooled connections for the length of that call —
- * invisible while the default embedder runs in-process, and a real problem the
- * moment `INGOT_EMBEDDER` names OpenAI or Vertex.
- *
- * So the transaction ends here and `EmbedWorker` makes the call with nothing
- * held. The lease is what a row lock would have been: it stops a second
- * replica buying the same vectors, and it expires so that a worker which died
- * mid-call does not strand the batch.
+ * Leases a batch of texts waiting to be embedded, then ends the transaction so
+ * `EmbedWorker` calls the embedder with no connection held. The lease stops a
+ * second worker taking the same batch and expires if one dies mid-call.
  */
 export class ClaimEmbeddings extends Command<readonly PendingEmbedding[]> {
   constructor(readonly limit: number = EMBED_BATCH) {

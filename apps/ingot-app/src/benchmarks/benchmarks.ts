@@ -1,20 +1,6 @@
 import results from './results.json';
 
-/**
- * The published benchmark, and the words around it.
- *
- * The numbers are not in this file and never should be. `results.json` is
- * written by `packages/bench` from a real run — `bun run bench --publish` —
- * and everything the page renders comes from there, so a figure on this page
- * cannot be typed by somebody who wanted it to be higher. What lives here is
- * the prose that does not change between runs: what each column means, and
- * what the measurement does not cover.
- *
- * The shape is a contract between two artefacts, the way `@ingot/shared` is
- * one between the service and its callers. `packages/bench/src/run/publish.ts`
- * is the producer; `test/benchmarks.test.tsx` asserts the file on disk still
- * satisfies it.
- */
+/** The published benchmark and the prose around it. Numbers come from `results.json`; this file holds only what stays fixed between runs. */
 
 export interface PublishedRun {
   readonly runId: string;
@@ -79,39 +65,14 @@ export interface PublishedBenchmark {
 
 export const BENCHMARK = results as PublishedBenchmark;
 
-/**
- * The control, which is a reference point rather than an entrant.
- *
- * `oracle` was the other one. It placed exactly the answer-bearing records in
- * the prompt and was described as perfect retrieval, which it was not: it got
- * the records that *constitute* an answer and never the ones that establish
- * why they are the answer, so on a question whose predicate spans two record
- * types it was asked to assert what its prompt could not support, and it
- * answered nothing. A ceiling that sits below the columns it is meant to bound
- * is worse than no ceiling — a reader takes the gap for a finding. This one
- * bounds the model with strictly more information and needs no caveat.
- */
+/** The control, a reference point rather than an entrant. */
 export const CONTROL_NAMES: ReadonlySet<string> = new Set(['raw-context']);
 
-/**
- * The three figures worth putting at the top, computed rather than chosen.
- *
- * Every one is a fact with a name attached: which adapter, how much, of what.
- * The temptation with a lead like this is a headline claim — "structured
- * memory wins" — and the reason not to is that a benchmark published by the
- * thing it measures has to be readable by somebody who assumes it is
- * marketing. Facts survive that reading; a verdict does not, and a verdict
- * these error bars cannot support survives it least of all.
- */
+/** The three figures worth putting at the top, computed rather than chosen. */
 export interface LeadStat {
   readonly value: string;
   readonly label: string;
-  /**
-   * The adapters the figure is about, kept apart from the label so the page
-   * can set them in the accent the way every other emphasis on this site is
-   * set. A figure with no subject is the marketing version of itself, so the
-   * subject is never folded into the prose.
-   */
+  /** The adapters the figure is about, kept apart from the label so the page can accent them. */
   readonly subjects: readonly string[];
 }
 
@@ -149,7 +110,7 @@ export function leadStats(): readonly LeadStat[] {
   return stats;
 }
 
-/** Whether there is anything to show, which decides which page this is. */
+/** Whether there is anything to show. */
 export const HAS_RESULTS = BENCHMARK.run !== null && BENCHMARK.adapters.length > 0;
 
 export const BENCHMARKS_DESCRIPTION =
@@ -211,16 +172,7 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
   },
 ];
 
-/**
- * The blurbs for the columns this published run actually has.
- *
- * The catalogue above outlives any one run: a column is described there as
- * soon as it exists in `packages/bench`, which is before the next run has been
- * bought. Describing a column the table does not show would be the page
- * claiming a comparison nobody has run — so the page renders the intersection,
- * and falls back to the whole catalogue only when there are no results at all
- * and it is explaining what it is going to measure rather than what it found.
- */
+/** The blurbs for the columns this run has, or the whole catalogue when there are no results. */
 export const ADAPTERS: readonly { readonly name: string; readonly blurb: string }[] =
   BENCHMARK.adapters.length > 0
     ? ADAPTER_BLURBS.filter((blurb) =>
@@ -228,17 +180,7 @@ export const ADAPTERS: readonly { readonly name: string; readonly blurb: string 
       )
     : ADAPTER_BLURBS;
 
-/**
- * What the memories were asked to hold, said before the table is read.
- *
- * The commonest misreading of a benchmark like this one is to take it as a
- * claim about documents. It is not: nothing here is a wiki page or a PDF or a
- * support thread. It is an agent's tool traffic — the JSON that comes back
- * from a listing endpoint, thirty records at a time, in the middle of a
- * conversation about something else. That is the workload Ingot is for, and a
- * reader whose corpus is prose should know that before they read a number and
- * not after.
- */
+/** What the memories were asked to hold, said before the table is read. */
 export const CORPUS_LEDE =
   'Nothing in this corpus is a document. Every byte of it arrived the way an agent’s ' +
   'context actually fills up: as the JSON a tool call hands back — paginated listings ' +
@@ -247,19 +189,7 @@ export const CORPUS_LEDE =
   'again. Every adapter ingests the identical array of payloads, so what separates ' +
   'them is what they can do with the same bytes afterwards.';
 
-/**
- * A small count as a word, for a heading that has to agree with the table.
- *
- * The section that compares the columns was headed "Six memories" — true when
- * it was written, false the moment `pinecone`, `turbopuffer` and `ingot-rest`
- * were added, and nobody noticed because a heading is not a number anybody
- * checks. On a page whose whole claim is that no figure in it was typed by
- * hand, a hand-typed count in 48pt is the worst place for one to rot, so the
- * heading counts the columns the run actually published.
- *
- * Words to twelve, digits after: "Fourteen columns" reads as prose that has
- * lost track of itself, and by then the number is the point anyway.
- */
+/** A small count as a word, for a heading that has to agree with the table. Words to twelve, digits after. */
 export function countWord(value: number): string {
   const words = [
     'No',
@@ -279,35 +209,15 @@ export function countWord(value: number): string {
   return words[value] ?? String(value);
 }
 
-/**
- * Who wrote Ingot's column mappings, in words rather than as a flag's value.
- *
- * The run records `authored` or `agent`, and this page used to render it as
- * `${mapping}-written` — which reads correctly for one of the two values and
- * as "authored-written" for the other. The distinction is real and worth
- * saying plainly: `authored` is the hand-written schema a careful engineer
- * would produce knowing the shape of each tool's output, and `agent` is the
- * realistic case where the agent meets a payload for the first time and has to
- * invent the mapping. The gap between them is how much of Ingot's result
- * survives nobody tuning it by hand.
- */
+/** Who wrote Ingot's column mappings (`authored` or `agent`), in words rather than the flag's value. */
 export function mappingWriter(mapping: string): string {
   if (mapping === 'authored') return 'hand-written';
   if (mapping === 'agent') return 'agent-written';
-  // A value this build has not met. Showing it beats claiming one of the two
-  // above and being wrong about which.
+  // A value this build has not met; show it rather than guess.
   return mapping;
 }
 
-/**
- * How one source's payloads arrived, in a line.
- *
- * Shared by the page and the markdown half rather than written twice, because
- * the two would drift and the reading is the same either way. The cases are
- * genuinely different rather than a plural: a listing that fits in one payload
- * has no page size worth quoting, and the tool that does not paginate is the
- * one whose whole point is that everything came at once.
- */
+/** How one source's payloads arrived, in a line. */
 export function arrival(source: PublishedSource): string {
   const count = (value: number): string => value.toLocaleString('en-GB');
 
@@ -320,23 +230,7 @@ export function arrival(source: PublishedSource): string {
   return `${count(source.results)} payloads, ${source.perResult} records a page, ${count(source.records)} records, ${count(source.largest)} characters in the largest`;
 }
 
-/**
- * How the payloads connect, which is the part a reader has to be told.
- *
- * Every source above describes itself. None of them describes the others, and
- * there is no schema, no foreign key and no shared identifier scheme — the
- * only thing joining two results is a value in one that happens to equal a
- * value in the other. An agent has to notice that, and get it right, before a
- * question spanning two payloads can be answered at all.
- *
- * The last row is not a curiosity. A run of this benchmark had Ingot answer
- * "which services have had no incidents" with *all eight services*, because
- * the model joined `incidents.service` to `services.ref` — `catalog` against
- * `svc:catalog` — and matched nothing. Confidently, plausibly, and completely
- * wrong. Real tool payloads spell the same entity two ways all the time, and a
- * corpus that tidied it up would be modelling a friendlier world than the one
- * the agent works in.
- */
+/** How the payloads connect: values that match across results, with no declared key. */
 export const CORPUS_JOINS: readonly {
   readonly from: string;
   readonly to: string;
@@ -364,17 +258,10 @@ export const CORPUS_JOINS: readonly {
   },
 ];
 
-/**
- * What each tool result is, and what shape it arrives in.
- *
- * The catalogue outlives any one run — `logs.search` is described here whether
- * or not the published run opted into it — and the page renders the
- * intersection with what was actually published, the same rule the adapter
- * blurbs follow.
- */
+/** What each tool result is, and what shape it arrives in. */
 export const SOURCE_BLURBS: readonly {
   readonly tool: string;
-  /** The shape, in the words somebody would use to describe it out loud. */
+  /** The shape, in plain words. */
   readonly shape: string;
   readonly blurb: string;
 }[] = [
@@ -422,7 +309,7 @@ export const SOURCE_BLURBS: readonly {
   },
 ];
 
-/** What each question category is for. The categories are the whole design. */
+/** What each question category is for. */
 export const CATEGORIES: readonly { readonly name: string; readonly blurb: string }[] = [
   { name: 'aggregate', blurb: 'A statistic over the whole corpus, not a lookup.' },
   {
@@ -444,15 +331,7 @@ export const CATEGORIES: readonly { readonly name: string; readonly blurb: strin
   { name: 'multi-hop', blurb: 'Two hops and an argmax.' },
 ];
 
-/**
- * Where to check each claim this page makes.
- *
- * A benchmark published by the thing it measures is worth exactly as much as
- * a reader's ability to go and look. Every load-bearing part of it is one
- * file, and each is named here by the question it answers rather than by what
- * it is — "where do the questions come from" is what somebody wants, not
- * `questions.ts`.
- */
+/** Where to check each claim this page makes, named by the question each file answers. */
 export const SOURCES: readonly {
   readonly question: string;
   readonly path: string;
@@ -495,7 +374,7 @@ export const SOURCES: readonly {
   },
 ];
 
-/** The caveats, stated on the page rather than in a footnote nobody opens. */
+/** The caveats, stated on the page. */
 export const LIMITS: readonly { readonly title: string; readonly body: string }[] = [
   {
     title: 'The questions are generated, not collected',

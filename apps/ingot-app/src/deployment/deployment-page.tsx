@@ -25,25 +25,9 @@ export const deploymentMetadata: Metadata = {
 };
 
 /**
- * The deployment page.
- *
- * The reference answers what Ingot serves; this answers how to have one at all,
- * which is the question a self-hosted-only project owes an answer to before
- * anybody clones it. Two halves, in the order somebody needs them: the ways to
- * bring one up, then the two things every one of those ways is pointing at,
- * then the list of things somebody would reasonably expect to provision and
- * does not have to. That third list is the one usually missing from a page
- * like this, and it is the one that decides whether the first two are
- * believable.
- *
- * The rows in the first half are the landing page's, from the same
- * `targets.ts` and through the same `RunTargetRow` — this is where they are
- * load-bearing rather than persuasive, so what changes is what sits under
- * them, not the rows.
- *
- * Built from data rather than written as markup, so the sidebar and the
- * sections cannot come apart. A server component with no fetching: it renders
- * once, at build time, into static HTML.
+ * The deployment page: how to run Ingot, then the two dependencies every way
+ * needs, then the list of things you do not have to provision. A server
+ * component rendered at build time.
  */
 export function DeploymentPage(): ReactNode {
   return (
@@ -89,15 +73,7 @@ export function DeploymentPage(): ReactNode {
             ))}
           </section>
 
-          {/*
-            The three ways, before the two things they all point at.
-
-            This order is the argument the page is making: a reader who came
-            here to deploy wants the commands, and the dependency sections
-            below are what each of those commands was already assuming. The
-            other order — provisioning first, running last — is the one that
-            reads like a bill.
-          */}
+          {/* The three ways, before the two things they all point at. */}
           <section className="section" id="bring-it-up">
             <span className="label section-kicker">[ Bring it up ]</span>
             <h2 className="deps-heading">Pick a place</h2>
@@ -139,12 +115,6 @@ export function DeploymentPage(): ReactNode {
             </table>
           </section>
 
-          {/*
-            The local one, named as the local one. It closes a page about three
-            targets by recommending a fourth thing — checking the page — and
-            the machine in front of you is the only one of the three you can do
-            that on in a minute.
-          */}
           <section className="cta">
             <span className="label label-sm kicker">[ The quickest of the three ]</span>
             <h2>Bring one up before you believe any of this</h2>
@@ -199,12 +169,7 @@ function DependencySection({ dependency }: { dependency: Dependency }): ReactNod
             {dependency.settings.map((setting) => (
               <tr key={setting.name}>
                 <td className="deps-name">{setting.name}</td>
-                {/*
-                  A variable with nothing to fall back to is the interesting
-                  case on this page — it is the difference between a service
-                  that starts with a default you did not choose and one that
-                  refuses — so it is marked rather than left blank.
-                */}
+                {/* No fallback is marked rather than left blank: it is what makes the service refuse to start. */}
                 <td className="deps-default">
                   {setting.fallback ?? <span className="deps-required">none</span>}
                 </td>
@@ -220,7 +185,7 @@ function DependencySection({ dependency }: { dependency: Dependency }): ReactNod
   );
 }
 
-/** Derived from the same lists the page renders, for the reason `DocsNav` is. */
+/** Derived from the same lists the page renders. */
 function DeploymentNav(): ReactNode {
   return (
     <aside className="docnav">

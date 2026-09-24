@@ -3,12 +3,7 @@ import { CodeBlock } from './code-block';
 import { Prose } from './prose';
 import { Auth, type Endpoint, HttpMethod, SampleTone } from './reference';
 
-/**
- * One route: what it is on the left, what it looks like on the right.
- *
- * The two columns collapse before the sidebar does, because the sample is the
- * wider of the two and runs out of room first.
- */
+/** One route: what it is on the left, what it looks like on the right. */
 export function EndpointRow({ endpoint }: { endpoint: Endpoint }): ReactNode {
   return (
     <section className="ep" id={endpoint.id}>
@@ -77,13 +72,7 @@ const METHOD_CLASS: Record<HttpMethod, string> = {
   [HttpMethod.All]: 'method-all',
 };
 
-/**
- * A long path shrinks rather than wrapping mid-segment.
- *
- * `/api/v1/:account/:ingot/config/:table` broken across two lines reads as two
- * paths, and the reader's eye has to put it back together. Three steps is
- * enough for every path this service serves.
- */
+/** A long path shrinks rather than wrapping mid-segment. */
 function pathClass(path: string): string {
   if (path.length > 32) return 'path path-longer';
   if (path.length > 26) return 'path path-long';

@@ -12,25 +12,16 @@ import type { AdapterTool, MemoryAdapter } from './types.js';
 
 const CONTROL_PLANE = 'https://api.pinecone.io';
 
-/**
- * Pinned, because an unversioned request is served by `2024-04` — Pinecone
- * dates its API and defaults to an old one rather than to the newest. A
- * benchmark whose baseline silently ages two years between runs is measuring
- * the calendar.
- */
+/** Pinned; an unversioned request is served by an old default (`2024-04`). */
 const API_VERSION = '2025-10';
 
-/**
- * Vectors per upsert. 1536 floats serialise to roughly 25KB of JSON and the
- * documented request ceiling is 2MB, so fifty leaves room and one oversized
- * batch never costs a retry of the whole ingest.
- */
+/** Vectors per upsert. 1536 floats ≈ 25KB of JSON; the request ceiling is 2MB. */
 const BATCH = 50;
 
-/** Upserts in flight. Pinecone's write path is happy with this; ingest is ~10 batches. */
+/** Upserts in flight. */
 const UPSERT_CONCURRENCY = 4;
 
-/** Pinecone's documented metadata ceiling, per vector. */
+/** Pinecone's metadata ceiling, per vector. */
 const METADATA_LIMIT_BYTES = 40_960;
 
 interface IndexDescription {
@@ -68,33 +59,10 @@ export interface PineconeOptions {
 }
 
 /**
- * Pinecone, the hosted vector database, over its documented REST surface.
- *
- * It is given the *same vectors* as the `vector` baseline — the same embedding
- * model, the same record-level chunking, the same text — because the question
- * this column answers is narrow and worth keeping narrow: does a production
- * ANN index, hosted by the company whose product this is, retrieve better than
- * a brute-force cosine scan over the identical embeddings?
- *
- * Two consequences of that are worth stating plainly.
- *
- * - **Pinecone's own embedding models are not used.** Its integrated inference
- *   would embed with `llama-text-embed-v2` and the row would then differ from
- *   every other row in two ways at once, embedding model and index. The
- *   benchmark's rule is one embedder across the whole table (see
- *   `embed/embedder.ts`), and a column that broke it would not be comparable
- *   with the ablation it exists to be compared against.
- * - **A near-tie with `vector` is the expected result, and is the point.**
- *   `vector` is exact and Pinecone is approximate, so Pinecone should land at
- *   or just below it. That makes this column the check on whether `vector` is
- *   a strawman: if the hosted product cannot beat forty lines of cosine over
- *   the same embeddings, then what the top-k rows cannot do is a property of
- *   top-k retrieval and not of an implementation chosen to lose.
- *
- * Runs are isolated by namespace — one per `runId` — which is also why this
- * adapter deletes on the way out where `hyperspell` does not: a namespace
- * named for this run was created by this run and holds nothing else, so
- * dropping it is not a bulk delete against somebody's account.
+ * Pinecone over its REST surface, given the same vectors as the `vector`
+ * baseline: same embedding model, chunking and text. Pinecone's own embedding
+ * models are not used, so the only difference from `vector` is the ANN index.
+ * Runs are isolated by namespace, one per `runId`, and dropped on teardown.
  */
 export class PineconeAdapter implements MemoryAdapter {
   readonly name = 'pinecone';
@@ -143,13 +111,9 @@ export class PineconeAdapter implements MemoryAdapter {
   }
 
   /**
-   * The record as Pinecone holds it.
-   *
-   * The text goes in the metadata rather than being looked up locally after
-   * the query, so what the model reads is what the store handed back — the
-   * same round trip `hyperspell` is scored on. The size check is here because
-   * Pinecone rejects the whole batch over its 40KB ceiling, and a corpus that
-   * grew past it should say so rather than fail with a 400 nobody can read.
+   * The record as Pinecone holds it, text in the metadata so the model reads
+   * what the store returned. Size-checked because Pinecone rejects a whole
+   * batch over its 40KB ceiling.
    */
   private metadata(record: CorpusRecord): Record<string, unknown> {
     const metadata = { ref: record.ref, tool: record.tool, text: record.text };
@@ -164,15 +128,7 @@ export class PineconeAdapter implements MemoryAdapter {
     return metadata;
   }
 
-  /**
-   * The index, created if this is the first run against the project.
-   *
-   * Dimension and metric are checked rather than assumed. An index left over
-   * from a run with a different embedder would accept nothing and report
-   * "vector dimension does not match"; an index built with `dotproduct` would
-   * rank differently for a reason that has nothing to do with the store, and
-   * would be reported as if it did.
-   */
+  /** The index, created if missing. Dimension and metric are checked, not assumed. */
   private async resolveIndex(): Promise<string> {
     const existing = await this.describeIndex();
     if (existing) {
@@ -223,14 +179,7 @@ export class PineconeAdapter implements MemoryAdapter {
     return current.host;
   }
 
-  /**
-   * Writes are visible when they are visible.
-   *
-   * Pinecone is eventually consistent, so querying straight after the last
-   * upsert would benchmark a half-built index — the same failure `hyperspell`
-   * guards against, and the same fix: ask the store what it holds and wait
-   * until it admits to all of it, rather than guessing at a sleep.
-   */
+  /** Pinecone is eventually consistent; poll stats until the whole corpus is visible. */
   private async waitForIndexing(): Promise<void> {
     const wanted = this.records.length;
     if (wanted === 0) return;
@@ -279,15 +228,7 @@ export class PineconeAdapter implements MemoryAdapter {
     );
   }
 
-  /**
-   * The run's namespace, dropped.
-   *
-   * Unlike Hyperspell's account-wide store, a namespace is named for this run
-   * and holds only this run's vectors, so removing it is not a bulk delete
-   * against anything shared. It is best-effort on purpose: a serverless index
-   * that will not drop a namespace is not a reason to fail a run whose rows
-   * are already on disk, and the next run reads a different namespace anyway.
-   */
+  /** Drops the run's namespace, which holds only this run's vectors. Best-effort. */
   async teardown(): Promise<void> {
     const host = this.host;
     this.records = [];
@@ -329,14 +270,7 @@ export class PineconeAdapter implements MemoryAdapter {
     return this.request<T>(`https://${this.host}${path}`, 'POST', body);
   }
 
-  /**
-   * One request, waiting out a rate limit rather than failing the column.
-   *
-   * The same choice `hyperspell` makes and for the same reason: a 429 is the
-   * service working as documented, and a benchmark that reported "pinecone:
-   * skipped" because it was asked to slow down would be publishing a fact
-   * about the harness.
-   */
+  /** One request, retrying 429 and 5xx with backoff. */
   private async request<T>(url: string, method: string, body: unknown, attempt = 0): Promise<T> {
     const response = await fetch(url, {
       method,

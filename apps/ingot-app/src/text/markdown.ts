@@ -1,24 +1,6 @@
-/**
- * The small amount of markdown the plain-text builds need.
- *
- * Not a library, and it does not need to be one. Every string in the content
- * files is already written in the notation `src/docs/prose.tsx` renders —
- * backticks for code, `**` for emphasis — and that notation *is* markdown, so
- * the prose passes through these helpers untouched. What is left is the
- * structure the JSX was carrying: headings, fences and tables.
- *
- * The one thing that has to be handled rather than passed through is a table
- * cell, because a `|` inside one ends the cell and a newline ends the row.
- */
+/** The small amount of markdown the plain-text builds need. Prose is already markdown; these helpers add headings, fences and tables. */
 
-/**
- * One page of the site, as the plain-text build sees it.
- *
- * The title and the summary sit here rather than in `./text-files.ts` because
- * the index and the document are two renderings of one page, and a page whose
- * index entry is written somewhere other than the page is a page that can be
- * summarised as something it is not.
- */
+/** One page of the site, as the plain-text build sees it. */
 export interface Article {
   /** What the index calls it. */
   readonly title: string;
@@ -32,14 +14,7 @@ export function heading(depth: number, text: string): string {
   return `${'#'.repeat(depth)} ${text}`;
 }
 
-/**
- * A fenced block.
- *
- * The samples on both pages are shell, JSON, HTTP, YAML and prose-with-a-`#`,
- * and several are more than one of those at once — a `curl` and the body it
- * answers with. Tagging them would mean guessing, and a wrong tag is worse
- * than none, so the fence carries no language.
- */
+/** A fenced block. No language tag: the samples mix several, and a wrong tag is worse than none. */
 export function fence(code: string): string {
   return ['```', code, '```'].join('\n');
 }
@@ -62,13 +37,7 @@ export function table(headers: readonly string[], rows: readonly (readonly strin
   ].join('\n');
 }
 
-/**
- * The blocks of a document, blank-line separated, with the empty ones dropped.
- *
- * Sections are assembled by listing everything a page *can* have and letting
- * the optional parts render as `''` — so the callers below read as the shape
- * of the page rather than as a chain of conditionals.
- */
+/** The blocks of a document, blank-line separated, with the empty ones dropped. */
 export function blocks(...parts: readonly (string | null | undefined | false)[]): string {
   return parts.filter((part): part is string => Boolean(part)).join('\n\n');
 }

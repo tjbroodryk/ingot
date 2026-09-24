@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { Retention, RetentionUnit } from '../../src/contexts/ingots/domain/retention.vo.js';
 
-/**
- * How long a memory is kept.
- *
- * The thing on the other end of a mistake here is an irreversible delete, so
- * the interesting assertions are all about what this *refuses* — a retention
- * that parses loosely is one that silently means something other than what its
- * author wrote.
- */
+/** How long a memory is kept. */
 describe('a retention', () => {
   const start = new Date('2026-08-26T09:00:00.000Z');
 
@@ -44,11 +37,6 @@ describe('a retention', () => {
     expect(() => Retention.of(raw)).toThrow();
   });
 
-  /**
-   * Both bounds exist because both mistakes are plausible and neither is
-   * recoverable: `0d` deletes a memory before anything can be written to it,
-   * and a century is a typo rather than a plan.
-   */
   it('refuses a retention shorter than a minute', () => {
     expect(() => Retention.of('0m')).toThrow(/shorter than a minute/);
     expect(() => Retention.of('0d')).toThrow(/shorter than a minute/);
@@ -59,8 +47,7 @@ describe('a retention', () => {
   });
 
   it('names its units as a closed set', () => {
-    // Parsed against `Object.values`, never cast — so a unit added here without
-    // a millisecond value would be a compile error rather than a NaN.
+    // Parsed against `Object.values`, never cast, so a unit with no millisecond value is a compile error.
     expect(Object.values(RetentionUnit).map(String).sort()).toEqual(['d', 'h', 'm', 'w']);
   });
 });

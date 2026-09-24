@@ -10,11 +10,7 @@ import {
 } from './semantic-search.js';
 import type { AdapterTool, MemoryAdapter } from './types.js';
 
-/**
- * Rows per write. The documented ceiling is 512MB per request and turbopuffer
- * asks for large batches, so this is about keeping one retry cheap rather than
- * about a limit: 200 rows of 1536 floats is roughly 5MB.
- */
+/** Rows per write. 200 rows of 1536 floats ≈ 5MB; the request ceiling is 512MB. */
 const BATCH = 200;
 
 const WRITE_CONCURRENCY = 4;
@@ -43,29 +39,10 @@ export interface TurbopufferOptions {
 }
 
 /**
- * turbopuffer, over its documented v2 REST surface: `POST /v2/namespaces/:ns`
- * to write and `POST /v2/namespaces/:ns/query` to retrieve.
- *
- * Here for the same reason `pinecone` is, and configured identically: the same
- * embedding model, the same record-level chunking, the same text, the same
- * `search` tool. What differs between the three vector rows is only where the
- * vectors live and how the nearest ones are found — brute-force cosine in
- * process, a hosted ANN index built to be a vector database, and a hosted
- * index built on object storage. Anything else that differed would show up in
- * the accuracy column wearing retrieval's clothes.
- *
- * Two notes on the configuration:
- *
- * - **`cosine_distance`**, so the ranking is the same function the other rows
- *   rank by. turbopuffer returns `$dist` and defines cosine distance as
- *   `1 - cosine_similarity`, so the printed score is `1 - $dist` — the same
- *   number `vector` prints, rather than a differently-scaled one the model
- *   would have to interpret.
- * - **No full-text index.** turbopuffer will do BM25 alongside vectors if the
- *   schema asks for it, and switching it on would make this row a hybrid
- *   search while `vector` and `pinecone` stay dense-only. The hybrid question
- *   is a real one and it deserves its own column, not a silent edge in this
- *   one.
+ * turbopuffer over its v2 REST surface, configured like `pinecone`: same
+ * embedding model, chunking, text and `search` tool, so only the index
+ * differs. Ranks by `cosine_distance`, so the printed score is `1 - $dist`,
+ * matching what `vector` prints. No full-text index, to stay dense-only.
  */
 export class TurbopufferAdapter implements MemoryAdapter {
   readonly name = 'turbopuffer';
@@ -83,8 +60,7 @@ export class TurbopufferAdapter implements MemoryAdapter {
       /\/$/,
       '',
     );
-    // Namespace names are `[A-Za-z0-9-_.]{1,128}`, and a run id that fell
-    // outside that would fail the write rather than the validation.
+    // Namespace names are `[A-Za-z0-9-_.]{1,128}`; sanitise the run id to fit.
     this.namespace = `bench-${options.runId}`.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 128);
     this.writeTimeoutMs = options.writeTimeoutMs ?? 300_000;
   }
@@ -116,14 +92,9 @@ export class TurbopufferAdapter implements MemoryAdapter {
   }
 
   /**
-   * A probe query, even though turbopuffer is strongly consistent.
-   *
-   * Its own documentation is precise about where that stops: past 128MiB of
-   * outstanding writes, rows are not visible until they have been indexed.
-   * This corpus is a few megabytes and so lands well inside the guarantee —
-   * which is exactly why the probe is one query and usually returns first try,
-   * and why it is here rather than trusted: "the corpus is small enough" is a
-   * claim that should be checked once per run, not assumed by every reader.
+   * A probe query. turbopuffer is strongly consistent under 128MiB of
+   * outstanding writes and this corpus is far inside that, so the probe checks
+   * it once and usually returns first try.
    */
   private async waitForIndexing(): Promise<void> {
     const probe = this.records.at(-1);
@@ -172,21 +143,14 @@ export class TurbopufferAdapter implements MemoryAdapter {
 
     return renderHits(
       (body.rows ?? []).map((row) => ({
-        // `1 - distance` is the cosine similarity the other rows print. See
-        // the note on the class.
+        // `1 - distance` is the cosine similarity the other rows print.
         score: typeof row.$dist === 'number' ? 1 - row.$dist : null,
         text: row.text ?? row.ref ?? String(row.id ?? ''),
       })),
     );
   }
 
-  /**
-   * The run's namespace, dropped — the same call the Python SDK makes for
-   * `delete_all()`. It holds this run's corpus and nothing else, so this is
-   * not a delete against anything shared, and best-effort because a store that
-   * will not drop a namespace is no reason to fail a run whose rows are
-   * already on disk.
-   */
+  /** Drops the run's namespace, which holds only this run's corpus. Best-effort. */
   async teardown(): Promise<void> {
     const written = this.written;
     this.records = [];
@@ -207,10 +171,7 @@ export class TurbopufferAdapter implements MemoryAdapter {
     return this.request<T>(path, 'POST', body);
   }
 
-  /**
-   * One request, waiting out a rate limit rather than failing the column —
-   * the same choice `hyperspell` and `pinecone` make, for the same reason.
-   */
+  /** One request, retrying 429 and 5xx with backoff. */
   private async request<T>(path: string, method: string, body: unknown, attempt = 0): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,

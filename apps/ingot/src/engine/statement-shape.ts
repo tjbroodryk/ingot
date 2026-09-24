@@ -1,24 +1,10 @@
 import { InvariantViolation } from '../shared/domain/index.js';
 
 /**
- * Two text-level checks the engine's type check cannot make on its own.
- *
- * `prepare().statementType` is the primary gate and catches almost everything.
- * These close the two gaps found by running actual attacks at it:
- *
- *  - DuckDB rewrites some `PRAGMA` statements into a select over a table
- *    function, so `PRAGMA database_list` arrives at `statementType` looking
- *    exactly like `SELECT 1`. The type is honest about what will run; it is
- *    not a record of what was written.
- *  - `/delete` takes a *predicate*, which this service wraps in
- *    `SELECT _row_id FROM t WHERE (…)`. A predicate carrying an unmatched
- *    `)` closes that wrapping and continues the statement — still one SELECT,
- *    so still past every check the engine makes.
- *
- * Both are text checks, which is usually a smell. They earn their place by
- * being *narrowing* rather than pattern-matching: neither tries to recognise
- * something bad, they establish something structural about the input and
- * refuse what does not fit.
+ * Two text-level checks the engine's `statementType` gate cannot make on its
+ * own: DuckDB rewrites some `PRAGMA` into a select, and a `/delete` predicate
+ * wrapped in a SELECT could break out of its brackets. Both are narrowing
+ * structural checks, not pattern matches.
  */
 
 /** What a statement may begin with, once comments and whitespace are gone. */
@@ -36,13 +22,7 @@ export function assertStartsAsSelect(sql: string): void {
   );
 }
 
-/**
- * The first meaningful token, lowercased. `(` is returned as itself.
- *
- * Skips whitespace, `-- line comments` and `/* block comments *​/`, because a
- * statement may legitimately be introduced by one and an attacker will
- * certainly try.
- */
+/** The first meaningful token, lowercased; `(` returned as itself. Skips whitespace and comments. */
 export function leadingKeyword(sql: string): string | null {
   let at = 0;
   for (;;) {
@@ -71,16 +51,9 @@ export function leadingKeyword(sql: string): string | null {
 }
 
 /**
- * Refuses a predicate that could close the statement it is wrapped in.
- *
- * Scanned outside string literals, the parentheses must never go negative and
- * must end balanced, and a `;` is refused outright. With that established,
- * a trailing `--` cannot reach anything: there is nothing left of our wrapping
- * for it to comment away, because the predicate never got out of its brackets.
- *
- * Doubled quotes (`'it''s'`) are handled by the loop below rather than by a
- * regular expression, because the version of this written with a regex is the
- * version that gets `''` wrong.
+ * Refuses a predicate that could close the statement it is wrapped in:
+ * parentheses must stay non-negative and end balanced, and `;` is refused.
+ * Doubled quotes (`'it''s'`) are handled by the loop, not a regex.
  */
 export function assertSelfContainedPredicate(where: string): void {
   let depth = 0;

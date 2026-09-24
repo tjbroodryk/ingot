@@ -11,33 +11,10 @@ import { Dispatcher } from '../shared/application/index.js';
 
 const EVERY = minutes(10);
 
-/**
- * How many memories one tick will destroy.
- *
- * Low on purpose. This is the only thing in the service that deletes data
- * nobody asked it to delete right now, and a bug here is not a slow queue — it
- * is somebody's memory, gone. A small cap means a mistake is small and visible
- * for several ticks before it is large, and the log line below is what makes
- * it visible.
- */
+/** How many memories one tick will destroy; kept low so a bug stays small and visible. */
 const PER_TICK = 25;
 
-/**
- * Deletes memories past their retention.
- *
- * A caller who said `retainFor: '14d'` at creation gets exactly that, and this
- * is what makes the promise true. Everything else in the service only deletes
- * when told to.
- *
- * It dispatches the ordinary `DeleteIngot` — the same command the endpoint
- * uses, with the same tenancy check and the same after-commit bucket cleanup —
- * rather than a second deletion path. One write path per fact, so reaping is
- * "the thing the caller could have done themselves, done on time".
- *
- * Safe to run twice, which is what a scheduler without a journal requires: a
- * memory reaped by an interrupted tick is not found by the next one, and the
- * re-read below is what makes that a checked fact rather than a hope.
- */
+/** Deletes memories past their retention by dispatching the ordinary `DeleteIngot`. */
 @Cron({
   name: 'reap-expired-ingots',
   everyMs: EVERY,
@@ -55,8 +32,7 @@ export class ExpirySweeper {
   async tick(): Promise<void> {
     const due = await this.ingots.listExpired(this.clock.now(), PER_TICK + 1);
 
-    // Silent when nothing moved. A ten-minute job over a service where nothing
-    // expires should not produce a line every ten minutes.
+    // Silent when nothing is due.
     if (due.length === 0) return;
 
     if (due.length > PER_TICK) {
@@ -67,18 +43,10 @@ export class ExpirySweeper {
     }
 
     for (const target of due.slice(0, PER_TICK)) {
-      /*
-       * Read again, and check again, immediately before deleting.
-       *
-       * The listing already filtered on `expires_at <= now` in SQL, so this
-       * is belt and braces — and it is worth having precisely because the
-       * thing on the other side is irreversible. It costs one indexed read
-       * per memory at a cap of twenty-five, and it means the decision to
-       * destroy something is made against the row as it is now rather than
-       * as it was when a query ran.
-       */
+      // Re-read and re-check immediately before deleting, since the delete is
+      // irreversible and the listing ran earlier.
       const ingot = await this.ingots.findById(IngotId.of(target.id));
-      if (!ingot) continue; // Already gone; somebody deleted it themselves.
+      if (!ingot) continue; // Already deleted.
 
       if (!ingot.hasExpired(this.clock.now())) {
         this.logger.warn(`"${target.name}" was listed as expired but is not — leaving it alone`);
@@ -86,8 +54,7 @@ export class ExpirySweeper {
       }
 
       await this.dispatcher.send(new DeleteIngot(target.id, target.accountId));
-      // Loud, and one line per memory. Deleting somebody's data is not a
-      // thing to do quietly, and this is the only record that it happened.
+      // One line per memory: the only record that a reap happened.
       this.logger.log(`Reaped "${target.name}" (${target.id}): retention ran out`);
     }
   }

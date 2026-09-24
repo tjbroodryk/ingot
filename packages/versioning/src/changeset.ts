@@ -10,18 +10,9 @@ interface Chains {
 }
 
 /**
- * The published versions of one API, and how to move between them.
- *
- * The model, which is Stripe's: **only the newest shape is ever implemented.**
- * Handlers, DTOs and the wire contract describe it and nothing else. An older
- * version is not a second implementation — it is the current one with a stack
- * of small transformations in front of it, applied on the way in and unapplied
- * on the way out.
- *
- * That is what stops versioning becoming a tax on every future change. Adding
- * a version costs one file describing what moved; it does not cost a branch
- * inside a handler, and it does not cost a second set of tests, because the
- * only behaviour under test is the newest one plus a pile of pure functions.
+ * The published versions of one API, and how to move between them. Only the
+ * newest shape is implemented; an older version is that shape with a stack of
+ * transforms applied on the way in and unapplied on the way out.
  *
  * Serving a caller pinned to `v`:
  *
@@ -31,9 +22,8 @@ interface Chains {
  *   response  →  backward transforms of every release AFTER v, newest first
  * ```
  *
- * A release describes what it *changed*, so a caller already on that version
- * sees the new shape — which is why the chains start strictly after `v` rather
- * than at it.
+ * The chains start strictly after `v`: a release describes what it changed, so
+ * a caller already on that version sees the new shape.
  */
 export class Changeset<V extends string = VersionId> {
   readonly versions: readonly V[];
@@ -41,7 +31,7 @@ export class Changeset<V extends string = VersionId> {
   readonly oldest: V;
 
   private readonly releases: readonly Release<V>[];
-  /** version → shape → the chains to serve that version. Built once, at boot. */
+  /** version → shape → the chains to serve that version. Built once. */
   private readonly chains = new Map<V, Map<string, Chains>>();
 
   constructor(releases: readonly Release<V>[]) {
@@ -52,9 +42,7 @@ export class Changeset<V extends string = VersionId> {
     this.oldest = this.versions[0] as V;
     this.latest = this.versions[this.versions.length - 1] as V;
 
-    // Precomputed rather than assembled per request. There are few enough
-    // versions that it would not matter either way, but a chain built once at
-    // boot is a chain that cannot be built differently on the second call.
+    // Precomputed rather than assembled per request.
     for (const version of this.versions) this.chains.set(version, this.build(version));
   }
 
@@ -102,8 +90,7 @@ export class Changeset<V extends string = VersionId> {
   }
 
   private build(version: V): Map<string, Chains> {
-    // Strictly after: a release describes what it changed, so a caller on that
-    // version is already looking at the result of it.
+    // Strictly after: a caller on that version already sees what it changed.
     const later = this.releases.filter((release) => compareVersions(release.version, version) > 0);
 
     const byShape = new Map<string, { forward: Transform[]; backward: Transform[] }>();
@@ -121,10 +108,9 @@ export class Changeset<V extends string = VersionId> {
       }
     }
 
-    // Backward is the exact reverse of forward — releases newest first, and
-    // within a release the changes in reverse declaration order. Two changes to
-    // one shape in one release compose, and undoing them in the order they were
-    // applied would undo the wrong one first.
+    // Backward is the exact reverse of forward: releases newest first, and
+    // within a release the changes in reverse declaration order, so composed
+    // changes undo correctly.
     for (const release of [...later].reverse()) {
       for (const change of [...release.changes].reverse()) {
         if (change.backward) chain(change.shape).backward.push(change.backward);
@@ -145,13 +131,7 @@ function apply(transforms: readonly Transform[] | undefined, value: Payload): Pa
   return transforms.reduce<Payload>((carried, transform) => transform(carried), value);
 }
 
-/**
- * Everything that would make a changeset dishonest, refused at construction.
- *
- * At boot rather than on the first request that happens to need the broken
- * part: a changeset out of order does not fail, it silently serves the wrong
- * shape, and that is the sort of thing discovered by a customer.
- */
+/** Everything that would make a changeset dishonest, refused at construction. */
 function assertWellFormed(releases: readonly Release[]): void {
   if (releases.length === 0) {
     throw new MalformedChangeset('A changeset needs at least one release — the baseline.');

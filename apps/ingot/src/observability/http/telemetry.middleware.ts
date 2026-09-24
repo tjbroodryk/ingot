@@ -7,16 +7,9 @@ import { markFailed, tracer } from '../tracing/tracer.js';
 /**
  * The root span and the request metric for every HTTP request.
  *
- * Middleware rather than a Nest interceptor, and the reason is the requests an
- * interceptor never sees. Nest runs middleware → guards → interceptors, so a
- * request refused by `AccessTokenGuard` or `ScopeGuard` is finished before any
- * interceptor is entered — and 401s and 403s are precisely the traffic you go
- * looking for. Same for a 404, which never reaches a controller at all. From
- * here, everything that arrives is counted, whatever became of it.
- *
- * The span is opened *active* around `next()`, which is what makes every
- * command, query and `observe()` further in a descendant of it with no
- * plumbing: one trace per request, from the first byte to the last.
+ * Middleware rather than an interceptor so refused requests (401, 403, 404)
+ * are counted too. The span is opened active around `next()`, so every command,
+ * query and `observe()` below becomes a descendant of it.
  */
 @Injectable()
 export class TelemetryMiddleware implements NestMiddleware {
@@ -26,21 +19,12 @@ export class TelemetryMiddleware implements NestMiddleware {
 
     Metrics.HttpRequestsInFlight.inc({ method });
 
-    /**
-     * Continues the caller's trace when it sent one.
-     *
-     * A `traceparent` header means this request is already part of somebody
-     * else's story — a browser that started the trace on a click, or another
-     * service calling in. Extracting it is the difference between one trace
-     * spanning the whole interaction and a pile of unrelated ones.
-     */
+    // Continues the caller's trace when it sent a `traceparent` header.
     const incoming = propagation.extract(context.active(), request.headers);
 
     context.with(incoming, () => {
       const span = tracer().startSpan(
-        // Renamed at finish, once the route template is known. Until routing
-        // has happened there is nothing to name it but the raw URL, and that
-        // is the one name it must never keep.
+        // Renamed at finish, once the route template is known.
         `${method} ${request.path}`,
         {
           kind: SpanKind.SERVER,
@@ -65,9 +49,7 @@ export class TelemetryMiddleware implements NestMiddleware {
         span.updateName(`${method} ${route}`);
         span.setAttributes({ 'http.route': route, 'http.response.status_code': status });
 
-        // 5xx is the server's fault and belongs in an error rate; 4xx is the
-        // caller's and does not. Marking every non-2xx as an error is how a
-        // trace view fills with red that nobody is meant to act on.
+        // 5xx marks the span failed; 4xx is the caller's fault, not an error here.
         if (status >= 500) markFailed(span, new Error(`HTTP ${status}`));
 
         Metrics.HttpRequestsInFlight.dec({ method });
@@ -76,8 +58,7 @@ export class TelemetryMiddleware implements NestMiddleware {
       };
 
       // `finish` for a response that was sent, `close` for a client that hung
-      // up mid-response. Without the second, an aborted request leaks a span
-      // and a point on the in-flight gauge that never comes back down.
+      // up mid-response; without the second, an aborted request leaks a span.
       response.once('finish', finish);
       response.once('close', finish);
 
@@ -87,17 +68,9 @@ export class TelemetryMiddleware implements NestMiddleware {
 }
 
 /**
- * The route as Express matched it — `/api/v1/projects/:projectId/repos` — not
- * as the caller wrote it.
- *
- * This is the single most important line in the file. `route` labels a metric,
- * and a metric labelled with resolved paths has one time series per project
- * id: the cardinality grows with the data, the store falls over, and it does
- * so gradually enough that nobody connects it to this decision.
- *
- * Anything unmatched collapses to one series for the same reason. A scanner
- * walking `/wp-admin`, `/.env` and ten thousand other paths is a 404 counter,
- * not ten thousand of them.
+ * The route template as Express matched it (`/projects/:projectId/repos`), not
+ * the resolved path; keeps the metric's cardinality bounded. Unmatched paths
+ * collapse to a single `unmatched` series.
  */
 function routeTemplate(request: Request): string {
   const matched = (request.route as { path?: string } | undefined)?.path;

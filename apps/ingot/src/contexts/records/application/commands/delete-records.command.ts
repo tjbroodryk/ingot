@@ -27,21 +27,9 @@ export class DeleteRecords extends Command<DeleteResult> {
 }
 
 /**
- * Forgetting rows, in a store whose base tier cannot be edited.
- *
- * Parquet is not rewritten in place, so a delete is a tombstone: the predicate
- * is resolved to row ids *now*, against the same union view a query sees, and
- * those ids are recorded. Every read filters them out and the next roll-up
- * drops them for good.
- *
- * Resolving to ids rather than storing the predicate is the decision worth
- * defending. A stored predicate has to be evaluated by every future query, and
- * they accumulate — a memory deleted from a hundred times would carry a
- * hundred WHERE clauses forever. A set of ids is finite, and it shrinks at the
- * next compaction.
- *
- * It also means "delete" answers a question the caller actually has: how many
- * rows did that match. A predicate applied lazily could not say.
+ * Forgetting rows in a store whose base tier cannot be edited: the predicate is
+ * resolved to row ids now, against the union view a query sees, and recorded as
+ * tombstones. Reads filter them out and the next roll-up drops them for good.
  */
 @CommandHandler(DeleteRecords)
 export class DeleteRecordsHandler implements ICommandHandler<DeleteRecords> {
@@ -68,8 +56,7 @@ export class DeleteRecordsHandler implements ICommandHandler<DeleteRecords> {
     return {
       table: table.name.value,
       rowsForgotten: resolved.rowIds.length,
-      // Said rather than silently capped: "50000 rows forgotten" reads as
-      // "that is all of them" unless something says otherwise.
+      // Reported so a capped result is not mistaken for the whole match.
       truncated: resolved.truncated,
     };
   }

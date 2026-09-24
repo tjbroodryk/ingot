@@ -2,22 +2,9 @@ import { ConflictingState } from '../../domain/index.js';
 import type { AggregateRoot, Identifier } from '../../domain/index.js';
 
 /**
- * The optimistic-concurrency dance, in one place.
- *
- * `AggregateRoot.version` has always been the token; this is what finally
- * checks it. Every repository writes the same way — insert the row, or update
- * it only if the version on disk is still the one the caller loaded — and the
- * shape is identical enough across contexts that writing it out twelve times
- * would be twelve chances to forget the `setWhere`.
- *
- * A write that matches nothing is a lost update, not a no-op: someone else
- * saved between the load and the save, and the aggregate in hand made its
- * decisions against state that no longer exists. `ConflictingState` maps to
- * 409, which is the honest answer — the caller should reload and retry, and a
- * silent success would have thrown their change away.
- *
- * The version is advanced only after the write lands, so an aggregate whose
- * save threw is still describing the version it was actually loaded at.
+ * The optimistic-concurrency write, in one place: insert, or update only if the
+ * on-disk version matches. A write matching nothing is a lost update, thrown as
+ * `ConflictingState`. The version advances only after the write lands.
  */
 export async function writeAggregate<TId extends Identifier>(
   aggregate: AggregateRoot<TId>,

@@ -14,18 +14,9 @@ import { DeliveryRefused } from '../../src/delivery/delivery-transport.port.js';
 import { MAX_DECLARED, RmqTransport } from '../../src/delivery/rmq-transport.js';
 
 /**
- * The bookkeeping around a broker, which is the part of `RmqTransport` worth
- * asserting.
- *
- * AMQP itself is amqplib's problem and it has its own suite. What is ours is
- * what surrounds it: that a queue is declared once per connection rather than
- * once per message, that what we believe the broker has declared is dropped the
- * moment the connection telling us so is, and that a burst of deliveries opens
- * one connection rather than one each.
- *
- * That is all observable through a stand-in that counts calls, and none of it
- * is observable at all through a real broker — which is why `AMQP_CONNECT` is a
- * port. No container and no database: this is one class and a fake.
+ * `RmqTransport`'s bookkeeping around a broker: queues declared once per
+ * connection, that cache dropped when the connection is, and one connection per
+ * burst.
  */
 
 /** A confirm channel that counts what was asked of it. */
@@ -116,11 +107,6 @@ describe('delivering to a broker', () => {
     transport = new RmqTransport(SETTINGS, broker.connect);
   });
 
-  /**
-   * The reason this cache exists. Declaring is a fact about the connection, so
-   * paying a round trip for it per message doubled the cost of delivering one
-   * receipt — on every replica, independently.
-   */
   it('declares a queue once, however many receipts go to it', async () => {
     for (let at = 0; at < 5; at++) await transport.deliver(to('receipts'), receipt());
 
@@ -137,16 +123,8 @@ describe('delivering to a broker', () => {
     expect(broker.asserted).toEqual(['one', 'two']);
   });
 
-  /**
-   * The invalidation, and the failure it exists to prevent.
-   *
-   * A broker replaced underneath us — a fresh instance, an empty volume — has
-   * none of the queues we declared. Publishing to the default exchange with a
-   * routing key naming a queue that is not there is *silently discarded* by
-   * AMQP, so a cache that outlived its connection would swallow every delivery
-   * while reporting success. Which is the exact failure asserting was added to
-   * prevent, reached by another route.
-   */
+  // A replaced broker has none of the declared queues, and AMQP silently
+  // discards a publish to an undeclared queue, so the cache must reset on reconnect.
   it('forgets what it declared when amqplib reconnects', async () => {
     await transport.deliver(to('receipts'), receipt());
     expect(broker.asserted).toEqual(['receipts']);
@@ -179,10 +157,7 @@ describe('delivering to a broker', () => {
     expect(broker.asserted).toEqual(['receipts', 'receipts']);
   });
 
-  /**
-   * A burst must not open a connection each: the first delivery to arrive owns
-   * the attempt and the rest await it.
-   */
+  // First delivery in a burst opens the connection; the rest await it.
   it('opens one connection for a burst', async () => {
     await Promise.all(
       Array.from({ length: 8 }, () => transport.deliver(to('receipts'), receipt())),
@@ -192,12 +167,7 @@ describe('delivering to a broker', () => {
     expect(broker.published).toHaveLength(8);
   });
 
-  /**
-   * Queue names come from callers — one per memory that asked for `rmq` — so
-   * this is unbounded input and something has to cap it. A cold start every
-   * `MAX_DECLARED` distinct queues costs one round trip per queue, which is
-   * what the cache was saving; a Set that grows without limit costs a pod.
-   */
+  // Queue names are unbounded caller input, so the cache is cleared at `MAX_DECLARED`.
   it('starts the cache again rather than growing without a bound', async () => {
     for (let at = 0; at < MAX_DECLARED; at++) {
       await transport.deliver(to(`queue-${at}`), receipt());
@@ -228,12 +198,7 @@ describe('delivering to a broker', () => {
     ).rejects.toThrow(DeliveryRefused);
   });
 
-  /**
-   * Reachable only for a memory configured while a broker was set and delivered
-   * after it was unset. Refused rather than dropped: the row stays in the
-   * outbox, and the gauge says somebody took the broker away from memories
-   * still pointed at it.
-   */
+  // With no broker configured, delivery is refused rather than dropped.
   it('refuses when the broker has been taken away', async () => {
     const without = new RmqTransport({ ...SETTINGS, brokerUrl: null }, broker.connect);
 

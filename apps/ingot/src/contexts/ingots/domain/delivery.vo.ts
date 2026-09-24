@@ -1,30 +1,16 @@
 import { type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
 import { Guard, InvariantViolation, ValueObject } from '../../../shared/domain/index.js';
 
-/** Long enough for a signed callback URL, short enough not to be a payload. */
+/** Cap on a webhook endpoint URL. */
 const MAX_ENDPOINT = 2048;
 
 /** AMQP's own limit on a queue name. */
 const MAX_QUEUE = 255;
 
-/**
- * The character set a queue name is held to.
- *
- * Narrower than AMQP allows, which permits almost any UTF-8. This name is
- * published to as a routing key on a broker shared by every memory in the
- * deployment, so it is worth being the sort of string that cannot be confused
- * with anything — and a queue somebody cannot type into `rabbitmqctl` is a
- * queue nobody can debug.
- */
+/** The character set a queue name is held to; narrower than AMQP allows. */
 const QUEUE_PATTERN = /^[a-zA-Z0-9_.:-]+$/;
 
-/**
- * Hostnames that resolve, by convention, to a cloud instance's own credentials.
- *
- * Named rather than left to the IP check below, because they are the one case
- * where a perfectly ordinary DNS name is a request for this service's identity.
- * See the note on `parseEndpoint` about what this does and does not catch.
- */
+/** Hostnames that resolve to a cloud instance's own credentials. */
 const METADATA_HOSTS = new Set([
   'metadata.google.internal',
   'metadata.goog',
@@ -33,17 +19,9 @@ const METADATA_HOSTS = new Set([
 ]);
 
 /**
- * Where a memory's receipts are delivered, and what a caller may ask for.
- *
- * Parsed here rather than at the controller, because the MCP surface builds the
- * same command straight from a tool call and never passes through a validation
- * pipe. A rule enforced only by the DTO is a rule one of the two surfaces does
- * not have.
- *
- * The union is closed and the discriminant is `t`: a webhook without an
- * endpoint and a queue without a name are shapes that cannot be constructed
- * rather than ones that have to be checked at delivery time, hours later, in a
- * worker nobody is watching.
+ * Where a memory's receipts are delivered. Parsed here rather than at the
+ * controller so both the HTTP and MCP surfaces enforce the same rules. The
+ * union is closed on `t`; incomplete shapes cannot be constructed.
  */
 export class Delivery extends ValueObject {
   readonly kind: DeliveryKind;
@@ -64,14 +42,7 @@ export class Delivery extends ValueObject {
     this.seal();
   }
 
-  /**
-   * What a memory gets before anybody configures one: nothing is pushed.
-   *
-   * Off rather than on, and not because pushing is expensive. A memory with no
-   * delivery configured is one whose receipts are collected by the SELECT
-   * `/add` handed back — which needs no endpoint to be up and no registration —
-   * and that is the contract every caller already has.
-   */
+  /** The default: nothing is pushed. */
   static none(): Delivery {
     return new Delivery({ kind: DeliveryKind.None });
   }
@@ -97,12 +68,7 @@ export class Delivery extends ValueObject {
     return PARSERS[kind](strategy);
   }
 
-  /**
-   * Rehydration from the stored document — the same parsing, off our own row.
-   *
-   * Null for every memory written before delivery existed, and for every one
-   * nobody has configured since. Both read as `none`.
-   */
+  /** Rehydration from the stored document; null (unconfigured) reads as `none`. */
   static rehydrate(stored: unknown): Delivery {
     if (stored === null || stored === undefined) return Delivery.none();
     return Delivery.of(stored);
@@ -131,24 +97,9 @@ const PARSERS: Record<DeliveryKind, (raw: Record<string, unknown>) => Delivery> 
 };
 
 /**
- * A URL this service is willing to post to.
- *
- * **This is the one place a caller chooses where we open a connection**, so it
- * is a boundary rather than a format check. What it refuses:
- *
- * - anything but `http`/`https`, so `file:` and `gopher:` are not endpoints;
- * - credentials in the URL, which would end up in a log line the moment a
- *   delivery failed;
- * - loopback, link-local, private and carrier-grade-NAT literals, and the
- *   metadata hostnames that stand in for them.
- *
- * What it deliberately does **not** refuse is an ordinary DNS name that happens
- * to resolve into one of those ranges. Catching that means resolving at
- * configuration time and pinning the address at delivery time, and the cost of
- * getting it wrong is a self-hosted deployment that cannot deliver to a service
- * in its own cluster — which is the normal case, not the attack. A deployment
- * that needs the stronger guarantee should put an egress policy in front of
- * this service rather than have this function guess.
+ * A URL this service is willing to post to. Refuses non-http(s) schemes,
+ * credentials in the URL, and loopback/link-local/private/CGNAT literals and
+ * metadata hostnames. A DNS name resolving into those ranges is not refused.
  */
 function parseEndpoint(raw: unknown): string {
   const value = Guard.maxLength(
@@ -190,14 +141,7 @@ function parseEndpoint(raw: unknown): string {
   return url.toString();
 }
 
-/**
- * A queue name this service is willing to publish to.
- *
- * Only the name: the broker is the deployment's, so what a caller chooses here
- * is a destination on a bus somebody else already owns. `amq.` is refused
- * because AMQP reserves it, and a broker would refuse the publish anyway —
- * later, quietly, and to nobody who could act on it.
- */
+/** A queue name this service is willing to publish to. `amq.` is refused; AMQP reserves it. */
 function parseQueue(raw: unknown): string {
   const value = Guard.maxLength(
     Guard.notBlank(String(raw ?? ''), 'delivery.queue'),

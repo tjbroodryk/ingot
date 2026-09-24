@@ -8,15 +8,8 @@ import { S3ObjectStore } from './s3-object-store.js';
 import { type StorageSettings, storageSettings } from './storage-settings.js';
 
 /**
- * The base tier a deployment asked for, and a line at boot saying which.
- *
- * A missing or malformed configuration is fatal rather than a fallback. This
- * is the one decision a self-hosted Ingot has to make that nobody else can
- * make for it — a bucket belongs to whoever runs the service — and the old
- * behaviour of warning and writing to local disk instead is precisely wrong
- * for that: it produces a service that boots, answers, accepts writes, and
- * loses all of them on the next deploy, with the only evidence a warning
- * nobody was watching for.
+ * The configured base tier, logged at boot. Misconfiguration is fatal rather
+ * than a silent filesystem fallback.
  */
 @Module({
   providers: [
@@ -34,10 +27,7 @@ import { type StorageSettings, storageSettings } from './storage-settings.js';
 })
 export class StorageModule {}
 
-/**
- * Keyed on the driver, so adding one to `StorageDriver` without an adapter
- * fails to compile rather than falling through to a default at runtime.
- */
+/** Keyed on the driver, so a driver without an adapter fails to compile. */
 const STORES: {
   [K in StorageDriver]: (settings: Extract<StorageSettings, { driver: K }>) => ObjectStore;
 } = {
@@ -47,9 +37,7 @@ const STORES: {
 };
 
 export function build(settings: StorageSettings): ObjectStore {
-  // The cast is for the indexed call alone: the record narrows its argument
-  // per key, and TypeScript cannot see that `settings` was narrowed by the
-  // same discriminant it was just indexed with.
+  // Cast for the indexed call: TS can't see `settings` was narrowed by the same discriminant used to index.
   const make = STORES[settings.driver] as (of: StorageSettings) => ObjectStore;
   return make(settings);
 }

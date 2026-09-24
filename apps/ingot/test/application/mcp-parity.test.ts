@@ -3,16 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 import { McpScope, McpTool, TOOLS } from '../../src/mcp/tool-catalogue.js';
 
-/**
- * The MCP surface is another interface over the same commands, never a second
- * implementation.
- *
- * That is the same rule webhooks get in `CLAUDE.md`, applied to the other
- * direction, and this is what holds it up. The failure it prevents is gradual
- * rather than dramatic: a tool gains a shortcut, then a special case, then a
- * behaviour the HTTP API does not have — and now there are two products with
- * one name and only one of them is tested.
- */
+/** The MCP surface is another interface over the same commands, not a second
+ * implementation. */
 describe('the MCP surface', () => {
   it('resolves every tool to a command or query', () => {
     for (const tool of TOOLS) {
@@ -27,11 +19,7 @@ describe('the MCP surface', () => {
     expect(new Set(names)).toEqual(new Set(Object.values(McpTool)));
   });
 
-  /**
-   * Every command or query an MCP tool reaches must be one a controller also
-   * reaches. Where they diverge, the entry below says why — an empty list is
-   * the goal, and a populated one is a decision somebody made on purpose.
-   */
+  // Operations MCP reaches but no controller does; each entry says why.
   const MCP_ONLY: Readonly<Record<string, string>> = {};
 
   it('reaches only operations the HTTP API also reaches', async () => {
@@ -43,13 +31,7 @@ describe('the MCP surface', () => {
     expect(orphans).toEqual([]);
   });
 
-  /**
-   * The other direction, which is the one that actually rots.
-   *
-   * An operation added to the HTTP API and not to MCP is a thing a model
-   * cannot do, discovered by a user rather than by us. Anything deliberately
-   * left off is listed here with its reason.
-   */
+  // Operations on the HTTP API deliberately left off MCP; each entry says why.
   const HTTP_ONLY: Readonly<Record<string, string>> = {
     CreateAccount: 'Sign-up needs no key, and MCP is only reachable with one.',
     MintKey: 'Minting credentials from inside a model’s tool loop is not a thing to make easy.',
@@ -74,9 +56,6 @@ describe('the MCP surface', () => {
   });
 
   it('marks the read-only tools read-only', () => {
-    // The annotation is what lets a client decide whether to ask before
-    // running one, so getting it wrong is a consent problem rather than a
-    // cosmetic one.
     const shouldRead = new Set<string>([
       McpTool.Describe,
       McpTool.Query,
@@ -97,8 +76,7 @@ describe('the MCP surface', () => {
       (t) => t.name,
     );
 
-    // An ingot-scoped tool takes no ingot id: the connection is already
-    // pointed at one, so a model cannot address a memory it was not given.
+    // An ingot-scoped tool takes no ingot id; the connection is already pointed at one.
     for (const tool of TOOLS.filter((candidate) => candidate.scope === McpScope.Ingot)) {
       expect(Object.keys(tool.inputSchema)).not.toContain('ingot');
     }
@@ -114,13 +92,7 @@ describe('the MCP surface', () => {
   });
 });
 
-/**
- * Command and query class names constructed inside controllers.
- *
- * Read from the source rather than by instrumenting the bus, because the
- * question is which operations the HTTP surface *offers* — not which ones
- * happened to run during a test.
- */
+/** Command and query class names constructed inside controllers, read from source. */
 async function commandsUsedByControllers(): Promise<Set<string>> {
   const used = new Set<string>();
 

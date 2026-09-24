@@ -10,14 +10,7 @@ import type { Clock } from '../../src/shared/domain/index.js';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
-/**
- * Memories that delete themselves.
- *
- * This is the only thing in the service that destroys data nobody asked it to
- * destroy right now, so the assertions worth having are the ones about what it
- * leaves alone. A reaper that deletes everything passes any test that only
- * checks the expired thing is gone.
- */
+/** Retention and the reaper that deletes memories past it. */
 let world: World;
 
 beforeAll(async () => {
@@ -29,7 +22,7 @@ afterAll(async () => {
   await closeDatabase();
 });
 
-/** The sweeper as the container would build it, but with time under control. */
+/** The sweeper with its clock pinned to `instant`. */
 function sweeperAt(instant: Date): ExpirySweeper {
   const clock: Clock = { now: () => instant };
   return new ExpirySweeper(
@@ -94,8 +87,7 @@ describe('the reaper', () => {
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).not.toContain(doomed.id);
 
-    // The rows went with it, rather than being orphaned under a manifest that
-    // no longer exists.
+    // The rows went with it, not orphaned under a missing manifest.
     await expect(world.info(doomed.id)).rejects.toThrow();
   });
 
@@ -111,39 +103,21 @@ describe('the reaper', () => {
   it('never touches a memory with no retention at all', async () => {
     const forever = await world.dispatcher.send(new CreateIngot(world.accountId, 'permanent'));
 
-    // A decade on, and it is still there. `expires_at IS NULL` is not a date
-    // in the past, and a reaper that treated it as one would delete every
-    // memory in the service on its first tick.
+    // A decade on, still there: `expires_at IS NULL` is not a past date.
     await sweeperAt(later(3650 * 86_400_000)).tick();
 
     const remaining = await world.dispatcher.ask(new ListIngots(world.accountId));
     expect(remaining.map((ingot) => ingot.id)).toContain(forever.id);
   });
 
-  /*
-   * The two tests that used to sit here asserted that a tick booked the next
-   * one — of itself, as its last act, whether or not it reaped anything. There
-   * is no chain to extend any more: `Scheduler` books the next turn and does it
-   * in both its success and its failure paths, which is where that property now
-   * lives and where `scheduler.test.ts` holds it.
-   */
-
-  /**
-   * The re-read before the delete.
-   *
-   * The listing already filtered on `expires_at <= now` in SQL, so a row that
-   * comes back and then says it has not expired should be impossible. It is
-   * checked anyway, because the cost is one indexed read at a cap of
-   * twenty-five and the thing it guards is irreversible.
-   */
+  // Re-reads each listed row and re-checks expiry before the irreversible delete.
   it('refuses to delete something that turns out not to be expired', async () => {
     const survivor = await world.dispatcher.send(
       new CreateIngot(world.accountId, 'mislisted', '4w'),
     );
     const real = world.app.get<IngotRepository>(INGOT_REPOSITORY, { strict: false });
 
-    // A repository that lies about what is due — which is what a clock skew or
-    // a future "extend the retention" endpoint would look like from here.
+    // A repository that lists a row as due when it is not.
     const lying: IngotRepository = {
       ...real,
       findById: (id) => real.findById(id),

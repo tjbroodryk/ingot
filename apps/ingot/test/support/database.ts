@@ -7,12 +7,9 @@ import * as schema from '../../src/database/schema.js';
 import { PgUnitOfWork } from '../../src/shared/infrastructure/postgres/pg-unit-of-work.js';
 
 /**
- * The suite's database — `ingot_test` in the compose Postgres.
- *
- * Separate from the development database on purpose: `truncate` runs between
- * assertions, and pointing that at the database you also keep local state in
- * is how a test run quietly deletes an afternoon's work. Override with
- * INGOT_TEST_DATABASE_URL to point somewhere else.
+ * The suite's database — `ingot_test` in the compose Postgres, separate from
+ * the development one because `truncate` runs between assertions. Override with
+ * INGOT_TEST_DATABASE_URL.
  */
 const CONNECTION =
   process.env.INGOT_TEST_DATABASE_URL ?? 'postgres://ingot:ingot@localhost:5432/ingot_test';
@@ -20,13 +17,8 @@ const CONNECTION =
 const MIGRATIONS = join(__dirname, '..', '..', 'drizzle');
 
 /**
- * Tables the suite owns.
- *
- * Truncated in one statement, which makes the foreign key from `account_key`
- * to `account` a non-issue: `TRUNCATE a, b` is legal where `TRUNCATE a` alone
- * would be refused for still being referenced. Declaration order therefore
- * does not matter — but completeness does. A table missing from this list is
- * state leaking from one test into the next.
+ * Tables the suite owns, truncated in one statement so declaration order does
+ * not matter. A table missing here leaks state from one test into the next.
  */
 const TABLES = [
   'account',
@@ -65,16 +57,13 @@ export async function closeDatabase(): Promise<void> {
 
 async function open(): Promise<TestDatabase> {
   const pool = new pg.Pool({ connectionString: CONNECTION, max: 8, connectionTimeoutMillis: 2000 });
-  // As the service does, so a fan-out inside a transaction behaves here the
-  // way it behaves in production rather than on pg's deprecated queue.
+  // As the service does, so a fan-out inside a transaction behaves the same here.
   pool.on('connect', oneQueryAtATime);
 
   try {
     await pool.query('SELECT 1');
   } catch (error) {
     await pool.end().catch(() => {});
-    // Actionable rather than a stack trace about ECONNREFUSED: the fix is one
-    // command, and the message may as well say which.
     throw new Error(
       `No database at ${redact(CONNECTION)} — start it with \`bun run db:up\`` +
         `, or set INGOT_TEST_DATABASE_URL to point elsewhere. (${String(error)})`,
@@ -83,17 +72,9 @@ async function open(): Promise<TestDatabase> {
 
   await migrate(pool);
 
-  /**
-   * Anything that builds the real container from here on talks to this
-   * database, and not to whichever one `.env` names.
-   *
-   * Set rather than defaulted, and that is the whole point: `DATABASE_URL` is
-   * in every developer's `.env` pointing at the database they keep local state
-   * in, so a `??=` here would leave `DatabaseModule` connected to it while
-   * `truncate()` emptied a different one. That was survivable while compiling
-   * `AppModule` only read; it stopped being survivable when sealed mode gave
-   * the graph an `OnApplicationBootstrap` that writes an account.
-   */
+  // Anything building the real container from here on talks to this database,
+  // not the one `.env` names. Set rather than defaulted: a `??=` would leave
+  // `DatabaseModule` on the developer's database while `truncate()` emptied this.
   process.env.DATABASE_URL = CONNECTION;
 
   return {
@@ -105,13 +86,7 @@ async function open(): Promise<TestDatabase> {
   };
 }
 
-/**
- * Applies every migration, every time.
- *
- * They are written to be idempotent, so re-running them is cheap and a newly
- * added migration reaches the test database without anyone remembering to
- * rebuild the container.
- */
+/** Applies every migration, every time; they are idempotent, so re-running is cheap. */
 async function migrate(pool: pg.Pool): Promise<void> {
   const files = (await readdir(MIGRATIONS)).filter((name) => name.endsWith('.sql')).sort();
   for (const file of files) {

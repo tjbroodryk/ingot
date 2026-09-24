@@ -27,22 +27,8 @@ export class DeleteIngot extends Command {
 
 /**
  * Destroys a memory: manifest, overlay, queued work, and every object under it.
- *
- * The list is the interesting part rather than the mechanism. Anything keyed on
- * an ingot and *not* purged here outlives the memory silently — nothing else
- * visits those rows, so there is no later moment at which the omission shows up.
- * `file_queue` was exactly that for a while: destroying a memory left a row
- * holding a filename, a hash, an extraction mapping and an error message
- * quoting the document, pointing at an object that had already been removed.
- *
- * The bucket is emptied *after* the transaction commits, not inside it. An
- * object store has no rollback, so deleting first and then failing to commit
- * would leave a manifest pointing at files that are gone — a memory that
- * appears in `/info` and fails on every query. Committing first and then
- * failing to empty the bucket leaves orphaned objects instead, which cost
- * money and nothing else, and which the generation reaper picks up.
- *
- * Of the two ways to be wrong, that is the one to choose.
+ * The bucket is emptied after the transaction commits — an object store has no
+ * rollback, so orphaned objects are preferable to a manifest pointing at nothing.
  */
 @CommandHandler(DeleteIngot)
 export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
@@ -60,19 +46,9 @@ export class DeleteIngotHandler implements ICommandHandler<DeleteIngot> {
     const ingot = await this.access.ingot(command.ingotId, command.accountId);
 
     await this.overlay.purgeIngot(ingot.id.value);
-    // Announcements go with the memory. Delivering one afterwards would hand a
-    // receiver a query that can only ever come back empty.
+    // Announcements go with the memory.
     await this.outbox.purgeIngot(ingot.id.value);
-    /*
-     * And unparsed uploads, which is the one that leaks if it is forgotten.
-     *
-     * A queue row outlives its memory in a way an overlay row cannot: nothing
-     * else ever visits it. It holds the filename, the sha256, the caller's
-     * extraction mapping and `last_error` — and that last field quotes the value
-     * that failed to coerce, so it can carry a fragment of the document itself.
-     * Leaving one behind means "destroy this memory" quietly kept content
-     * derived from it, for ever, pointing at an object that is already gone.
-     */
+    // Unparsed uploads too; nothing else ever visits these rows, so a leak here is silent.
     await this.files.purgeIngot(ingot.id.value);
     await this.ingots.remove(ingot.id);
 

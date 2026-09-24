@@ -3,20 +3,7 @@ import { generateText, tool, type LanguageModel } from 'ai';
 import type { ToolName } from '../corpus/stream.js';
 import type { MappingSource, RememberMapping } from './ingot-mapping.js';
 
-/**
- * The realistic Ingot configuration: the model decides the schema.
- *
- * `--mapping authored` is the ceiling — a careful engineer who already knows
- * the shape of every payload. This is what actually happens when an agent
- * meets a tool result for the first time, and the gap between the two columns
- * is the honest measure of how much of Ingot's advantage survives the hard
- * part being done by a model.
- *
- * The model is asked once per distinct tool, shown one sample payload, exactly
- * as an agent storing the first page of a paginated result would be placed.
- * Later pages of the same tool reuse what it decided, because a real agent
- * that re-derived the schema per page would be writing incompatible tables.
- */
+/** Prompt asking a model to decide the storage schema for one tool's results. */
 const PROMPT = `You are configuring a memory that stores tool results as typed SQL rows.
 
 You will be shown one sample result from a tool. Decide how it should be stored:
@@ -92,11 +79,7 @@ export function agentMapping(model: LanguageModel): MappingSource {
   };
 }
 
-/**
- * One page can be forty records; the model needs the shape, not the volume.
- * Truncation is by characters rather than by items so the JSON it sees is
- * visibly cut off — a model handed a clean prefix would assume it was whole.
- */
+/** Truncated by characters, so the JSON is visibly cut off rather than a clean prefix. */
 function truncate(text: string, limit = 6000): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}\n… (truncated)`;
 }

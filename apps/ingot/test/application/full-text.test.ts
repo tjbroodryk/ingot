@@ -4,20 +4,7 @@ import { ColumnType, FtsStemmer, FtsStopwords } from '@ingot/shared/ingot-v1';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
-/**
- * Keyword search, and the settings that decide what it finds.
- *
- * Two claims, and they are different in kind. The first is that `fts` is
- * loaded in every session at all — a caller cannot load it themselves, because
- * the lockdown refuses `LOAD` and has to, so an engine that did not load it
- * leaves `match_bm25` permanently out of reach. The second is that the
- * settings on the table are the settings the index is built with, which is the
- * only reason storing them is worth anything.
- *
- * `stopwords` is the one worth reading twice. DuckDB reads a value it does not
- * recognise as the *name of a table* to read stopwords from, which is why it
- * is an enum parsed in the domain rather than a string passed through.
- */
+/** Keyword search, and the table settings that decide what it finds. */
 describe('full text search', () => {
   let world: World;
   let ingot: string;
@@ -59,8 +46,7 @@ describe('full text search', () => {
     );
 
   it('loads the extension in every session, whatever the table is set to', async () => {
-    // `stem` comes from `fts` and nothing else, so this fails outright if the
-    // engine stopped loading it — before any question of configuration.
+    // `stem` comes only from `fts`, so this fails if the engine stopped loading it.
     const [stemmed] = await world.sql(ingot, `SELECT stem('running', 'english') AS s`);
     expect(stemmed?.s).toBe('run');
   });
@@ -95,13 +81,7 @@ describe('full text search', () => {
     expect(await search('run')).toEqual([]);
   });
 
-  /**
-   * The setting the endpoint exists for, doing something observable.
-   *
-   * "the" is in the English stopword list, so with the default settings it is
-   * not in the index and searching for it finds nothing at all. This is what a
-   * caller storing logs or code is turning off.
-   */
+  // "the" is an English stopword, so it is not indexed until stopwords are off.
   it('indexes stopwords when told to, and not before', async () => {
     await world.configure(ingot, 'notes', {
       fts: { enabled: true, stemmer: FtsStemmer.None, stopwords: FtsStopwords.English },
@@ -117,8 +97,7 @@ describe('full text search', () => {
       fts: { enabled: true, stemmer: FtsStemmer.None, stopwords: FtsStopwords.None },
     });
 
-    // One field, sent on its own. The other two must survive it — a config
-    // endpoint that reset them is one that cannot safely be called twice.
+    // One field, sent on its own; the other two must survive it.
     const after = await world.configure(ingot, 'notes', { fts: { lowercase: false } });
 
     expect(after.fts.lowercase).toBe(false);
@@ -140,13 +119,8 @@ describe('full text search', () => {
     expect(notes?.config.fts.ignore).toBe('[^a-z0-9]+');
   });
 
-  /**
-   * The parse, from the surface that has no validation pipe in front of it.
-   *
-   * MCP builds this command directly, so the domain is what refuses a bad
-   * value — and `stopwords` is the one where an unparsed string would be a
-   * caller naming a table for DuckDB to read.
-   */
+  // The domain rejects bad enum values; an unparsed `stopwords` would let a
+  // caller name a table for DuckDB to read.
   it('refuses a stopword list that is not one of the two', async () => {
     expect(
       world.configure(ingot, 'notes', { fts: { stopwords: 'sneaky_table' as FtsStopwords } }),
@@ -157,14 +131,8 @@ describe('full text search', () => {
     ).rejects.toThrow(/fts.stemmer/);
   });
 
-  /**
-   * The default column set is the caller's text, not this service's.
-   *
-   * `_batch` and `_row_id` are ids that happen to be VARCHAR. Indexing them by
-   * default fills the vocabulary with opaque tokens, and a search for a batch
-   * id would match every row written in that call — which reads as a search
-   * engine that has invented a relationship nobody asked about.
-   */
+  // Default column set is the caller's text; the VARCHAR id columns (`_batch`,
+  // `_row_id`) are not indexed.
   it('indexes the caller’s text columns and not the service’s ids', async () => {
     await world.configure(ingot, 'notes', { fts: { enabled: true, stemmer: FtsStemmer.None } });
 

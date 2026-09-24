@@ -14,17 +14,10 @@ interface Session {
 }
 
 /**
- * MCP over streamable HTTP, on the same process and the same key.
+ * MCP over streamable HTTP, stateless: a fresh server and transport per request.
  *
- * Stateless: a fresh server and transport per request, no session id. That is
- * the right mode for a service meant to run behind a load balancer — a session
- * pinned to one replica breaks on a deploy, and nothing here needs continuity
- * between calls that the ingot itself does not already hold.
- *
- * Authentication is the ordinary `Authorization: Bearer ing_sk_…`, checked by
- * the same two guards every other route goes through, because `@AccountScope()`
- * below is the same decorator. There is no MCP-specific auth path — which is
- * the point, since a second one is a second thing to get wrong.
+ * Authenticated by the same guards as every other route via `@AccountScope()`;
+ * there is no MCP-specific auth path.
  */
 @Controller({ path: ':account', version: '1' })
 export class McpController {
@@ -33,8 +26,7 @@ export class McpController {
   /** Scoped to one memory: the tools take no ids and cannot reach another. */
   @All(':ingot/mcp')
   @AccountScope()
-  // JSON-RPC, not this API's wire contract. MCP negotiates its own protocol
-  // version at initialize, and its tool schemas are self-describing.
+  // JSON-RPC, not this API's wire contract.
   @Wire.Empty()
   async ingot(
     @CurrentAccount() account: Account,
@@ -42,9 +34,7 @@ export class McpController {
     @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    // The schema is read once per connection and handed over as the server's
-    // instructions. This is the difference between a model that writes working
-    // SQL and one that invents column names — and it costs no tool call.
+    // Read once per connection and handed over as the server's instructions.
     const info = await this.servers.describeIngot(ingotId, account);
 
     await this.serve(request, response, {
@@ -73,14 +63,7 @@ export class McpController {
     });
   }
 
-  /**
-   * The SDK is ESM-only and this service is CommonJS, so it is imported
-   * dynamically rather than at the top of the file.
-   *
-   * Confined to this one method deliberately: a `require` of an ESM package
-   * fails at runtime rather than at build time, so keeping the boundary in one
-   * place means there is one thing to change if the app is ever moved to ESM.
-   */
+  /** Imports the ESM-only SDK dynamically; the boundary is confined to this method. */
   private async serve(request: Request, response: Response, session: Session): Promise<void> {
     const [{ McpServer }, { StreamableHTTPServerTransport }] = await Promise.all([
       import('@modelcontextprotocol/sdk/server/mcp.js'),
@@ -104,9 +87,7 @@ export class McpController {
     });
 
     await server.connect(transport);
-    // Nest's body parser has already read the request, so the parsed body is
-    // handed over explicitly — the transport would otherwise wait on a stream
-    // that has already ended.
+    // Nest already parsed the body, so hand it over explicitly; the stream has ended.
     await transport.handleRequest(request, response, request.body);
   }
 }

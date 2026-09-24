@@ -1,8 +1,4 @@
-/**
- * Errors the domain raises on its own terms. They carry no HTTP status — the
- * interface layer maps them (see `DomainExceptionFilter`), which keeps the
- * domain free of transport concerns.
- */
+/** Errors the domain raises on its own terms; they carry no HTTP status. `DomainExceptionFilter` maps them. */
 export abstract class DomainError extends Error {
   abstract readonly code: string;
 
@@ -29,14 +25,7 @@ export class AggregateNotFound extends DomainError {
   }
 }
 
-/**
- * We could not establish who is calling at all — no credential, or one that
- * does not check out.
- *
- * The distinction from `ActionNotPermitted` is the one between 401 and 403,
- * and it is worth keeping sharp: this means "log in", that means "we know who
- * you are and the answer is still no".
- */
+/** No credential, or one that does not check out (401, vs `ActionNotPermitted`'s 403). */
 export class AuthenticationFailed extends DomainError {
   readonly code = 'authentication_failed';
 }
@@ -47,25 +36,14 @@ export class ActionNotPermitted extends DomainError {
 }
 
 /**
- * Something this product depends on could not do its job.
- *
- * Distinct from every error above it, which are all *our* answers about our own
- * state: this one is a report about somebody else's. The distinction earns its
- * place at the edge, where an anonymous 500 and a described 503 read very
- * differently — "Could not set up Ledger API" tells a reader nothing they can
- * act on, and "the agent runner rejected the request, so nothing was created"
- * tells them what happened, what it cost them, and whether pressing the button
- * again is worth anything.
- *
- * So the message on one of these is user-facing prose, not a stack. Where the
- * failure came from is `dependency`, and the underlying error goes on `cause`
- * for the log — the reader gets the sentence, the operator gets the detail.
+ * Something this product depends on could not do its job. The message is
+ * user-facing prose; `dependency` names the source and `cause` carries the underlying error.
  */
 export class DependencyUnavailable extends DomainError {
   readonly code = 'dependency_unavailable';
 
   constructor(
-    /** What let us down, in this product's words — `agent runner`, not a URL. */
+    /** The source in this product's words, not a URL. */
     readonly dependency: string,
     message: string,
     options?: { cause?: unknown },

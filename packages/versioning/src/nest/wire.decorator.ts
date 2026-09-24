@@ -19,18 +19,16 @@ export interface WireSpec {
 }
 
 /**
- * Declares which wire shapes cross a route, so a version's transforms know
- * what to apply.
+ * Declares which wire shapes cross a route, so a version's transforms know what
+ * to apply.
  *
  * ```ts
  * @Wire({ accepts: 'AddBody', returns: 'AddResult' })
  * @Wire({ returns: { shape: 'IngotSummary', array: true } })
  * ```
  *
- * A route that declares nothing is served unversioned — its body passes
- * through untouched whatever version was asked for. That is correct for a
- * health check and wrong for everything else, which is why each service has a
- * test asserting every route declares one rather than leaving it to review.
+ * A route that declares nothing is served unversioned — its body passes through
+ * untouched.
  */
 export function Wire(spec: WireSpec): MethodDecorator {
   return <T>(_target: object, _key: string | symbol, descriptor: TypedPropertyDescriptor<T>) => {
@@ -41,12 +39,9 @@ export function Wire(spec: WireSpec): MethodDecorator {
 }
 
 /**
- * This route carries no versioned body in either direction.
- *
- * A `204`, a health check, or a surface that is not this API's wire contract at
- * all — an MCP endpoint speaking JSON-RPC, say. Spelled as its own call rather
- * than `@Wire({})` so that "nothing crosses here" is a statement somebody made
- * on purpose, and so it is greppable when the reason stops being true.
+ * This route carries no versioned body in either direction — a `204`, a health
+ * check, an MCP endpoint. Its own call rather than `@Wire({})` so the intent is
+ * explicit and greppable.
  */
 Wire.Empty = function Empty(): MethodDecorator {
   return Wire({});

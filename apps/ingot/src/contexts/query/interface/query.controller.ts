@@ -13,11 +13,7 @@ import { QueryDto } from './dto/query.dto.js';
 export class QueryController {
   constructor(private readonly dispatcher: Dispatcher) {}
 
-  /**
-   * A POST that changes nothing, and therefore a query rather than a command:
-   * it gets no transaction. The verb is a POST because SQL does not belong in
-   * a URL, not because anything is being created — hence the explicit 200.
-   */
+  /** A query, not a command: no transaction. POST (with explicit 200) because SQL does not belong in a URL. */
   @Post('query')
   @AccountScope()
   @Wire({ accepts: WireShape.QueryBody, returns: WireShape.QueryResult })

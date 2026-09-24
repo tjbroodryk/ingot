@@ -3,13 +3,7 @@ import type { OpenAiEmbedder as Settings } from './ai-settings.js';
 import type { Embedder } from './embedder.port.js';
 import { callModel } from './remote.js';
 
-/**
- * How many texts go in one request.
- *
- * OpenAI accepts a large array, but the failure mode of a large array is that
- * one oversized text fails the whole batch — and `EmbedPending` hands us up to
- * 128 at a time. Splitting means a bad row costs a chunk, not the tick.
- */
+/** Texts per request. Splitting means one oversized text fails a chunk, not the whole batch. */
 const CHUNK = 64;
 
 interface EmbeddingResponse {
@@ -17,19 +11,8 @@ interface EmbeddingResponse {
 }
 
 /**
- * OpenAI embeddings, and anything speaking the same API.
- *
- * `OPENAI_BASE_URL` retargets it, which is what makes an Azure deployment, a
- * gateway, or a local vLLM the same adapter rather than three. The API is the
- * compatibility surface the ecosystem settled on, so treating it as the
- * protocol rather than as one vendor is most of this file's value.
- *
- * `dimensions` is sent rather than accepted, because the port declares it: the
- * width is baked into every stored vector and into the `FLOAT[N]` column a
- * query session builds. `text-embedding-3-*` honours the parameter, so asking
- * makes the configuration true instead of merely hopeful — and a model that
- * ignores it is caught below rather than writing vectors of the wrong width
- * that `SessionBuilder` then silently drops.
+ * OpenAI embeddings, and anything speaking the same API; `OPENAI_BASE_URL`
+ * retargets it. Sends `dimensions` and checks the returned width below.
  */
 export class OpenAiEmbedder implements Embedder {
   constructor(private readonly settings: Settings) {}
@@ -66,9 +49,7 @@ export class OpenAiEmbedder implements Embedder {
       timeoutMs: this.settings.timeoutMs,
     });
 
-    // Ordered by `index` rather than trusted to arrive in order. The API does
-    // return them in order today; pairing a vector with somebody else's text
-    // is silent and permanent, so it is not a thing to take on trust.
+    // Ordered by `index`: pairing a vector with the wrong text is silent and permanent.
     const ordered = [...(response.data ?? [])].sort((left, right) => left.index - right.index);
 
     if (ordered.length !== texts.length) {

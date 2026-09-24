@@ -8,19 +8,8 @@ import { startTelemetry } from './observability/index.js';
 async function bootstrap(): Promise<void> {
   await startTelemetry(); // before the container
 
-  /**
-   * How this deployment authenticates, decided before anything is built.
-   *
-   * Here rather than in a `useFactory` because the mode is a fact the module
-   * graph is assembled *from* — `imports` are evaluated before the container
-   * exists, so nothing inside it can be asked. It also means a mode named
-   * without its values throws with nothing listening, rather than leaving a
-   * service that accepts connections and refuses every one of them.
-   *
-   * `process.env` rather than `ConfigService` for the same reason, and it is
-   * enough: Bun loads `.env` before this file runs, and a deployment sets real
-   * environment variables. `ConfigModule` still reads everything else.
-   */
+  // Parsed before the container is built: `imports` are evaluated before it
+  // exists, and a bad mode should be fatal before the port is bound.
   const auth = authSettings(fileBackedReader((key) => process.env[key]));
 
   const app = await NestFactory.create(AppModule.forRoot(auth));
@@ -36,8 +25,7 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3002);
   await app.listen(port, '0.0.0.0');
 
-  // The sweepers start themselves: `Scheduler` is an `OnApplicationBootstrap`,
-  // so there is nothing to serve and nothing to register here.
+  // The sweepers start themselves via `OnApplicationBootstrap`.
   Logger.log(`Ingot ready on http://localhost:${port}/api/v1`, 'Bootstrap');
 }
 

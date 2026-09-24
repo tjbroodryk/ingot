@@ -1,23 +1,11 @@
 /**
  * Casts a memory into a running Ingot.
  *
- * It used to open the account too, back when `POST /accounts` was a route
- * anybody could call. The account now comes from `INGOT_AUTH` — sealed mode
- * opens `INGOT_ACCOUNT` at boot — so the one thing the service could not do
- * for itself is now the first thing it does, and what is left here is the
- * memory: `/:account/:ingot/add` answers 404 rather than 401 for one that does
- * not exist, which reads exactly like a broken route when it is really an
- * empty database.
- *
- * `load/lib.js` does the same in k6's HTTP client, which cannot be run from a
- * shell. This is the dev-loop version.
- *
  *   bun run seed                 one memory in the configured account
  *   bun run seed --sample        also store a record, so /query has an answer
  *
- * The account and key are read from the same environment the server reads, so
- * a checkout that copied `.env.example` needs no arguments. Override either
- * with `--account` / `--key` to point at a deployment.
+ * The account and key are read from the same environment the server reads.
+ * Override either with `--account` / `--key`.
  */
 
 const BASE = process.env.INGOT_URL ?? 'http://localhost:3002';
@@ -47,9 +35,7 @@ async function post(path: string, body: unknown, key?: string): Promise<Record<s
 
   const text = await response.text();
   if (!response.ok) {
-    // The status is most of the diagnosis here, so it leads: 404 is a service
-    // that is up and has nothing, 401 is a key, and a connection refused is
-    // `bun run dev` not running at all.
+    // Status leads: 404 is up-but-empty, 401 is the key, connection refused is no server.
     throw new Error(`POST ${path} → ${response.status}\n${text}`);
   }
   return JSON.parse(text) as Record<string, never>;
@@ -57,9 +43,6 @@ async function post(path: string, body: unknown, key?: string): Promise<Record<s
 
 async function main(): Promise<void> {
   if (!slug || !key) {
-    // The same two variables the server refuses to boot without, so a seed
-    // that cannot find them is pointed at a server that could not have
-    // started — or at somebody else's.
     throw new Error(
       'INGOT_ACCOUNT and INGOT_API_KEY are not set. They are what the server was started ' +
         'with — copy apps/ingot/.env.example to apps/ingot/.env, or pass --account and --key.',

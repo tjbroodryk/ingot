@@ -10,19 +10,9 @@ import {
 import { MediaType } from '../../src/contexts/files/domain/media-type.js';
 
 /**
- * The registry, checked against itself.
- *
- * Most of what used to need a test here is now a compile error instead —
- * `FORMATS` is a `Record<MediaType, FormatHandler>`, so a format that is named
- * without a handler, or a handler missing a field, does not build. What is left
- * is the small set of mistakes the type system cannot see: an entry filed under
- * the wrong key, two formats claiming one extension, and a strategy that
- * contradicts itself.
- *
- * Every one of those is silent in production. A handler under the wrong key
- * parses documents as something else; a shared extension resolves to whichever
- * entry was enumerated first. `assertConsistent` runs at boot for exactly that
- * reason, and this is what proves it would catch them.
+ * The registry, checked against itself: the mistakes the type system can't see
+ * — an entry under the wrong key, two formats claiming one extension, and a
+ * strategy that contradicts itself.
  */
 describe('the format registry', () => {
   it('files every handler under its own media type', () => {
@@ -32,8 +22,7 @@ describe('the format registry', () => {
   });
 
   it('gives every media type a handler', () => {
-    // The compiler already enforces this; asserting it keeps the guarantee
-    // visible to somebody reading the tests rather than the type.
+    // The compiler already enforces this; asserted to keep it visible.
     for (const type of Object.values(MediaType)) {
       expect(handlerFor(type)).toBeDefined();
       expect(handlerFor(type).mediaType).toBe(type);
@@ -62,27 +51,15 @@ describe('the format registry', () => {
   });
 
   it('gives every format at least one extension', () => {
-    // Without one, a client sending `application/octet-stream` — which is most
-    // of them — could never reach that format at all.
+    // Without one, `application/octet-stream` uploads could never reach the format.
     for (const handler of Object.values(FORMATS)) {
       expect(handler.extensions.length).toBeGreaterThan(0);
     }
   });
 
   /**
-   * Overlap is for prose that got cut, not for records that got listed.
-   *
-   * Writing this test is what showed the rule stated on `ChunkingStrategy` was
-   * not the rule the code follows. The comment there claimed the flag stopped a
-   * chunk bleeding across a boundary the document drew — but the chunker
-   * overlaps only within the bodies one group produced, so it can never reach
-   * across a group at all, whatever the flag says.
-   *
-   * What the flag actually decides is what happens when a *single* group is too
-   * big and has to be cut: repeat the tail, or not. On where that cut goes
-   * through continuous prose, because the sentence it severed is real. Off where
-   * a group is discrete records — half a spreadsheet row repeated into the next
-   * chunk carries nothing across and costs an embedding.
+   * Overlap repeats the tail only when one group is cut: on for continuous prose,
+   * off for discrete records where a repeated half carries nothing.
    */
   it('overlaps prose and does not overlap records', () => {
     for (const type of [MediaType.Pdf, MediaType.Text, MediaType.Markdown, MediaType.Html]) {
@@ -103,9 +80,8 @@ describe('the format registry', () => {
   });
 
   it('carries headings only where the format really has them', () => {
-    // A budget-boundary format has no heading structure to carry, and a PDF's
-    // headings are guessed from font runs — a wrong one embedded is worse than
-    // none. Both would be silently poor retrieval rather than a failure.
+    // Budget formats have no headings; a PDF's are guessed from font runs, so a
+    // wrong one embedded is worse than none.
     expect(FORMATS[MediaType.Pdf].chunking.carryHeadings).toBe(false);
     expect(FORMATS[MediaType.Text].chunking.carryHeadings).toBe(false);
     expect(FORMATS[MediaType.Csv].chunking.carryHeadings).toBe(false);
@@ -122,8 +98,7 @@ describe('the format registry', () => {
   });
 
   it('marks exactly the formats that already have rows of their own', () => {
-    // `tabular` is what decides whether extraction costs a model call, so it is
-    // worth stating rather than leaving to whoever adds the next handler.
+    // `tabular` decides whether extraction costs a model call.
     const tabular = Object.values(FORMATS)
       .filter((handler) => handler.tabular)
       .map((handler) => handler.mediaType);

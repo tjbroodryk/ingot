@@ -1,14 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 
-/**
- * A sentence with `code` and **emphasis** in it.
- *
- * The reference is mostly prose that names a field or a path, and putting JSX
- * in the content file would make the copy unreadable in the one place it most
- * needs to be read. Backticks and a bold pair are the smallest notation that
- * does the job; nothing else in the string is markup. Backticks win — a `**`
- * inside a code span is characters, not markup — so the two never nest.
- */
+/** A sentence with `code` and **emphasis** in it. Backticks win over `**`, so the two never nest. */
 export function Prose({ text }: { text: string }): ReactNode {
   return text.split('`').map((part, index) =>
     // Odd segments are what sat between a pair of backticks.

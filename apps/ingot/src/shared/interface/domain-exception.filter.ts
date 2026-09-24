@@ -17,31 +17,18 @@ import {
   InvariantViolation,
 } from '../domain/index.js';
 
-/**
- * Translates domain errors into HTTP. This is the only place that knows both
- * vocabularies, which is what lets the domain raise `ActionNotPermitted`
- * without ever importing a status code.
- */
+/** Translates domain errors into HTTP; the only place that knows both vocabularies. */
 @Catch(DomainError)
 export class DomainExceptionFilter implements ExceptionFilter<DomainError> {
   private readonly logger = new Logger(DomainExceptionFilter.name);
 
   catch(error: DomainError, host: ArgumentsHost): void {
-    // WebSocket handlers report failures in their own acknowledgement, so
-    // reaching for an HTTP response here would throw over the real error.
+    // Non-HTTP handlers report failures their own way.
     if (host.getType() !== 'http') throw error;
 
     const status = statusFor(error);
-    /*
-     * A described failure is logged as a line; an undescribed one is logged as
-     * a crash.
-     *
-     * `DependencyUnavailable` already says what happened in a sentence written
-     * to be read, and our stack through it is the least interesting part —
-     * what an operator wants is the cause, which is why it is on `cause`
-     * rather than in the message. Everything else reaching a 5xx here is
-     * something we did not anticipate, and for those the stack is the point.
-     */
+    // A described failure (`DependencyUnavailable`) logs as a line with its
+    // cause; anything else reaching a 5xx logs with its stack.
     if (error instanceof DependencyUnavailable) {
       this.logger.warn(`${error.message} (${describe(error.cause)})`);
     } else if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -63,8 +50,7 @@ function statusFor(error: DomainError): number {
   if (error instanceof ActionNotPermitted) return HttpStatus.FORBIDDEN;
   if (error instanceof ConflictingState) return HttpStatus.CONFLICT;
   if (error instanceof InvariantViolation) return HttpStatus.UNPROCESSABLE_ENTITY;
-  // Nothing is wrong *here*: the request was well formed and we could not
-  // carry it out because something we depend on would not play its part.
+  // Request was well formed; a dependency would not play its part.
   if (error instanceof DependencyUnavailable) return HttpStatus.SERVICE_UNAVAILABLE;
   return HttpStatus.INTERNAL_SERVER_ERROR;
 }

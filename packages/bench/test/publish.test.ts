@@ -4,12 +4,9 @@ import { corpusShape, publishable } from '../src/run/publish.js';
 import type { ReportHeader, RunRecord } from '../src/run/report.js';
 
 /**
- * The summary the site renders.
- *
- * Worth its own test because it is the one output of this package that another
- * artefact reads: a shape change here renders an empty table on a published
- * page rather than failing anything, and `apps/ingot-app/test/benchmarks.test.tsx`
- * asserts the other end of the same contract.
+ * The summary the site renders. A shape change here renders an empty table
+ * rather than failing; `apps/ingot-app/test/benchmarks.test.tsx` asserts the
+ * other end of the contract.
  */
 
 const HEADER: ReportHeader = {
@@ -89,8 +86,7 @@ describe('publishable', () => {
       CATEGORIES,
     );
 
-    // `ordering` and `aggregate` had no questions, so the page must not be
-    // handed a column with nothing under it.
+    // `ordering` and `aggregate` had no questions, so they must not appear.
     expect(published.categories).toEqual(['absence']);
     expect(published.run?.categoryCounts).toEqual({ absence: 1 });
   });
@@ -122,10 +118,8 @@ describe('publishable', () => {
   });
 
   /**
-   * The published corpus is the page's answer to "measured over what", and it
-   * has to be the corpus the adapters were actually handed rather than a
-   * description of one. It is rebuilt from the seed at publish time, so the
-   * assertion worth having is that it still matches the fixture the run used.
+   * The published corpus is the page's "measured over what". Rebuilt from the
+   * seed at publish time, so check it still matches the fixture the run used.
    */
   test('describes the corpus the seed produces', () => {
     const published = publishable(HEADER, [row({})], CATEGORIES);
@@ -140,8 +134,7 @@ describe('publishable', () => {
     const prs = corpus.sources.find((source) => source.tool === 'github.list_pull_requests');
     expect(prs?.paginated).toBe(true);
     expect(prs?.perResult).toBe(25);
-    // Verbatim, and therefore parseable: a sample that had been trimmed to
-    // fit a card would be a sample nobody could check against the generator.
+    // Verbatim, so parseable and checkable against the generator.
     expect(JSON.parse(prs?.sample as string)).toMatchObject({ ref: expect.any(String) });
   });
 
@@ -149,9 +142,7 @@ describe('publishable', () => {
     const flooded = corpusShape(HEADER.seed, 500);
     const logs = flooded.sources.find((source) => source.tool === 'logs.search');
 
-    // The whole point of `--logs`: one result, however many lines. A corpus
-    // that paginated it would be modelling a kinder tool than the one that
-    // causes the problem, and the page would draw it as an ordinary listing.
+    // One result, however many lines — a paginated log would be a kinder tool.
     expect(logs?.paginated).toBe(false);
     expect(logs?.results).toBe(1);
     expect(logs?.records).toBe(500);
