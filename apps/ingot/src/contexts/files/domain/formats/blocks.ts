@@ -1,14 +1,6 @@
 import { type Block, BlockKind, type ParsedDocument } from '../format.js';
 
-/**
- * What the text formats share, so that four handlers are four files of format
- * knowledge rather than four copies of a paragraph splitter.
- *
- * The split is deliberate: everything here works on *already-decoded text* and
- * knows nothing about media types. A handler's own file is then the short
- * answer to "what is different about this format", which is the property the
- * registry exists to make visible.
- */
+/** Shared helpers for the text formats: decoding and heading-aware splitting. */
 
 /** A heading a format recognised, and how deep it sits. */
 export interface Heading {
@@ -16,27 +8,15 @@ export interface Heading {
   readonly title: string;
 }
 
-/**
- * Decodes an upload as UTF-8, without the byte-order mark.
- *
- * A BOM survives `toString('utf8')` as U+FEFF and then shows up as an invisible
- * first character of the first heading — the kind of thing that makes one
- * document's chunks silently rank differently from every other document's.
- */
+/** Decodes an upload as UTF-8, stripping a leading BOM. */
 export function decodeText(content: Buffer): string {
   return content.toString('utf8').replace(/^﻿/, '');
 }
 
 /**
- * Paragraph runs, each carrying the heading path it sits under.
- *
- * One pass, because the heading state is the only thing being tracked: a heading
- * of level *n* replaces everything from *n* down and leaves the levels above it
- * alone, which is what makes `["4 Termination", "4.2 Notice"]` come out of a
- * document that never says the two are related except by nesting.
- *
- * `heading` is null for a format with no headings at all, and then this is
- * simply a paragraph splitter — which is the honest reading of a `.txt` file.
+ * Paragraph runs, each carrying the heading path it sits under. A level-n
+ * heading replaces everything from n down. `heading` null means no headings —
+ * a plain paragraph splitter.
  */
 export function headedBlocks(
   text: string,
@@ -55,8 +35,7 @@ export function headedBlocks(
       text: body,
       page: null,
       headings: [...path],
-      // Nothing here is a unit the document insisted on. A fenced code block
-      // would be, and is what `BlockKind.Code` is waiting for.
+      // Nothing here is a hard unit. (Fenced code blocks would be.)
       hard: false,
       kind: BlockKind.Prose,
     });
@@ -71,9 +50,7 @@ export function headedBlocks(
       flush();
       path.length = Math.min(path.length, found.level - 1);
       path[found.level - 1] = found.title;
-      // A jump from h1 straight to h3 leaves a hole. Filled rather than left
-      // sparse, because `join(' > ')` over a sparse array produces "A >  > C"
-      // and that string ends up embedded.
+      // Fill gaps so `join(' > ')` over a sparse array does not produce "A >  > C".
       for (let at = 0; at < path.length; at++) path[at] ??= '';
       continue;
     }
@@ -92,8 +69,7 @@ export function documentOf(blocks: readonly Block[]): ParsedDocument {
   return {
     blocks,
     pages: null,
-    // The first heading, never an invented one. A model may write a real title
-    // later; this is only what the document already said about itself.
+    // The first heading, never invented.
     title: first?.headings[0] ?? null,
     rows: null,
   };

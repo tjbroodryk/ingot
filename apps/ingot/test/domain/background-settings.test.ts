@@ -10,15 +10,9 @@ import {
 /**
  * How much of somebody else's service a deployment will use at once.
  *
- * The reason this is configurable at all is that the right number is not ours
- * to know: it is a provider's quota divided by however many replicas the
- * autoscaler is allowed to run, and both of those live outside this repository.
- * The reason it is *checked* is that the failure of getting it wrong is a rate
- * limit at a hosted model — which arrives as a slow queue rather than as an
- * error, and is read as "the embedder is slow".
- *
- * Pure: a function over a reader, so every shape is covered with no container
- * and no environment.
+ * Configurable because the right number depends on a quota and the replica
+ * count, neither of which this repository knows. Checked because getting it
+ * wrong arrives as a slow queue, not an error. Pure: a function over a reader.
  */
 
 /** An environment, as `ConfigService.get` would present it. */
@@ -50,9 +44,8 @@ describe('the background concurrency', () => {
   });
 
   /**
-   * A queue added to `BackgroundKind` without a variable would be one nobody
-   * could tune — the `Record` makes that a compile error, and this makes sure
-   * the names are real rather than plausible.
+   * A queue with no variable would be untunable; the `Record` makes that a
+   * compile error, and this checks the names are real rather than plausible.
    */
   it('names a variable for every kind, and no two the same', () => {
     const keys = Object.values(BackgroundKind).map((kind) => CONCURRENCY_KEYS[kind]);
@@ -92,12 +85,7 @@ describe('the background concurrency', () => {
     );
   });
 
-  /**
-   * The cap is a typo guard rather than a limit worth having — the real bound
-   * is a provider's quota, which this service cannot see. What it catches is
-   * `1000` typed for `100`, which at ten replicas would be ten thousand
-   * concurrent calls.
-   */
+  /** The cap is a typo guard, not a real limit: it catches `1000` typed for `100`. */
   it('takes the cap, and refuses one past it', () => {
     const at = String(MAX_CONCURRENCY);
     expect(concurrencyFrom(env({ INGOT_DELIVERIES_CONCURRENCY: at }))).toMatchObject({

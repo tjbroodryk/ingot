@@ -28,13 +28,8 @@ export interface EngineLimits {
   readonly maxMaterialisedRows: number;
   readonly extensionDirectory?: string;
   /**
-   * Where DuckDB spills when a session exceeds `memoryLimit`.
-   *
-   * Its default is the working directory, which in a container is the image
-   * layer — writable only because nothing said otherwise, and not writable at
-   * all under a `readOnlyRootFilesystem` pod. Left unset the failure is a
-   * query that dies on a permission error at whatever size starts spilling,
-   * which is a size nobody hits until a tenant does.
+   * Where DuckDB spills when a session exceeds `memoryLimit`; left unset it uses
+   * the working directory, which may not be writable.
    */
   readonly temporaryDirectory?: string;
 }
@@ -109,15 +104,10 @@ export class DuckDbEngine implements AnalyticalEngine {
     cap: number;
     timeoutMs: number;
   }): Promise<{ rowIds: readonly string[]; truncated: boolean }> {
-    /*
-     * The predicate is wrapped rather than run: a caller supplies a WHERE
-     * clause, not a statement, and this is what makes that literally true.
-     *
-     * The wrapping only holds if the predicate cannot get out of its brackets.
-     * `1=1) UNION SELECT 1 --` is still a single SELECT once wrapped, so every
-     * check the engine makes would pass it — the balance check is what refuses
-     * it, and it was added because that attack got through.
-     */
+    // Wrap the predicate rather than run it: a caller supplies a WHERE clause,
+    // not a statement. The balance check refuses predicates that break out of
+    // their brackets (e.g. `1=1) UNION SELECT 1 --`), which stay a single SELECT
+    // once wrapped and would otherwise pass every check.
     assertSelfContainedPredicate(request.where);
 
     const sql =
@@ -142,10 +132,8 @@ export class DuckDbEngine implements AnalyticalEngine {
       // Deliberately *not* locked down: this SQL is ours and it has to write.
       const table = ident(request.table.name);
 
-      // The vector columns are excluded: they belong in the sibling file, so
-      // that re-embedding rewrites one small object rather than every base
-      // file. `EXCLUDE ()` is not valid SQL, so an unembedded table takes the
-      // plain projection.
+      // Exclude vector columns; they go to the sibling file. `EXCLUDE ()` is
+      // invalid SQL, so an unembedded table takes the plain projection.
       const excluded = vectorColumns(request.table);
       const projection =
         excluded.length > 0 ? `* EXCLUDE (${excluded.map(ident).join(', ')})` : '*';
@@ -160,9 +148,8 @@ export class DuckDbEngine implements AnalyticalEngine {
       let vectors = 0;
       const embedded = request.table.embedded;
       if (embedded.length > 0) {
-        // Vectors go to their own file keyed by `_row_id`, never as a column
-        // in the data. Re-embedding with a better model then rewrites one
-        // small object instead of every base file.
+        // Vectors go to their own file keyed by `_row_id`, so re-embedding
+        // rewrites one small object rather than every base file.
         const projection = embedded
           .map((entry) => `${ident(vectorColumnName(entry.column))} AS ${ident(entry.column)}`)
           .join(', ');
@@ -187,19 +174,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * One object, written by DuckDB and then published.
-   *
-   * The two steps are separate because they are separate for at least one
-   * store: DuckDB can `COPY … TO` a local path and an `s3://` URI and nothing
-   * else, so a Google bucket is written by copying to a scratch file that the
-   * store uploads on `commit`. A store writing straight at the object commits
-   * by doing nothing.
-   *
-   * Whatever happens, a write that threw is discarded. Nothing would ever read
-   * a half-written generation — a generation is read only once the manifest
-   * names it, and the manifest is written after this returns — but nothing
-   * would ever collect it either, and on the staging path that is a local disk
-   * filling up one failed roll-up at a time.
+   * Writes one object with DuckDB, then publishes it. Split because some stores
+   * stage to a scratch file uploaded on `commit` (DuckDB `COPY … TO` only takes
+   * a local path or `s3://`). A failed write is discarded so nothing is left behind.
    */
   private async write(key: string, copy: (into: string) => Promise<unknown>): Promise<void> {
     const pending = await this.store.beginWrite(key);
@@ -222,13 +199,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   // ── the session recipe ─────────────────────────────────────────────────
 
   /**
-   * A fresh instance per call, never a fresh connection.
-   *
-   * Phase 0 established both halves of why. Connections to one instance share
-   * a catalogue, so two sessions would collide on table names. And
-   * `enable_external_access` and `lock_configuration` are *instance*-wide, so
-   * locking one caller's session down would lock every other session on that
-   * instance — one tenant's query breaking the next one's.
+   * A fresh instance per call, never a fresh connection: connections to one
+   * instance share a catalogue (table-name collisions), and
+   * `enable_external_access`/`lock_configuration` are instance-wide.
    */
   private async withSession<T>(
     tables: readonly MaterialisableTable[],
@@ -259,9 +232,8 @@ export class DuckDbEngine implements AnalyticalEngine {
     await connection.run(`SET memory_limit = ${literal(this.limits.memoryLimit)}`);
     await connection.run(`SET threads = ${this.limits.threads}`);
 
-    // Nothing fetches an extension at query time. A first query that reaches
-    // out to extensions.duckdb.org is a first query that fails on a network
-    // that does not allow it, and it fails for the wrong-looking reason.
+    // No extension fetch at query time; a query reaching extensions.duckdb.org
+    // would fail on a network that blocks it.
     await connection.run('SET autoinstall_known_extensions = false');
     await connection.run('SET autoload_known_extensions = false');
     await connection.run('SET allow_unsigned_extensions = false');
@@ -272,20 +244,10 @@ export class DuckDbEngine implements AnalyticalEngine {
       await connection.run(`SET temp_directory = ${literal(this.limits.temporaryDirectory)}`);
     }
 
-    /*
-     * Full text search, in every session rather than only the ones that use it.
-     *
-     * A caller cannot load it themselves. `LOAD` is refused after the lockdown
-     * — and has to be, since the same statement reaches every other extension
-     * too — so an ingot whose session did not load `fts` is one where
-     * `match_bm25` is a catalog error no configuration can fix. Loading it here,
-     * while external access is still on, is what makes the function there for
-     * every table that asked to be indexed.
-     *
-     * `INSTALL` reads from `extension_directory`, which the image bakes at
-     * build time (`scripts/bake-extensions.ts`); against a copy already there
-     * it costs nothing and reaches nowhere.
-     */
+    // Load `fts` in every session while external access is still on. `LOAD` is
+    // refused after lockdown, so a session that skipped it makes `match_bm25` a
+    // catalog error. `INSTALL` reads from the baked `extension_directory`, so it
+    // costs nothing.
     await connection.run('INSTALL fts');
     await connection.run('LOAD fts');
 
@@ -295,13 +257,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Step 4: one logical table from two tiers.
-   *
-   * The schema comes from the manifest rather than from whatever the Parquet
-   * happens to contain, so what a query sees is exactly what `/info` promised.
-   * `INSERT … BY NAME` is what lets a base file written before a column
-   * existed sit beside one written after: the missing column reads as null
-   * instead of failing the read.
+   * Step 4: build one logical table from both tiers. Schema comes from the
+   * manifest; `INSERT … BY NAME` lets base files with differing columns coexist,
+   * a missing column reading as null.
    */
   private async materialise(
     connection: DuckDBConnection,
@@ -333,8 +291,7 @@ export class DuckDbEngine implements AnalyticalEngine {
     }
 
     if (table.tombstones.length > 0) {
-      // Forgotten rows are removed here, once, rather than being filtered on
-      // every reference to the table in a caller's query.
+      // Remove forgotten rows once here, not on every query reference.
       const ids = table.tombstones.map(literal).join(', ');
       await connection.run(`DELETE FROM ${name} WHERE ${ident('_row_id')} IN (${ids})`);
     }
@@ -357,21 +314,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Builds the full text index a caller's query is about to search.
-   *
-   * A per-session cost, because there is nowhere else to put it: the index is
-   * DuckDB's own tables, and this session's copy of the table is assembled
-   * from two tiers a moment before the query runs. Rebuilding it is also what
-   * makes changing the settings free — nothing stored has to be rewritten, and
-   * the next query indexes the new way.
-   *
-   * Only for a query that is going to use it. `wantsFullText` looks for the
-   * schema the index creates, which every `match_bm25` call has to name, so a
-   * roll-up and an ordinary SELECT pay nothing for a table with search on.
-   *
-   * Nothing is refused here. A table configured for search whose text columns
-   * have all been dropped has nothing to index, and that is a table returning
-   * no matches rather than a query returning an error about its own schema.
+   * Builds the full text index a query is about to search. Per-session, since
+   * the index lives in DuckDB's own tables over a table assembled per query.
+   * Nothing is refused: a table with no text columns just returns no matches.
    */
   private async index(connection: DuckDBConnection, table: MaterialisableTable): Promise<void> {
     const columns = indexableColumns(table);
@@ -384,10 +329,8 @@ export class DuckDbEngine implements AnalyticalEngine {
         connection.run(
           `PRAGMA create_fts_index(${literal(table.name)}, ${literal('_row_id')}, ` +
             `${columns.map(literal).join(', ')}, ` +
-            // Every one of these is quoted, and the two that name a vocabulary
-            // are enums parsed by `FtsSettings` before they get here.
-            // `stopwords` in particular is read by DuckDB as a *table name*
-            // when it is not "english", which is why it is not a free string.
+            // `stopwords` is read by DuckDB as a table name unless it's
+            // "english", so these are validated enums, not free strings.
             `stemmer=${literal(table.fts.stemmer)}, ` +
             `stopwords=${literal(table.fts.stopwords)}, ` +
             `ignore=${literal(table.fts.ignore)}, ` +
@@ -399,15 +342,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Overlay rows arrive through the appender, staged as text and cast on the
-   * way in.
-   *
-   * The appender is strongly typed — `appendVarchar` into a `TIMESTAMP` column
-   * is an error, not a coercion — so appending directly into the real table
-   * would mean a per-type branch that has to stay in step with `ColumnType`.
-   * Staging every column as `VARCHAR` and letting DuckDB do the cast keeps one
-   * path for all eight types, and the values are already validated: `coerce()`
-   * ran at `/add` time, which is the point of doing it there.
+   * Overlay rows go in through the appender, staged as `VARCHAR` and cast on
+   * insert. The appender is strongly typed, so staging as text keeps one path
+   * for all types; values were already validated at `/add`.
    */
   private async appendOverlay(
     connection: DuckDBConnection,
@@ -479,8 +416,7 @@ export class DuckDbEngine implements AnalyticalEngine {
         for (const vector of table.overlayVectors) {
           appender.appendVarchar(vector.rowId);
           appender.appendVarchar(vector.column);
-          // A list literal DuckDB casts back on the way out, for the same
-          // reason the row staging is text: one path instead of a typed one.
+          // A list literal, cast back on the way out; text keeps one path, like the row staging.
           appender.appendVarchar(`[${vector.vector.join(',')}]`);
           appender.endRow();
         }
@@ -504,12 +440,9 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Step 5: revoke, then lock. The order is the security property.
-   *
-   * Everything the query needs is in memory by now, so nothing legitimate
-   * wants the filesystem or the network again. `lock_configuration` is what
-   * stops the caller's own SQL turning external access back on — and Phase 0
-   * confirmed it refuses to be released, too.
+   * Step 5: revoke external access, then lock configuration; the order is the
+   * security property. `lock_configuration` stops the query re-enabling access
+   * and cannot be released.
    */
   private async lockDown(connection: DuckDBConnection): Promise<void> {
     await connection.run('SET enable_external_access = false');
@@ -517,13 +450,8 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Step 6: one statement, and that statement a SELECT.
-   *
-   * Not a formality. The lockdown refuses reads and writes outside the
-   * session, but it does *not* refuse `ATTACH ':memory:'` — that touches no
-   * filesystem and no network, and once attached a caller can allocate as much
-   * as they like. This check is what stops it, which makes it the load-bearing
-   * half of the sandbox rather than a second opinion.
+   * Step 6: exactly one statement, and a SELECT. The lockdown does not refuse
+   * `ATTACH ':memory:'`, so this check is load-bearing, not a formality.
    */
   private async assertPlainSelect(connection: DuckDBConnection, sql: string): Promise<void> {
     let count: number;
@@ -545,14 +473,9 @@ export class DuckDbEngine implements AnalyticalEngine {
       );
     }
 
-    /*
-     * Before the type: what the statement is written as.
-     *
-     * DuckDB rewrites some `PRAGMA` statements into a select over a table
-     * function, so `PRAGMA database_list` reaches `statementType` looking
-     * exactly like `SELECT 1`. The type describes what will run; it is not a
-     * record of what was asked for, and this endpoint promises SELECT.
-     */
+    // Check the written form before the type: DuckDB rewrites some `PRAGMA` into
+    // a select, so `PRAGMA database_list` reaches `statementType` looking like
+    // `SELECT 1`.
     assertStartsAsSelect(sql);
 
     let type: StatementType;
@@ -575,11 +498,8 @@ export class DuckDbEngine implements AnalyticalEngine {
   }
 
   /**
-   * Step 7: a deadline we enforce ourselves.
-   *
-   * DuckDB has no statement-timeout setting; `interrupt()` on the connection
-   * is the mechanism, and Phase 0 confirmed it actually cancels rather than
-   * merely being accepted.
+   * Step 7: enforce a deadline ourselves. DuckDB has no statement timeout;
+   * `interrupt()` on the connection cancels the running query.
    */
   private async withTimeout<T>(
     connection: DuckDBConnection,
@@ -613,19 +533,9 @@ export class DuckDbEngine implements AnalyticalEngine {
 }
 
 /**
- * Which of an ingot's tables this query actually needs.
- *
- * `getTableNames` reads a statement against an empty catalogue, which is the
- * case that matters — we have to ask before building anything. But Phase 0
- * established that it returns `[]` for any `JOIN … USING (…)` *and* for a
- * query it cannot parse, and the two are indistinguishable. So an empty answer
- * cannot mean "this query needs no tables"; it has to mean "materialise
- * everything", or a perfectly good query with a USING join would be told its
- * tables do not exist.
- *
- * Every failure mode therefore lands on materialising more than necessary,
- * which costs time. None of them lands on materialising too little, which
- * would cost correctness.
+ * Which of an ingot's tables this query needs. `getTableNames` returns `[]` both
+ * for a `JOIN … USING (…)` and for an unparseable query, indistinguishably, so
+ * an empty answer means materialise everything rather than nothing.
  */
 function narrow(
   connection: DuckDBConnection,
@@ -642,58 +552,35 @@ function narrow(
 
   const wanted = new Set(named.map((name) => name.toLowerCase()));
   const selected = tables.filter((table) => wanted.has(table.name));
-  // A name we do not recognise is not our business to reject here — the query
-  // will fail on its own with a catalog error that names it, which is a better
-  // message than anything this function could invent. But if nothing matched,
-  // fall back rather than build an empty session.
+  // An unknown name isn't rejected here; the query fails with its own catalog
+  // error. If nothing matched, fall back rather than build an empty session.
   return selected.length > 0 ? selected : tables;
 }
 
-/**
- * The schema `create_fts_index` puts its macros in, for one table.
- *
- * DuckDB's own naming, reproduced because a caller has to type it: searching
- * `notes` is `fts_main_notes.match_bm25(_row_id, 'term')`.
- */
+/** The schema `create_fts_index` puts its macros in (DuckDB's naming): `notes` becomes `fts_main_notes`. */
 export function ftsSchemaName(table: string): string {
   return `fts_main_${table}`;
 }
 
 /**
- * Whether this query is going to search this table, rather than merely read it.
- *
- * A text check, and a narrowing one: `match_bm25` is a macro inside the
- * index's own schema, so a query that uses it *must* contain that schema's
- * name. Missing it costs the caller a search that finds nothing; a false
- * positive costs one wasted index build. Neither is a correctness problem,
- * which is what makes a text check acceptable here — unlike the ones in
- * `statement-shape.ts`, nothing is being kept out.
+ * Whether this query searches this table. `match_bm25` is a macro in the index's
+ * schema, so a query using it must name that schema. A miss just skips a build,
+ * so a text check is acceptable here.
  */
 function wantsFullText(table: MaterialisableTable, sql: string): boolean {
   return table.fts.enabled && sql.toLowerCase().includes(ftsSchemaName(table.name));
 }
 
 /**
- * The columns an index covers: what was configured, or every text column there
- * is.
- *
- * Filtered against the table as it actually stands, in both cases. A configured
- * column that a later write never brought back would otherwise fail the pragma,
- * and "your search settings name a column that no longer exists" is not a thing
- * to learn from a query about something else.
- *
- * Configuring nothing gets the caller's own VARCHAR columns and not this
- * service's. `_row_id` and `_batch` are ids that happen to be text: indexing
- * them fills the vocabulary with opaque tokens, and `_row_id` in particular is
- * the *document identifier* here, so it would rank every row against its own
- * key. A caller who genuinely wants one can still name it.
+ * The columns an index covers: what was configured, else every text column.
+ * Filtered against the current table so a dropped column doesn't fail the pragma;
+ * with nothing configured, service columns like `_row_id` are excluded.
  */
 function indexableColumns(table: MaterialisableTable): string[] {
   const text = table.columns.filter((column) => column.type === ColumnType.Varchar);
   const configured = new Set(table.fts.columns);
 
-  // Spelled out rather than imported, as `_row_id` is everywhere else in this
-  // file: the engine knows the shape of a session, not the domain's vocabulary.
+  // Spelled out rather than imported: the engine knows session shape, not the domain's vocabulary.
   const chosen =
     configured.size === 0
       ? text.filter((column) => !column.name.startsWith('_'))
@@ -712,19 +599,9 @@ function vectorColumns(table: MaterialisableTable): string[] {
 }
 
 /**
- * Which columns of a result are embeddings, and therefore never leave here.
- *
- * A vector is how this service ranks — it is not a fact anybody stored and it
- * is not in what `/info` promises. Returning one is a few thousand floats of
- * noise per row, which for the caller this exists for, a model paying by the
- * token, is the difference between a readable answer and an unreadable one.
- *
- * Found by type rather than by name, because a name is only what a caller left
- * it as: `SELECT *` and `SELECT patch_vec AS patch` are the same leak and only
- * one of them is spellable in advance. `ARRAY` is the fixed-width kind, which
- * is what `materialise` declares a vector as and which no declarable
- * `ColumnType` can produce — `string_split` and an array literal are both
- * `LIST` and pass through untouched.
+ * Which result columns are embeddings, and so never returned. Found by type not
+ * name (`SELECT *` and `SELECT patch_vec AS patch` are the same leak); `ARRAY` is
+ * the fixed-width kind `materialise` declares, which no `ColumnType` produces.
  */
 function embeddingColumns(reader: DuckDBResultReader): {
   indices: ReadonlySet<number>;
@@ -753,18 +630,13 @@ function withhold(
 }
 
 function duckType(type: ColumnType): string {
-  // The wire enum's values are DuckDB's own type names, which is the point of
-  // choosing them: there is no mapping table to fall out of step.
+  // The wire enum's values are DuckDB's own type names, so there's no mapping table to drift.
   return type;
 }
 
 /**
- * Substitutes the query embedding for `$q`.
- *
- * A textual substitution rather than a bound parameter because the vector is
- * ours — it came from the embedder, not from the caller — and because a caller
- * writing `array_cosine_similarity(patch_vec, $q)` should get the array in the
- * position DuckDB expects a literal, not a parameter it then has to cast.
+ * Substitutes the query embedding for `$q`. A textual substitution, not a bound
+ * parameter, so the vector lands where DuckDB expects a literal.
  */
 function bindQueryVector(sql: string, vector: readonly number[]): string {
   return sql.replaceAll(/\$q\b/g, floatArray(vector));

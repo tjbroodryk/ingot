@@ -1,6 +1,5 @@
 /**
- * Measuring anything in this service goes through one of four things, and the
- * choice between them is a question about scope rather than about signals:
+ * Ways to measure code, by scope:
  *
  * | reach                    | use                                        |
  * | ------------------------ | ------------------------------------------ |
@@ -9,19 +8,7 @@
  * | a call to another host   | `@Upstream({…})` / `upstream(host, op, …)` |
  * | a count or a level       | `Metrics.<name>.inc(…)` / `.set(…)`        |
  *
- * The first three all produce a span *and* a duration sample under one name,
- * which is the property worth protecting: an operation found to be slow on a
- * Grafana panel is searchable by the same string in Jaeger, and the exemplar
- * on the sample usually saves even that search.
- *
- * The spine is already instrumented and nothing needs to opt in — every HTTP
- * request, command, query, domain event, transaction and outbox cycle is
- * measured where it passes through the one place all of them pass through.
- * What is left for these is the work underneath: an adapter calling a code
- * host, an expensive step inside a handler, a queue depth worth watching.
- *
- * See `README.md` in this directory for the whole picture, including which
- * detail belongs on a label and which belongs on a span.
+ * The first three each produce a span and a duration sample under one name.
  */
 export { telemetryConfigFromEnv, type TelemetryConfig } from './config.js';
 export { InfrastructureCollectors } from './infrastructure-collectors.js';

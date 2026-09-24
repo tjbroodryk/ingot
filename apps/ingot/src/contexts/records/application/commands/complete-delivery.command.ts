@@ -4,16 +4,9 @@ import { Command, type ICommandHandler } from '../../../../shared/application/in
 import { DELIVERY_OUTBOX, type DeliveryOutbox } from '../ports/delivery-outbox.port.js';
 
 /**
- * Sent: the row leaves the outbox.
- *
- * A command rather than a call from the worker, so that it is one transaction,
- * measured under its own name, on a connection taken after the network call
- * gave one back. "Deliveries are slow" then resolves into which of the three
- * steps is slow, rather than into a single number that is mostly somebody
- * else's latency.
- *
- * It is deliberately the *last* thing that happens. A row deleted before the
- * confirmation came back would be a delivery this service believes it made.
+ * Sent: the row leaves the outbox. A command so it is one measured transaction
+ * on a connection taken after the network call. Deliberately last — a row
+ * deleted before confirmation would be a delivery believed made but not.
  */
 export class CompleteDelivery extends Command {
   constructor(readonly batch: string) {

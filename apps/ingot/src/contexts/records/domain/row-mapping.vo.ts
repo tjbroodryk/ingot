@@ -23,10 +23,8 @@ interface Plan {
 export const MAX_ROWS_PER_ADD = 10_000;
 
 /**
- * The projection from an arbitrary tool result to typed columns.
- *
- * Parsed once and applied to every fanned-out row, so a mapping with a bad
- * path fails before anything is written rather than halfway through.
+ * The projection from an arbitrary tool result to typed columns. Parsed once and
+ * applied to every fanned-out row, so a bad path fails before anything is written.
  */
 export class RowMapping {
   private constructor(
@@ -45,8 +43,7 @@ export class RowMapping {
     const plans = entries.map(([name, mapping]) => planFor(name, mapping));
     const rowsPath = body.rows ? parsePath(body.rows, 'rows', true) : null;
 
-    // Only lowercased here; whether these are real columns is the table's
-    // question, since it is the table the key belongs to.
+    // Only lowercased here; whether they are real columns is the table's question.
     const key = (body.key ?? []).map((column) => String(column).toLowerCase());
 
     return new RowMapping(body.table, body.raw ?? false, key, rowsPath, plans);
@@ -57,11 +54,9 @@ export class RowMapping {
   }
 
   /**
-   * Applies the mapping, producing one row per selected element.
-   *
-   * `$$` paths always resolve against the whole blob, which is the only reason
-   * fanning out is useful: a row per file that still knows its pull request
-   * number.
+   * Applies the mapping, producing one row per selected element. `$$` paths
+   * resolve against the whole blob, so a fanned-out row can still carry a field
+   * from its parent.
    */
   apply(result: unknown, context: { rowId: () => string; at: Date; batch: string }): MappingResult {
     const sources = this.rowsPath ? readRows(result, this.rowsPath, 'rows') : [result];

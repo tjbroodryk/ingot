@@ -25,42 +25,11 @@ export interface ExtractedColumn {
 }
 
 /**
- * The projection from a document to typed rows, checked before any bytes move.
+ * The projection from a document to typed rows, checked at upload.
  *
- * **This is validated at upload and not in the worker**, which is the same
- * argument `/add` makes about its mapping and a stronger one here. At `/add`, a
- * bad path is a 422 to the person still holding the response. At `/file` the
- * work happens minutes later in a sweeper, by which time the caller is gone and
- * the only place left to say anything is a `status` column they have to think
- * to read. So everything that can be refused is refused while somebody is still
- * listening, and what reaches the worker is a mapping already known to parse.
- *
- * ## Two ways to fill a column, and the file decides which
- *
- * A **tabular** document — a CSV, a sheet — already has rows and field names.
- * Its columns are filled by `from` paths that resolve against the parsed rows,
- * exactly as at `/add`, and **no model is called at all**. That is not a
- * fallback: it is the better answer, and it means structured import costs a
- * parser and nothing else.
- *
- * A **prose** document has neither, so its columns carry `describe` — a
- * sentence handed down as a schema the provider is held to, the same trick
- * `RECEIPT_SCHEMA` plays. What comes back is projected through the ordinary
- * mapping, so a model answering `"thirty"` for an `INTEGER` fails the same
- * coercion a bad `/add` fails rather than quietly widening the column.
- *
- * Mixing them is refused rather than resolved. A mapping that is half paths and
- * half descriptions is a mapping whose author has not decided what they
- * uploaded, and guessing on their behalf produces a table half-filled from a
- * model and half from a header row, with nothing recording which.
- *
- * ## What this deliberately does not do yet
- *
- * **`rows` is tabular-only.** Fanning a prose document out into many rows — the
- * line items on a scanned invoice — needs a nested schema and a policy for
- * merging what several page-windows each returned, and half of that is worse
- * than none: it produces duplicate rows on long documents and nothing says so.
- * One document is one row until that is built properly.
+ * A tabular document fills columns from `from` paths with no model. A prose
+ * document fills them from `describe`, a schema a model answers. Mixing the two
+ * is refused, and `rows` is tabular-only.
  */
 export class FileMapping {
   private constructor(
@@ -73,9 +42,7 @@ export class FileMapping {
   ) {}
 
   static parse(extraction: FileExtraction, source: { tabular: boolean }): FileMapping {
-    // The caller's own table, so `SqlName.table` and not `systemTable`: an
-    // extraction may not write into `ingot_files` or `ingot_file_chunks` any more
-    // than an `/add` may write into `ingot_receipts`.
+    // The caller's own table: `SqlName.table` refuses the reserved prefix.
     const table = SqlName.table(extraction.table);
 
     const entries = Object.entries(extraction.columns ?? {});
@@ -84,22 +51,8 @@ export class FileMapping {
 
     const columns = entries.map(([name, mapping]) => columnOf(name, mapping, source.tabular));
 
-    /*
-     * The paths, parsed here and thrown away.
-     *
-     * This is the whole reason the class exists rather than the worker simply
-     * calling `RowMapping` when it gets there. A path is checked by parsing it,
-     * and if the only place that happens is inside the worker then a typo in
-     * `$.Invoice #` is discovered minutes later, four attempts deep, with the
-     * caller long gone and the only evidence a `status` column they have to
-     * think to read.
-     *
-     * So they are parsed twice: once now, to refuse the mapping while somebody
-     * is still holding the response, and once in `RowMapping` when there is
-     * finally a document to apply them to. The second parse is not redundant —
-     * it is the one that does the work — and this one costs microseconds to
-     * turn a silent failure into a 422.
-     */
+    // Paths parsed here and thrown away, only to refuse a bad one at upload;
+    // `RowMapping` parses them again when there is a document to apply them to.
     for (const column of columns) {
       if (column.from !== null) parsePath(column.from, `column "${column.spec.name.value}".from`);
     }
@@ -134,15 +87,8 @@ export class FileMapping {
   /**
    * The same mapping as an `/add` would have written it.
    *
-   * This is the whole reason extraction is shaped like this. Once a document
-   * has become JSON — by a parser reading a header row, or by a model answering
-   * a schema — what is left to do is precisely an `/add`, so it goes through
-   * `RowMapping` rather than through a second projection that would have its
-   * own paths, its own coercion and its own opinions about types.
-   *
-   * A model-filled column becomes `$.<name>`, because the schema handed to the
-   * provider is a flat object keyed by column name. That is the join between
-   * the two halves, and it is one line rather than a format.
+   * A model-filled column becomes `$.<name>`, matching the flat schema handed to
+   * the provider.
    */
   asColumnMappings(): Record<string, ColumnMapping> {
     const mappings: Record<string, ColumnMapping> = {};
@@ -160,13 +106,7 @@ export class FileMapping {
   }
 }
 
-/**
- * One column, and the check that it is filled exactly one way.
- *
- * The error names the way that *would* have worked for the document actually
- * uploaded, rather than listing all three: somebody who wrote `describe` on a
- * CSV column has made a specific mistake and the useful sentence names it.
- */
+/** One column, checked to be filled exactly one way. */
 function columnOf(name: string, mapping: ExtractMapping, tabular: boolean): ExtractedColumn {
   const hasFrom = typeof mapping.from === 'string' && mapping.from.length > 0;
   const hasValue = mapping.value !== undefined;
@@ -200,10 +140,8 @@ function columnOf(name: string, mapping: ExtractMapping, tabular: boolean): Extr
 
   const spec = ColumnSpec.of({ name, type: mapping.type, embedded: mapping.embed });
 
-  // Refused here rather than left to the model, because the failure is silent:
-  // a JSON column filled from prose is a model inventing a nested shape nobody
-  // declared, and every query over it then depends on what it felt like
-  // returning that day.
+  // A model-filled JSON column is refused: the model would invent a different
+  // nested shape each time.
   if (hasDescription && spec.type === ColumnType.Json) {
     throw new InvariantViolation(
       `column "${name}" is declared JSON and filled by a model. A model asked for a shape ` +

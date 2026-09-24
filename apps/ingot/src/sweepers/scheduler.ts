@@ -10,47 +10,21 @@ import { ModuleRef } from '@nestjs/core';
 import { type CronSpec, readCronSpec } from './cron.js';
 import { ExclusiveWork } from './exclusive.js';
 
-/** A sweeper, as this file needs to see one. */
 export interface Ticker {
   tick(): Promise<void>;
 }
 
-/** What `SweepersModule` hands over: the classes in `SWEEPERS`. */
+/** The classes in `SWEEPERS`, injected by `SweepersModule`. */
 export const TICKERS = Symbol('Tickers');
 
-/**
- * The first backoff after a failed tick, doubling to `MAX_BACKOFF_MS`.
- *
- * A tick fails for two kinds of reason and the backoff is aimed at the second.
- * A bug fails every time and no delay fixes it; a dependency being briefly away
- * — the bucket, the embedding API — clears on its own, and retrying into it
- * every second turns one outage into two.
- */
+/** First backoff after a failed tick, doubling to `MAX_BACKOFF_MS`. */
 const FIRST_BACKOFF_MS = 5_000;
 const MAX_BACKOFF_MS = 60_000;
 
 /**
- * Runs the sweepers on their schedules.
- *
- * This replaces a durable-execution engine, and it is worth being precise about
- * what that engine was actually providing here, because it was less than its
- * presence in the compose file suggested. The queues are Postgres tables
- * claimed with `FOR UPDATE SKIP LOCKED` under a lease; no work item ever lived
- * in Restate. What Restate contributed was a timer that survived a restart, a
- * retry, and one chain across replicas. The first is a loop, the second is a
- * backoff, and the third is an advisory lock — which is this file.
- *
- * What is deliberately *not* reproduced is the per-step journal. A tick that
- * died half-way used to replay its finished steps from Restate's log; now it
- * starts again from the top. That is safe for every sweeper here and it is
- * worth saying why rather than trusting it: the queue row is the truth, so an
- * embed batch that already committed is not claimed again, a receipt already
- * written is not re-summarised, a memory already reaped is not found, and a
- * compaction that already flipped the manifest finds no watermark to fold.
- * Re-running a tick costs a wasted pass, never a wrong answer.
- *
- * A tick is never allowed to take the process down: the loop catches, logs and
- * schedules the next turn, which is the same severity the old chain had.
+ * Runs the sweepers on their schedules: a loop for the timer, a backoff for
+ * retries, an advisory lock for cross-process exclusion. A tick never takes the
+ * process down — the loop catches, logs and schedules the next turn.
  */
 @Injectable()
 export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
@@ -70,24 +44,20 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
     for (const ticker of this.tickers) {
       const spec = readCronSpec(ticker);
       if (!spec) {
-        // Not reachable through `SWEEPERS`, whose values are all decorated —
-        // but this class takes a list, and a list can grow an undecorated
-        // member without the compiler minding.
+        // `SWEEPERS` values are all decorated, but this list could grow an undecorated member.
         this.logger.warn(`${ticker.name} has no @Cron schedule and will not run`);
         continue;
       }
 
       this.logger.log(`${spec.name} sweeps every ${spec.everyMs / 60_000} minute(s)`);
-      // Immediately, rather than one interval from now: a pod that has just
-      // started is the most likely one to have a backlog waiting for it.
+      // Run immediately rather than after one interval; a fresh start is likeliest to have a backlog.
       this.schedule(ticker, spec, 0, FIRST_BACKOFF_MS);
     }
   }
 
   /**
-   * Books one turn. The loop is this calling itself, and there is only ever one
-   * timer outstanding per sweeper — which is what makes the interval a delay
-   * between finishes rather than a rate that can overlap.
+   * Books one turn. Only one timer outstanding per sweeper, so the interval is
+   * a delay between finishes, not a rate that can overlap.
    */
   private schedule(ticker: Type<Ticker>, spec: CronSpec, delayMs: number, backoffMs: number): void {
     if (this.stopped) return;
@@ -100,8 +70,7 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
       this.running.add(turn);
     }, delayMs);
 
-    // Never a reason to hold the process open. A sweeper is something the
-    // service does while it is running, not a reason for it to keep running.
+    // Don't hold the process open for a sweeper.
     timer.unref?.();
     this.timers.add(timer);
   }
@@ -111,22 +80,12 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
 
     try {
       const instance = this.moduleRef.get<Ticker>(ticker, { strict: false });
-      // `false` means another replica holds the lock. Not an error, and not a
-      // reason to back off: the work is being done, and the next turn comes
-      // round at the ordinary interval.
+      // `false` means another process holds the lock; not an error, so no backoff.
       await this.exclusive.attempt(spec.name, () => instance.tick());
 
       this.schedule(ticker, spec, spec.everyMs, FIRST_BACKOFF_MS);
     } catch (error) {
-      /*
-       * Silent once the process is going away.
-       *
-       * A tick caught mid-flight by a shutdown fails on a pool that has been
-       * ended underneath it, and that is the shutdown working rather than the
-       * sweep breaking. Logging it as an error would put "roll-up-ingots
-       * failed" in the last lines of every rolling deploy, which is where
-       * somebody looks when a deploy has actually gone wrong.
-       */
+      // Silent once shutting down: a tick caught mid-shutdown fails on an ended pool, which is expected.
       if (!this.stopped) {
         this.logger.error(
           `${spec.name} failed: ${error instanceof Error ? error.message : String(error)}. ` +
@@ -138,16 +97,9 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
-   * `onModuleDestroy` and not `onApplicationShutdown`, which is the ordering
-   * that matters: Nest runs every module's `onModuleDestroy` before any
-   * `onApplicationShutdown`, and `DatabaseModule` ends the pool in the latter.
-   * The other way round, a turn already in flight would be querying a pool that
-   * had just been closed.
-   *
-   * Waiting for what is running is the rest of it. A sweep interrupted half-way
-   * is safe — every one of them is safe to run twice — but finishing is still
-   * better than being cut off, and the wait is bounded by a tick rather than by
-   * anything unbounded.
+   * `onModuleDestroy`, not `onApplicationShutdown`: Nest runs the former first,
+   * and `DatabaseModule` ends the pool in the latter. Waits for turns in
+   * flight, bounded by a tick.
    */
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;

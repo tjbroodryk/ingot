@@ -31,14 +31,12 @@ function toIngot(row: IngotRow): Ingot {
       name: row.name,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
-      // Both or neither: a width with no model is not a vector space, and a
-      // model with no width cannot build the `FLOAT[N]` column a session needs.
+      // Both or neither: a vector space needs a model and a width.
       embedding:
         row.embeddingModel !== null && row.embeddingDims !== null
           ? { model: row.embeddingModel, dimensions: row.embeddingDims }
           : null,
-      // Null for every memory written before delivery existed, and for every
-      // one nobody has configured since. Both read as `none`.
+      // Null (unconfigured) reads as `none`.
       delivery: Delivery.rehydrate(row.delivery),
     },
     row.version,
@@ -50,10 +48,7 @@ function toTable(row: IngotTableRow): IngotTable {
     IngotTableId.of(row.id),
     {
       ingotId: row.ingotId,
-      // Rehydration re-parses for the character set, never for who was allowed
-      // to author the name — `ingot_receipts` is a table this service wrote
-      // and has to be able to read back. Same reasoning as `reserved` on the
-      // columns below, which has always worked this way.
+      // Re-parsed for the character set only; system tables must read back.
       name: row.name.startsWith(RESERVED_TABLE_PREFIX)
         ? SqlName.systemTable(row.name)
         : SqlName.table(row.name),
@@ -72,8 +67,7 @@ function toTable(row: IngotTableRow): IngotTable {
       generation: row.generation,
       baseRows: row.baseRows,
       createdAt: row.createdAt,
-      // Null for every table written before settings existed, and for every
-      // one nobody has configured since. Both read as the defaults.
+      // Null (unconfigured) reads as the defaults.
       config: TableConfig.rehydrate(row.config),
     },
     row.version,
@@ -102,9 +96,7 @@ export class PgIngotRepository implements IngotRepository {
       expiresAt: aggregate.expiresAt,
       embeddingModel: aggregate.embedding?.model ?? null,
       embeddingDims: aggregate.embedding?.dimensions ?? null,
-      // Written as null when nothing is configured rather than as `{"t":"none"}`,
-      // so an unconfigured memory keeps reading the code's default instead of a
-      // document claiming a value the code could since have moved on from.
+      // Null, not `{"t":"none"}`, so unconfigured keeps reading the code's default.
       delivery: aggregate.delivery.configured ? aggregate.delivery.toWire() : null,
     };
     await writeAggregate(aggregate, ({ next, expected }) =>
@@ -137,14 +129,7 @@ export class PgIngotRepository implements IngotRepository {
     return rows.map(toIngot);
   }
 
-  /**
-   * Memories past their retention, oldest first.
-   *
-   * The account id comes back with each one so the reaper can dispatch the
-   * ordinary `DeleteIngot` — the same command the endpoint uses, with the same
-   * tenancy check, rather than a second delete path that could disagree with
-   * it about what deleting means.
-   */
+  /** Memories past their retention, oldest first, each with its account id. */
   async listExpired(
     now: Date,
     limit: number,
@@ -158,8 +143,7 @@ export class PgIngotRepository implements IngotRepository {
   }
 
   async remove(id: IngotId): Promise<void> {
-    // The tables go with it, in this transaction, rather than by a cascade —
-    // an ingot's disappearance should be a thing this method is seen to do.
+    // Delete tables explicitly in this transaction rather than by cascade.
     await this.uow.queryable.delete(ingotTable).where(eq(ingotTable.ingotId, id.value));
     await this.uow.queryable.delete(ingot).where(eq(ingot.id, id.value));
   }

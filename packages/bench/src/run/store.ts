@@ -3,20 +3,10 @@ import { canonicalAdapter } from '../adapters/names.js';
 import type { ReportHeader, RunRecord } from './report.js';
 
 /**
- * What a finished run leaves on disk, and how to read it back.
- *
- * The transcripts are the expensive half of a run and they are already durable
- * — `cli.ts` appends each row as it is bought, so a run that dies at question
- * ninety keeps the eighty-nine that were paid for. What was *not* durable is
- * the provenance: seed, provider, model, effort, embedder, mapping. Those lived
- * only in memory until the report was rendered, so a run that died before the
- * end left rows nobody could publish and nobody could re-score, because neither
- * is meaningful without knowing what produced them.
- *
- * Hence the sidecar, written before the first question rather than after the
- * last. A number on the site that nobody can trace to a seed and a model is
- * marketing; this file is what keeps the difference true for a run that
- * crashed as well as one that finished.
+ * What a finished run leaves on disk. `cli.ts` appends rows as bought; this
+ * sidecar carries the provenance (seed, provider, model, effort, embedder,
+ * mapping) and is written before the first question, so a crashed run is still
+ * reportable and re-scorable.
  */
 export interface RunMeta extends ReportHeader {
   /** Needed to rebuild the identical question set when re-scoring. */
@@ -39,14 +29,7 @@ export interface StoredRun {
   readonly rows: readonly RunRecord[];
 }
 
-/**
- * A run read back from disk.
- *
- * Refuses rather than improvises. A JSONL with no sidecar is a run from before
- * this existed, and the honest thing is to say so — inventing a plausible seed
- * and provider to get a publish out would produce exactly the untraceable
- * number the sidecar exists to prevent.
- */
+/** A run read back from disk. Refuses if the sidecar is missing rather than inventing provenance. */
 export async function readRun(jsonlPath: string): Promise<StoredRun> {
   const metaPath = metaPathFor(jsonlPath);
   let meta: RunMeta;
@@ -65,36 +48,20 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line) as RunRecord)
-    // A run carries the name its columns were bought under, for ever. A column
-    // renamed since then is still the same column — same store, same tools,
-    // same questions — and a table that showed it twice under two spellings
-    // would be reporting a difference that does not exist. The transcript on
-    // disk is left exactly as it was written: it is the record of what ran,
-    // not a document to be brought up to date.
+    // A column renamed since it was bought reads back under its current name;
+    // the transcript on disk is left as written.
     .map((row) => ({ ...row, adapter: canonicalAdapter(row.adapter) }));
 
   if (rows.length === 0) throw new Error(`${jsonlPath} has no rows in it`);
-  // The sidecar names the columns the run was asked for, including any it never
-  // reached, so it needs the same treatment as the rows or a merge would report
-  // a column under one name and list it under another.
+  // The sidecar's column names get the same canonicalisation as the rows.
   const adapters = meta.adapters.map(canonicalAdapter);
   return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
 }
 
 /**
- * The settings two runs have to agree about before their columns can sit in
- * one table.
- *
- * Everything that could move a number: the corpus and questions (`seed`,
- * `perTemplate`, `logs`), the agent (`model`, `provider`, `effort`,
- * `thinking`, `maxToolCalls`), the vectors (`embedder`), who wrote the
- * mappings, and `repeats` — because the ± in the report is a function of how
- * many runs are behind each cell, and a column bought once beside columns
- * bought three times is a spread comparison nobody made on purpose.
- *
- * `concurrency` is deliberately absent. It moves only the `ms` column, which
- * the site does not publish, so refusing a merge over it would block a
- * perfectly good table for a number nobody is reading.
+ * The settings two runs must agree on before their columns can share a table:
+ * everything that could move a number, including `repeats` (it sets the ± in
+ * each cell). `concurrency` is absent — it moves only the unpublished `ms`.
  */
 const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'seed',
@@ -111,35 +78,16 @@ const MUST_MATCH: readonly (keyof RunMeta)[] = [
 ];
 
 /**
- * Several finished runs, read back as one table.
- *
- * Splicing a column into a published table is a real need and not a shortcut:
- * a new adapter arrives, and re-buying the nine columns beside it is hours and
- * real money for numbers nobody expects to move. It is also the easiest way to
- * publish something that looks like a comparison and is not — one column from
- * a Claude run beside eight from a GPT run, in a table headed "retrieval".
- *
- * So this is a merge that refuses rather than a `cat`. Every setting that
- * could move a number has to agree; no column may come from two files, since
- * nothing here can decide which of them the reader should see; and the fact
- * that the table was assembled from more than one run is written into
- * `warnings`, which is the half of the provenance the site puts in front of
- * every reader. A splice nobody can see in the output is the thing worth
- * preventing, not the splice.
+ * Several finished runs read back as one table — a merge that refuses rather
+ * than a `cat`: every number-moving setting must agree, no column may come from
+ * two files, and the splice is recorded in `warnings`.
  */
 export async function readRuns(
   paths: readonly string[],
   /**
-   * Which columns to keep, if not all of them.
-   *
-   * For reporting on part of a finished run — a column retired since it was
-   * bought, or one being looked at on its own. Applied before anything else
-   * reads the rows, so the provenance warning names the columns the table
-   * actually shows rather than the ones the file happens to hold.
-   *
-   * The rows on disk are untouched, which is the point: dropping a column from
-   * a report is a decision about what to publish, and rewriting the transcript
-   * to match would turn it into a decision about what happened.
+   * Which columns to keep, if not all. For reporting on part of a finished run.
+   * The rows on disk are untouched; dropping a column is a decision about what
+   * to publish, not what happened.
    */
   keep?: ReadonlySet<string>,
 ): Promise<StoredRun> {
@@ -148,10 +96,7 @@ export async function readRuns(
   const all = await Promise.all(paths.map((path) => readRun(path)));
   const runs = keep ? all.map((run) => onlyColumns(run, keep)) : all;
 
-  // What the files hold and the table does not show. Worth its own line
-  // because the warnings a merge inherits are prose written when the run was
-  // bought, and they go on naming a column after it is dropped — a reader
-  // otherwise hunts a published table for a row that provenance promised.
+  // Columns the files hold but the table does not show, for the provenance line.
   const dropped = keep
     ? [...new Set(all.flatMap((run) => run.rows.map((row) => row.adapter)))]
         .filter((name) => !keep.has(name))
@@ -167,8 +112,7 @@ export async function readRuns(
   }
 
   const [base, ...rest] = runs as [StoredRun, ...StoredRun[]];
-  // A single file needs no merge, but it can still have been narrowed, and the
-  // reader is owed the same sentence either way.
+  // A single file needs no merge but can still have been narrowed.
   if (rest.length === 0) {
     return dropped.length === 0
       ? base
@@ -178,14 +122,8 @@ export async function readRuns(
   for (const run of rest) {
     for (const key of MUST_MATCH) {
       if (base.meta[key] === run.meta[key]) continue;
-      // A run with no locally-embedding adapter in it built no embedder and
-      // records so. That is the absence of a claim, not a conflicting one:
-      // Ingot's vectors are the server's, so an Ingot-only run says nothing
-      // about `text-embedding-3-small` and cannot disagree with a run that
-      // does. Treating the two as a mismatch would refuse exactly the merge
-      // this exists to allow — a new column beside a table already bought —
-      // while still catching the case that matters, which is two runs that
-      // each name an embedder and name different ones.
+      // A run with no locally-embedding adapter records no embedder — an
+      // absence, not a conflict — so skip the check unless both name one.
       if (key === 'embedder' && !(namesEmbedder(base.meta) && namesEmbedder(run.meta))) continue;
       throw new Error(
         `${run.meta.runId} has ${key}=${JSON.stringify(run.meta[key])} where ` +
@@ -197,19 +135,10 @@ export async function readRuns(
   }
 
   /*
-   * The cell, not the column, is what may not come from two files.
-   *
-   * A column-wide rule is the obvious reading of "no run may contradict
-   * another", and it is too strong by exactly one useful case: a question set
-   * that grew. When a template is added to the generator, buying the eight new
-   * questions for the columns already in the table is the same arithmetic as
-   * having bought them in the first sitting — accuracy is a mean over rows, and
-   * a mean over two disjoint halves is the mean over the whole. What must never
-   * happen is two files holding an answer to the *same* question by the same
-   * adapter, because nothing here can decide which one the reader should see.
-   *
-   * So the key is (adapter, question). Repeats within one file are the point of
-   * repeats; the same pair across two files is the ambiguity worth refusing.
+   * The key is (adapter, question), not the column. A question set that grew is
+   * a valid top-up — accuracy is a mean over rows, so a mean over two disjoint
+   * halves is the mean over the whole — but two files answering the same
+   * (adapter, question) is an ambiguity worth refusing.
    */
   const from = new Map<string, string>();
   const columnsOf = new Map<string, Set<string>>();
@@ -238,9 +167,7 @@ export async function readRuns(
   }
 
   // Whether any column was completed across more than one sitting, which
-  // decides how the provenance has to read: "these columns came from there" is
-  // the wrong sentence for a table where one column's questions came from two
-  // files, and the reader is owed the true one.
+  // decides how the provenance reads.
   const toppedUp = runs.some((run) =>
     runs.some(
       (other) =>
@@ -258,9 +185,8 @@ export async function readRuns(
     const columns = columnsIn(run.meta.runId);
     const asked = questionsOf.get(run.meta.runId)?.size ?? 0;
     const scope = toppedUp ? ` on ${asked} question${asked === 1 ? '' : 's'}` : '';
-    // A top-up is the same nine columns twice, and naming all of them again
-    // buries the one thing that sentence has to say — which questions came
-    // from where — under a repeated list.
+    // For a top-up, the same columns; naming them again would bury which
+    // questions came from where.
     const named =
       index > 0 && columns.join('\u0000') === leading
         ? 'the same columns'
@@ -306,13 +232,8 @@ export async function readRuns(
 }
 
 /**
- * The line that reconciles a narrowed table with its own provenance.
- *
- * Warnings are inherited from the runs that were merged, and they are prose
- * written when those runs were bought — so they go on naming a column after it
- * has been dropped from the report. Without this, a reader follows the
- * provenance to a row the table does not have and concludes the table is
- * hiding it.
+ * Reconciles a narrowed table with inherited provenance: the warnings may still
+ * name a dropped column, so this says what the table is not showing.
  */
 function droppedNote(dropped: readonly string[]): string {
   const names = dropped.map((name) => `\`${name}\``).join(', ');
@@ -338,12 +259,7 @@ function stamp(): string {
 
 /**
  * Whether this run's `embedder` names a model or records that there was none.
- *
- * `cli.ts` writes the sentinel below when no adapter in the run embedded
- * locally. Matching on the prefix rather than the exact string because the
- * parenthetical is a human-readable explanation that may be reworded, and a
- * merge that started silently comparing embedders again because somebody
- * improved a message would be a bad way to find out.
+ * Matches on the prefix because the parenthetical may be reworded.
  */
 function namesEmbedder(meta: RunMeta): boolean {
   return !meta.embedder.startsWith('none');
@@ -351,11 +267,7 @@ function namesEmbedder(meta: RunMeta): boolean {
 
 /**
  * Everything the tools handed back on one run, rebuilt from its transcript.
- *
- * `loop.ts` scores retrieval on the tool outputs joined by newlines and stores
- * those same outputs on the row, so this is a reconstruction rather than an
- * approximation — but it is coupled to that join, and the two have to move
- * together.
+ * Coupled to `loop.ts`'s newline join of the same outputs.
  */
 export function observedTextOf(row: RunRecord): string {
   return row.calls.map((call) => call.output).join('\n');

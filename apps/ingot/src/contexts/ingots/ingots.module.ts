@@ -32,9 +32,7 @@ import { IngotsController } from './interface/ingots.controller.js';
     { provide: INGOT_REPOSITORY, useExisting: PgIngotRepository },
     { provide: INGOT_TABLE_REPOSITORY, useExisting: PgIngotTableRepository },
   ],
-  // The access helper, the registry and both repositories are exported because
-  // the write path, the read path, the roll-up and `/file` all need them, and
-  // every one of those lives in another context.
+  // Exported for the write, read, roll-up and file paths in other contexts.
   exports: [IngotAccess, TableRegistry, INGOT_REPOSITORY, INGOT_TABLE_REPOSITORY],
 })
 export class IngotsModule {}

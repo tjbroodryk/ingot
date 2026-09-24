@@ -39,17 +39,9 @@ export class AddRecords extends Command<AddResult> {
 }
 
 /**
- * The write path: an arbitrary tool result becomes typed rows.
- *
- * Everything that can be refused is refused here, before anything is written —
- * a bad path, a value that will not coerce, a column whose type has changed.
- * That is the whole argument for declaring types in the mapping rather than
- * inferring them: the person who wrote the mapping is the person who can fix
- * it, and they are still holding the response.
- *
- * The row is queryable the moment this returns. It goes to the overlay, not to
- * Parquet, and a query unions the two — so there is no window where an agent
- * has stored something and cannot yet read it back.
+ * The write path: an arbitrary tool result becomes typed rows, with everything
+ * refusable refused before anything is written. Rows land in the overlay (not
+ * Parquet) and are queryable the moment this returns.
  */
 @CommandHandler(AddRecords)
 export class AddRecordsHandler implements ICommandHandler<AddRecords> {
@@ -76,20 +68,16 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
   private async write(command: AddRecords): Promise<AddResult> {
     const ingot = await this.access.ingot(command.ingotId, command.accountId);
     const mapping = RowMapping.parse(command.body);
-    // Parsed before anything is written: a caller who asked for a receipt this
-    // service cannot produce should be told so instead of storing the rows and
-    // then failing on the way out.
+    // Parsed up front, so an unsupported receipt kind is refused before rows are stored.
     const receipt = ReceiptBuilder.kindOf(command.body.receipt);
-    // The caller's own handle for this result. Trimmed and bounded here rather
-    // than trusted, since the MCP surface builds this command without a pipe.
+    // The caller's handle for this result; bounded here since the MCP surface
+    // builds this command without a validation pipe.
     const externalId = externalIdOf(command.body.externalId);
     const now = this.clock.now();
 
-    // First write for a table is what creates it. There is no "create table"
-    // endpoint on purpose: a schema declared separately from the data that
-    // fills it is a schema that drifts from it.
-    // Unconditional, and safe either way: a table this call just declared
-    // already has exactly these columns and this key, so both are no-ops on it.
+    // First write for a table creates it; there is no separate create-table
+    // step. Unconditional and safe: an existing table already has these columns
+    // and key, so both are no-ops on it.
     const table = await this.registry.ensure(ingot.id.value, mapping.table, () =>
       IngotTable.declare({
         ingotId: ingot.id.value,
@@ -103,9 +91,8 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     table.assertKeyUnchanged(mapping.key);
     const columnsAdded = table.accommodate(mapping.columns);
 
-    // Hoisted rather than generated inline, because the receipt hands it back:
-    // one `/add` is one batch, and that is what makes the rows retrievable as
-    // a set afterwards.
+    // One `/add` is one batch; hoisted because the receipt hands it back, which
+    // is what makes the rows retrievable as a set.
     const batch = newIdValue('batch');
     const applied = mapping.apply(command.body.result, {
       rowId: () => newIdValue('row'),
@@ -113,18 +100,9 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
       batch,
     });
 
-    /*
-     * The manifest is saved first, and only when it has something to say.
-     *
-     * If the overlay write then fails the whole command rolls back together,
-     * so a schema that widened for rows that never landed is not a schema
-     * anyone has to reason about.
-     *
-     * The condition is the important half. Saving unconditionally meant every
-     * concurrent write to one table contended on its version — and the steady
-     * state of this product is a stable schema with a great many rows, so that
-     * was contention bought for nothing. A load test found it.
-     */
+    // Manifest saved first and only when changed, so a rollback of the overlay
+    // write also unwinds a schema that widened for rows that never landed. The
+    // condition keeps concurrent writes to a stable-schema table off its version.
     if (table.hasChanges) await this.tables.save(table);
 
     const queued = await this.overlay.append({
@@ -134,19 +112,9 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
       embeddable: table.embeddedColumns.map((column) => column.name.value),
     });
 
-    /*
-     * The receipt is queued, never written here.
-     *
-     * Same argument as embedding and a stronger one: the written half is an
-     * LLM call, which is seconds rather than milliseconds, and `/add` exists
-     * to be fast. A caller asking for `receipt: "full"` is asking for
-     * something to be findable later, not for this response to wait on it —
-     * and the receipt hands back the SQL that collects it, so nothing is lost
-     * by deferring.
-     *
-     * Inside the same transaction as the rows, so a queued receipt can never
-     * describe a write that did not land.
-     */
+    // The receipt is queued, never written here: the written half is an LLM
+    // call and `/add` exists to be fast. Queued in the same transaction as the
+    // rows, so it can never describe a write that did not land.
     if (receipt === ReceiptKind.Full) {
       await this.overlay.queueReceipt({
         batch,
@@ -162,23 +130,18 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
 
     Metrics.RowsIngested.inc({ outcome: Outcome.Ok }, applied.rows.length);
 
-    // Told, rather than left to be found. See `background.ts`: a sweep every
-    // minute was latency a caller experienced for no reason, since the work is
-    // known about the instant it is queued. The tick stays as the floor.
+    // Woken rather than left for the sweep; the tick stays as the floor.
     if (queued > 0) this.after(() => this.background.wakeEmbeddings());
     if (receipt === ReceiptKind.Full) this.after(() => this.background.wakeReceipts());
 
     return {
       table: table.name.value,
       rowsAdded: applied.rows.length,
-      // Measured over what arrived, not over what was stored: a mapping
-      // projects a blob into a few typed columns and throws the rest away, and
-      // the number a caller wants is the size of the thing they were holding.
+      // Measured over what arrived, not what was stored: the mapping keeps only some columns.
       payload: sizeOf(command.body.result),
       columnsAdded,
       queuedForEmbedding: queued,
-      // Built after the write, so the schema it reports is the one the write
-      // left behind — including any column this call introduced.
+      // Built after the write, so the reported schema includes any column this call added.
       ...maybe(
         await this.receipts.build({
           kind: receipt,
@@ -192,31 +155,16 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
   }
 
   /**
-   * Wakes background work, after the rows are actually there.
-   *
-   * `afterCommit` is the whole of it. Waking from inside the transaction would
-   * announce work that a rollback could still take away, and the worker would
-   * go looking for a queue row that never existed — the port's own
-   * documentation says anything with an effect outside this transaction belongs
-   * here.
-   *
-   * `BackgroundWork.wake*` returns immediately and never throws: the rows are
-   * committed and the caller's answer is already on its way, so a drain that
-   * fails is latency rather than loss. The sweeper is the floor under it.
+   * Wakes background work after the rows are committed. `afterCommit` only:
+   * waking inside the transaction would announce work a rollback could remove.
+   * The wake returns immediately and never throws.
    */
   private after(wake: () => void): void {
     this.uow.afterCommit(async () => wake());
   }
 }
 
-/**
- * The caller's own id for this result, or null.
- *
- * Bounded rather than trusted: it is stored in a `VARCHAR` column and echoed
- * back in a receipt, and the MCP surface builds this command straight from a
- * tool call without passing through a validation pipe. Blank is treated as
- * absent, because a caller sending `""` meant to send nothing.
- */
+/** Max length of the caller's external id; bounded since it is stored and echoed back. */
 const MAX_EXTERNAL_ID = 200;
 
 function externalIdOf(raw: unknown): string | null {

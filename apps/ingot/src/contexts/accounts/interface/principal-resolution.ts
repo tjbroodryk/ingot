@@ -8,14 +8,7 @@ interface Carrier {
   [PRINCIPAL]?: Principal;
 }
 
-/**
- * The one place a principal is attached to a request and the one place it is
- * read back.
- *
- * A symbol rather than `request.principal`, so nothing downstream can set it
- * by assigning a plausible-looking property, and so a guard and a param
- * decorator cannot disagree about where it lives.
- */
+/** Attaches the principal to a request, keyed by symbol so it cannot be set by assignment. */
 export function attachPrincipal(request: object, principal: Principal): void {
   (request as Carrier)[PRINCIPAL] = principal;
 }

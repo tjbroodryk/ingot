@@ -6,24 +6,8 @@ import type { ExclusiveWork } from '../../src/sweepers/exclusive.js';
 import { Scheduler, type Ticker } from '../../src/sweepers/scheduler.js';
 
 /**
- * What runs the sweepers, now that nothing durable does.
- *
- * Three properties moved out of the sweepers and into this class when the
- * Restate cron chain went, and each used to be asserted somewhere else:
- *
- * - **The schedule survives a quiet tick.** `expiry.test.ts` used to check that
- *   a pass which reaped nothing still booked the next one, because a chain that
- *   is only extended by a pass that did something stops the first time nothing
- *   is due.
- * - **The schedule survives a failing tick.** Restate retried an invocation
- *   that threw; here the loop has to book the next turn from its own catch, or
- *   one bad sweep ends that sweeper for the life of the process.
- * - **One replica at a time.** The lock is what stops two pods rolling the same
- *   table up into the same generation, and a scheduler that ticked anyway when
- *   it could not take the lock would quietly undo it.
- *
- * No database and no container: the lock and the module are stand-ins, because
- * what is under test is the loop.
+ * The loop that runs the sweepers: it books the next turn after a quiet tick,
+ * after a throwing tick, and skips a tick when it cannot take the lock.
  */
 
 /** A `ModuleRef` that answers with instances it was handed. */
@@ -88,9 +72,7 @@ describe('the scheduler', () => {
     );
 
     scheduler.onApplicationBootstrap();
-    // The first retry is `FIRST_BACKOFF_MS` out, so only the boot tick has run
-    // by now — the property under test is that the loop is still alive, not how
-    // fast it comes back.
+    // The first retry is `FIRST_BACKOFF_MS` out, so only the boot tick has run by now.
     await settle();
     await scheduler.onModuleDestroy();
 
@@ -118,8 +100,7 @@ describe('the scheduler', () => {
     await settle();
     await scheduler.onModuleDestroy();
 
-    // It kept trying — losing the lock is not a reason to back off, because the
-    // work is being done and the next turn comes round as usual.
+    // Losing the lock is not a reason to back off; it keeps trying each turn.
     expect(attempts.length).toBeGreaterThan(1);
     expect(attempts.every((key) => key === 'contended')).toBe(true);
     expect(ticks).toBe(0);
@@ -147,8 +128,7 @@ describe('the scheduler', () => {
 
     const after = ticks;
     await settle();
-    // A pod that has been told to go away does not keep sweeping. Left running,
-    // it would hold the advisory lock a replica taking over is waiting for.
+    // No more ticks after shutdown.
     expect(ticks).toBe(after);
   });
 });

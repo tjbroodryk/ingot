@@ -3,15 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import type { ObjectStore, PendingWrite } from './object-store.port.js';
 
-/**
- * The base tier on local disk.
- *
- * The default, and not merely a test double: a single-node deployment with a
- * volume is a perfectly good way to run this, and making the local path a
- * first-class adapter means the code that reads Parquet is the same code in
- * both compositions. The alternative — S3 in production, something else in
- * development — is how a bug that only exists in one of them gets written.
- */
+/** The base tier on local disk. */
 @Injectable()
 export class FilesystemObjectStore implements ObjectStore {
   private readonly root: string;
@@ -35,10 +27,7 @@ export class FilesystemObjectStore implements ObjectStore {
 
     return {
       target: path,
-      // DuckDB wrote the object itself, in place. There is no second step,
-      // and a generation is only ever read once the manifest names it — so a
-      // file left behind by a write that failed is invisible rather than
-      // half-published, and `discard` removing it is tidiness, not safety.
+      // DuckDB wrote the object in place; there's no second step, so `discard` is tidiness, not safety.
       commit: async () => {},
       discard: async () => {
         await rm(path, { force: true });
@@ -77,11 +66,8 @@ export class FilesystemObjectStore implements ObjectStore {
   }
 
   /**
-   * Resolves a key under the root, and refuses one that escapes it.
-   *
-   * Keys are built by `Keys` from ids this service generated, so `..` should
-   * never appear — which is exactly why the check is cheap to keep. A path
-   * traversal here would be a write anywhere the process can reach.
+   * Resolves a key under the root, refusing one that escapes it; a traversal
+   * would be a write anywhere the process can reach.
    */
   private pathFor(key: string): string {
     const path = resolve(join(this.root, key));

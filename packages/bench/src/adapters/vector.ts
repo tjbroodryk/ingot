@@ -10,14 +10,9 @@ import {
 import type { AdapterTool, MemoryAdapter } from './types.js';
 
 /**
- * The local vector baseline: embed every record, rank by cosine, return top-k.
- *
- * This is the shape of every "just put it in a vector store" answer, with the
- * hosted parts removed so that nothing about the comparison depends on a
- * third party's tuning. It is given every advantage that is cheap to give —
- * record-level chunking, the same embedding model Ingot is configured with,
- * and a `k` the model may raise to 50 — so that what it cannot do is a
- * property of top-k retrieval rather than of this implementation.
+ * Local vector baseline: embed every record, rank by cosine, return top-k.
+ * Given the same embedding model as Ingot and a `k` up to 50, so what it cannot
+ * do is a property of top-k retrieval rather than of this implementation.
  */
 export class VectorAdapter implements MemoryAdapter {
   readonly name: string;

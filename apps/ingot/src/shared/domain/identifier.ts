@@ -2,9 +2,8 @@ import { InvariantViolation } from './domain-error.js';
 import { ValueObject } from './value-object.js';
 
 /**
- * Prefixed identity value object — `pr_9f2c…`. The prefix makes an id
- * self-describing in logs and makes passing a `RepoId` where a
- * `PullRequestId` is expected a compile-time error rather than a mystery 404.
+ * Prefixed identity value object — `pr_9f2c…`. The prefix makes ids
+ * self-describing and mismatched id types a compile error.
  */
 export abstract class Identifier extends ValueObject {
   abstract readonly prefix: string;

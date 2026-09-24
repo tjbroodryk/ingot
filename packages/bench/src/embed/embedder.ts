@@ -1,12 +1,6 @@
 /**
- * The embedder the vector baselines use.
- *
- * It exists so that both sides of the comparison can be given the *same* one.
- * If Ingot ranks with `text-embedding-3-small` and the baseline ranks with
- * something else, the benchmark measures two embedding models and reports it
- * as an argument about interfaces. Both implementations below mirror
- * `apps/ingot/src/ai/` exactly, so `INGOT_EMBEDDER=openai` on the server and
- * `BENCH_EMBEDDER=openai` here really are the same vectors.
+ * The embedder the vector baselines use, so both sides of the comparison get
+ * the same one. Both implementations below mirror `apps/ingot/src/ai/`.
  */
 export interface Embedder {
   readonly model: string;
@@ -17,12 +11,9 @@ export interface Embedder {
 const HASH_DIMENSIONS = 256;
 
 /**
- * Byte-for-byte the algorithm in `apps/ingot/src/ai/hash-embedder.ts`.
- *
- * Kept for offline smoke runs of the harness itself. It ranks lexically
- * similar text above unrelated text and nothing more, so a result produced
- * with it is not a result about semantic search — the CLI refuses to write one
- * without `--allow-hash-embedder`, and stamps every record it does write.
+ * Byte-for-byte the algorithm in `apps/ingot/src/ai/hash-embedder.ts`. For
+ * offline smoke runs; it ranks lexically, not semantically, so the CLI refuses
+ * to write a result with it unless `--allow-hash-embedder`.
  */
 export class HashEmbedder implements Embedder {
   readonly model = 'hash-bow-v1';
@@ -112,9 +103,8 @@ export class OpenAiEmbedder implements Embedder {
     }
 
     const body = (await response.json()) as EmbeddingResponse;
-    // The API is documented to return them in order, but the index is in the
-    // payload and honouring it costs nothing — a silently reordered batch would
-    // attach every vector to the wrong record and still look like it worked.
+    // Reorder by the payload's `index` rather than trusting response order; a
+    // reorder would attach vectors to the wrong records.
     const ordered = new Array<number[]>(texts.length);
     for (const item of body.data) ordered[item.index] = item.embedding;
     for (let at = 0; at < ordered.length; at++) {
@@ -155,8 +145,7 @@ export function embedderFromEnv(env: Record<string, string | undefined>): Embedd
   return new OpenAiEmbedder({
     apiKey,
     baseUrl: env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
-    // Defaults match `apps/ingot/.env.example`, so the two sides agree unless
-    // somebody deliberately makes them disagree.
+    // Defaults match `apps/ingot/.env.example`, so both sides agree.
     model: env.BENCH_EMBEDDING_MODEL ?? 'text-embedding-3-small',
     dimensions: Number(env.BENCH_EMBEDDING_DIMENSIONS ?? 1536),
   });

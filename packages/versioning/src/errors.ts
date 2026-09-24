@@ -1,9 +1,6 @@
 /**
- * A caller named a version this service has never published.
- *
- * Carries the list, because the useful answer to "2026-01-01 is not a version"
- * is "these are". The Nest layer turns it into a 400; the engine itself has no
- * opinion about HTTP.
+ * A caller named a version this service has never published. Carries the
+ * available list; the Nest layer turns it into a 400.
  */
 export class UnknownVersion extends Error {
   constructor(
@@ -18,7 +15,7 @@ export class UnknownVersion extends Error {
   }
 }
 
-/** The changeset itself is wrong — thrown at construction, so at boot. */
+/** The changeset itself is wrong — thrown at construction. */
 export class MalformedChangeset extends Error {
   constructor(message: string) {
     super(message);

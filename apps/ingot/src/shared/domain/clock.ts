@@ -1,7 +1,4 @@
-/**
- * Time as a dependency. Domain code never calls `new Date()` directly, so
- * every time-sensitive rule is testable without freezing the system clock.
- */
+/** Time as a dependency; domain code never calls `new Date()` directly. */
 export interface Clock {
   now(): Date;
 }

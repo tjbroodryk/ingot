@@ -2,13 +2,8 @@ import { Guard } from '../shared/domain/index.js';
 import { StorageDriver } from './drivers.js';
 
 /**
- * The base tier's configuration, read once at boot.
- *
- * Parsed into a discriminated union rather than handed round as a bag of
- * optional strings, so an adapter's constructor cannot be reached without the
- * values it needs. The parsing is a pure function over a reader, which is what
- * lets the whole matrix be asserted in a unit test rather than by starting the
- * service once per driver and looking at the log line.
+ * The base tier's configuration, read once at boot. A discriminated union, so an
+ * adapter's constructor can't be reached without the values it needs.
  */
 export type StorageSettings = FilesystemSettings | S3Settings | GcsSettings;
 
@@ -34,19 +29,13 @@ export interface GcsSettings {
   readonly driver: StorageDriver.Gcs;
   readonly bucket: string;
   /**
-   * The XML API root. Overridden only for a local stand-in, and it is both the
-   * base of every read URI and the scope of the token installed against them,
-   * so the two cannot drift apart.
+   * The XML API root, and both the base of every read URI and the token's scope,
+   * so they can't drift. Overridden only for a local stand-in.
    */
   readonly endpoint: string;
   /**
-   * Where a roll-up copies Parquet before it is uploaded.
-   *
-   * DuckDB cannot write to GCS with a service account — see `GcsObjectStore`
-   * for what was tried — so a compaction writes to local disk and the client
-   * library uploads it. Under Kubernetes this wants to be an `emptyDir` sized
-   * for the largest generation a table will produce, rather than the
-   * container's own writable layer.
+   * Where a roll-up copies Parquet before upload, since DuckDB cannot write to
+   * GCS with a service account (see `GcsObjectStore`).
    */
   readonly stagingRoot?: string;
 }
@@ -60,14 +49,8 @@ const DEFAULT_DATA_DIR = '.ingot-data';
 export type Setting = (key: string) => string | undefined;
 
 /**
- * A deployment that has configured its base tier wrongly.
- *
- * Fatal, and deliberately so. The previous behaviour here was to warn and fall
- * back to the filesystem, which is the wrong trade for a service somebody else
- * is hosting: a typo in a variable name produced a service that booted, served
- * traffic and wrote every Parquet file to a container's ephemeral disk, where
- * it survived exactly until the next deploy. A bucket that was asked for and
- * cannot be reached is a reason not to start.
+ * The base tier configured wrongly. Fatal rather than a filesystem fallback: a
+ * bucket asked for and unreachable is a reason not to start.
  */
 export class StorageMisconfigured extends Error {
   constructor(message: string) {
@@ -91,13 +74,8 @@ const PARSERS: Record<StorageDriver, (read: Setting) => StorageSettings> = {
 };
 
 /**
- * No driver named.
- *
- * The filesystem, which is the right default for a laptop and for a single
- * node with a volume — but only if nothing else was attempted. Bucket
- * variables with no driver to go with them are a deployment that believes it
- * configured object storage, and the honest answer is to say which variable to
- * add rather than to quietly write somewhere else.
+ * No driver named: default to the filesystem, unless bucket variables are set
+ * with no driver — that's a misconfiguration worth naming.
  */
 function inferred(read: Setting): StorageSettings {
   const stray = [
@@ -142,18 +120,14 @@ function s3(read: Setting): S3Settings {
     secretAccessKey,
     region: value(read('INGOT_S3_REGION')) ?? 'us-east-1',
     endpoint,
-    // A custom endpoint is almost always MinIO or a gateway, which need
-    // path-style addressing; AWS itself does not and is the default when no
-    // endpoint is given. Either way an explicit setting wins.
+    // Custom endpoints (MinIO, gateways) need path-style; AWS does not. An explicit setting wins.
     pathStyle: pathStyle === undefined ? Boolean(endpoint) : pathStyle !== 'false',
     useSsl: endpoint ? endpoint.startsWith('https://') : true,
   };
 }
 
 function gcs(read: Setting): GcsSettings {
-  // One variable, because the credential is not ours to hold: Application
-  // Default Credentials find it — the metadata server under a GKE workload
-  // identity, or GOOGLE_APPLICATION_CREDENTIALS pointing at a mounted key.
+  // One variable; the credential isn't ours to hold — Application Default Credentials find it.
   const [bucket] = demand(read, StorageDriver.Gcs, ['INGOT_GCS_BUCKET']);
 
   return {
@@ -164,13 +138,7 @@ function gcs(read: Setting): GcsSettings {
   };
 }
 
-/**
- * Every value a driver cannot work without, or a message naming the ones that
- * are missing.
- *
- * All of them at once rather than the first: an operator filling in a
- * deployment template should learn what is left in one restart, not in three.
- */
+/** Every value a driver needs, or a message naming all the missing ones at once. */
 function demand<const K extends readonly string[]>(
   read: Setting,
   driver: StorageDriver,
@@ -184,8 +152,7 @@ function demand<const K extends readonly string[]>(
       `INGOT_STORAGE=${driver} needs ${keys.join(', ')}. Missing: ${missing.join(', ')}.`,
     );
   }
-  // Every element was just proved present, which is a fact about the loop
-  // above rather than one the type of `map` can carry.
+  // Every element was just proved present; the type of `map` can't carry that.
   return found as { [I in keyof K]: string };
 }
 
@@ -200,7 +167,7 @@ function parseDriver(named: string): StorageDriver {
   }
 }
 
-/** Blank is unset. A variable exported as `""` is one somebody meant to omit. */
+/** Blank is unset. */
 function value(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;

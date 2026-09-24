@@ -23,10 +23,7 @@ export class DropTable extends Command {
 
 /**
  * Removes a table entirely — schema, overlay, tombstones, vectors, Parquet.
- *
- * Distinct from forgetting rows because the schema goes too. It is the only
- * way to undo a mapping decision: a column's type cannot change while rows
- * exist under it, so a table declared wrong is dropped and written again.
+ * The only way to change a column's type: drop the table and write it again.
  */
 @CommandHandler(DropTable)
 export class DropTableHandler implements ICommandHandler<DropTable> {
@@ -45,8 +42,7 @@ export class DropTableHandler implements ICommandHandler<DropTable> {
     await this.overlay.purgeTable(table.id.value);
     await this.tables.remove(table.id);
 
-    // After the commit, for the same reason as DeleteIngot: an orphaned object
-    // is cheaper to live with than a manifest pointing at nothing.
+    // After the commit: an orphaned object beats a manifest pointing at nothing.
     const data = Keys.table(ingot.accountId, ingot.id.value, table.name.value);
     const vectors = `${Keys.ingot(ingot.accountId, ingot.id.value)}/vectors/${table.name.value}`;
     this.uow.afterCommit(async () => {

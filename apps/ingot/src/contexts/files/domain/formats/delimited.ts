@@ -1,13 +1,6 @@
 import { InvariantViolation } from '../../../../shared/domain/index.js';
 
-/**
- * How many records one delimited file may hold.
- *
- * The same bound `MAX_ROWS_PER_ADD` puts on a fan-out, and for the same reason:
- * a mapping that produces a hundred thousand rows from one call is a caller who
- * should be sending batches. Here it also bounds the chunker, since a tabular
- * document produces a block per row.
- */
+/** How many records one delimited file may hold. */
 export const MAX_ROWS = 10_000;
 
 /** Above this many columns, the header row is not a header row. */
@@ -16,17 +9,8 @@ const MAX_FIELDS = 512;
 /**
  * A CSV or TSV, parsed to objects keyed by the header row.
  *
- * Written out rather than taken from a library, because the whole of RFC 4180
- * is quoting, escaped quotes and embedded newlines — about thirty lines — and
- * the dependency would be carrying a file-format guesser, an encoding detector
- * and a streaming API for none of which there is a use here. What matters is
- * that it is *correct about quotes*: a field containing a comma is the single
- * most common thing in a real export, and a naive `split(',')` silently shifts
- * every column after it.
- *
- * The delimiter is sniffed from the header line rather than declared, because a
- * `.tsv` and a `.csv` reach this by the same media type and asking a caller
- * which one they uploaded is asking them something the file already says.
+ * Hand-written to be correct about quotes (a field with a comma is common). The
+ * delimiter is sniffed from the header line.
  */
 export function parseDelimited(text: string): Record<string, unknown>[] {
   const delimiter = delimiterOf(text);
@@ -49,29 +33,20 @@ export function parseDelimited(text: string): Record<string, unknown>[] {
     );
   }
 
-  // Blank names are given a positional one rather than dropped. A trailing
-  // delimiter produces an unnamed final column in a great many real exports,
-  // and silently discarding it loses whatever was in it.
+  // Blank names get a positional one rather than being dropped.
   const names = header.map((name, at) => (name.trim().length > 0 ? name.trim() : `column_${at + 1}`));
 
   return records.map((record) => {
     const row: Record<string, unknown> = {};
     names.forEach((name, at) => {
-      // A short row is padded rather than refused: a ragged export is ordinary,
-      // and a null in a column beats losing every row after the first bad one.
+      // A short row is padded with null rather than refused.
       row[name] = record[at] ?? null;
     });
     return row;
   });
 }
 
-/**
- * Whichever of the candidates appears most in the first line.
- *
- * The header is what is counted rather than the whole file, because it is the
- * one line guaranteed to have every delimiter and no free text — a body row
- * full of prose containing semicolons would otherwise outvote the real one.
- */
+/** Whichever candidate appears most in the header line. */
 function delimiterOf(text: string): string {
   const header = text.slice(0, text.indexOf('\n') === -1 ? text.length : text.indexOf('\n'));
   const counts = [',', '\t', ';', '|'].map(
@@ -82,14 +57,7 @@ function delimiterOf(text: string): string {
   return best[1] > 0 ? best[0] : ',';
 }
 
-/**
- * The file as arrays of fields, honouring RFC 4180 quoting.
- *
- * A character loop rather than a regex, because the thing that makes this
- * correct — a newline inside a quoted field is data, not a record boundary —
- * is exactly the thing a line-oriented reader gets wrong, and it gets it wrong
- * silently.
- */
+/** The file as arrays of fields, honouring RFC 4180 quoting. */
 function records_(text: string, delimiter: string): string[][] {
   const records: string[][] = [];
   let record: string[] = [];
@@ -134,13 +102,8 @@ function records_(text: string, delimiter: string): string[][] {
 }
 
 /**
- * Rows as text, for the chunk a spreadsheet gets when nobody extracted it.
- *
- * `name: value` per line rather than the original comma-separated form,
- * because what is being produced here is something to *embed*. A bare row of
- * values has no words in it — `ACME-4471,2026-03-01,18400` ranks against
- * nothing anybody would type — and repeating the header on every line is what
- * puts "invoice", "vendor" and "total" into the vector.
+ * Rows as `name: value` text, for the chunk a spreadsheet gets when nobody
+ * extracted it — the header words are what make it embeddable.
  */
 export function renderRows(rows: readonly Record<string, unknown>[]): string {
   return rows

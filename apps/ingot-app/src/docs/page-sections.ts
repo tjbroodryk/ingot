@@ -5,17 +5,7 @@
 
 import { ENDPOINTS } from './reference';
 
-/**
- * The head of the page, as data, because two artefacts render it.
- *
- * `reference-page.tsx` uses these for its `<Metadata>` and its lede, and
- * `src/text/reference-text.ts` uses the same three for the markdown build. A
- * title or a summary that disagreed across two files of one build is the
- * failure this whole content-as-data arrangement exists to prevent, and it
- * would be a quiet one — nothing renders both.
- *
- * The `<h1>` is still markup, because it sets `Ingot` in the accent face.
- */
+/** The head of the page, as data. Rendered by both `reference-page.tsx` and the markdown build. */
 export const REFERENCE_TITLE = 'The Ingot HTTP API';
 
 export const REFERENCE_DESCRIPTION =
@@ -83,13 +73,7 @@ export interface StatusCode {
   readonly when: string;
 }
 
-/**
- * What the service answers with, read off `DomainExceptionFilter` rather than
- * off a convention — which is why 400 and 422 are two rows. A body that is not
- * the right *kind* of thing is refused by the validation pipe; a body that is
- * well formed and does not make sense is refused by the domain, and those are
- * different answers to different mistakes.
- */
+/** What the service answers with. 400 is a malformed body; 422 is a well-formed one the domain refuses. */
 export const STATUS_CODES: readonly StatusCode[] = [
   {
     code: '200',

@@ -3,14 +3,9 @@ import { Injectable } from '@nestjs/common';
 import { asShapeRef, readWire, type ShapeRef } from './wire.decorator.js';
 
 /**
- * How a service says which wire shapes a route deals in.
- *
- * A port because different services answer this question differently.
- * `@ingot/server` declares it with `@Wire`, the decorator below. A service that
- * already carries its shapes another way — `@Returns(Wire.X)` on every route,
- * `@WireBody(Wire.X)` on every DTO — should not have to repeat itself on fifty
- * routes in service of nothing, so it supplies a resolver that reads what is
- * already there.
+ * How a service says which wire shapes a route deals in. A port: `@ingot/server`
+ * declares it with `@Wire`; a service that already annotates its routes another
+ * way supplies a resolver that reads its existing `@Returns`/`@WireBody` metadata.
  */
 export interface ShapeResolver {
   accepts(context: ExecutionContext): ShapeRef | null;

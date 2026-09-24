@@ -1,24 +1,10 @@
 /* ── @ingot/shared/ingot-v1 ────────────────────────────────────────────────
    Wire contract for Ingot, the agent memory server (`@ingot/server`).
-
-   Separate from `./v1`, which is the review product's surface. The two
-   services share a monorepo and a house style and nothing else: an ingot
-   knows nothing about a pull request, and a caller of one is not a caller of
-   the other. Keeping the contracts in one package but different namespaces is
-   what lets a client depend on both without either leaking into the other.
    ─────────────────────────────────────────────────────────────────────── */
 
 // ── columns ───────────────────────────────────────────────────────────────
 
-/**
- * The column types a mapping may declare.
- *
- * A deliberately small subset of what DuckDB can represent. Every member here
- * survives a Parquet round trip, has an unambiguous JSON encoding, and can be
- * coerced from a JSON value at `/add` time without guessing — which rules out
- * DuckDB's fixed-precision decimals, intervals and nested types. A caller who
- * needs one of those stores the shape as `JSON` and unpacks it in their query.
- */
+/** The column types a mapping may declare. A small subset of DuckDB's. */
 export enum ColumnType {
   Varchar = 'VARCHAR',
   Integer = 'INTEGER',
@@ -43,12 +29,9 @@ export interface ColumnInfo {
 // ── the mapping a tool result is projected through ────────────────────────
 
 /**
- * How one column is filled.
- *
- * Either read a path out of the blob (`from`) or supply a constant (`value`) —
- * never both. Paths are `$.a.b[0]` relative to the current row, or `$$.a.b`
- * relative to the whole blob, which is what lets rows fanned out of an array
- * still carry a field from their parent.
+ * How one column is filled: read a path out of the blob (`from`) or supply a
+ * constant (`value`), never both. Paths are `$.a.b[0]` from the current row, or
+ * `$$.a.b` from the whole blob.
  */
 export interface ColumnMapping {
   readonly from?: string;
@@ -59,17 +42,8 @@ export interface ColumnMapping {
 }
 
 /**
- * How much an `/add` says back about what it stored.
- *
- * An enum rather than a boolean, and the members escalate: each does what the
- * one before it does and more. That is what lets `summary` be added without an
- * API version — widening an enum is not a breaking change, where turning
- * `receipt: true` into `receipt: 'summary'` would have been one.
- *
- * They also escalate in cost, which is the reason for the ladder. `schema`
- * costs a read the write does not need; `summary` costs an LLM call and three
- * embeddings, paid in the background. A caller storing ten thousand tool
- * results in a loop should be able to have none of that.
+ * How much an `/add` says back about what it stored. The members escalate: each
+ * does what the one before does and more.
  */
 export enum ReceiptKind {
   /** The default: just the counts and the payload size. */
@@ -77,14 +51,9 @@ export enum ReceiptKind {
   /** The table's schema, and the queries that find these rows again. */
   Schema = 'schema',
   /**
-   * Everything `schema` gives, and the written half produced in the
-   * background: a précis of this result, the search term somebody would use to
-   * find it again, and an embedding of each — plus one of the result itself.
-   *
-   * `summary` and `searchTerm` are **null in this response**. They cannot be
-   * anything else: a model is a network away and a row should be queryable the
-   * instant `/add` returns. `status` says `pending`, and `receiptQuery` is
-   * where they will appear.
+   * Everything `schema` gives, plus a précis, a search term and embeddings.
+   * `summary` and `searchTerm` are null here until `status` becomes `ready`;
+   * `receiptQuery` is where they appear.
    */
   Full = 'full',
 }
@@ -113,34 +82,14 @@ export interface ReceiptItem {
 }
 
 /**
- * What was stored, and how to get it back.
- *
- * The point of this is that an agent storing something now will want to find it
- * later, in a session that remembers nothing about this one. Handing back the
- * exact SQL closes that loop without the caller having to reconstruct it from
- * an id it would also have to have remembered.
- *
- * Two grains, because there are two questions. `query` finds everything this
- * call wrote, keyed on the batch — our id, useful immediately and meaningless
- * afterwards. `items` finds each row on the table's declared key — the caller's
- * own identity for the thing, which still means something next week and still
- * matches after the same item is stored again.
+ * What was stored, and how to get it back. `query` finds everything this call
+ * wrote, keyed on the batch; `items` finds each row on the table's declared key.
  */
 export interface AddReceipt {
   // ── the compact stand-in ───────────────────────────────────────────────
-  // These four are the shape an agent framework splices over a bulky tool
-  // output. A typical framework's receipt is `{ toolCallId, summary,
-  // searchTerm, totalResults }`; `externalId` is the same field under a name
-  // that does not assume the caller's id came from a tool call.
+  // The four fields an agent framework splices over a bulky tool output.
 
-  /**
-   * The caller's own id for the result this describes — a tool call id, a job
-   * id, whatever they will have later. Null when none was given.
-   *
-   * It is the join. Without it a receipt can only be found by this service's
-   * own `batch`, and anything wanting to swap a receipt in for the output it
-   * replaces has to have kept a mapping of its own.
-   */
+  /** The caller's own id for the result — a tool call id, a job id. Null when none was given. */
   readonly externalId: string | null;
   /** A model's précis. Null until `status` is `ready`. */
   readonly summary: string | null;
@@ -154,9 +103,7 @@ export interface AddReceipt {
   readonly model: string | null;
 
   // ── finding it again ───────────────────────────────────────────────────
-  // An agent storing something now will look for it in a session that
-  // remembers nothing about this one, so the receipt carries the SQL rather
-  // than an id the caller would also have to have remembered.
+  // The receipt carries the SQL, not an id the caller would have to remember.
 
   /** The batch id these rows share. Every row of one `/add` gets the same one. */
   readonly batch: string;
@@ -164,7 +111,7 @@ export interface AddReceipt {
   readonly query: string;
   /**
    * A SELECT returning this receipt once the model has written it. Null unless
-   * `receipt: "full"` — there is nothing to wait for otherwise.
+   * `receipt: "full"`.
    */
   readonly receiptQuery: string | null;
   /**
@@ -190,30 +137,18 @@ export interface AddBody {
   readonly rows?: string;
   readonly columns: Readonly<Record<string, ColumnMapping>>;
   /**
-   * The columns that identify a row, in order — `["pr", "path"]`.
-   *
-   * Declared once, with the write that creates the table, and fixed from then
-   * on for the same reason a column's type is: it is what earlier receipts
-   * were written against. Naming the columns is enough; they must be columns
-   * this mapping also fills.
-   *
-   * **It is not enforced.** Nothing deduplicates on it and nothing refuses a
-   * second row with the same key — declaring one says "this is what identifies
-   * the thing", so that a receipt can hand back a query that still finds it
-   * later. Upserting on the key is the obvious next step and is not built.
+   * The columns that identify a row, in order — `["pr", "path"]`. Declared once
+   * with the table and fixed thereafter; must be columns this mapping fills.
+   * Not enforced: nothing deduplicates or refuses a duplicate key.
    */
   readonly key?: readonly string[];
   /** Keep the whole blob in a `_raw` JSON column alongside the mapped ones. */
   readonly raw?: boolean;
-  /** How much of a receipt to give back. Opt-in, because each rung costs. */
+  /** How much of a receipt to give back. */
   readonly receipt?: ReceiptKind;
   /**
-   * Your own id for this result — a tool call id, a job id, whatever you will
-   * be holding later when you want the receipt back.
-   *
-   * Stored on the receipt and echoed in it, so a receipt can be looked up by
-   * something that means anything to you. Without it the only handle is this
-   * service's `batch`, which you would have to keep a mapping for.
+   * The caller's own id for this result — a tool call id, a job id. Stored on
+   * the receipt and echoed back.
    */
   readonly externalId?: string;
   /** The tool result itself. Anything JSON. */
@@ -221,17 +156,8 @@ export interface AddBody {
 }
 
 /**
- * How big the stored tool result was.
- *
- * For budget rather than curiosity: an agent deciding whether to pull a result
- * back into its own context needs to know what that costs, and it cannot ask
- * that about a blob it has already handed away.
- *
- * `estimatedTokens` is an estimate and says so. It counts `o200k_base`, which
- * is what current OpenAI models use; Gemini, Claude and Llama tokenise
- * differently and none of them is knowable from here. It is the right order of
- * magnitude for any of them, which is what a budget decision needs. It is not
- * a billing figure.
+ * How big the stored tool result was. `estimatedTokens` counts `o200k_base`
+ * tokens; other tokenisers differ, so it is an order-of-magnitude figure.
  */
 export interface PayloadSize {
   /** Exact, over the UTF-8 bytes of the stored JSON. */
@@ -259,9 +185,8 @@ export interface AddResult {
 
 /**
  * Either or both. `sql` is run as written; `text` is embedded and, on its own,
- * ranks a table by similarity. Given both, the embedding is bound as `$q` and
- * the caller's SQL may use it — which is how a hybrid search is one round trip
- * rather than two.
+ * ranks a table by similarity. Given both, the embedding is bound as `$q` for
+ * the SQL to use — a hybrid search in one round trip.
  */
 export interface QueryBody {
   readonly sql?: string;
@@ -284,12 +209,9 @@ export interface QueryResult {
 // ── how a table is searched ───────────────────────────────────────────────
 
 /**
- * How words are reduced to their stem before they are indexed and matched.
- *
- * Snowball's languages, plus `None` for text that is not prose — identifiers,
- * paths, SKUs — where stemming turns distinct tokens into the same one. The
- * list is DuckDB's own and it refuses anything outside it; `Porter` is the
- * classic English algorithm and stays the default.
+ * How words are reduced to their stem before indexing and matching. Snowball's
+ * languages, plus `None` for non-prose (identifiers, paths). DuckDB refuses
+ * anything outside its list; `Porter` is the default.
  */
 export enum FtsStemmer {
   Arabic = 'arabic',
@@ -323,13 +245,9 @@ export enum FtsStemmer {
 }
 
 /**
- * Which words are dropped as too common to rank on.
- *
- * A closed set of two rather than a free string, and that is a boundary rather
- * than a simplification: DuckDB reads an unrecognised value as *the name of a
- * table* to read stopwords from, so a caller-supplied string here is a caller
- * choosing which table this service reads. `English` is the built-in list;
- * `None` indexes every word, which is what code, logs and identifiers want.
+ * Which words are dropped as too common to rank on. A closed set, not a free
+ * string: DuckDB reads an unrecognised value as a table name to read stopwords
+ * from. `English` is the built-in list; `None` indexes every word.
  */
 export enum FtsStopwords {
   English = 'english',
@@ -337,13 +255,9 @@ export enum FtsStopwords {
 }
 
 /**
- * Full text search over one table's text columns.
- *
- * These are the arguments DuckDB's `create_fts_index` takes, held here rather
- * than passed per query, because an index built one way and searched another
- * ranks nothing sensibly — the analysis that goes into the index has to be the
- * analysis that goes into the search term, and the only way to guarantee that
- * is for the table to own it.
+ * Full text search over one table's text columns. The arguments to DuckDB's
+ * `create_fts_index`, held on the table so an index and its searches share the
+ * same analysis.
  */
 export interface FtsConfig {
   /** False leaves the table unindexed; `match_bm25` over it finds nothing. */
@@ -351,41 +265,28 @@ export interface FtsConfig {
   readonly stemmer: FtsStemmer;
   readonly stopwords: FtsStopwords;
   /**
-   * A regular expression whose matches are stripped before tokenising.
-   *
-   * DuckDB's default, `(\.|[^a-z])+`, keeps lowercase letters and nothing
-   * else — which quietly discards digits, so `error 500` and `error 404` index
-   * identically. Text with numbers or symbols worth searching wants this
-   * widened, e.g. `[^a-z0-9]+`.
+   * A regular expression whose matches are stripped before tokenising. DuckDB's
+   * default `(\.|[^a-z])+` discards digits, so `error 500` and `error 404` index
+   * identically; widen it (e.g. `[^a-z0-9]+`) for text with numbers.
    */
   readonly ignore: string;
   readonly stripAccents: boolean;
   readonly lowercase: boolean;
   /**
-   * The VARCHAR columns to index. Empty means every VARCHAR column the table
-   * has — including ones a later write adds, which is usually what is wanted.
+   * The VARCHAR columns to index. Empty means every VARCHAR column, including
+   * ones a later write adds.
    */
   readonly columns: readonly string[];
 }
 
-/**
- * Everything configurable about one table.
- *
- * One envelope with a single member today. It is a shape rather than a bare
- * `FtsConfig` so that the second kind of setting is a field here rather than a
- * second endpoint and a second migration.
- */
+/** Everything configurable about one table. */
 export interface TableConfig {
   readonly fts: FtsConfig;
 }
 
 /**
- * What `POST /:account/:ingot/config/:table` accepts.
- *
- * A patch: every field is optional and an omitted one keeps the value the
- * table already has. Sending `{ fts: { stopwords: "none" } }` changes the
- * stopwords and nothing else — it does not reset the stemmer to its default,
- * which is the behaviour that makes a config endpoint dangerous to call twice.
+ * What `POST /:account/:ingot/config/:table` accepts. A patch: an omitted field
+ * keeps the value the table already has.
  */
 export interface ConfigureTableBody {
   readonly fts?: Partial<FtsConfig>;
@@ -419,14 +320,9 @@ export interface IngotSummary {
 
 /** What `GET /:account/:ingot/info` returns: the information schema. */
 /**
- * The vector space a memory's embeddings live in.
- *
- * Claimed by the first embedding written and fixed from then on, because
- * vectors from two models cannot be compared — a similarity between them is a
- * number that means nothing. Reported so that "which model is this memory
- * embedded with" has an answer that does not involve reading a deployment's
- * environment, and so a caller can tell an empty result from an incompatible
- * one. Null for a memory that has never embedded anything.
+ * The vector space a memory's embeddings live in. Claimed by the first
+ * embedding written and fixed thereafter — vectors from two models cannot be
+ * compared. Null for a memory that has never embedded anything.
  */
 export interface EmbeddingInfo {
   readonly model: string;
@@ -451,104 +347,55 @@ export interface CreateIngotBody {
   readonly name: string;
   /**
    * How long to keep this memory before deleting it — `30m`, `12h`, `14d`,
-   * `4w`. Omitted, it is kept until something deletes it.
-   *
-   * A duration rather than a timestamp because the question a caller is
-   * actually asking is "how long", and making them do date arithmetic to
-   * express it is a way to get a memory that expires in 1970. A short grammar
-   * rather than seconds because `14d` cannot be misread by three orders of
-   * magnitude, and `1209600` can.
-   *
-   * **Expiry deletes the memory and everything in it, and that is not
-   * reversible.** It is opt-in for that reason.
+   * `4w`. Omitted, it is kept until something deletes it. Expiry deletes the
+   * memory and everything in it, irreversibly.
    */
   readonly retainFor?: string;
 }
 
 // ── delivery ──────────────────────────────────────────────────────────────
 
-/**
- * How a memory is told that a receipt has been written.
- *
- * A receipt is collected by polling by default: `/add` hands back a SELECT and
- * the caller runs it when it wants the answer. That needs no registration, no
- * retry policy and no endpoint to be up — but it is a poor fit for an agent
- * that has moved on and would rather be told.
- *
- * Configured per memory rather than per `/add`, because the thing that wants
- * telling is the *system* holding the memory, not the individual call. A
- * strategy set once applies to every receipt the memory ever writes, including
- * ones written by a caller who knows nothing about the endpoint.
- */
+/** How a memory is told that a receipt has been written. Configured per memory, not per `/add`. */
 export enum DeliveryKind {
   /** The default: nothing is pushed, and the receipt's query is the contract. */
   None = 'none',
   /** One POST per receipt, to an endpoint the memory's owner nominates. */
   Webhook = 'webhook',
-  /** One message per receipt, onto a queue on the deployment's broker. */
+  /** One message per receipt, onto a named queue. */
   Rmq = 'rmq',
 }
 
 /**
- * Where a memory's receipts are delivered.
- *
- * A discriminated union rather than a bag of optional fields, so a webhook
- * without an endpoint and a queue without a name are shapes that cannot be
- * expressed rather than ones that have to be checked. `t` is the discriminant.
- *
- * Note what is *not* here: for `rmq`, only the queue. The broker is the
- * deployment's (`INGOT_RABBITMQ_URL`), not the caller's — a tenant naming a
- * broker would be a tenant choosing where this service opens connections.
+ * Where a memory's receipts are delivered. A discriminated union on `t`; for
+ * `rmq`, only the queue name is given, not the broker.
  */
 export type DeliveryStrategy =
   | { readonly t: DeliveryKind.None }
   | { readonly t: DeliveryKind.Webhook; readonly endpoint: string }
   | { readonly t: DeliveryKind.Rmq; readonly queue: string };
 
-/**
- * Everything configurable about a memory as a whole.
- *
- * An envelope around a single member, for the reason `TableConfig` is one: the
- * next memory-wide setting should be a field here rather than a second
- * endpoint and a second migration.
- */
+/** Everything configurable about a memory as a whole. */
 export interface IngotConfig {
   readonly delivery: DeliveryStrategy;
 }
 
 /**
- * What `POST /:account/:ingot/config` accepts.
- *
- * A patch, like the table config it sits beside: an omitted field keeps what
- * the memory already has. Turning delivery off is `{ delivery: { t: "none" } }`
- * and not an omission, so a caller who sends a partial body cannot silently
- * disconnect a webhook somebody else configured.
+ * What `POST /:account/:ingot/config` accepts. A patch: an omitted field keeps
+ * what the memory already has. Turning delivery off is `{ delivery: { t: "none" } }`,
+ * not an omission.
  */
 export interface ConfigureIngotBody {
   readonly delivery?: DeliveryStrategy;
 }
 
-/** What a delivery announces. One member today; a receiver should switch on it. */
+/** What a delivery announces. */
 export enum DeliveryEvent {
   ReceiptReady = 'receipt.ready',
 }
 
 /**
- * The body of a delivery: a receipt that has just become findable.
- *
- * The four fields of the compact stand-in — `externalId`, `summary`,
- * `searchTerm`, `totalResults` — are the same four `AddReceipt` carries, under
- * the same names, because a receiver splicing this over a bulky tool output
- * should not have to learn a second vocabulary for the same thing.
- *
- * `query` is here rather than only the ids, because that is what the caller was
- * given at `/add` and what any delivery has to agree with. A webhook that said
- * "receipt ready for batch_1508c8" and left the recipient to reconstruct the
- * SQL would be a second contract, and the two would drift.
- *
- * `readyAt` is when the receipt was written, not when this attempt was made, so
- * it is stable across redeliveries — pair it with `batch` to make a receiver
- * idempotent. `attempt` counts from 1 and says whether this is a redelivery.
+ * The body of a delivery: a receipt that has just become findable. Carries the
+ * same compact stand-in fields as `AddReceipt`, plus the SELECT that returns it.
  */
 export interface DeliveredReceipt {
   readonly event: DeliveryEvent.ReceiptReady;
@@ -573,9 +420,8 @@ export interface DeliveredReceipt {
 // ── forgetting ────────────────────────────────────────────────────────────
 
 /**
- * `where` is a SQL predicate, validated the way a query is. It is resolved to
- * row ids at delete time and those ids are written as tombstones, so a query
- * filters against a finite set rather than an ever-growing list of predicates.
+ * `where` is a SQL predicate, validated the way a query is. It resolves to row
+ * ids at delete time, written as tombstones.
  */
 export interface DeleteBody {
   readonly table: string;
@@ -592,21 +438,8 @@ export interface DeleteResult {
 // ── files ─────────────────────────────────────────────────────────────────
 
 /**
- * What a document has become.
- *
- * **A row in `ingot_files` only ever holds a terminal one.** Rows here are
- * append-only — that is what the base tier being Parquet buys and costs — so a
- * status that moved through `pending` and `parsing` would mean tombstoning and
- * re-appending a row twice per upload, for two states nobody can act on.
- *
- * So the row is written once, when the work is finished, and `/file` reports
- * `Pending` in its own response because that is the only honest thing it can
- * say. A caller polling `query` gets no rows while a document is in flight and
- * exactly one when it lands, whichever way it landed. That is the same contract
- * `receipt: "summary"` already makes, for the same reason.
- *
- * What is in flight is visible to an operator instead, as `ingot_files_pending`
- * and `ingot_files_abandoned` — kept apart because they mean opposite things.
+ * What a document has become. A row in `ingot_files` only ever holds a terminal
+ * status — rows are append-only, so in-flight states are not written here.
  */
 export enum FileStatus {
   /** Accepted, stored and queued. Nothing has read the bytes yet. */
@@ -617,14 +450,7 @@ export enum FileStatus {
   Failed = 'failed',
 }
 
-/**
- * What a chunk is a chunk of.
- *
- * A column rather than a table per format, because a caller asking "what do my
- * documents say about X" does not know which of them was a PDF — and making
- * them know is the thing one table exists to prevent. Every strategy in
- * `Chunker` emits one of these.
- */
+/** What a chunk is a chunk of. Every strategy in `Chunker` emits one of these. */
 export enum ChunkKind {
   /** Running text: a paragraph run, a section body, a page of a PDF. */
   Prose = 'prose',
@@ -637,27 +463,16 @@ export enum ChunkKind {
 }
 
 /**
- * How one extracted column is filled.
- *
- * `ColumnMapping` with a third way to fill it. `from` and `value` mean exactly
- * what they mean at `/add` — a path into the parsed document and a constant —
- * and `describe` is the new one: a sentence for a model, used when the source
- * is prose and there is no path to write.
- *
- * The type is declared here as it is everywhere else in this service, and that
- * is the point of routing extraction through the same mapping. A model that
- * answers `"thirty"` for an `INTEGER` fails the same coercion a bad `/add`
- * fails, rather than quietly making the column a `VARCHAR` on Tuesday.
+ * How one extracted column is filled. `ColumnMapping` plus `describe`: `from`
+ * and `value` mean what they do at `/add`; `describe` fills from prose via a
+ * model.
  */
 export interface ExtractMapping {
   readonly from?: string;
   readonly value?: string | number | boolean | null;
   /**
-   * What this column is, in words, for a model to fill in from prose.
-   *
-   * Ignored when `from` is given: a tabular file has real field names and needs
-   * no model. Required when it is not, because a column a model is asked to
-   * fill with nothing said about it is a column it invents.
+   * What this column is, in words, for a model to fill from prose. Ignored when
+   * `from` is given; required when it is not.
    */
   readonly describe?: string;
   readonly type: ColumnType;
@@ -665,18 +480,9 @@ export interface ExtractMapping {
 }
 
 /**
- * Pulling typed rows out of a document, into a table of the caller's own.
- *
- * The shape is `AddBody`'s mapping half, deliberately: what happens after a
- * document has been turned into JSON is exactly `/add`, and reusing the mapping
- * means reusing its paths, its coercion and its schema evolution rather than
- * writing a second, subtly different projection.
- *
- * Where the JSON comes from is what differs. A spreadsheet already has rows and
- * field names, so `from` paths resolve against them and **no model is called at
- * all**. Prose has neither, so a model is handed the declared columns as a
- * schema it is held to, and what it returns is projected through the same
- * mapping.
+ * Pulling typed rows out of a document into a table. The shape is `AddBody`'s
+ * mapping half; tabular files resolve `from` paths with no model, prose is
+ * handed the columns as a schema for a model to fill.
  */
 export interface FileExtraction {
   readonly table: string;
@@ -687,58 +493,30 @@ export interface FileExtraction {
 }
 
 /**
- * The JSON half of a `/file` upload. The bytes are the other half.
- *
- * Every field is optional, and that is the default worth having: a bare upload
- * with no body parses, chunks and embeds, which is the thing almost everybody
- * wants. `extract` is the rung that costs a model, and it is opt-in for the
- * reason `receipt` is.
+ * The JSON half of a `/file` upload; the bytes are the other half. Every field
+ * is optional — a bare upload parses, chunks and embeds.
  */
 export interface FileBody {
   /** The caller's own handle for this document — a job id, a ticket. */
   readonly externalId?: string;
   /**
-   * What this document is, when the upload itself cannot say.
-   *
-   * The type is otherwise taken from the part's `Content-Type`, or from the
-   * filename when that is `application/octet-stream` — which is what a great
-   * many HTTP clients send for everything. Neither works for a document that
-   * arrives as a stream, or under a generated name, or from a proxy that
-   * flattened the type on the way through. This is the way to say it outright.
-   *
-   * It is also how to correct a file whose name lies: a `.txt` export that is
-   * really CSV parses as prose until somebody says otherwise.
-   *
-   * **It overrides what the upload declares, never what the bytes say.** The
-   * type is still checked against the content, and a mismatch is still refused —
-   * this changes which of the three sources is believed, not whether the claim
-   * is checked. A caller who could name a decoder for arbitrary bytes would be
-   * the thing that check exists to prevent.
+   * What this document is, when the upload cannot say — otherwise inferred from
+   * the `Content-Type` or filename. Overrides the declared type, never the
+   * bytes, which are still checked against it.
    */
   readonly mediaType?: string;
-  /** Typed rows to pull out of it, into a table of your own. */
+  /** Typed rows to pull out of it, into a table of the caller's own. */
   readonly extract?: FileExtraction;
-  /**
-   * Roughly how large a chunk should be, in tokens.
-   *
-   * A knob rather than a strategy. Which boundary a document is split on is
-   * decided by what it *is* — a slide is a slide — but how much text belongs in
-   * one embedding is a function of the embedder and of what the caller intends
-   * to put back into a model's context, and this service knows neither.
-   */
+  /** Roughly how large a chunk should be, in tokens. */
   readonly chunkTokens?: number;
   /** How much of the previous chunk to repeat. Ignored where a format's own
-   * boundaries are authoritative, since a slide does not overlap the next. */
+   * boundaries are authoritative. */
   readonly overlapTokens?: number;
 }
 
 /**
- * The promissory note `/file` hands back.
- *
- * Nothing here is the document's content, and nothing can be: parsing is
- * seconds to minutes, and this returns the moment the bytes are safely stored
- * and the work is queued. What it gives instead is the two queries that report
- * on it — the same promise a receipt makes, in the same shape.
+ * What `/file` hands back: not the document's content, but the queries that
+ * report on it once parsing finishes.
  */
 export interface FileResult {
   readonly fileId: string;

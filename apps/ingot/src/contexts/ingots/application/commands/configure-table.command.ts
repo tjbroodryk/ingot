@@ -17,19 +17,7 @@ export class ConfigureTable extends Command<TableConfig> {
   }
 }
 
-/**
- * Sets how a table is read, and returns everything it is now set to.
- *
- * Returns the whole config rather than an acknowledgement because the body is
- * a patch: a caller who sent `{ fts: { stopwords: "none" } }` has just changed
- * one field of seven and has no way to know what the other six are without
- * being told. `/info` reports the same thing for every table at once.
- *
- * Nothing here touches the data. Settings say how the rows already stored are
- * indexed and matched, so changing them rebuilds an index on the next query
- * and rewrites no Parquet — which is why this is not a schema change and does
- * not carry a schema change's refusals.
- */
+/** Sets how a table is read and returns the full config (the body is a patch). Touches no data. */
 @CommandHandler(ConfigureTable)
 export class ConfigureTableHandler implements ICommandHandler<ConfigureTable> {
   constructor(
@@ -40,9 +28,7 @@ export class ConfigureTableHandler implements ICommandHandler<ConfigureTable> {
   async execute(command: ConfigureTable): Promise<TableConfig> {
     const table = await this.access.table(command.ingotId, command.accountId, command.table);
 
-    // `configure` reports whether anything moved, and a no-op is not written:
-    // saving would take the table's version for a patch that changed nothing,
-    // making whatever is adding rows to it right now retry for no reason.
+    // Skip the save on a no-op; it would bump the version for nothing.
     if (table.configure(command.settings)) {
       await this.tables.save(table);
     }

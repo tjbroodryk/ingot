@@ -4,17 +4,8 @@ import type { Embedder } from './embedder.port.js';
 const DIMENSIONS = 256;
 
 /**
- * A deterministic, offline stand-in: hashed bag of words and bigrams.
- *
- * The default, and not an apology for one. Semantic search that needs a
- * hosted model needs a network, a key and a bill, and none of those should be
- * required to run the test suite or to try the product locally. This ranks
- * lexically-similar text above unrelated text, which is enough for the
- * plumbing around it — the session, the sibling Parquet, the roll-up — to be
- * exercised and asserted on.
- *
- * It is not enough for anything a user would call semantic. `INGOT_EMBEDDER`
- * selects a real model — `openai` or `gcp`; this one says so at boot.
+ * Deterministic, offline stand-in: a hashed bag of words and bigrams. Ranks
+ * lexically-similar text above unrelated text, but is not semantic search.
  */
 @Injectable()
 export class HashEmbedder implements Embedder {
@@ -38,12 +29,10 @@ export class HashEmbedder implements Embedder {
     };
 
     for (const word of words) bump(word);
-    // Bigrams give word order some weight, which is the difference between
-    // "not a bug" and "a bug" landing in the same place.
+    // Bigrams give word order some weight, so "not a bug" and "a bug" differ.
     for (let at = 1; at < words.length; at++) bump(`${words[at - 1]} ${words[at]}`);
 
-    // Normalised, because cosine similarity is what ranks these and an
-    // unnormalised vector makes long documents look similar to everything.
+    // Normalised for cosine similarity; unnormalised makes long documents look similar to everything.
     const magnitude = Math.hypot(...vector);
     return magnitude === 0 ? vector : vector.map((value) => value / magnitude);
   }

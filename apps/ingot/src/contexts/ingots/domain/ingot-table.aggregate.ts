@@ -31,13 +31,7 @@ interface TableProps {
   config: TableConfig;
 }
 
-/**
- * Validates a declared key against the columns the mapping actually fills.
- *
- * A key naming a column that does not exist would produce receipts whose
- * queries refer to nothing — and it would do it silently, since the query is
- * only ever run by whoever received it.
- */
+/** Validates that a declared key names only columns the mapping actually fills. */
 function keyColumns(
   declared: readonly string[],
   available: ReadonlySet<string>,
@@ -73,17 +67,9 @@ function systemColumns(withRaw: boolean): ColumnSpec[] {
 }
 
 /**
- * A table's schema and where its data lives — the manifest, per table.
- *
- * This is the aggregate the write path contends on, which is why it is not
- * part of `Ingot`: two tools writing two tables of one memory should never
- * make each other retry. The version guard is per table for the same reason.
- *
- * `generation` counts roll-ups. It is not a version — a compaction bumps both,
- * but a schema change bumps only the version — and it is what makes an
- * in-flight query safe across a compaction: the old generation's files stay in
- * the bucket until a later sweep reaps them, so a query that resolved the
- * manifest a moment before the flip still reads something complete.
+ * A table's schema and where its data lives — the manifest, per table. Separate
+ * from `Ingot` so writes to different tables don't contend on one version.
+ * `generation` counts roll-ups; old files linger so in-flight queries stay valid.
  */
 export class IngotTable extends AggregateRoot<IngotTableId> {
   private props: TableProps;
@@ -94,14 +80,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     this.props = props;
   }
 
-  /**
-   * Whether anything about this table has moved since it was loaded.
-   *
-   * Every `/add` used to save the manifest whether or not the schema changed,
-   * which meant concurrent writes to one table contended on its version for no
-   * reason at all — the steady state of this product is a stable schema and a
-   * great many rows. A table with nothing to say is not written.
-   */
+  /** Whether anything about this table has moved since it was loaded. */
   get hasChanges(): boolean {
     return this.#changed;
   }
@@ -113,12 +92,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     key: readonly string[];
     raw: boolean;
     now: Date;
-    /**
-     * A table this service writes on a caller's behalf, so its name may carry
-     * the reserved prefix. `/add` never sets it — `RowMapping` parses a
-     * caller's table name with `SqlName.table`, which refuses the prefix, and
-     * that asymmetry is what keeps `ingot_receipts` ours.
-     */
+    /** A table this service writes on a caller's behalf; its name may carry the reserved prefix. */
     system?: boolean;
   }): IngotTable {
     const name = input.system ? SqlName.systemTable(input.name) : SqlName.table(input.name);
@@ -193,14 +167,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     return this.props.columns.filter((column) => column.embedded);
   }
 
-  /**
-   * Refuses a write that would change what identifies a row.
-   *
-   * Fixed for the same reason a column's type is: every receipt handed out so
-   * far was written against this key, and quietly moving it would leave those
-   * queries pointing at nothing in particular. Naming no key on a later write
-   * is not a contradiction and is accepted.
-   */
+  /** Refuses a write that changes what identifies a row. A write naming no key is accepted. */
   assertKeyUnchanged(incoming: readonly string[]): void {
     if (incoming.length === 0) return;
 
@@ -217,16 +184,8 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
   }
 
   /**
-   * Widens the schema to accept a write, or refuses it.
-   *
-   * A column the table has never seen is added, and added *optional*, because
-   * every Parquet file already written lacks it. A column whose declared type
-   * differs from the one on record is refused outright: silently widening
-   * `INTEGER` to `VARCHAR` would change what a saved query returns without
-   * anyone asking, and there is no honest coercion in the other direction.
-   *
-   * Returns the names it added, so `/add` can tell the caller what their
-   * mapping changed about the table.
+   * Widens the schema to accept a write: unseen columns are added optional, a
+   * changed type is refused. Returns the names it added.
    */
   accommodate(incoming: readonly ColumnSpec[]): readonly string[] {
     const added: string[] = [];
@@ -245,32 +204,9 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
             'A column’s type cannot change once rows exist under it.',
         );
       }
-      /*
-       * Turning embedding on for a column that has it off is a widening the
-       * table accepts — but only forwards, and that is a real limitation
-       * rather than a detail.
-       *
-       * **The rows already stored are not embedded, and nothing will embed
-       * them.** `OverlayStore.append` queues the rows of the write it is given
-       * and there is no other way into `overlay_embed_queue`, so flipping this
-       * covers every row written from here on and none of the ones already
-       * here. Rows already rolled up into Parquet are not even in the overlay
-       * to be found.
-       *
-       * It is worth being blunt because the failure is silent all the way
-       * down: no error, and `ingot_embeddings_pending` counts the queue rather
-       * than un-embedded rows, so the gauge reads zero while a semantic search
-       * over this table quietly returns only what arrived after the flip.
-       *
-       * Refusing the widening was the alternative, and would be consistent
-       * with how a type change is treated a few lines up. It is not refused
-       * because a table that can never gain a searchable column is worse than
-       * one that gains it from now on — and because the fix is a backfill,
-       * which is planned: a sweeper that finds rows under an embeddable column
-       * with no vector, across both tiers, and queues them. Until that exists,
-       * a table that needs its history searchable is one to drop and store
-       * again.
-       */
+      // Turning embedding on only affects rows written from here on; existing
+      // rows are never backfilled, so a table needing its history searchable
+      // must be dropped and re-stored.
       if (column.embedded && !existing.embedded) {
         this.props.columns = this.props.columns.map((candidate) =>
           candidate.name.value === column.name.value ? column.asOptional() : candidate,
@@ -281,19 +217,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     return added;
   }
 
-  /**
-   * Applies a settings patch, and says whether it moved anything.
-   *
-   * Unlike a column or a key, configuration is *meant* to change: it describes
-   * how the rows already here are read, not what they are, so nothing already
-   * written stops being true when it moves. What does change is what a search
-   * returns, and the index is rebuilt from the new settings on the next query
-   * rather than left agreeing with the old ones.
-   *
-   * A patch that changes nothing does not mark the table dirty, for the reason
-   * `hasChanges` exists at all: a no-op write would still contend on the
-   * version with whatever is adding rows to this table right now.
-   */
+  /** Applies a settings patch; returns whether it moved anything. A no-op leaves the table clean. */
   configure(patch: ConfigureTableBody): boolean {
     const next = this.props.config.patched(patch);
     if (next.equals(this.props.config)) return false;
@@ -303,13 +227,7 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     return true;
   }
 
-  /**
-   * Records a completed roll-up: a new generation replaces the old base.
-   *
-   * Both file lists are replaced wholesale rather than appended to, because
-   * compaction rewrites everything it read. The caller is responsible for the
-   * old generation's objects still being in the bucket when this returns.
-   */
+  /** Records a completed roll-up: a new generation replaces the base. Both file lists are replaced wholesale. */
   rolledUp(input: { base: readonly BaseFile[]; vectors: readonly BaseFile[]; rows: number }): void {
     this.props = {
       ...this.props,

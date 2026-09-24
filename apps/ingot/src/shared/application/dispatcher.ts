@@ -7,23 +7,9 @@ import { UNIT_OF_WORK, type UnitOfWork } from './ports/unit-of-work.port.js';
 import type { Query } from './query.js';
 
 /**
- * The only entry point the interface layer needs. Controllers depend on this
- * rather than on `CommandBus`/`QueryBus` directly, which keeps the read/write
- * split visible at every call site: `send` changes something, `ask` does not.
- *
- * That split is also why the transaction lives here. A command is the unit of
- * change, so it is the right unit of atomicity — and putting the boundary in
- * the one place every command passes through means a handler cannot forget to
- * open one. Queries get no transaction because they change nothing.
- *
- * It is also why both delivery surfaces go through it. The HTTP controllers
- * and the MCP tools build the same commands and hand them here; neither is
- * allowed its own implementation, which is what stops the MCP surface drifting
- * into a second, subtly different API. `mcp-parity.test.ts` holds that up.
- *
- * The same argument makes this where telemetry goes. Every command and query
- * is measured and traced because it came through here, not because somebody
- * remembered to annotate a handler.
+ * The entry point the interface layer uses instead of `CommandBus`/`QueryBus`:
+ * `send` changes state, `ask` does not. Commands run in a transaction here, and
+ * both are measured and traced here rather than per handler.
  */
 @Injectable()
 export class Dispatcher {

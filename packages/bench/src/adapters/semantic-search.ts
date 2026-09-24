@@ -1,21 +1,12 @@
 import { schema, type AdapterTool } from './types.js';
 
 /**
- * The one surface every top-k baseline is reached through.
- *
- * `vector`, `pinecone`, `turbopuffer` and `hyperspell` differ in where the
- * vectors live and how they are ranked. They must differ in nothing else that
- * reaches the model: the same system note, the same tool name, the same
- * arguments, the same `k`. That is written here once rather than four times
- * because four copies are four chances for one column to quietly acquire a
- * better-worded description than the others — and "only the retrieval
- * differs" is the claim the whole comparison rests on.
- *
- * `ingot-rest`'s `search` is deliberately held to the same shape for the same
- * reason, and a test in `adapters.test.ts` asserts it.
+ * The one surface every top-k baseline is reached through — same note, tool
+ * name, arguments and `k` — so only the retrieval differs. `ingot-rest`'s
+ * `search` is held to the same shape.
  */
 
-/** The ceiling on `k`, so what top-k cannot do is not a stingy default. */
+/** Ceiling on `k`. */
 export const MAX_K = 50;
 
 export const SEMANTIC_SEARCH_NOTE =
@@ -48,11 +39,8 @@ export function clampK(asked: unknown): number {
 }
 
 /**
- * What comes back, in the one format every baseline answers in.
- *
- * A store that does not return a comparable score passes `null` rather than a
- * zero, because a printed `score=0.0000` would read to the model as "nothing
- * matched" and change how it uses the result.
+ * Renders hits in the one format every baseline answers in. A missing score is
+ * `null`, not zero, so the model does not read it as "nothing matched".
  */
 export function renderHits(
   hits: readonly { readonly score: number | null; readonly text: string }[],

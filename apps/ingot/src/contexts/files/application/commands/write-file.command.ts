@@ -54,33 +54,16 @@ export interface ReadDocument {
   readonly pages: number | null;
   readonly title: string | null;
   readonly summary: string | null;
-  /**
-   * What an extraction pulled out, as JSON, before any mapping runs.
-   *
-   * A blob rather than rows, because the projection from a blob to typed
-   * columns is `RowMapping` and running it here is the whole point — the same
-   * paths, the same coercion and the same 422-shaped complaint an `/add` would
-   * have made about the same mapping.
-   */
+  /** What an extraction pulled out, as JSON, before any mapping runs. */
   readonly extracted: unknown | null;
 }
 
 /**
- * Stores everything one document became — the file row, its chunks, and the
- * typed rows an extraction pulled out.
+ * Stores everything one document became: the file row, its chunks, and any
+ * extracted rows.
  *
- * The last of three, and it takes the result rather than producing it: the
- * parse happened outside any transaction, precisely so this one is short.
- * Everything here is Postgres, and it is **one transaction over all three
- * writes** rather than three commands, which matters more than it looks.
- *
- * Splitting them would leave a window in which chunks are written and the
- * extracted rows are not, and a retry after that window writes the chunks
- * again. A chunk table is keyed on `(file_id, ordinal)` and **nothing in this
- * service enforces a key** — declaring one says "this is what identifies the
- * thing", not "refuse a second" — so the duplicates would simply sit there,
- * both ranking, in every search over that memory afterwards. One transaction is
- * what makes a retry a retry rather than a doubling.
+ * One transaction over all three writes, so a retry rewrites the lot rather
+ * than doubling chunks — nothing enforces the `(file_id, ordinal)` key.
  */
 export class WriteFile extends Command<void> {
   constructor(
@@ -91,17 +74,7 @@ export class WriteFile extends Command<void> {
   }
 }
 
-/**
- * Documents whose parse was abandoned still get a row, and this is the flag
- * that says so.
- *
- * A deliberate improvement on what an abandoned *receipt* does. There, the
- * caller is left holding a SELECT that will always come back empty and the only
- * evidence is a gauge an operator has to be watching. Here the caller was
- * handed two queries and at least one of them can answer honestly: `status` is
- * `failed`, `error` says what happened, and nobody has to guess whether their
- * upload is slow or dead.
- */
+/** Writes a `failed` row for a document whose parse was abandoned. */
 export class FailFile extends Command<void> {
   constructor(
     readonly job: PendingFile,
@@ -178,9 +151,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
       [FILE_SUMMARY]: state.summary,
     };
 
-    // Through the ordinary overlay, which is the whole point of `ingot_files`
-    // being a table: this queues the title and summary for embedding, the
-    // roll-up folds the row into Parquet, and `/query` unions the tiers.
+    // Through the ordinary overlay, like any other row.
     await this.overlay.append({
       ingotId: job.ingotId,
       tableId: table.id.value,
@@ -204,9 +175,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
     const rows = chunks.map((piece) => ({
       [ROW_ID]: newIdValue('row'),
       [INGESTED_AT]: now.toISOString(),
-      // One batch for the whole document, so `WHERE _batch = …` collects
-      // exactly the chunks one upload produced — the same grain an `/add`
-      // receipt's batch query has.
+      // One batch per document, so `WHERE _batch = …` selects one upload's chunks.
       [BATCH]: batch,
       [CHUNK_FILE_ID]: job.fileId,
       [CHUNK_ORDINAL]: piece.ordinal,
@@ -229,24 +198,12 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
   /**
    * The extracted rows, through the ordinary `/add` mapping.
    *
-   * **This is the join between the two halves of the feature, and it is
-   * deliberately three lines.** Once a document has become JSON — by a parser
-   * reading a header row, or by a model answering a schema — everything left to
-   * do is precisely an `/add`: project through declared paths, coerce to
-   * declared types, widen the table if a column is new, refuse a type that
-   * moved. Reimplementing any of that here would be a second projection with
-   * its own opinions, and the two would drift.
-   *
-   * The mapping is re-parsed rather than carried on the queue row for the
-   * reason the delivery outbox rebuilds nothing: what is stored is the caller's
-   * document, and `FileMapping` is the thing that knows how to read it. It was
-   * already parsed once at upload, which is where a bad one was refused.
+   * The mapping is re-parsed from the stored document rather than carried on the
+   * queue row; it was already parsed once at upload, where a bad one was refused.
    */
   private async writeExtracted(job: PendingFile, extracted: unknown, now: Date): Promise<void> {
     const mapping = FileMapping.parse(job.extract as NonNullable<typeof job.extract>, {
-      // Recomputed from the media type rather than carried on the queue row: it
-      // is a fact about the format, and a format does not change under a stored
-      // document. This reaches the same answer the upload did, the same way.
+      // Recomputed from the media type; it is a fact about the format.
       tabular: isTabular(job.mediaType),
     });
 
@@ -269,11 +226,8 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
       }),
     );
 
-    // The same two checks `/add` makes, in the same order, because this write
-    // is an `/add` in everything but where the JSON came from. A caller whose
-    // extraction contradicts a table they have been filling by hand gets the
-    // same refusal — recorded on the document rather than returned, since this
-    // runs long after they let go of the response.
+    // The same two checks `/add` makes; a contradiction is recorded on the
+    // document rather than returned.
     table.assertKeyUnchanged(mapping.key);
     table.accommodate(row.columns);
     if (table.hasChanges) await this.registry.save(table);
@@ -305,20 +259,12 @@ export class FailFileHandler implements ICommandHandler<FailFile> {
   async execute(command: FailFile): Promise<void> {
     const { job, reason } = command;
 
-    // Always, so the reason is in front of whoever goes looking at the queue,
-    // and so the lease is cleared for a retry that is still owed.
+    // Always: keep the reason and clear the lease for any retry still owed.
     await this.queue.fail(job.fileId, reason);
     if (!command.terminal) return;
 
-    /*
-     * The last attempt writes a row, which is the thing an abandoned receipt
-     * cannot do.
-     *
-     * The row leaves the queue in place rather than removing it: the queue row
-     * is what `ingot_files_abandoned` counts, and an operator losing sight of a
-     * document the moment it is given up on is exactly the wrong outcome. The
-     * caller gets an answer and the deployment keeps its evidence.
-     */
+    // The last attempt writes a `failed` row; the queue row stays so the
+    // abandoned count still sees it.
     const now = this.clock.now();
     const table = await this.registry.ensureCurrent(job.ingotId, FILES_TABLE, () =>
       declareFilesTable(job.ingotId, now),

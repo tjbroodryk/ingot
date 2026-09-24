@@ -1,15 +1,4 @@
-/**
- * `/why`, as markdown. See `./reference-text.ts` for why.
- *
- * The page this renders is an argument, which is the one kind of document a
- * model is *more* likely to be handed than a person is: "why would I use this
- * rather than a vector store" is a question asked of an assistant far more
- * often than it is asked of a website. So the plain-text half of this page
- * matters at least as much as the HTML, and it is generated from the same
- * constants rather than written a second time — a page that argued one thing
- * on the site and another in `llms-full.txt` would be worse than one that had
- * no markdown at all.
- */
+/** `/why`, as markdown, from the same constants the HTML page renders. */
 
 import type { Article } from './markdown';
 import { blocks, bullets, fence, heading, table } from './markdown';
@@ -33,9 +22,7 @@ import {
 
 /** The page, as `llms.txt` lists it and as the file it links to. */
 export const WHY: Article = {
-  // What the nav calls it rather than the headline, for the reason
-  // `DEPLOYMENT` uses "Deployment": this is an entry in an index, and an index
-  // is read by scanning the left edge of it.
+  // The nav's word, not the headline: this is an index entry.
   title: 'Why Ingot',
   summary: WHY_DESCRIPTION,
   render: renderWhy,

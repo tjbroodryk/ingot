@@ -1,13 +1,8 @@
 import type { Ref, World } from './world.js';
 
 /**
- * The corpus: the world as an agent would actually have received it — a
- * sequence of paginated tool results, each a blob of JSON with no schema
- * attached.
- *
- * This is the only view of the world any adapter is allowed to ingest. Every
- * adapter gets the identical array, so differences in the results are
- * differences in what each one does with the same bytes.
+ * The corpus: the world as a sequence of paginated tool results, each a blob of
+ * JSON with no schema attached. Every adapter ingests the identical array.
  */
 export interface ToolResult {
   readonly id: string;
@@ -36,8 +31,7 @@ const PAGE_SIZE: Record<ToolName, number> = {
   'ci.list_runs': 40,
   'pagerduty.list_incidents': 10,
   'linear.search_issues': 20,
-  // Not a page size. `logs.search` is the tool that does not paginate, which
-  // is the entire point of it — a result that arrives whole and does not fit.
+  // Not a page size: `logs.search` does not paginate — one result, arriving whole.
   'logs.search': Number.MAX_SAFE_INTEGER,
 };
 
@@ -62,8 +56,7 @@ export function buildCorpus(world: World): readonly ToolResult[] {
       id: `tr-${String(sequence).padStart(3, '0')}`,
       tool,
       args,
-      // Every result is stamped at the world's clock: the corpus is a snapshot,
-      // not something that was gathered over time.
+      // Stamped at the world's clock: the corpus is a snapshot.
       producedAt: world.now,
       result: payload,
       refs: items.map((item) => item.ref),
@@ -91,9 +84,7 @@ export function buildCorpus(world: World): readonly ToolResult[] {
   paginate('catalog.list_services', world.services, {}, (service) => ({
     ref: service.ref,
     name: service.name,
-    // Present and null rather than absent: the corpus states the absence, so a
-    // model that finds the record can answer. Omitting the key would make the
-    // absence questions unanswerable rather than hard.
+    // Present and null, not absent: the corpus states the absence so it can be answered.
     owner: service.owner,
     tier: service.tier,
   }));
@@ -130,9 +121,8 @@ export function buildCorpus(world: World): readonly ToolResult[] {
     failed_step: run.failedStep,
   }));
 
-  // `cause` is dropped here deliberately — it is the question generator's
-  // handle on the incident, and putting it in the corpus would hand the
-  // semantic category away as a keyword match.
+  // `cause` is dropped: it is the question generator's handle, and would leak
+  // the semantic answer as a keyword match.
   paginate('pagerduty.list_incidents', world.incidents, {}, (incident) => ({
     ref: incident.ref,
     id: incident.id,
@@ -144,9 +134,7 @@ export function buildCorpus(world: World): readonly ToolResult[] {
     summary: incident.summary,
   }));
 
-  // One result, however many lines. A real log search does not hand back
-  // pages of ten, and a fixture that paginated this would be modelling a
-  // kinder tool than the one that causes the problem.
+  // One result, however many lines — a real log search does not paginate.
   if (world.logs.length > 0) {
     paginate('logs.search', world.logs, { query: 'window:72h', paginated: false }, (line) => ({
       ref: line.ref,
@@ -174,7 +162,7 @@ export function buildCorpus(world: World): readonly ToolResult[] {
   return results;
 }
 
-/** Every ref the corpus contains, which is every ref retrieval can be scored on. */
+/** Every ref the corpus contains. */
 export function corpusRefs(corpus: readonly ToolResult[]): ReadonlySet<Ref> {
   return new Set(corpus.flatMap((result) => [...result.refs]));
 }

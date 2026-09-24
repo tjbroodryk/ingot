@@ -23,14 +23,9 @@ export interface EmbeddedText extends PendingEmbedding {
 }
 
 /**
- * Stores vectors a model has already produced.
- *
- * The second half of the split, and short by construction: the embedder was
- * called outside any transaction, so all this does is claim the memory's
- * vector space, upsert the vectors, and take their rows out of the queue.
- * Leaving the queue is what marks a row done, and it happens in the same
- * transaction as the vector — so a crash between the two leaves the row queued
- * and it is simply embedded again.
+ * Stores vectors a model has already produced. The embedder was called outside
+ * any transaction, so this just claims the memory's vector space, upserts the
+ * vectors, and takes their rows out of the queue, all in one transaction.
  */
 export class SaveEmbeddings extends Command<number> {
   constructor(
@@ -52,10 +47,9 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
   async execute(command: SaveEmbeddings): Promise<number> {
     if (command.embedded.length === 0) return 0;
 
-    // Before the vectors, not after. If the memory is already embedded with a
-    // different model this throws, the transaction rolls back, and nothing is
-    // written — which is the whole point. Writing first and checking after
-    // would leave exactly the mixture the check exists to prevent.
+    // Before the vectors: if the memory is already embedded with a different
+    // model this throws and the transaction rolls back, so the mixture the
+    // check prevents is never written.
     for (const ingotId of await this.ingotsFor(command.embedded)) {
       await this.claimSpace(ingotId, command.space);
     }
@@ -65,12 +59,8 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
   }
 
   /**
-   * Which memories this batch touches.
-   *
-   * A claim takes the oldest queued texts across every table, so one batch can
-   * span several memories. Resolved through the tables rather than carried on
-   * the queue row: it is a primary-key read per distinct table in the batch,
-   * against a batch of up to 128 rows that usually belong to one or two.
+   * Which memories this batch touches. A claim takes the oldest queued texts
+   * across every table, so one batch can span several memories.
    */
   private async ingotsFor(embedded: readonly EmbeddedText[]): Promise<Set<string>> {
     const ingotIds = new Set<string>();
@@ -84,24 +74,16 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
 
   /**
    * Records the vector space, or holds this write to the one already there.
-   *
-   * Only writes when something changed, which matters more than it looks: the
-   * steady state is a memory whose space was claimed by its first batch, and
-   * saving unconditionally would make every later batch contend on the
-   * memory's version for nothing.
-   *
-   * Two first batches racing is the one case that writes twice, and the loser
-   * re-reads rather than failing — the winner recorded the same model, since
-   * both got it from the same configured embedder.
+   * Only writes when something changed, so later batches do not contend on the
+   * memory's version. Two racing first batches both record the same model.
    */
   private async claimSpace(ingotId: string, space: EmbeddingSpace): Promise<void> {
     const ingot = await this.ingots.findById(IngotId.of(ingotId));
-    // A memory deleted between the claim and now. Its rows are going with it.
+    // Memory deleted between the claim and now; its rows go with it.
     if (!ingot) return;
 
     const claimed = ingot.embedding !== null;
-    // Throws when this batch's model disagrees with the one on record, which
-    // is the refusal the whole feature exists for.
+    // Throws when this batch's model disagrees with the one on record.
     ingot.useEmbedding(space);
     if (claimed) return;
 
@@ -111,8 +93,8 @@ export class SaveEmbeddingsHandler implements ICommandHandler<SaveEmbeddings> {
       if (!(error instanceof ConflictingState)) throw error;
 
       const winner = await this.ingots.findById(IngotId.of(ingotId));
-      // Whoever won recorded a space; if it disagrees with ours this throws,
-      // which is the same refusal by a different route.
+      // If the winner recorded a different model, this throws — the same
+      // refusal by another route.
       winner?.assertEmbeddingMatches(space);
     }
   }

@@ -10,19 +10,9 @@ import { WHY } from '../src/text/why-text';
 import { type TextFile, textFiles } from '../src/text/text-files';
 
 /**
- * The plain-text build, held to the same standard as the pages.
- *
- * `test/deployment.test.tsx` makes the argument this file is the second half
- * of: the sidebar and the sections are rendered from one list, so what is
- * worth asserting is not that either renders but that they cannot come apart.
- * These files are a third rendering of that same list, and the way they come
- * apart is quieter than a broken anchor — nothing on the site links them, so a
- * route that stopped appearing in `docs.md` would be found by a model, once,
- * and reported by nobody.
- *
- * Both builds are asserted rather than whichever one the suite happens to run
- * in: `textFiles` takes the mode, so a landing artefact can be checked from a
- * checkout that has never set the variable.
+ * The plain-text build, checked like the pages: sidebar, sections, and these
+ * files all render from one list and must not come apart. Both modes are
+ * asserted, since `textFiles` takes the mode.
  */
 
 describe('the markdown pages', () => {
@@ -30,11 +20,7 @@ describe('the markdown pages', () => {
   const deployment = DEPLOYMENT.render();
   const why = WHY.render();
 
-  /**
-   * The three of them, wherever an assertion is about the notation rather than
-   * about what a particular page says. `test/why.test.tsx` holds what that
-   * page argues; a broken table is a property of every document that has one.
-   */
+  /** The three documents, for assertions about the notation rather than a page's content. */
   const documents = [reference, deployment, why];
 
   it('describes every route the reference does', () => {
@@ -62,11 +48,7 @@ describe('the markdown pages', () => {
     }
   });
 
-  /**
-   * A `|` in a note would otherwise end its cell and leave the rest of the
-   * sentence in a column that does not exist — the one way a table built by
-   * concatenation goes wrong, and one no reader of the HTML would ever see.
-   */
+  /** A `|` in a note would end its cell early; a concatenated table has no other guard. */
   it('keeps every table row the width of its header', () => {
     for (const document of documents) {
       let width = 0;
@@ -90,14 +72,7 @@ describe('the markdown pages', () => {
   });
 });
 
-/**
- * The paths `llms.txt` links, whichever way this build spells a link.
- *
- * The links are absolute once there is an origin and root-relative until then,
- * and the assertions below are about *which files* are linked rather than
- * about the spelling — so the origin and the base path come off here, and the
- * spelling itself is what `describe('an origin')` checks.
- */
+/** The files `llms.txt` links, with the origin and base path stripped so only the paths compare. */
 function linksIn(index: string): readonly string[] {
   return [...index.matchAll(/\]\((\S+?)\)/g)]
     .map((match) => match[1] ?? '')
@@ -114,10 +89,7 @@ describe.each([
   const at = (path: string) => files.find((file) => file.path === path);
 
   it('puts the reference where that build serves it', () => {
-    // The reference is `/docs` of a landing build and the front page of a
-    // dashboard one, so its markdown is `docs.md` or `index.md`. This is the
-    // assertion that fails if the file and the route stop being derived from
-    // the same place.
+    // The reference is `docs.md` in a landing build, `index.md` in a dashboard one.
     expect(at(landing ? 'docs.md' : 'index.md')).toBeDefined();
     expect(at(landing ? 'index.md' : 'docs.md')).toBeUndefined();
   });
@@ -126,11 +98,7 @@ describe.each([
     expect(at('deployment.md') !== undefined).toBe(landing);
   });
 
-  /**
-   * `/why` is a landing document for the reason the deployment page is:
-   * the other build ships beside a running service, whose reader has already
-   * been persuaded by whoever deployed it.
-   */
+  /** `/why` exists only in a landing build. */
   it('writes the why page only where there is one', () => {
     expect(at('why.md') !== undefined).toBe(landing);
   });
@@ -147,9 +115,7 @@ describe.each([
   });
 
   it('keeps every robots directive in one group', () => {
-    // A blank line ends a group, so a directive after one belongs to no
-    // user-agent and is dropped. The comment above them is the only thing
-    // allowed to be separated.
+    // A blank line ends a group: a directive after one belongs to no user-agent.
     const [, group] = at('robots.txt')?.body.trimEnd().split('\n\n') ?? [];
     expect(group?.split('\n')).toEqual([
       'User-agent: *',
@@ -159,9 +125,7 @@ describe.each([
   });
 
   it('keeps a console out of an index, and never invents one', () => {
-    // A landing build has no `/dashboard` to disallow — `pageExtensions` does
-    // not write it — and disallowing a path that does not exist would be this
-    // file claiming something about the artefact that is not true of it.
+    // A landing build has no `/dashboard`, so disallowing it would claim something untrue.
     expect(at('robots.txt')?.body.includes('/dashboard/')).toBe(!landing);
   });
 
@@ -182,17 +146,8 @@ describe.each([
 });
 
 /**
- * The move to a custom domain, run rather than reasoned about.
- *
- * `NEXT_PUBLIC_SITE_URL` is read once when `src/site/mode.ts` is loaded — that
- * is the point of it, since a static export has no run time to read it in — so
- * the only way to assert what setting it does is to load the module again in a
- * process that has it. That is what this spawns.
- *
- * Worth the subprocess because this is the one change nobody will make twice:
- * the variable gets set in the repository's settings, the next deploy is the
- * first time anything renders with it, and the failure mode is a sitemap full
- * of URLs on the wrong host.
+ * `NEXT_PUBLIC_SITE_URL` is read once when `mode.ts` loads, so asserting its
+ * effect means loading the module in a subprocess that has it set.
  */
 describe('an origin, once there is one', () => {
   const SITE = 'https://ingot.example';
@@ -253,10 +208,7 @@ describe('an origin, once there is one', () => {
   });
 
   it('composes an origin with a base path rather than choosing between them', () => {
-    // A site under a subdirectory of a domain of its own is a real address and
-    // neither half is a special case of the other. The workflow does not
-    // produce this combination — a custom domain drops the prefix — but
-    // nothing here should be the reason it cannot.
+    // An origin and a base path compose; neither is a special case of the other.
     const both = emitted({ NEXT_PUBLIC_SITE_URL: SITE, NEXT_PUBLIC_BASE_PATH: '/ingot' });
 
     expect(at(both, 'llms.txt')?.body).toContain(`(${SITE}/ingot/docs.md)`);

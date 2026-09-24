@@ -1,11 +1,6 @@
 /**
- * The claims the query path is built on, held up mechanically.
- *
- * `scripts/spike-duckdb.ts` proved these once, on one machine, on the day it
- * was written. This file is what proves them on every run — and, more to the
- * point, what fails loudly if a DuckDB upgrade quietly takes one of them away.
- * The sandbox assertions in particular are a security boundary, not a feature:
- * a caller of `POST /:account/:ingot/query` sends us raw SQL.
+ * The DuckDB behaviours the query path relies on, so a DuckDB upgrade that
+ * changes one fails here. The sandbox assertions are a security boundary.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,13 +11,8 @@ import { type DuckDBConnection, DuckDBInstance, StatementType } from '@duckdb/no
 let scratch: string;
 
 /**
- * A fresh instance per session, not a fresh connection.
- *
- * Two findings from the spike make this mandatory rather than tidy. Connections
- * to one instance share a catalogue, so two sessions would collide on table
- * names. And `enable_external_access` / `lock_configuration` are instance-wide:
- * locking one connection down locks every other connection on that instance,
- * including ours. One tenant's query would then be able to break the next one.
+ * A fresh instance per session: connections to one instance share a catalogue,
+ * and `enable_external_access` / `lock_configuration` are instance-wide.
  */
 async function openSession(): Promise<{
   instance: DuckDBInstance;
@@ -43,7 +33,7 @@ async function openSession(): Promise<{
   return { instance, connection };
 }
 
-/** Steps 5 of the recipe: revoke, then lock. The order is the security property. */
+/** Revoke external access, then lock configuration; the order matters. */
 async function lockDown(connection: DuckDBConnection): Promise<void> {
   await connection.run(`SET enable_external_access = false`);
   await connection.run(`SET lock_configuration = true`);
@@ -71,9 +61,8 @@ describe('the sandbox', () => {
   });
   afterAll(() => instance.closeSync());
 
-  // Each of these is a way out of the session: onto the filesystem, onto the
-  // network, into another tenant's Parquet, or back into the configuration to
-  // undo the lock. All of them must be refused.
+  // Each is a way out of the session: filesystem, network, another tenant's
+  // Parquet, or the configuration. All must be refused.
   const escapes: ReadonlyArray<readonly [string, string]> = [
     ['writing a file', `COPY (SELECT 1) TO '/tmp/ingot-leak.csv'`],
     ['reading a local file', `SELECT * FROM read_csv('/etc/passwd')`],
@@ -103,10 +92,8 @@ describe('the sandbox', () => {
     expect(columns.map((c) => c.column_name)).toEqual(['row_id', 'pr', 'adds']);
   });
 
-  // The one the lockdown does not close. An in-memory ATTACH touches no
-  // filesystem and no network, so nothing in the recipe has an opinion about
-  // it — and once attached you can allocate as much memory as you like. This
-  // is why the statement allowlist below is load-bearing rather than a nicety.
+  // The lockdown does not close an in-memory ATTACH (no filesystem, no network),
+  // which is why the statement allowlist below is load-bearing.
   it('does NOT contain an in-memory ATTACH', async () => {
     await connection.run(`ATTACH ':memory:' AS smuggled`);
     await connection.run(`CREATE TABLE smuggled.evil AS SELECT * FROM range(100)`);
@@ -122,16 +109,14 @@ describe('the statement allowlist', () => {
   beforeAll(async () => {
     instance = await DuckDBInstance.create(':memory:');
     connection = await instance.connect();
-    // prepare() binds as well as parses, so a statement naming a table that
-    // does not exist throws instead of reporting its type. The allowlist check
-    // therefore runs *after* the session's tables are materialised — which is
-    // where the recipe puts it anyway, but it is not free to move earlier.
+    // prepare() binds as well as parses, so a statement naming a missing table
+    // throws instead of reporting its type; the allowlist check runs after
+    // tables are materialised.
     await connection.run(`CREATE TABLE staged (row_id VARCHAR, pr INTEGER)`);
   });
   afterAll(() => instance.closeSync());
 
-  // Read before execution, which is the whole point: a COPY is refused because
-  // of what it is, not because it happened to fail.
+  // The type is read from the parse tree without executing the statement.
   it.each([
     ['SELECT 1', StatementType.SELECT],
     [`COPY (SELECT 1) TO '/tmp/x.csv'`, StatementType.COPY],
@@ -165,18 +150,15 @@ describe('getTableNames, which decides what to materialise', () => {
   });
   afterAll(() => instance.closeSync());
 
-  // We have to ask before we build the tables, so this working against an
-  // empty catalogue is the case that matters.
+  // Called against an empty catalogue, before the tables are built.
   it('names tables that do not exist yet', () => {
     expect([...connection.getTableNames('SELECT * FROM absent_a, absent_b', false)].sort()).toEqual(
       ['absent_a', 'absent_b'],
     );
   });
 
-  // The trap. A USING join extracts nothing, and so does a query that will not
-  // parse — so an empty result cannot be read as "this query needs no tables".
-  // It has to mean "materialise everything", or a perfectly good query with a
-  // USING join gets a table-not-found error instead of an answer.
+  // A USING join and an unparseable query both extract nothing, so an empty
+  // result must mean "materialise everything", not "no tables needed".
   it('returns nothing for a USING join, indistinguishably from a bad query', () => {
     expect(connection.getTableNames('SELECT * FROM a JOIN b USING (sha)', false)).toEqual([]);
     expect(connection.getTableNames('SELECT FROM WHERE', false)).toEqual([]);
@@ -191,9 +173,8 @@ describe('reading the base tier', () => {
   });
   afterAll(() => instance.closeSync());
 
-  // Base files written before a column existed sit beside files written after
-  // it. Without union_by_name the older file is a schema mismatch and the read
-  // fails; with it, the missing column reads as null.
+  // Without union_by_name, an older file missing a column is a schema mismatch;
+  // with it, the column reads as null.
   it('unions Parquet generations of differing shape', async () => {
     const older = join(scratch, 'gen-0001.parquet');
     const newer = join(scratch, 'gen-0002.parquet');
@@ -214,7 +195,7 @@ describe('reading the base tier', () => {
     expect(Number(row?.with_note)).toBe(1);
   });
 
-  // Base ∪ overlay, which is what every query in this product actually runs.
+  // Base ∪ overlay, the shape of every query.
   it('unions the base with the overlay by name', async () => {
     const base = join(scratch, 'base.parquet');
     await connection.run(
@@ -249,9 +230,8 @@ describe('vector search', () => {
   });
   afterAll(() => instance.closeSync());
 
-  // No `vss` extension and no HNSW: that index needs a persisted database file,
-  // which this design deliberately does not have. Brute force over a
-  // materialised table is the trade, and cosine similarity is core DuckDB.
+  // No `vss`/HNSW (that index needs a persisted file); brute-force cosine
+  // similarity is core DuckDB.
   it('scores fixed-width FLOAT[N] arrays without the vss extension', async () => {
     const [row] = await rowsOf(
       connection,
@@ -276,8 +256,8 @@ describe('vector search', () => {
 });
 
 describe('generated SQL', () => {
-  // Column names come from a caller's mapping, and `at` is a DuckDB keyword.
-  // Every identifier this app emits is quoted; this is the test that says why.
+  // Column names come from a caller's mapping and can be keywords like `at`, so
+  // every emitted identifier is quoted.
   it('needs every identifier quoted, because callers pick the names', async () => {
     const instance = await DuckDBInstance.create(':memory:');
     const connection = await instance.connect();

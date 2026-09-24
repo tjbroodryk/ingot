@@ -15,8 +15,7 @@ import { HashEmbedder } from '../src/embed/embedder.js';
 
 /**
  * The adapters that need neither a network nor a key. The Ingot and Hyperspell
- * adapters are exercised by running the benchmark against them, because a mock
- * of a retrieval system would assert that the mock retrieves.
+ * adapters are exercised by running the benchmark against them.
  */
 const world = buildWorld({ seed: 2 });
 const corpus = buildCorpus(world);
@@ -24,9 +23,8 @@ const knownRefs = corpusRefs(corpus);
 const questions = buildQuestions(world, { perTemplate: 2 });
 
 /**
- * Enough to construct the REST adapter. Nothing here reaches the network: the
- * tool surface and the schema note are decided before a single call is made,
- * which is exactly the part of it worth asserting on without a server.
+ * Enough to construct the REST adapter without touching the network: its tool
+ * surface and schema note are decided before any call.
  */
 const options = { baseUrl: 'http://localhost:3002', account: 'dev', apiKey: 'k', runId: 'test' };
 
@@ -58,17 +56,9 @@ describe('the vector adapter', () => {
 });
 
 /**
- * The top-k rows — one local, two hosted vector databases, one hosted memory —
- * have to reach the model through exactly the same words.
- *
- * This is the test that keeps `pinecone` and `turbopuffer` from turning into a
- * comparison of prompt copy. Each was added by writing an adapter that ranks
- * the same vectors somewhere else; if adding one had also meant writing it a
- * slightly better tool description, the accuracy column would have carried
- * that difference and reported it as retrieval.
- *
- * None of these constructors touches the network — where the vectors live is
- * decided at ingest, and the surface is decided before that.
+ * The top-k rows must reach the model through exactly the same words, so
+ * `pinecone` and `turbopuffer` cannot turn into a comparison of prompt copy.
+ * None of these constructors touches the network.
  */
 describe('the top-k baselines', () => {
   const baselines: readonly MemoryAdapter[] = [
@@ -125,8 +115,7 @@ describe('the shared search surface', () => {
 
   test('prints a score only when the store returned one', () => {
     expect(renderHits([{ score: 0.5, text: 'a' }])).toBe('#1 score=0.5000\na');
-    // A store with no comparable score gets no score, rather than a zero the
-    // model would read as "nothing matched".
+    // No comparable score gets no score, not a zero.
     expect(renderHits([{ score: null, text: 'a' }])).toBe('#1\na');
   });
 
@@ -167,9 +156,8 @@ describe('the ingot REST adapter', () => {
     const baseline = new VectorAdapter(new HashEmbedder()).tools()[0];
     if (!search || !baseline) throw new Error('both adapters should offer a search');
 
-    // The point of this adapter is that its surface is no better written than
-    // the baseline's. Both take a plain-language query and a row cap, and if
-    // one ever grows an argument the other lacks, that is a thumb on the scale.
+    // Both take a plain-language query and a row cap; a divergence would be a
+    // thumb on the scale.
     const argument = (tool: { input_schema: Record<string, unknown> }): string[] =>
       Object.keys(tool.input_schema.properties as Record<string, unknown>).sort();
     expect(argument(search)).toContain('query');

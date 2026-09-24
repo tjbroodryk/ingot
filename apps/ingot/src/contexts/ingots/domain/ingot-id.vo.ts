@@ -15,14 +15,7 @@ export class IngotId extends Identifier {
   }
 }
 
-/**
- * A table's own identity, separate from `(ingot, name)`.
- *
- * The natural key would be the pair, but a table is an aggregate with a
- * version and a generation of its own — two tools writing to two tables of one
- * ingot must not contend — and the optimistic-concurrency machinery wants a
- * single-column identity to guard on. The pair is a unique index instead.
- */
+/** A table's own identity, separate from `(ingot, name)`, so it can carry a version. */
 export class IngotTableId extends Identifier {
   readonly prefix = 'tbl';
 
@@ -37,19 +30,9 @@ export class IngotTableId extends Identifier {
   }
 
   /**
-   * The id a table *must* have, derived from what already makes it unique.
-   *
-   * Two concurrent writes to a table that does not exist yet both create it.
-   * With random ids they collide on the `(ingot_id, name)` index instead of on
-   * the primary key — a raw unique violation, which aborts the transaction and
-   * cannot be recovered in place, so one caller gets a 500 for doing nothing
-   * wrong. Deriving the id turns that collision into an ordinary
-   * optimistic-concurrency miss: no exception, a live transaction, and a loser
-   * who can simply re-read what the winner created.
-   *
-   * Truncated to 24 hex characters, matching `newIdValue`. That is 96 bits
-   * over a space that is one entry per table per ingot, so a collision is not
-   * a thing to plan around.
+   * The id a table must have, derived from `(ingot, name)`. Concurrent creates
+   * then collide on the primary key — an ordinary version miss the loser can
+   * re-read — rather than a raw unique violation. Truncated to 24 hex chars.
    */
   static forTable(ingotId: string, name: string): IngotTableId {
     const digest = createHash('sha256').update(`${ingotId}:${name}`, 'utf8').digest('hex');

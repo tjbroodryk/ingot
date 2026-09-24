@@ -2,13 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { pool } from '../src/run/pool.js';
 
 /**
- * The bounded worker, which the runner leans on for two separate promises.
- *
- * The obvious one is that it overlaps work. The load-bearing one is that it
- * returns results in *item* order however they finished, because that is what
- * makes a report at `--concurrency 8` byte-identical to the same run serial. A
- * benchmark whose table depends on how fast the provider happened to answer is
- * not a benchmark.
+ * The bounded worker. It overlaps work and returns results in item order
+ * however they finished, so a report at `--concurrency 8` is byte-identical to
+ * serial.
  */
 
 const tick = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,9 +58,8 @@ describe('pool', () => {
     await pool(Array.from({ length: 10 }, (_, index) => index), 4, () => tick(20));
     const elapsed = Date.now() - started;
 
-    // Serial would be 200ms; three batches of four is ~60ms. The bound is loose
-    // because timers are not promises about wall clock, but it is far enough
-    // below 200ms to catch a pool that silently stopped overlapping.
+    // Serial would be 200ms; four wide is ~60ms. Loose bound, since timers are
+    // not wall-clock promises.
     expect(elapsed).toBeLessThan(150);
   });
 });

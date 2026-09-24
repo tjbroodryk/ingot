@@ -1,20 +1,12 @@
 import { zipSync } from 'fflate';
 
 /**
- * Building the Office documents the parser tests read.
+ * Builds the Office documents the parser tests read.
  *
- * Fixtures rather than checked-in binaries, for two reasons that both matter
- * here. A `.pptx` in the repository is opaque — nobody reviewing a test can see
- * what it contains, so nobody can tell whether a failing assertion is the
- * parser's fault or the fixture's. And the interesting cases are the *awkward*
- * ones: a deck whose notes do not line up positionally with its slides, one
- * whose parts are numbered past nine, one that claims to expand to a
- * terabyte. None of those are things to go looking for a sample of; they are
- * things to construct exactly.
- *
- * These write real archives with `fflate`, so the parser under test does real
- * unzipping of real OOXML — the same code path a deck from PowerPoint takes.
- * The suite is still offline and still deterministic.
+ * Fixtures rather than checked-in binaries: a reviewer can see what they
+ * contain, and the awkward cases (notes that don't line up with slides, parts
+ * numbered past nine, a claimed terabyte) are constructed exactly. Real
+ * `fflate` archives, so the parser does real unzipping of real OOXML.
  */
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
@@ -29,14 +21,10 @@ export interface SlideSpec {
 }
 
 /**
- * A `.pptx` as PowerPoint lays one out.
- *
- * The part numbering is the point of doing this properly. Slides are numbered
- * from one in order, but **notes parts are numbered in creation order** — so a
- * deck where only the second and fourth slides have notes gets `notesSlide1`
- * and `notesSlide2`, pointing at slides 2 and 4. That is the shape that catches
- * a parser guessing `notesSlide{N}` for `slide{N}`, and it is exactly what real
- * decks look like once somebody has deleted a slide.
+ * A `.pptx` as PowerPoint lays one out. Notes parts are numbered in creation
+ * order, not slide order — so a deck where only slides 2 and 4 have notes gets
+ * `notesSlide1` and `notesSlide2`, which catches a parser guessing
+ * `notesSlide{N}` for `slide{N}`.
  */
 export function pptx(slides: readonly SlideSpec[]): Buffer {
   const files: Record<string, Uint8Array> = {
@@ -50,8 +38,8 @@ export function pptx(slides: readonly SlideSpec[]): Buffer {
     files[`ppt/slides/slide${number}.xml`] = encode(slideXml(slide));
 
     if (slide.notes === undefined) {
-      // No relationship of that type, which is how a slide with no notes is
-      // actually written — not an empty notes part.
+      // How a slide with no notes is actually written: no relationship, not an
+      // empty notes part.
       files[`ppt/slides/_rels/slide${number}.xml.rels`] = encode(rels(null));
       return;
     }
@@ -90,14 +78,9 @@ export function zipOf(files: Record<string, string>): Buffer {
 }
 
 /**
- * An archive whose members compress enormously — the shape of a bomb.
- *
- * Zeroes rather than anything clever: a megabyte of them deflates to a couple
- * of hundred bytes, which is a ratio far past `MAX_RATIO` while holding nothing
- * dangerous. The incompressible padding is what lifts the archive over
- * `RATIO_FLOOR`, so that the ratio check is the one being exercised rather than
- * skipped — without which this fixture would have to declare hundreds of
- * megabytes to trip a different limit, and would cost that much to build.
+ * An archive whose members compress enormously — the shape of a bomb. Zeroes
+ * deflate to almost nothing, a ratio far past `MAX_RATIO`; the incompressible
+ * padding lifts it over `RATIO_FLOOR` so the ratio check is what's exercised.
  */
 export function compressible(members: number, bytesEach: number): Buffer {
   const padding = new Uint8Array(8 * 1024);

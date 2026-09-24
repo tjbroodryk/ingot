@@ -11,18 +11,9 @@ interface Scope {
 }
 
 /**
- * The ambient transaction, carried without threading a handle through
- * everything.
- *
- * `AsyncLocalStorage` rather than a parameter because the alternative is a
- * transaction argument on every repository method, every port, and every
- * caller in between — and a single place that forgets to pass it writes
- * outside the transaction while looking exactly like code that does not.
- * Here, a repository asks `queryable` and is correct by default.
- *
- * The context does not cross into work the transaction does not wait for. That
- * is the property the outbox relies on: handlers dispatched after commit run
- * with no scope, so they get the pool, which is what they should get.
+ * The ambient transaction, carried via `AsyncLocalStorage` so a repository asks
+ * `queryable` instead of threading a handle. Work dispatched after commit runs
+ * with no scope and gets the pool.
  */
 @Injectable()
 export class PgUnitOfWork implements UnitOfWork {
@@ -32,18 +23,12 @@ export class PgUnitOfWork implements UnitOfWork {
   constructor(@Inject(DATABASE) private readonly database: Database) {}
 
   async run<T>(work: () => Promise<T>): Promise<T> {
-    // Joining rather than nesting: a second `BEGIN` would be a savepoint with
-    // its own commit, and a caller asking for atomicity would silently get
-    // half of it.
+    // Join rather than nest; a second `BEGIN` would be a savepoint with its own commit.
     if (this.scopes.getStore()) return work();
 
     const effects: Scope['effects'] = [];
 
-    // Measured around the transaction only, so the sample is the time a
-    // connection was held and rows were locked — not the time the request
-    // took. When this diverges from `ingot_command_duration_seconds` the
-    // difference is work the handler did outside the write, which is exactly
-    // the question you ask when commands are slow but Postgres looks idle.
+    // Measured around the transaction only: the time a connection was held and rows locked.
     const result = await instrumented(
       'db.transaction',
       undefined,
@@ -51,9 +36,7 @@ export class PgUnitOfWork implements UnitOfWork {
       () => this.database.transaction((tx) => this.scopes.run({ tx, effects }, work)),
     );
 
-    // Past the point of no return: the transaction has committed, so a failing
-    // side effect is a failed side effect and not a reason to unwind a change
-    // that has already happened.
+    // Past the commit: a failing side effect is logged, not a reason to unwind.
     for (const effect of effects) {
       try {
         await effect();

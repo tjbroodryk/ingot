@@ -2,25 +2,13 @@ import { Metrics } from './metrics/catalogue.js';
 import { instrumentMethod, operationRecorder, outcomeRecorder } from './observe.js';
 import type { Detail } from './tracing/tracer.js';
 
-/**
- * Any method the decorators below can wrap.
- *
- * `never[]` rather than `unknown[]` so that a method with real parameter types
- * still satisfies it — parameters are contravariant, and `never` is assignable
- * to anything. The wrapper never looks at the arguments, it only passes them
- * through, so this is the honest signature for "whatever was there".
- */
+/** Any method the decorators below can wrap. `never[]` so any parameter types satisfy it. */
 type Method = (...args: never[]) => unknown;
 
 export interface ObservedOptions {
   /**
-   * The name in Jaeger and in the `op` label.
-   *
-   * Defaults to `Class.method`, which is a fine name and a poor one: it is
-   * accurate, and it changes when somebody renames a class, taking a
-   * dashboard panel and an alert rule with it. Name the operation explicitly
-   * — `ingot.roll_up` — anywhere the number is going to be looked at
-   * twice.
+   * The span name and `op` label. Defaults to `Class.method`, which changes if
+   * the class is renamed; name it explicitly where the number will be watched.
    */
   op?: string;
   /** Detail every call of this method carries, put on the span. */
@@ -28,7 +16,9 @@ export interface ObservedOptions {
 }
 
 /**
- * Measures a method: one span, one duration sample, both under one name.
+ * Measures a method: one span, one duration sample, under one name. `observe()`
+ * in decorator form. Works on sync and async methods. For a non-method function,
+ * use `observe()`.
  *
  * ```ts
  * class DuckDbEngine {
@@ -36,20 +26,6 @@ export interface ObservedOptions {
  *   async query(plan: QueryPlan): Promise<QueryResult> { … }
  * }
  * ```
- *
- * This is `observe()` in decorator form and it behaves identically — the same
- * histogram, the same `outcome` label, the same exemplar linking a sample to
- * the trace it came from. Which of the two to use is a question about where
- * the boundary is: a whole method is a decorator, a stretch inside one is a
- * block.
- *
- * It works on synchronous methods too. A returned promise defers the
- * measurement to its settlement; anything else is measured on return.
- *
- * What it cannot do is see a method called from inside its own class through
- * `this.method()`… it can, actually — the wrapper is on the prototype. What
- * it genuinely cannot see is a private function that is not a method at all,
- * which is what `observe()` is for.
  */
 export function Observed(options: ObservedOptions = {}) {
   return <T extends Method>(
@@ -63,7 +39,8 @@ export function Observed(options: ObservedOptions = {}) {
 }
 
 /**
- * Marks a method as a call to somebody else's service.
+ * Marks a method as a call to an external service; the decorator form of
+ * `upstream()`. Records into `UpstreamDuration`.
  *
  * ```ts
  * class OpenAiEmbedder {
@@ -71,11 +48,6 @@ export function Observed(options: ObservedOptions = {}) {
  *   async embed(texts: string[]): Promise<number[][]> { … }
  * }
  * ```
- *
- * The decorator form of `upstream()`, and the natural fit for a provider
- * adapter, where the whole class is calls to one host and every public method
- * is one endpoint. Records into `ingot_upstream_request_duration_seconds`
- * with the wider bucket set that external latency needs.
  */
 export function Upstream(options: { host: string; operation: string; detail?: Detail }) {
   return <T extends Method>(
@@ -93,13 +65,7 @@ export function Upstream(options: { host: string; operation: string; detail?: De
   };
 }
 
-/**
- * `Class.method`, read off the prototype the decorator was applied to.
- *
- * `target` is the prototype for an instance method and the constructor itself
- * for a static one, so the name is fetched from whichever of the two is
- * actually the class.
- */
+/** `Class.method`. `target` is the prototype for an instance method, the constructor for a static one. */
 function defaultName(target: object, propertyKey: string | symbol): string {
   const owner =
     typeof target === 'function'

@@ -4,23 +4,9 @@ import type { KeyPrincipal } from '../../../auth/authenticator.port.js';
 import { ACCOUNT_REPOSITORY, ApiKey, type AccountRepository } from '../domain/index.js';
 
 /**
- * Turns a presented key into a principal.
- *
- * One half of authentication rather than the whole of it: this is the digest
- * lookup, and which credentials a deployment accepts at all is decided by the
- * adapter in `src/auth/` that calls it. `SealedAuthenticator` reaches here for
- * anything that is not its configured root key.
- *
- * Not a query, because it writes: every successful authentication stamps
- * `last_used_at`, which is the only way an operator can tell a live key from
- * one that was minted and forgotten. That write goes through
- * `AccountRepository.touch` rather than a save, so concurrent requests on one
- * key do not fight over the aggregate's version — see the note on that method.
- *
- * Failures are deliberately indistinguishable. A key that never existed, a key
- * that was revoked, and a key belonging to a deleted account all produce the
- * same error with the same message, because the difference between them is
- * information a caller holding an invalid key has not earned.
+ * Resolves a presented key to a principal by digest lookup, stamping
+ * `last_used_at` on success via `AccountRepository.touch`. Unknown, revoked,
+ * and deleted-account keys all fail with the same error.
  */
 @Injectable()
 export class AccountAuthenticator {

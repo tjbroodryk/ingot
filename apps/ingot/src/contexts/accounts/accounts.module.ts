@@ -7,11 +7,7 @@ import { ACCOUNT_REPOSITORY } from './domain/index.js';
 import { PgAccountRepository } from './infrastructure/postgres/pg-account.repository.js';
 import { AccountsController } from './interface/accounts.controller.js';
 
-/**
- * Exports the authenticator and the repository because the guards are bound
- * globally in `AppModule` and resolve them from there — the guards live in
- * this context but are applied to every route in the service.
- */
+/** Exports the authenticator and repository used by the globally-bound guards. */
 @Module({
   controllers: [AccountsController],
   providers: [

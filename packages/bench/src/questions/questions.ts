@@ -1,13 +1,8 @@
 import type { Ref, World } from '../corpus/world.js';
 
 /**
- * Questions, and the gold answers computed from the world that produced the
- * corpus. Nothing here is hand-annotated.
- *
- * The categories exist because they are the axis the whole comparison turns
- * on. Semantic similarity answers some of these and structurally cannot answer
- * others, and a question set skewed either way writes the conclusion before
- * the first run. Report per category or do not report at all.
+ * Questions, and gold answers computed from the world. Nothing hand-annotated.
+ * The categories are the axis the comparison turns on; report per category.
  */
 export type Category = 'aggregate' | 'absence' | 'ordering' | 'join' | 'semantic' | 'multi-hop';
 
@@ -22,15 +17,8 @@ export interface Question {
   readonly text: string;
   readonly gold: Gold;
   /**
-   * The records that *constitute* the answer — not everything a reader would
-   * scan on the way to it.
-   *
-   * `null` where the answer is a statistic rather than a set of records. A
-   * correct count of thirty-seven pull requests is the evidence; demanding
-   * that thirty-seven refs come back through the tools would score the
-   * cheapest correct path — one `SELECT count(*)` — as a total retrieval
-   * failure. Those questions are scored on the answer alone, and the reports
-   * say so.
+   * The records that constitute the answer. `null` where the answer is a
+   * statistic rather than a set of records, and scored on the answer alone.
    */
   readonly evidence: readonly Ref[] | null;
 }
@@ -91,8 +79,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   }
 
   // ── absence ──────────────────────────────────────────────────────────────
-  // The category vector search cannot express: there is no text to be similar
-  // to, because the answer is defined by what is not there.
+  // The category with no text to be similar to: the answer is what is not there.
   const ownerless = world.services.filter((service) => service.owner === null);
   if (ownerless.length > 0) {
     add(
@@ -128,9 +115,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   // ── ordering ─────────────────────────────────────────────────────────────
   for (const count of [3, 5].slice(0, limit)) {
     const ranked = [...world.ciRuns].sort((a, b) => b.durationSec - a.durationSec);
-    // Any tie inside the top N, or at its boundary, would make more than one
-    // ordering correct — and a question with two right answers scored against
-    // one of them measures luck.
+    // Skip if a tie inside or at the boundary of the top N would make more than
+    // one ordering correct.
     const top = ranked.slice(0, count + 1);
     const durations = new Set(top.map((run) => run.durationSec));
     if (top.length < count + 1 || durations.size !== top.length) continue;
@@ -174,11 +160,9 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     );
   }
 
-  // The one template in this category that is not a join between tools: both
-  // the service name and the severity are fields on the incident, so this is a
-  // predicate over one payload. It stays because a two-clause filter is a real
-  // thing to ask and something has to hold the easy end of the category — the
-  // joins that cross tool results are appended at the foot of this function.
+  // A single-payload predicate — service and severity are both incident fields
+  // — not a cross-tool join; the easy end of the category. The cross-tool joins
+  // are appended at the foot of this function.
   for (const service of world.services.slice(0, limit)) {
     const matching = world.incidents.filter(
       (incident) => incident.service === service.name && incident.severity !== 'sev3',
@@ -194,7 +178,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
 
   // ── semantic ─────────────────────────────────────────────────────────────
   // The paraphrase shares no distinctive term with the write-up, so keyword
-  // search cannot shortcut it and the category measures what it says.
+  // search cannot shortcut it.
   for (const incident of world.incidents.slice(0, limit * 2)) {
     add(
       'semantic',
@@ -205,21 +189,9 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   }
 
   // ── multi-hop ────────────────────────────────────────────────────────────
-  /*
-   * The two questions below and the churn one at the foot of this file answer
-   * with a *team name*, and all three are scored on the answer alone.
-   *
-   * They cited the winning service and everything it beat until a run showed
-   * what that does to the cheapest correct path: `ingot-mcp` and `ingot-rest`
-   * answered from one grouped count returning `(owner, n)`, no record came
-   * back through a tool, and rows that got the question right scored 0%
-   * evidence recall for it. That is the aggregate trap in a different
-   * category — a name computed over the corpus is a statistic, and being
-   * right about it is the evidence.
-   *
-   * `q-025` is deliberately not in this group. Its answer is a `svc:` ref, so
-   * the answer is itself a record and recall over it means something.
-   */
+  // These answer with a team name and are scored on the answer alone: a name
+  // computed over the corpus is a statistic, like a count. `q-025` is not in
+  // this group — its answer is a `svc:` ref, so recall over it means something.
   const incidentsByService = new Map<string, number>();
   for (const incident of world.incidents) {
     incidentsByService.set(incident.service, (incidentsByService.get(incident.service) ?? 0) + 1);
@@ -260,9 +232,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   }
 
   // ── the oversized result ─────────────────────────────────────────────────
-  // Only when logs were asked for. These are ordinary questions of the
-  // categories above — the difference is not the question, it is that the
-  // evidence arrived in one tool result that does not fit in a window.
+  // Only when logs were asked for: ordinary questions whose evidence arrives in
+  // one tool result that does not fit in a window.
   if (world.logs.length > 0) {
     const errorsByService = new Map<string, number>();
     for (const line of world.logs) {
@@ -326,30 +297,14 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
 
   // ── joins across tool results ────────────────────────────────────────────
   /*
-   * The questions whose answer lives in no single payload.
+   * Questions whose answer lives in no single payload: the linking value is a
+   * bare string shared across results (a service name, a file path), with no
+   * declared foreign key. No single record is similar to the question, so
+   * retrieval has to bring back disjoint sets and the model do the join.
    *
-   * Everything above joins at most two record types, and the linking value is
-   * usually sitting in the same result the answer is: a PR carries the file
-   * paths it touched, an incident carries the service it hit. These do not.
-   * The team that owns a service is recorded in `catalog.list_services`, the
-   * file-to-service mapping in `catalog.list_files`, and the change itself in
-   * `github.list_pull_requests` — three results, arriving at different times,
-   * sharing nothing but a bare string in a field. Nobody declared a foreign
-   * key; the agent has to notice that `src/billing/router.ts` in one payload
-   * and `billing` in another are the same thing.
-   *
-   * That is the case worth measuring, because it is the one where top-k has
-   * the least to work with. A cosine neighbourhood is computed per record, and
-   * no single record here is similar to the question: the service page does
-   * not mention pull requests, the PR page does not mention teams, and the
-   * record that would answer the question outright does not exist. Retrieval
-   * has to bring back two disjoint sets and the model has to do the join, or
-   * the store has to do it before the model sees anything.
-   *
-   * Appended rather than slotted in beside the joins above, and that is load
-   * bearing: question ids are positional, so inserting a template renumbers
-   * every question after it and silently invalidates `--rescore` over every
-   * run ever bought. New templates go at the end.
+   * Appended, not slotted in: question ids are positional, so inserting a
+   * template renumbers every question after it and invalidates `--rescore`.
+   * New templates go at the end.
    */
   const teams = [
     ...new Set(world.services.map((service) => service.owner).filter((o): o is string => o !== null)),
@@ -359,8 +314,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
       world.services.filter((service) => service.owner === team).map((service) => service.name),
     );
 
-  // Two results: the pager knows which service, the catalogue knows whose it
-  // is. Neither knows both.
+  // Two results: the pager knows which service, the catalogue whose it is.
   for (const team of teams.slice(0, limit)) {
     const owned = ownedBy(team);
     const matching = world.incidents.filter((incident) => owned.has(incident.service));
@@ -373,9 +327,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     );
   }
 
-  // Three results, and a hop through a value that is neither an id nor a name:
-  // a path in a PR's `files` array is a row in the file listing, whose
-  // `service` is a row in the catalogue, whose `owner` is the team asked about.
+  // Three results: a path in a PR's `files` → a row in the file listing → its
+  // `service` in the catalogue → the `owner` team.
   const serviceOfPath = new Map(world.files.map((file) => [file.path, file.service]));
   for (const team of teams.slice(0, limit)) {
     const owned = ownedBy(team);
@@ -395,11 +348,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     );
   }
 
-  // The anti-join, and the reason it is filed under `absence` rather than
-  // `join`: the answer is the services that are missing from the other side.
-  // A top-k over either payload alone ranks nothing useful — there is no text
-  // to be similar to — and unlike the ownerless services above, the emptiness
-  // is not stated anywhere. It is a property of two results held together.
+  // The anti-join, filed under `absence`: the answer is the services missing
+  // from the incidents, stated nowhere and holding across two results.
   const troubled = new Set(world.incidents.map((incident) => incident.service));
   const quiet = world.services.filter((service) => !troubled.has(service.name));
   if (quiet.length > 0 && quiet.length < world.services.length) {
@@ -411,10 +361,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     );
   }
 
-  // Three hops and an argmax: churn is on the pull requests, the path-to-
-  // service mapping is in the file listing, and the team is in the catalogue.
-  // Churn rather than a count of pull requests because a sum over line counts
-  // almost never ties, and a tie would make two answers correct.
+  // Three hops and an argmax: churn on the PRs, path→service in the file
+  // listing, team in the catalogue. Churn not a count, since a sum rarely ties.
   const serviceChurn = new Map<string, number>();
   for (const pr of world.pullRequests) {
     for (const path of pr.files) {
@@ -433,17 +381,8 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
         'multi-hop',
         'Which team owns the service whose files have the most total churn (additions plus deletions summed over every pull request that touched a file in that service)? Answer with the team name.',
         { kind: 'set', values: [service.owner] },
-        /*
-         * Scored on the answer alone, by the same rule as the aggregates.
-         *
-         * This cited the winning service record until a run showed what that
-         * does: `ingot-mcp` answered correctly from one grouped sum returning
-         * `(owner, total_churn)`, the `svc:` ref never came back through a
-         * tool, and the row scored 0% evidence recall for having taken the
-         * cheapest right path. The answer here is a name computed over the
-         * corpus, not a set of records — so, like a count of thirty-seven pull
-         * requests, being right about it is the evidence.
-         */
+        // Scored on the answer alone, like the aggregates: the answer is a name
+        // computed over the corpus, not a set of records.
         null,
       );
     }

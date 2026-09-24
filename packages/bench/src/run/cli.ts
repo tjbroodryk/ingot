@@ -30,13 +30,9 @@ import { pool } from './pool.js';
 import { observedTextOf, readRun, readRuns, writeMeta, type RunMeta } from './store.js';
 
 /**
- * `ingot-mcp` and `ingot-rest` are the same store reached through two interfaces:
- * MCP, whose tool descriptions and schema summary the server writes, and REST,
- * whose tools are authored in this repository in the same voice as the
- * baselines'. Both are columns rather than a flag on one column, because the
- * gap between them is a result — how much of Ingot's advantage is the data
- * model and how much is the surface — and a result needs both numbers in the
- * same table, from the same model on the same day.
+ * `ingot-mcp` and `ingot-rest` are the same store over two interfaces: MCP,
+ * whose tool descriptions the server writes, and REST, authored here in the
+ * same voice as the baselines'. The gap between the two columns is a result.
  */
 const ADAPTERS = [
   'ingot-mcp',
@@ -52,16 +48,9 @@ const ADAPTERS = [
 type AdapterName = (typeof ADAPTERS)[number];
 
 /**
- * The rows that rank the same vectors with a different index.
- *
- * `vector` is brute-force cosine in process; `pinecone` and `turbopuffer` are
- * the two hosted vector databases, handed the identical embeddings, chunking
- * and tool surface. They exist to answer the objection that `vector` is a
- * strawman — if a production ANN index cannot beat forty lines of cosine over
- * the same embeddings, then what the top-k rows cannot do is a property of
- * top-k retrieval rather than of this repository's baseline. Expect them to
- * land at or a little below `vector`, which is exact where they approximate;
- * a *large* gap in either direction is a bug in the adapter, not a finding.
+ * The rows that rank the same vectors with a different index: `vector` is
+ * brute-force cosine in process, `pinecone` and `turbopuffer` are hosted, all
+ * handed the identical embeddings. Expect the hosted two near `vector`.
  */
 const LOCAL_EMBEDDING_ADAPTERS: ReadonlySet<AdapterName> = new Set([
   'vector',
@@ -70,18 +59,8 @@ const LOCAL_EMBEDDING_ADAPTERS: ReadonlySet<AdapterName> = new Set([
 ]);
 
 /**
- * Names this tool used to answer to.
- *
- * Renaming a column is right when the old name misleads — `ingot` beside
- * `ingot-rest` read as the product beside a variant, `recall-only` was read as
- * "SQL only" by people who had just been told otherwise, and
- * `ingot-mcp-text-search-only` read as an admission rather than as the control
- * a sceptic should demand. But a rename that breaks the command somebody has
- * in their shell history is a rename that charges them for the improvement, so
- * every old spelling still works and says what it is now called.
- *
- * The table is shared with `store.ts`, which resolves the same names where
- * they are stored rather than typed. See `../adapters/names.ts`.
+ * Old adapter spellings that still resolve, so a command in someone's shell
+ * history keeps working. Shared with `store.ts`; see `../adapters/names.ts`.
  */
 const ALIASES = LEGACY_NAMES as Readonly<Record<string, AdapterName>>;
 
@@ -90,11 +69,7 @@ const PROVIDERS: readonly Provider[] = ['anthropic', 'foundry-claude', 'foundry-
 /** The controls, which answer from the prompt and offer no tools. */
 const NO_TOOL_ADAPTERS: ReadonlySet<string> = new Set(['raw-context']);
 
-/**
- * The default model per provider, because "the default model" is not one thing
- * across them: Azure addresses a *deployment*, and a deployment name that does
- * not exist on the resource fails with a 404 rather than anything informative.
- */
+/** The default model per provider. On Azure this is a deployment name, which 404s if missing. */
 const DEFAULT_MODEL: Record<Provider, string> = {
   anthropic: 'claude-opus-5',
   'foundry-claude': 'claude-opus-5',
@@ -136,12 +111,8 @@ interface Options {
   /** Whether `--adapters` was passed. See the parse case for why it matters. */
   adaptersGiven: boolean;
   /**
-   * A finished run's JSONL whose questions this run should skip.
-   *
-   * The top-up: the generator gained a template, and the eight new questions
-   * are the only ones worth paying for. What comes back merges with the run it
-   * names — `--from old.jsonl,new.jsonl` — into the table a single sitting
-   * would have produced.
+   * A finished run's JSONL whose questions this run should skip — the top-up
+   * for when the generator gained a template. Merge back with `--from old,new`.
    */
   questionsNotIn: string | null;
   /** With `--from`: run the scorer again over the stored transcripts. */
@@ -164,16 +135,12 @@ function parse(argv: readonly string[]): Options {
     categories: null,
     allowHashEmbedder: false,
     dryRun: false,
-    // Foundry's GPT deployment is the default because it is the one this
-    // project actually benchmarks on, and a default that needs a flag on every
-    // invocation to be correct is not a default.
+    // foundry-gpt is the default: the provider this project benchmarks on.
     provider: 'foundry-gpt',
     thinking: true,
     publish: null,
     logs: 0,
-    // One by default. Concurrency makes a run faster and its latency column
-    // meaningless, and that is a trade the person running it should make on
-    // purpose rather than inherit from a default.
+    // One by default: concurrency speeds a run but makes its `ms` column meaningless.
     concurrency: 1,
     from: null,
     adaptersGiven: false,
@@ -196,9 +163,7 @@ function parse(argv: readonly string[]): Options {
         at += 1;
         break;
       case '--adapters':
-        // Recorded because the default is a list rather than an absence, and
-        // `--from` has to tell "report on these columns" from "report on the
-        // columns the file happens to hold".
+        // Recorded so `--from` can tell an explicit column list from the file's own.
         options.adaptersGiven = true;
         options.adapters = next(flag, value)
           .split(',')
@@ -300,11 +265,8 @@ function parse(argv: readonly string[]): Options {
   }
 
   if (!options.model) {
-    // `BENCH_AGENT_MODEL` is a deployment name, and a deployment belongs to one
-    // provider — so it only applies to the provider it was set for. Letting it
-    // win everywhere means `--provider anthropic` quietly asks the Anthropic
-    // API for `gpt-5-mini` and fails with a model-not-found nobody traces back
-    // to a `.env` line.
+    // `BENCH_AGENT_MODEL` is a deployment name belonging to one provider, so it
+    // only applies to foundry-gpt.
     const named = process.env.BENCH_AGENT_MODEL;
     const isGpt = options.provider === 'foundry-gpt';
     options.model = named && isGpt ? named : DEFAULT_MODEL[options.provider];
@@ -313,13 +275,8 @@ function parse(argv: readonly string[]): Options {
 }
 
 /**
- * A run that never produced an answer, as a row.
- *
- * Scored wrong, because it is: the adapter was asked and nothing came back.
- * But `stopReason` carries *why*, so a column full of timeouts is
- * distinguishable from a column full of bad answers when somebody reads the
- * JSONL — and the report counts them separately rather than letting an
- * infrastructure failure quietly become evidence about retrieval.
+ * A run that produced no answer, as a row. Scored wrong, but `stopReason`
+ * records why, so timeouts stay distinguishable from bad answers.
  */
 function failedRow(input: {
   runId: string;
@@ -464,16 +421,14 @@ async function build(
         mapping,
       });
     case 'vector':
-      // These three embed here rather than server-side. Ingot's vectors are
-      // the server's, so a run without one of them in it needs no embedder.
+      // These three embed here, not server-side.
       return new VectorAdapter(embedderFromEnv(env));
     case 'pinecone':
       return new PineconeAdapter(
         {
           apiKey: required('PINECONE_API_KEY', env.PINECONE_API_KEY),
           index: env.PINECONE_INDEX ?? 'ingot-bench',
-          // us-east-1 on AWS for both hosted stores, so the `ms` column is not
-          // quietly reporting which region somebody's namespace ended up in.
+          // Same region for both hosted stores, so `ms` isn't reporting region.
           cloud: env.PINECONE_CLOUD ?? 'aws',
           region: env.PINECONE_REGION ?? 'us-east-1',
           runId,
@@ -509,19 +464,9 @@ function required(name: string, value: string | undefined | null): string {
 }
 
 /**
- * The questions a finished run has not already answered.
- *
- * The case this exists for: a template is added to the generator, and the
- * table already published is short by however many questions it produced.
- * Re-buying the whole set is hours and real money for numbers that will not
- * move, so this buys the difference and `--from old,new` splices the two into
- * the table one sitting would have produced.
- *
- * The settings check is the load-bearing part. Question ids are positional —
- * `q-026` is whatever the twenty-sixth question happened to be — so they only
- * name the same question across two runs if the world and the generator were
- * the same. A seed that differs makes the subtraction quietly meaningless
- * rather than wrong-looking, which is the worst way for it to fail.
+ * The questions a finished run has not answered — the top-up for a new
+ * template. Question ids are positional, so `seed`, `perTemplate` and `logs`
+ * must match or the subtraction compares different questions.
  */
 async function onlyMissingFrom(
   questions: readonly Question[],
@@ -589,9 +534,7 @@ async function main(options: Options): Promise<void> {
     return;
   }
 
-  // Only the locally-embedding adapters can be spoiled by the offline
-  // stand-in. Demanding the flag for an Ingot-only run, whose vectors are the
-  // server's, would be a guard against nothing.
+  // Only locally-embedding adapters can be spoiled by the offline stand-in.
   const embedsLocally = options.adapters.some((name) => LOCAL_EMBEDDING_ADAPTERS.has(name));
   const embedder = embedsLocally ? embedderFromEnv(process.env) : null;
   const warnings: string[] = [];
@@ -634,10 +577,8 @@ async function main(options: Options): Promise<void> {
     );
   }
   if (options.questionsNotIn) {
-    // A warning rather than a note: this run's accuracy is over a handful of
-    // questions chosen because they were missing, which is not a sample of the
-    // set and reads nothing like one. Worded to stay true after the merge
-    // inherits it, since every warning here outlives the run that wrote it.
+    // A warning, not a note: accuracy over a handful of missing questions is a
+    // slice, not a sample. Worded to stay true after a merge inherits it.
     warnings.push(
       `Bought as a top-up: this run asked only the ${questions.length} question(s) that ` +
         `${options.questionsNotIn} had not already answered. On its own that is a slice of the ` +
@@ -645,11 +586,8 @@ async function main(options: Options): Promise<void> {
     );
   }
   if (options.concurrency > 1) {
-    // Accuracy, tokens and tool calls are unaffected — each agent run is
-    // independent and sees the identical corpus. Latency is not: every `ms` was
-    // measured while the provider was serving other runs from this same
-    // benchmark, so the column compares adapters within the run and says
-    // nothing against a run that had the API to itself.
+    // Accuracy, tokens and tool calls are unaffected; only `ms` is, since each
+    // run was measured while the provider served others.
     notes.push(
       `Run had ${options.concurrency} agent runs in flight. The ms column is comparable ` +
         'within this report and not with a serial one; accuracy and tokens are unaffected.',
@@ -660,9 +598,8 @@ async function main(options: Options): Promise<void> {
   await mkdir(options.out, { recursive: true });
   const jsonlPath = join(options.out, `${runId}.jsonl`);
 
-  // Written before the first question rather than after the last, so a run that
-  // dies halfway still leaves rows that can be reported on and published. See
-  // the note in `store.ts`.
+  // Written before the first question, so a run that dies halfway still leaves
+  // reportable rows. See `store.ts`.
   const meta: RunMeta = {
     runId,
     seed: options.seed,
@@ -683,11 +620,8 @@ async function main(options: Options): Promise<void> {
   };
   await writeMeta(jsonlPath, meta);
 
-  // Appends are chained rather than fired off in parallel. A row carries its
-  // whole transcript and runs to tens of kilobytes, well past the size at
-  // which `O_APPEND` is atomic, so two concurrent writers would interleave
-  // halfway through a line and leave a JSONL that will not parse — losing
-  // exactly the transcripts this append-as-you-go exists to protect.
+  // Appends are chained, not parallel: a row runs to tens of KB, past atomic
+  // `O_APPEND`, so concurrent writers would interleave and corrupt the JSONL.
   let appends: Promise<void> = Promise.resolve();
   const append = (row: RunRecord): Promise<void> => {
     appends = appends.then(() =>
@@ -697,18 +631,14 @@ async function main(options: Options): Promise<void> {
   };
 
   for (const name of options.adapters) {
-    // An adapter that cannot be built or cannot ingest costs its own column
-    // and nothing else. A Hyperspell key that has expired, or an Ingot server
-    // that went away, should not take the five columns behind it with it —
-    // the report says which adapter is missing and why, and the rest of the
-    // table is still a table.
+    // An adapter that cannot be built or ingest costs its own column and
+    // nothing else; the rest of the table still stands.
     let adapter: MemoryAdapter;
     try {
       adapter = await build(name, options, model, runId);
       console.log(`\n── ${adapter.name} ──`);
       const ingestStarted = Date.now();
-      // Ingest stays serial whatever `--concurrency` says: writes go in corpus
-      // order, one page at a time, exactly as an agent would have produced them.
+      // Ingest stays serial whatever `--concurrency` says: writes go in corpus order.
       await adapter.ingest(corpus);
       console.log(`ingested in ${((Date.now() - ingestStarted) / 1000).toFixed(1)}s`);
     } catch (error) {
@@ -718,13 +648,11 @@ async function main(options: Options): Promise<void> {
       continue;
     }
 
-    // Whether this adapter reaches its memory through tools. The controls do
-    // not, so their evidence never passes through a tool call and the evidence
-    // columns are empty for them rather than zero. See `scoreRun`.
+    // Whether this adapter reaches its memory through tools; controls do not,
+    // so their evidence columns are empty rather than zero. See `scoreRun`.
     const retrieves = adapter.tools().length > 0;
 
-    // A control that cannot be built for a question is skipped, not scored
-    // zero. See `MemoryAdapter.supports`.
+    // A control that cannot answer a question is skipped. See `MemoryAdapter.supports`.
     const work = questions
       .filter((question) => !adapter.supports || adapter.supports(question))
       .flatMap((question) =>
@@ -733,13 +661,8 @@ async function main(options: Options): Promise<void> {
 
     try {
       const done = await pool(work, options.concurrency, async ({ question, repeat }) => {
-        // One question's failure is one row, never the end of the run.
-        //
-        // A benchmark run is hundreds of network calls over tens of minutes,
-        // and something will time out. Letting that propagate abandons every
-        // question after it *and* every adapter after this one — throwing away
-        // work that has already been paid for because of one transient fetch.
-        // So the failure is recorded as its own outcome and the run carries on.
+        // One question's failure is one row, not the end of the run: record it
+        // and carry on.
         let run: Awaited<ReturnType<typeof runAgent>>;
         try {
           run = await runAgent(model, adapter, question, config);
@@ -781,14 +704,12 @@ async function main(options: Options): Promise<void> {
           calls: run.calls,
         };
         console.log(renderLine(row));
-        // Appended as it finishes: a run that dies at question ninety should
-        // not throw away the eighty-nine that were paid for.
+        // Appended as it finishes, so a crash keeps the rows already bought.
         await append(row);
         return row;
       });
       // `pool` returns results in work order, so the report is identical at any
-      // concurrency. Only the order of lines inside the JSONL follows
-      // completion, and nothing reads it back in order.
+      // concurrency.
       rows.push(...done);
     } finally {
       await adapter.teardown();
@@ -799,12 +720,8 @@ async function main(options: Options): Promise<void> {
 }
 
 /**
- * Everything a run produces once the buying is done: the report, and the site's
- * summary if this run is meant to be published.
- *
- * Shared with `--from`, which is the whole point. A report regenerated from
- * stored transcripts has to be the same report, rendered by the same code, or
- * "replay it rather than buy it again" is a claim about two different things.
+ * The report, and the site's summary if publishing. Shared with `--from`, so a
+ * report regenerated from stored transcripts is the same report.
  */
 async function emit(
   meta: RunMeta,
@@ -819,39 +736,27 @@ async function emit(
   console.log(`\nrows: ${jsonlPath}\nreport: ${reportPath}`);
 
   if (publish) {
-    // Pretty-printed and newline-terminated because it is a tracked file that
-    // people will read in a diff: a one-line JSON blob makes every run look
-    // like a total rewrite.
+    // Pretty-printed so a diff of this tracked file is readable.
     await writeFile(publish, `${JSON.stringify(publishable(meta, rows, CATEGORIES), null, 2)}\n`);
     console.log(`published: ${publish}`);
   }
 }
 
 /**
- * A finished run, read back off disk instead of bought again.
- *
- * The transcripts are the expensive part and they are already durable, so
- * everything downstream of them — the report, the site's summary, and the
- * scorer itself — is replayable for free. `--rescore` is why the scorer is a
- * pure function of (question, answer, observed text): a change to it can be
- * tried against every run ever paid for, which is the only way to know whether
- * it moved a number for a good reason.
+ * A finished run read back off disk. The scorer is a pure function of
+ * (question, answer, observed text), so `--rescore` can replay it over any run.
  */
 async function replay(options: Options): Promise<void> {
   const paths = required('--from', options.from)
     .split(',')
     .map((path) => path.trim())
     .filter((path) => path.length > 0);
-  // With `--adapters`, the table shows those columns and no others — for a
-  // column retired since the run was bought, or one being looked at alone. The
-  // rows on disk keep every column they were bought with.
+  // With `--adapters`, show only those columns; the rows on disk keep every column.
   const keep = options.adaptersGiven ? new Set<string>(options.adapters) : undefined;
   const { meta, rows } = await readRuns(paths, keep);
 
-  // A merge is written out before anything is rendered from it, so what was
-  // published is one file somebody can `--from` again. A table that exists
-  // only as an argument list is a table nobody can reproduce — and the
-  // constituent runs are left exactly as they were, reports included.
+  // A merge is written out before rendering, so what was published is a file you
+  // can `--from` again. The constituent runs are left as they were.
   let jsonlPath = paths[0] as string;
   if (paths.length > 1) {
     jsonlPath = join(options.out, `${meta.runId}.jsonl`);
@@ -867,11 +772,8 @@ async function replay(options: Options): Promise<void> {
     return;
   }
 
-  // The corpus and the questions follow from the seed, so the same seed and the
-  // same per-template count rebuild the identical set. A question id that is no
-  // longer generated means the generator has moved underneath these rows, and
-  // scoring them against a question they were never asked is worse than
-  // refusing.
+  // The corpus and questions follow from the seed. A question id no longer
+  // generated means the generator moved, and scoring against it is refused.
   const world = buildWorld({ seed: meta.seed });
   const knownRefs = corpusRefs(buildCorpus(world));
   const questions = new Map(
@@ -891,9 +793,8 @@ async function replay(options: Options): Promise<void> {
           'so these rows cannot be re-scored against it.',
       );
     }
-    // Re-scoring reads rows, not adapters, so which of them retrieve has to be
-    // named rather than asked. These two are the controls and always have been:
-    // they hold their evidence in the prompt and offer no tools at all.
+    // Re-scoring reads rows, not adapters, so which retrieve is named: the
+    // controls hold evidence in the prompt and offer no tools.
     const score = scoreRun(
       question,
       row.answer,

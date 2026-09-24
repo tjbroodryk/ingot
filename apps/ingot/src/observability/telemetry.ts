@@ -9,20 +9,9 @@ const server = new MetricsServer();
 let started = false;
 
 /**
- * Brings both signals up. Called from `main.ts` before Nest is created.
- *
- * Before, rather than from inside a module, for two reasons that pull the
- * same way: a tracer provider registered after the fact cannot retroactively
- * record the spans of the thing that started it, and a process that fails
- * during module initialisation is exactly the process whose telemetry you
- * want. What Nest owns is the other end — `ObservabilityModule` shuts this
- * down through `enableShutdownHooks`, because Nest is what knows when the pod
- * is going away.
- *
- * Nothing here can stop the API starting. A collector that is not listening,
- * a metrics port already taken — both are logged and stepped over. The
- * service's job is to serve requests; the service's telemetry failing is a
- * reason to page somebody, not a reason to take the service down with it.
+ * Brings both signals up. Called from `main.ts` before Nest is created, so
+ * spans from startup have a provider. Failures are logged and stepped over
+ * rather than stopping the API.
  */
 export async function startTelemetry(
   config: TelemetryConfig = telemetryConfigFromEnv(),
@@ -30,8 +19,7 @@ export async function startTelemetry(
   if (started) return;
   started = true;
 
-  // The `service` label on every series, so one Prometheus can hold several
-  // deployments of this API without their numbers merging into each other.
+  // Default labels on every series, identifying this process.
   registry().setDefaultLabels({
     service: config.serviceName,
     environment: config.environment,

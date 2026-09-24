@@ -26,20 +26,7 @@ import {
   STEPS,
 } from './sections';
 
-/**
- * The page in front of the project, and only in a landing build — see
- * `src/site/mode.ts`.
- *
- * Drawn from the Modernist artboard the rest of the site was, with the one
- * change the artboard could not know about: Ingot is self-hosted, so every
- * place the design sold a hosted service — the sign-up buttons, the pricing
- * link, the "start for free" — is either gone or points at the repository.
- * That is said three times on the way down the page, at the top, in the hero's
- * own call to action, and in the band that replaces the sign-up CTA, because a
- * reader who finds out on the third scroll has already been misled twice.
- *
- * A server component with nothing to fetch: it renders once, at build time.
- */
+/** The page in front of the project, and only in a landing build. A server component rendered at build time. */
 export function LandingPage(): ReactNode {
   return (
     <>
@@ -85,11 +72,6 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          The two calls that are the whole product, side by side, because the
-          claim the page is making is about the second following the first
-          immediately rather than about either on its own.
-        */}
         <section className="landsection">
           <div className="panel panel-wide">
             <div className="panel-bar">
@@ -154,21 +136,6 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Where the thing actually goes.
-
-          Everything above this is the API. This pair is the paragraph of your
-          own code that calls it, and it is told twice on purpose — once as a
-          diagram, because the point is a swap and a swap is a shape, and once
-          as a file, because a reader who is convinced now wants to type
-          something. Two sections rather than one: the diagram is true of any
-          harness and the sample is true of one, and merging them would make
-          the general claim look like a Vercel-shaped claim.
-
-          It sits after the features and before the splits because it is the
-          synthesis — `/add`, the receipt and `/query` all appear in it, and it
-          reads as a summary rather than as a fourth new idea.
-        */}
         <section className="landblock" id="harness">
           <div className="landhead">
             <span className="label label-sm kicker">[ In the agent loop ]</span>
@@ -190,11 +157,7 @@ export function LandingPage(): ReactNode {
           </div>
 
           <div className="landfigure">
-            {/*
-              A panel rather than a bare grid, so it reads as one figure with
-              four cells instead of as four more feature tiles — this page has
-              a lot of three-up grids by now and the loop is not another one.
-            */}
+            {/* A panel, not a bare grid, so the loop reads as one figure not four more tiles. */}
             <div className="panel panel-wide">
               <div className="panel-bar">
                 <span className="panel-glyph">≡ ×</span>
@@ -214,11 +177,7 @@ export function LandingPage(): ReactNode {
                 ))}
               </div>
 
-              {/*
-                The arrowheads run one way across the lane; this is the one
-                that runs back, and it is the whole reason the loop is drawn as
-                a loop rather than as a pipeline.
-              */}
+              {/* The one hop that runs back — why the loop is drawn as a loop. */}
               <div className="wire-return">{HARNESS_RETURN}</div>
             </div>
           </div>
@@ -255,12 +214,7 @@ export function LandingPage(): ReactNode {
             </div>
           </div>
 
-          {/*
-            `.steps` again, because these are the same object — a kicker, a
-            claim, and the line of API it is about. The cells happen to be
-            labelled rather than numbered, which is the data's business and not
-            the grid's.
-          */}
+          {/* `.steps` again: same shape, labelled instead of numbered. */}
           <div className="steps">
             {SDK_NOTES.map((note) => (
               <div className="step" key={note.kicker}>
@@ -273,10 +227,7 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Figure first, so the alternation with `#read` and `#mcp` holds: this
-          page reads left-figure, right-figure, left-figure down the splits.
-        */}
+        {/* Figure first, to keep the splits alternating down the page. */}
         <section className="split" id="receipts">
           <div className="split-figure">
             <CodeBlock code={RECEIPTS} />
@@ -317,11 +268,6 @@ export function LandingPage(): ReactNode {
               <br />
               No second database.
             </h3>
-            {/*
-              "SQL on its own" rather than a third `<code>` — the sentence
-              before it ends on one, and two accent words with only a full stop
-              between them read as a single token rather than as two clauses.
-            */}
             <p>
               <code>text</code> on its own embeds the question and ranks a table by cosine
               similarity, so rows come back carrying a <code>score</code>. SQL on its own is exact.
@@ -342,13 +288,7 @@ export function LandingPage(): ReactNode {
               <span className="chip">metadata filter</span>
               <span className="chip">no vector db</span>
             </div>
-            {/*
-              This section says what the retrieval does; `/why` says why it is
-              the shape of the whole service rather than a feature of it.
-              The link is here rather than in the hero because a reader who has
-              got this far is the one the argument is for — and it is guarded
-              because the route is `null` in a build that does not have it.
-            */}
+            {/* `/why` covers why this is the shape of the service. Guarded: the route is `null` where absent. */}
             {WHY_HREF ? (
               <a className="target-more" href={WHY_HREF}>
                 Why a query engine, and not a vector store →
@@ -388,24 +328,11 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Where you can run it, one row per place.
-
-          This is the section that grows, so nothing about it is written twice:
-          the rows come from `targets.ts` and the numbering comes from their
-          position, which is what keeps a fourth target from being an edit in
-          four files. The four labelled slots repeat down the section on
-          purpose — that repetition is what lets somebody compare two ways of
-          running this without reading either in full.
-        */}
+        {/* Rows and numbering come from `targets.ts`, so a new target is one edit. */}
         <section className="landblock" id="run">
           <div className="landhead">
             <span className="label label-sm kicker">[ Ways to run it ]</span>
-            {/*
-              The highlight gets its own line rather than being left to wrap
-              into one: `.mark` is a painted box, and a box broken across two
-              lines is two boxes with a ragged edge between them.
-            */}
+            {/* `.mark` is a painted box; keep it on one line so it isn't broken in two. */}
             <h2 className="landtitle">
               Pick a place.
               <br />
@@ -419,12 +346,7 @@ export function LandingPage(): ReactNode {
               target skips one.
             </p>
 
-            {/*
-              The jumps are derived rather than written down, so a target added
-              to the list is a target this row can reach. They double as the
-              section's own table of contents: the rows are long, and the one
-              somebody wants is usually decided before they start reading.
-            */}
+            {/* Jumps derived from the list, doubling as the section's table of contents. */}
             <div className="chips target-jumps">
               {RUN_TARGETS.map((target) => (
                 <a className="chip" href={`#${target.id}`} key={target.id}>
@@ -433,12 +355,7 @@ export function LandingPage(): ReactNode {
               ))}
             </div>
 
-            {/*
-              Where the same three rows are, with the two dependencies they
-              all share written out underneath them. Guarded because the route
-              is `null` in a dashboard build — which is a build this page is
-              never in, and a thing the type cannot know.
-            */}
+            {/* Guarded: the route is `null` in a dashboard build, which this page is never in. */}
             {DEPLOYMENT_HREF ? (
               <a className="target-more landhead-more" href={DEPLOYMENT_HREF}>
                 The same three, with the dependencies underneath →
@@ -466,13 +383,6 @@ export function LandingPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Where the design put "Sign up. The secret is shown once." There is
-          nothing to sign up to, so this is the same band saying the true
-          version: the sign-up route is real, and it is on the instance you
-          brought up yourself. The commands that used to sit here are the local
-          target's now, so that the bring-up is written down once.
-        */}
         <section className="cta cta-centred">
           <span className="label label-sm kicker">[ Self-hosted, for now ]</span>
           <h2>Bring it up. Sign up against your own address.</h2>

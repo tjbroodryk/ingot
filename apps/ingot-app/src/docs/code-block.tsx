@@ -1,27 +1,9 @@
 import type { ReactNode } from 'react';
 import { SampleTone } from './reference';
 
-/**
- * A sample, lightly marked up.
- *
- * Three token classes and no more: a comment, a status line, and the key half
- * of a JSON pair. That is what the design colours, and a real highlighter
- * would be a dependency, a language guess, and a second theme to keep in step
- * with the palette for the sake of samples that are eight lines long.
- *
- * The rules are deliberately about *lines* rather than about JSON, because
- * these samples are not JSON — a request and its response sit in one block,
- * with a shell comment between them.
- */
+/** A sample, lightly marked up: three token classes — comment, status line, JSON key. Matched by line, since these samples are not all JSON. */
 
-/**
- * `# …` or `// …` — the aside above or below a sample.
- *
- * Two markers rather than one because the samples are in two languages now:
- * the HTTP ones comment with `#`, and the landing page's harness sample is
- * TypeScript, which does not. Both are anchored to the start of the line, so
- * the `//` in a URL is a URL and stays one.
- */
+/** `# …` or `// …` — the aside above or below a sample. Anchored to line start, so a `//` in a URL stays a URL. */
 const COMMENT = /^\s*(#|\/\/)/;
 
 /** `200 OK`, `201 Created`, `204 No Content` — the response's own line. */

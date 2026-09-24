@@ -1,15 +1,6 @@
 import { Guard, InvariantViolation, ValueObject } from '../../../shared/domain/index.js';
 
-/**
- * Slugs the router cannot be allowed to hand out.
- *
- * Every ingot route is `/:account/…`, which is as greedy as a route gets — so
- * an account called `accounts` would sit in front of `POST /accounts` and an
- * account called `health` in front of the health check. Registration order in
- * `AppModule` is the first defence and this is the second, because relying on
- * declaration order alone means the next person to reorder the imports breaks
- * authentication without touching it.
- */
+/** Slugs that would shadow a top-level service route. */
 const RESERVED = new Set(['accounts', 'api', 'docs', 'health', 'ingots', 'mcp', 'metrics', 'v1']);
 
 /** `acme-corp` — lowercase, digits and single hyphens, 2–48 characters. */
@@ -43,5 +34,5 @@ export class AccountSlug extends ValueObject {
   }
 }
 
-/** Exposed so the reserved list can be asserted rather than remembered. */
+/** The reserved slugs, sorted. */
 export const RESERVED_SLUGS: readonly string[] = [...RESERVED].sort();

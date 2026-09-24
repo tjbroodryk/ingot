@@ -5,9 +5,7 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF, REPO_URL } from '../site/mode';
-// The landing page's layout, used rather than restated — see the note at the
-// top of that file. This page is the same shape of argument in the same
-// idiom: a hero, ruled bands, three-up grids and two splits.
+// The landing page's layout, reused: same shape of document.
 import '../landing/landing.css';
 import './why.css';
 import {
@@ -29,43 +27,12 @@ import {
 } from './why';
 
 export const whyMetadata: Metadata = {
-  // The nav's word rather than the headline, the way `/deployment` uses
-  // "Deployment" and not "Three places, two dependencies". A tab is read at
-  // 90px wide, and "Similarity is not a join · Ingot" truncates to nothing
-  // that says which page it is.
+  // The nav's word, not the headline: a tab truncates the long title to nothing useful.
   title: 'Why Ingot',
   description: WHY_DESCRIPTION,
 };
 
-/**
- * Why this exists at all — the one page on the site that argues rather than
- * describes.
- *
- * The reference says what Ingot serves and `/deployment` says how to have one.
- * Neither answers the question somebody asks before either of those is worth
- * reading: why is this not a vector store, like everything else that calls
- * itself agent memory. That question has an answer, the answer is the reason
- * the service is shaped the way it is, and burying it in a landing-page
- * section would make it look like a feature.
- *
- * The order is the argument, and each section is load-bearing for the one
- * after it:
- *
- *   #problem     what happens to a tool result today, and why all three
- *                answers lose the same thing
- *   #sql         the swap — tables and one SELECT — with the join no single
- *                tool call could have answered
- *   #vectors     where the embeddings went, so that this does not read as an
- *                argument against them
- *   #grain       what one memory is scoped to, which is the caller's decision
- *                and the page says so, limit included
- *   #cost        why keeping it all is affordable, which is what makes the
- *                grain a free choice rather than a budget
- *   #ownership   whose it is, which is the only claim self-hosting is what
- *                makes true
- *
- * A server component with nothing to fetch: it renders once, at build time.
- */
+/** Why this exists at all — the one page on the site that argues rather than describes. A server component rendered at build time. */
 export function WhyPage(): ReactNode {
   return (
     <>
@@ -103,14 +70,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          The problem, stated as an exhaustive list rather than a complaint.
-
-          Three cells because there are three things anybody does with a tool
-          result, and the section only works if a reader cannot think of a
-          fourth — otherwise it is an argument against two of the options
-          somebody has.
-        */}
         <section className="landblock" id="problem">
           <div className="landhead">
             <span className="label label-sm kicker">[ What happens today ]</span>
@@ -142,12 +101,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          The swap, and the whole page turns on the figure rather than on the
-          copy: three writes on the left that know nothing about each other,
-          one statement on the right that joins all three. A reader who reads
-          only the right-hand pane has had the argument.
-        */}
         <section className="landblock" id="sql">
           <div className="landhead">
             <span className="label label-sm kicker">[ Why SQL ]</span>
@@ -181,11 +134,7 @@ export function WhyPage(): ReactNode {
             </div>
           </div>
 
-          {/*
-            `.steps` again, because these are the same object the landing
-            page's SDK notes are: a kicker, a claim, and the line of the
-            service it is true because of.
-          */}
+          {/* `.steps` again: same shape as the landing page's SDK notes. */}
           <div className="steps">
             {SQL_NOTES.map((note) => (
               <div className="step" key={note.kicker}>
@@ -198,11 +147,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Said immediately after the join, and not later, because a page that
-          spends a screen on "similarity is not a join" and only reconciles it
-          three sections down has been read as anti-embedding by then.
-        */}
         <section className="split" id="vectors">
           <div className="split-copy">
             <span className="label label-sm kicker">[ Where the embeddings went ]</span>
@@ -239,13 +183,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          The reader's decision, and the section that answers "per what?".
-
-          The limit under the grid is not a caveat tucked at the end — it is
-          the thing that makes the choice a choice, and it is the one claim on
-          this page somebody could build on and be disappointed by later.
-        */}
         <section className="landblock" id="grain">
           <div className="landhead">
             <span className="label label-sm kicker">[ One memory per what ]</span>
@@ -261,12 +198,7 @@ export function WhyPage(): ReactNode {
             </p>
           </div>
 
-          {/*
-            `.features` for the cell, `.grains` for the grid: four across
-            rather than three, because these are a sequence — shortest
-            retention to none at all — and a 3 + 1 wrap reads as three options
-            and an afterthought.
-          */}
+          {/* Four across, not three: these are a sequence, shortest retention to none. */}
           <div className="features grains">
             {GRAINS.map((grain) => (
               <div className="feature" key={grain.title}>
@@ -291,11 +223,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Why the section above is a free choice. Keeping a memory per chat is
-          only reasonable if a memory per chat is nearly free, so the storage
-          model has to be on this page rather than only on `/deployment`.
-        */}
         <section className="landblock" id="cost">
           <div className="landhead">
             <span className="label label-sm kicker">[ What it costs to keep ]</span>
@@ -321,11 +248,7 @@ export function WhyPage(): ReactNode {
             ))}
           </div>
 
-          {/*
-            The ledger, including the lines that are zero — which are the
-            argument. Everything above is a mechanism; this is the bill it
-            produces.
-          */}
+          {/* The ledger, including the lines that are zero. */}
           <div className="why-table">
             <table className="table">
               <thead>
@@ -348,11 +271,6 @@ export function WhyPage(): ReactNode {
           </div>
         </section>
 
-        {/*
-          Last, because it is the only claim the previous five do not make on
-          their own: everything above would still be true of a hosted service,
-          and none of it would be yours.
-        */}
         <section className="split" id="ownership">
           <div className="split-figure">
             <CodeBlock code={OWN_IT} />

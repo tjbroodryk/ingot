@@ -11,23 +11,7 @@ import { Account as AccountScope } from './account.decorator.js';
 import { MintKeyDto } from './dto/mint-key.dto.js';
 import { CurrentAccount } from './current-account.decorator.js';
 
-/**
- * The account, and the keys that speak for it.
- *
- * There is deliberately no route that creates an account. Every mode in
- * `AuthMode` decides up front which accounts exist — sealed mode has exactly
- * the one in `INGOT_ACCOUNT` — and the route that used to do it was the only
- * unauthenticated write in the service, handing anybody a permanent credential
- * for a tenant with no owner and no recovery. `CreateAccount` survives as a
- * command because the sealed seed and the test suite both open accounts; what
- * is gone is the ability to do it over HTTP with no credential.
- *
- * Registered before `IngotController` in `AppModule`, and that order is load
- * bearing: `/:account/:ingot` would otherwise match `/accounts/acme/keys` and
- * route key management into the memory API. `AccountSlug` refuses to mint an
- * account named `accounts` as the second half of that defence, and
- * `route-accounts.test.ts` asserts both still hold.
- */
+/** Account read, key minting and revocation. No route creates an account. */
 @Controller({ path: 'accounts', version: '1' })
 export class AccountsController {
   constructor(private readonly dispatcher: Dispatcher) {}

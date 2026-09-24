@@ -1,23 +1,4 @@
-/**
- * What the landing page says, as data.
- *
- * The same argument `src/docs/page-sections.ts` makes: the copy is the thing
- * that gets edited, and it is easier to read and to change when it is not
- * interleaved with the markup that lays it out.
- *
- * Every sample here is a real request against the shapes in
- * `@ingot/shared/ingot-v1`, checked the same way the reference's are — the
- * canvas design this page is drawn from had two of them wrong, and both
- * mistakes are the kind a reader would only find by being lied to:
- *
- *   - `:ingot` is the `ing_…` id `create` hands back, never the memory's name.
- *   - `/add` takes its blob as `result`, and `columns` maps to
- *     `{ from, type }` objects rather than to bare path strings.
- *
- * The addresses are `localhost:3002` rather than a hosted API, because that is
- * the only address Ingot has: it is self-hosted, and a landing page that
- * advertises a service you cannot reach is the first of those lies.
- */
+/** Landing-page copy, as data. Samples are real requests against `@ingot/shared/ingot-v1`. */
 
 /** One of the three numbered cells under "How it works". */
 export interface Step {
@@ -94,19 +75,11 @@ export const FEATURES: readonly Feature[] = [
   },
 ];
 
-/**
- * The sentence under the title, and the one `layout.tsx` gives a search result
- * and a link preview as `description`.
- *
- * A constant because it is said in two places and they are read in either
- * order — a visitor who arrives from a search has read the preview first. Two
- * copies of a pitch drift on the edit that only remembers one of them, and
- * this is the pitch, so it is the one that gets edited.
- */
+/** The sentence under the title; also used by `layout.tsx` as the page `description`. */
 export const LEDE =
   'Your agent calls a tool, gets four hundred rows back, and pays for them on every turn until the window trims and they are gone for good. Ingot keeps them as real tables instead, so the model can read them back with SQL, by keyword or by meaning — next turn, or next week. No vector database running beside it.';
 
-/** The row under the hero. What the thing already speaks, rather than logos. */
+/** The row under the hero: what Ingot speaks. */
 export const SPEAKS: readonly string[] = [
   'MCP',
   'DuckDB',
@@ -116,15 +89,7 @@ export const SPEAKS: readonly string[] = [
   'SQL',
 ];
 
-/**
- * The left half of the terminal: a tool result going in.
- *
- * Pretty-printed the way a JSON formatter would leave it — one key to a line,
- * every closing brace on its own. The three column mappings are the exception
- * and stay one to a line, because they are a *table*: three rows of the same
- * four fields, where the alignment is what lets you read down the `type`
- * column instead of across nine lines to compare two of them.
- */
+/** The left half of the terminal: a tool result going in. */
 export const REMEMBER = `# 1 — remember a tool result
 POST /api/v1/acme/ing_01H8Z…/add
 {
@@ -141,16 +106,7 @@ POST /api/v1/acme/ing_01H8Z…/add
 
 201 Created · rowsAdded 412`;
 
-/**
- * The right half: the same rows coming back, in the same second.
- *
- * The artboard drew the result as a box-drawn table, and it cannot be one
- * here: `next/font` subsets JetBrains Mono to `latin`, which has no glyphs at
- * U+2500, so every rule and corner falls back to a face with different metrics
- * and the table arrives crooked. Printing what the endpoint actually answers
- * with is the better trade anyway — it is one fewer thing on this page that a
- * reader would have to unlearn at the reference.
- */
+/** The right half: the same rows coming back, in the same second. */
 export const RECALL = `# 2 — read it back, the same second
 POST /api/v1/acme/ing_01H8Z…/query
 {
@@ -170,19 +126,7 @@ POST /api/v1/acme/ing_01H8Z…/query
   "truncated": false
 }`;
 
-/**
- * The two things a write can opt into, and what each hands back.
- *
- * Both are opt-in and they are opt-in at different grains, which is the point
- * worth making: `embed` is per column and set once when the column is declared,
- * `receipt` is per call because it costs a model call every time. A page that
- * showed them as one switch would be describing a product that bills
- * differently from this one.
- *
- * `summary` and `searchTerm` are null in the response and that is not a gap
- * being glossed over — it is the promise the receipt makes. Showing the query
- * answering underneath is the only honest way to draw it.
- */
+/** The two things a write can opt into (`embed` per column, `receipt` per call), and what each hands back. */
 export const RECEIPTS = `# opt in: per column, and per call
 POST /api/v1/acme/ing_01H8Z…/add
 {
@@ -218,23 +162,7 @@ POST /api/v1/acme/ing_01H8Z…/add
   "search_term": "EMEA renewal risk"
 }`;
 
-/**
- * One endpoint, three ways of asking, and the switch that has to be on first.
- *
- * The `config` call opens the sample rather than being left out of it, and
- * that is the whole reason this constant is longer than the two-line one it
- * replaced. Keyword indexing is **off** until a table asks for it — see
- * `FtsSettings.default()` in the service, which explains why: the index is
- * built per session over the whole table, so defaulting it on would bill every
- * query of every memory for prose most of them do not hold. A sample that went
- * straight to `match_bm25` would be one somebody pastes, runs, and gets an
- * empty result from, with nothing on the page to say why.
- *
- * The third block is the argument the section makes. It is valid as written:
- * `match_bm25` may be computed in a SELECT list, and DuckDB will ORDER BY an
- * output alias, so the subquery the FTS docs wrap this in is not needed when
- * the ordering is the cosine column rather than the keyword one.
- */
+/** One endpoint, three ways of asking, and the keyword-indexing switch that has to be on first. */
 export const RETRIEVAL = `# once — switch keyword indexing on
 POST /api/v1/acme/ing_01H8Z…/config/notes
 { "fts": { "enabled": true } }
@@ -268,23 +196,9 @@ POST /api/v1/acme/ing_01H8Z…/query
 
 /* ── where this goes in an agent loop ───────────────────────────────────── */
 
-/**
- * One node of the wire diagram under "In the agent loop".
- *
- * Four of them, and the count is not arbitrary: the first exists to rule
- * something out. A reader arriving at a memory service assumes it wants to sit
- * between the model and the tool, and it does not — the dispatch is untouched
- * and the only edit is inside the tool's own body. Dropping node 01 would save
- * a cell and leave that assumption standing.
- */
+/** One node of the wire diagram under "In the agent loop". */
 export interface WireNode {
-  /**
-   * `01 · Harness`, or `02 · Your tool -> Ingot` for a hop between two of
-   * them. The arrow is ASCII rather than U+2192 for the reason `.wire-node`
-   * draws its arrowheads instead of typing them: the mono face is subsetted
-   * to `latin` and does not carry one, so a real arrow here would arrive in
-   * whatever the reader's system offers, half a size off the label it sits in.
-   */
+  /** `01 · Harness`, or `02 · Your tool -> Ingot` for a hop between two nodes. */
   readonly actor: string;
   readonly title: string;
   readonly body: string;
@@ -319,24 +233,11 @@ export const HARNESS: readonly WireNode[] = [
   },
 ];
 
-/** The strip under the wire: what the loop closing actually buys. */
+/** The strip under the wire. */
 export const HARNESS_RETURN =
   'The rows outlive the turn. A receipt hands back SQL rather than an id, so it still finds them from a context window that never saw them go in.';
 
-/**
- * The tool, as the AI SDK wants it written.
- *
- * Set against AI SDK 5, and the two names that moved in it are the two most
- * likely to be copied wrong: the schema is `inputSchema` (it was `parameters`),
- * and the multi-step loop is `stopWhen: stepCountIs(n)` (it was `maxSteps`).
- * `execute`'s second argument carrying `toolCallId` is the seam that makes any
- * of this work — it is the caller's own id for the result, which is exactly
- * what `externalId` is for.
- *
- * `post` is left undefined on purpose and said to be `fetch` with the bearer
- * key on it. Writing that helper out would be six lines of nothing, and this
- * sample has to fit a pane.
- */
+/** The tool, as the AI SDK 5 wants it written. */
 export const AI_SDK_TOOL = `// tool.ts — AI SDK 5.
 // post() is fetch with the bearer key on it.
 import { tool } from 'ai';
@@ -375,14 +276,7 @@ export const searchContacts = tool({
   },
 });`;
 
-/**
- * The other half: what the model is handed, and what it does with it.
- *
- * The token figures are the argument this whole section makes, so they are the
- * one thing here that is an estimate and has to read as one — `about`, twice.
- * `payload.estimatedTokens` is what `/add` answers with and it says the same of
- * itself.
- */
+/** The other half: what the model is handed, and what it does with it. */
 export const AI_SDK_SEEN = `# the tool-result part, as the model reads it
 {
   "rows": 412,
@@ -428,10 +322,7 @@ export interface SdkNote {
   readonly hint: string;
 }
 
-/**
- * The three things the sample above does not show, and each is a thing
- * somebody would otherwise find out by shipping it.
- */
+/** The three things the sample above does not show. */
 export const SDK_NOTES: readonly SdkNote[] = [
   {
     kicker: 'Stream',
@@ -453,14 +344,7 @@ export const SDK_NOTES: readonly SdkNote[] = [
   },
 ];
 
-/**
- * The MCP block, nested the way the file it goes in is nested.
- *
- * The URL sits on its own line under the key rather than being folded across
- * two, because a URL broken mid-path is one somebody reassembles wrongly — the
- * previous version put the `/` at the start of the second line and read as
- * though the path began there.
- */
+/** The MCP block, nested the way the file it goes in is nested. */
 export const MCP_CONFIG = `# claude_desktop_config.json
 {
   "mcpServers": {
@@ -481,11 +365,3 @@ export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: strin
       'describe · remember · query · recall · forget · configure_table · configure_delivery · drop_table',
   },
 ];
-
-/*
- * Getting started used to be a constant here, printed in the closing band.
- * It is `src/deployment/targets.ts` now — the local target's `run` and `check` —
- * because it stopped being the only way to bring one up the moment there was a
- * chart, and a quickstart written in two places is one that disagrees with
- * itself on the second edit.
- */

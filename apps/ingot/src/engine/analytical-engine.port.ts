@@ -24,12 +24,8 @@ export interface MaterialisableTable {
   /** Columns carrying an embedding, and the width of it. */
   readonly embedded: readonly { column: string; dimensions: number }[];
   /**
-   * How this table is indexed for keyword search.
-   *
-   * Carried into the session rather than applied to the stored data, because a
-   * full text index is not a thing Parquet holds: it is built inside the
-   * session, from these settings, over the rows both tiers just produced. That
-   * is what lets the settings change without rewriting anything.
+   * How this table is indexed for keyword search. Built inside the session from
+   * these settings, not stored, so changing them rewrites nothing.
    */
   readonly fts: FtsConfig;
 }
@@ -62,24 +58,14 @@ export interface CompactionOutcome {
   readonly vectors: number;
 }
 
-/**
- * DuckDB, behind a seam.
- *
- * A port not because a second implementation is planned, but because every
- * call into the engine goes through one interface — which is what made the
- * Phase 0 spike's fallback plan (a Node sidecar owning DuckDB, spoken to over
- * a socket) a change of adapter rather than a redesign. The spike said the
- * fallback is not needed; the seam is cheap enough to keep anyway.
- */
+/** DuckDB, behind a port so every call into the engine goes through one interface. */
 export interface AnalyticalEngine {
   /** Runs a caller's SQL against a sandboxed session. */
   run(request: QueryRequest): Promise<QueryOutcome>;
 
   /**
-   * Resolves a predicate to the row ids it matches.
-   *
-   * Same sandbox as `run`. Deletes name rows rather than storing predicates,
-   * so this is what turns `where` into a finite set of tombstones.
+   * Resolves a predicate to the row ids it matches, in the same sandbox as
+   * `run`; turns a `where` into a finite set of tombstones.
    */
   resolveRows(request: {
     table: MaterialisableTable;
@@ -89,11 +75,8 @@ export interface AnalyticalEngine {
   }): Promise<{ rowIds: readonly string[]; truncated: boolean }>;
 
   /**
-   * Writes base ∪ overlay out as a new Parquet generation.
-   *
-   * Not sandboxed: the SQL is ours and it has to write. That asymmetry is why
-   * this is a separate method rather than a flag on `run` — a flag is
-   * something a future caller can pass.
+   * Writes base ∪ overlay out as a new Parquet generation. Not sandboxed, since
+   * the SQL is ours and has to write.
    */
   compact(request: CompactionRequest): Promise<CompactionOutcome>;
 }

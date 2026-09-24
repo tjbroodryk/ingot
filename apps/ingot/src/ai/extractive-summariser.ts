@@ -14,21 +14,8 @@ const NAMED_FIELDS = 6;
 const TERM_WORDS = 8;
 
 /**
- * A deterministic, offline stand-in: the schema, the shape, and the words that
- * actually distinguish this result.
- *
- * The counterpart to `HashEmbedder`, and the default for the same reason. The
- * whole receipt path — the queue, the sweeper, the `ingot_receipts` table, three
- * embeddings per call, the roll-up that folds them into Parquet — is machinery
- * worth exercising on every test run, and none of it should need a network, a
- * key and a bill to exercise. This makes that possible.
- *
- * What it produces is honest but mechanical: it says what the table is, how
- * many rows arrived and which fields carry them, and it predicts a search term
- * from the least common words in the blob. That is genuinely better than
- * nothing for finding a result again — the table name and its identifiers are
- * usually what somebody half-remembers — and it is nowhere near an LLM's
- * précis. `INGOT_SUMMARISER` selects one of those; this one says so at boot.
+ * Deterministic, offline stand-in: names the table, its shape, and the words
+ * that distinguish this result. The counterpart to `HashEmbedder`.
  */
 @Injectable()
 export class ExtractiveSummariser implements Summariser {
@@ -56,12 +43,8 @@ export class ExtractiveSummariser implements Summariser {
   }
 
   /**
-   * The table name, then the words that appear least often.
-   *
-   * Rarity rather than frequency, because a tool result's common words are
-   * its keys — `id`, `name`, `url` — and those are exactly the ones that do
-   * not distinguish it from every other result in the memory. What somebody
-   * half-remembers is the odd one: a branch name, a file path, an error.
+   * The table name, then the words that appear least often. Rarity, not
+   * frequency: common words are keys (`id`, `name`, `url`) that distinguish nothing.
    */
   private searchTerm(request: ReceiptRequest): string {
     const counts = new Map<string, number>();
@@ -78,13 +61,7 @@ export class ExtractiveSummariser implements Summariser {
   }
 }
 
-/**
- * Words worth ranking on.
- *
- * Very short tokens and bare numbers are dropped: they are punctuation of the
- * JSON rather than content, and a search term made of `1`, `id` and `of` ranks
- * against everything equally, which is the same as ranking against nothing.
- */
+/** Words worth ranking on. Drops very short tokens and bare numbers as JSON punctuation. */
 function words(body: string): string[] {
   return body
     .toLowerCase()

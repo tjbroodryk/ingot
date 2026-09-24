@@ -32,12 +32,8 @@ export interface CompactionReport {
 }
 
 /**
- * Rolls one table's overlay up into a new Parquet generation.
- *
- * Dispatched by the sweeper on a schedule and by nothing else — but a command
- * rather than a method on the sweeper, because "reconcile" should be the same
- * write path as everything else rather than a second implementation that can
- * disagree with it.
+ * Rolls one table's overlay up into a new Parquet generation. Dispatched by the
+ * sweeper; a command rather than a sweeper method so it shares the one write path.
  */
 export class CompactTable extends Command<CompactionReport | null> {
   constructor(readonly tableId: string) {
@@ -66,29 +62,17 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
     const ingot = await this.ingots.findById(IngotId.of(table.ingotId));
     if (!ingot) throw new AggregateNotFound('Ingot', table.ingotId);
 
-    /*
-     * The watermark, read once and used twice.
-     *
-     * Everything at or below it goes into the new Parquet, and afterwards
-     * everything at or below it is deleted from the overlay. Rows written
-     * while the file is being produced have a higher sequence: they are not in
-     * the file, and they are not deleted. Without this the window between
-     * writing and draining silently loses whatever arrived in it.
-     */
+    // Read once and used twice: everything at or below it is folded into the
+    // new Parquet and then deleted from the overlay. Rows written during the
+    // file's production have a higher sequence and survive.
     const watermark = await this.overlay.watermark(table.id.value);
 
-    /*
-     * A roll-up has two reasons to run, and the second is easy to miss.
-     *
-     * Rows in the overlay are rows to fold in. Tombstones are rows to leave
-     * out — and a delete writes no overlay rows at all, so a table that is
-     * only ever deleted from has a null watermark and would never be
-     * rewritten. Its forgotten rows would sit in the base file indefinitely,
-     * filtered out on every query, and the tombstone set would only grow.
-     */
+    // A delete writes no overlay rows, so a table only ever deleted from has a
+    // null watermark; count tombstones too, or its forgotten rows would sit in
+    // the base file forever.
     const tombstones = await this.overlay.countTombstones(table.id.value);
     if (watermark === null && tombstones === 0) {
-      // Nothing moved. Sweeps over a quiet table write nothing and say nothing.
+      // Nothing moved.
       return null;
     }
 
@@ -133,30 +117,15 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
       rows: outcome.rows,
     });
 
-    /*
-     * Manifest first, overlay second, and the old generation left in place.
-     *
-     * A query that resolved the manifest a moment ago is still reading
-     * generation n, whose files are untouched — a separate, later sweep reaps
-     * those once nothing can still be mid-flight. So both the old plan and the
-     * new one are individually complete at every instant, which is the whole
-     * correctness argument for the two tiers.
-     */
+    // Manifest first, overlay second, old generation left in place: a query
+    // that resolved the manifest a moment ago still reads generation n
+    // untouched. A later sweep reaps it, so both plans stay complete throughout.
     await this.tables.save(table);
     await this.overlay.drain(table.id.value, watermark);
 
-    /*
-     * Reap the generation two behind, after the commit.
-     *
-     * Generation n-1 stays, because a query that resolved the manifest just
-     * before this flip is still reading it. Two generations of grace against a
-     * fifteen-second query timeout and a five-minute sweep is a wide margin,
-     * and the cost of being wrong in this direction is an object that lingers
-     * rather than a query that fails.
-     *
-     * No listing is needed: the path is derived, and removing a prefix that is
-     * not there is a no-op, which makes this safe to run every time.
-     */
+    // Reap the generation two behind, after the commit. Generation n-1 stays
+    // for queries that resolved the manifest just before the flip. The path is
+    // derived, so removing a prefix that is not there is a safe no-op.
     const stale = generation - 2;
     if (stale > 0) {
       const prefix = Keys.generation(ingot.accountId, ingot.id.value, table.name.value, stale);

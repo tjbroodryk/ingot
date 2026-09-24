@@ -40,15 +40,7 @@ export interface ToolDefinition {
   /** The static half of the description; the schema is appended at runtime. */
   readonly description: string;
   readonly inputSchema: z.ZodRawShape;
-  /**
-   * The command or query class this tool resolves to.
-   *
-   * Declared rather than inferred so `mcp-parity.test.ts` can assert that
-   * every tool lands on something a controller also exposes. That test is what
-   * stops this surface drifting into a second, subtly different API — the rule
-   * being the same one webhooks get: another interface over the same
-   * `Dispatcher`, never a second implementation.
-   */
+  /** The command or query class this tool resolves to. */
   readonly resolvesTo: new (...args: never[]) => Command<unknown> | Query<unknown>;
   readonly readOnly: boolean;
 }
@@ -70,11 +62,7 @@ const columnMapping = z.object({
 
 /**
  * The tools, named for what a model is trying to do rather than for our nouns.
- *
- * A model reaching for memory is thinking "remember this" and "what do I know
- * about…", not "POST /add" — and the name is most of the prompt. `describe` is
- * listed first because it is the one that should be called first: a model
- * asked to write SQL against a schema it cannot see will invent column names.
+ * `describe` is listed first because it should be called first.
  */
 export const TOOLS: readonly ToolDefinition[] = [
   {

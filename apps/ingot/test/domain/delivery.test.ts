@@ -11,18 +11,7 @@ import {
   unavailable,
 } from '../../src/delivery/delivery-settings.js';
 
-/**
- * Where a memory's receipts are allowed to go.
- *
- * The refusals are the interesting half, and they are not stylistic. A webhook
- * endpoint is **the one place a caller chooses where this service opens a
- * connection**, so a URL that parses loosely is a tenant reaching into the
- * network this service runs in — the deployment's own metadata endpoint, a
- * database on a private subnet, an admin API bound to localhost.
- *
- * Pure throughout: a value object and a settings parser, so the whole matrix is
- * covered with no database, no broker and no socket.
- */
+/** Where a memory's receipts may go, and the endpoints it refuses. */
 describe('a delivery strategy', () => {
   it('defaults to pushing nothing at all', () => {
     const none = Delivery.none();
@@ -49,11 +38,7 @@ describe('a delivery strategy', () => {
     expect(delivery.toWire()).toEqual({ t: DeliveryKind.Rmq, queue: 'agent.receipts' });
   });
 
-  /**
-   * The stored document is the wire document, so this is the round trip the
-   * repository relies on: a strategy written by one release and read back by
-   * the next has to mean the same thing.
-   */
+  /** The wire document is the stored document; this is the round trip. */
   it('rehydrates from what it stored, and reads null as none', () => {
     const original = Delivery.of({ t: 'webhook', endpoint: 'https://example.com/h' });
 
@@ -92,11 +77,7 @@ describe('a delivery strategy', () => {
       expect(() => Delivery.of({ t: 'webhook', endpoint })).toThrow();
     });
 
-    /**
-     * The SSRF cases, and the reason this check exists at all: without it, a
-     * tenant can point a memory at an address only this service can reach and
-     * have it POST there on their behalf.
-     */
+    /** SSRF: refuse endpoints only this service can reach. */
     it.each([
       ['http://localhost:3000/h', 'loopback by name'],
       ['http://app.localhost/h', 'a loopback subdomain'],
@@ -117,14 +98,7 @@ describe('a delivery strategy', () => {
       expect(() => Delivery.of({ t: 'webhook', endpoint })).toThrow();
     });
 
-    /**
-     * The deliberate gap, asserted so nobody closes it by accident.
-     *
-     * `172.32.x` is public, and a cluster-internal DNS name is the normal case
-     * for a self-hosted deployment delivering to a service beside it. Refusing
-     * those would break the ordinary use to catch an attack that needs DNS
-     * resolution to catch properly — which is an egress policy's job.
-     */
+    /** Public `172.32.x` and hostnames pass: literal-IP checks don't resolve DNS. */
     it.each([
       'https://example.com/hooks',
       'http://172.32.0.1/h',
@@ -189,20 +163,11 @@ describe('what a deployment decides about delivery', () => {
     });
   });
 
-  /** A deployment template left blank is not a deployment that configured one. */
+  /** A blank variable is not a configured one. */
   it('reads an empty variable as an unset one', () => {
     expect(deliverySettings(env({ INGOT_RABBITMQ_URL: '   ' })).brokerUrl).toBeNull();
   });
 
-  /**
-   * The bound nobody was checking, and the reason it matters only in a cluster.
-   *
-   * A delivery is claimed under a five-minute lease and the call is made with
-   * the transaction closed. A timeout past that lease is a delivery still in
-   * flight when a second replica becomes free to claim it — at-least-once
-   * quietly becoming reliably-twice, for every receiver, and only once there
-   * are enough replicas to make the second claim likely.
-   */
   it('refuses a timeout that could outlive the claim it is held under', () => {
     const fine = String(MAX_UPSTREAM_TIMEOUT_MS);
     expect(deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: fine })).timeoutMs).toBe(
@@ -213,8 +178,7 @@ describe('what a deployment decides about delivery', () => {
     expect(() => deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: over }))).toThrow(
       DeliveryMisconfigured,
     );
-    // The message has to name the variable and the reason, since the person
-    // who set it is the only one who can unset it.
+    // Message names the variable and the reason.
     expect(() => deliverySettings(env({ INGOT_DELIVERY_TIMEOUT_MS: over }))).toThrow(
       /INGOT_DELIVERY_TIMEOUT_MS.*lease/s,
     );
@@ -230,12 +194,7 @@ describe('what a deployment decides about delivery', () => {
     expect(() => deliverySettings(env({ [key]: value }))).toThrow(DeliveryMisconfigured);
   });
 
-  /**
-   * The check that runs when somebody *configures* a memory, not when a
-   * delivery goes out. Accepting a queue on a deployment with no broker would
-   * put the answer in a worker's log, hours later, where the person who made
-   * the call cannot see it.
-   */
+  /** Checked at configure time: a queue is impossible with no broker. */
   it('says a queue is impossible when no broker is configured', () => {
     const without = deliverySettings(env({}));
     const with_ = deliverySettings(env({ INGOT_RABBITMQ_URL: 'amqp://broker' }));

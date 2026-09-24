@@ -5,20 +5,8 @@ import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * `_raw` is the blob a row was projected from, so a result carrying it hands
- * back every other column a second time inside it.
- *
- * Different from the embedding rule next door, and the difference is the whole
- * test. A vector is withheld from the *result* — it is not a fact anybody
- * stored and no phrasing gets one out. `_raw` is withheld from the
- * *projection*: a caller stored it deliberately and can still read it by name.
- * What they cannot do is receive it without asking, because the query this
- * service writes on their behalf is the one place it would arrive unbidden.
- *
- * The cost is not theoretical. On a table whose columns are the interesting
- * parts of a tool result, a plaintext search used to return each hit three
- * times over — once in its columns and twice more inside `_raw` — which made
- * recalling a result more expensive than recomputing it.
+ * `_raw` is the blob a row was projected from. Withheld from the default
+ * projection, but still readable when a caller names it.
  */
 describe('_raw', () => {
   let world: World;
@@ -74,9 +62,8 @@ describe('_raw', () => {
   });
 
   it('does not break a search on a table that never had one', async () => {
-    // The regression this guards: `EXCLUDE` naming a column that is not there
-    // is a DuckDB error, so a blanket exclusion would refuse every plaintext
-    // search against every table written without `raw`, which is most of them.
+    // `EXCLUDE` on an absent column is a DuckDB error, so exclusion must be
+    // conditional on the column existing.
     const found = await world.query(withoutRaw, { text: 'the migration broke', table: 'results' });
 
     expect(found.rows.length).toBe(1);

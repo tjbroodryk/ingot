@@ -2,18 +2,9 @@ import { type ReactNode, useState } from 'react';
 import { type Credentials, INGOT_URL, IngotError, fetchAccount } from './ingot-api';
 
 /**
- * The gate: an account slug and a key.
- *
- * Both, because the API has no "who am I" route — a key authenticates, and the
- * account it may reach is the `:account` in the path. Asking for the slug is
- * the honest version of that; guessing it would only work for accounts with
- * one key ever minted.
- *
- * The form does not accept a key on the caller's word. It calls
- * `GET /accounts/:account`, which is the cheapest route that exercises both
- * guards, so "signed in" means the key authenticated *and* was for this
- * account. A gate that only stores what you typed would send you to a
- * dashboard that 401s on its first query, which is a worse place to find out.
+ * The gate: an account slug and a key. Both, since a key authenticates and the
+ * account is the `:account` in the path. Verified against `GET /accounts/:account`
+ * before the session is opened.
  */
 export function SignIn({ onSignedIn }: { onSignedIn: (credentials: Credentials) => void }): ReactNode {
   const [account, setAccount] = useState('');

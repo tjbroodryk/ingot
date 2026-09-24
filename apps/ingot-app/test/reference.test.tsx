@@ -7,25 +7,14 @@ import { ReferencePage } from '../src/docs/reference-page';
 import { Auth, ENDPOINTS, type EndpointGroup, GROUPS, GROUP_ORDER } from '../src/docs/reference';
 
 /**
- * The reference, kept honest.
- *
- * Documentation rots because nothing fails when it does — the same argument
- * `apps/api/test/docs/api-reference.test.ts` makes about its own. That one can
- * lean on discovery: its routes *are* the code. This one cannot, because ingot
- * has no `/docs` endpoint yet and these entries are written down, so what is
- * checked here is everything that can be checked without the service: that the
- * document is internally consistent, that every anchor the sidebar offers is a
- * section that exists, and that nothing in it throws when rendered.
- *
- * When ingot grows a reference endpoint, the test worth adding beside these is
- * the one that fails when a route exists there and not here.
+ * The reference. Ingot has no `/docs` endpoint, so entries are written down;
+ * what is checked is internal consistency — every anchor is a section, nothing
+ * throws when rendered.
  */
 
 describe('the reference', () => {
   it('describes every route the service serves', () => {
-    // Guards the guards: an empty list would make most of this file pass
-    // vacuously. Seventeen is what `apps/ingot` registers today — four
-    // controllers under `/api/v1`, two version-neutral, two MCP.
+    // An empty list would make the rest pass vacuously. Seventeen is what the service registers today.
     expect(ENDPOINTS.length).toBe(17);
   });
 
@@ -46,20 +35,14 @@ describe('the reference', () => {
     expect(orphaned.map((endpoint) => endpoint.id)).toEqual([]);
   });
 
-  /**
-   * `GROUPS` is a `Record` over the enum, so a group without a heading will not
-   * compile. `GROUP_ORDER` is an array and has no such guarantee — a member
-   * added to the enum and forgotten here is a section that silently does not
-   * render.
-   */
+  /** `GROUP_ORDER` is an array with no compile-time guard, unlike the `GROUPS` record. */
   it('renders every group exactly once', () => {
     expect([...GROUP_ORDER].sort()).toEqual(Object.keys(GROUPS).sort() as EndpointGroup[]);
     expect(new Set(GROUP_ORDER).size).toBe(GROUP_ORDER.length);
   });
 
   it('puts something in every endpoint’s second column', () => {
-    // The layout is two columns. One with nothing in it is a hole in the page,
-    // and `sample` and `asideChips` are alternatives rather than options.
+    // Two columns; `sample` and `asideChips` are alternatives, so exactly one is set.
     const empty = ENDPOINTS.filter(
       (endpoint) => Boolean(endpoint.sample) === Boolean(endpoint.asideChips),
     );
@@ -72,38 +55,19 @@ describe('the reference', () => {
     expect(wrong.map((endpoint) => endpoint.path)).toEqual([]);
   });
 
-  /**
-   * The three unauthenticated routes, named.
-   *
-   * This is the assertion worth having in the file. Every other entry here is
-   * a rendering mistake; marking a route `open` that is not — or, worse,
-   * failing to notice that a fourth one has appeared — is documentation that
-   * tells a reader they need no key for something that holds their data.
-   */
+  /** Marking a route `open` that is not tells a reader they need no key for their data. */
   it('says a route needs no key only where that is true', () => {
     const open = ENDPOINTS.filter((endpoint) => endpoint.auth === Auth.Open).map(
       (endpoint) => endpoint.path,
     );
 
-    // Two, and neither of them writes. `/api/v1/accounts` used to be here as
-    // sign-up; which accounts exist is now a deployment's decision at boot
-    // rather than an unauthenticated POST anybody could make.
+    // Two, and neither writes.
     expect(open.sort()).toEqual(['/api/health', '/api/versions']);
   });
 });
 
 describe('the page', () => {
-  /**
-   * Ingot is self-hosted, so there is no address the reader shares with
-   * anybody else: every sample is written against the port the service listens
-   * on locally, and the cell that introduces the base URL says so. A
-   * hosted-looking origin anywhere in here is a reader told to curl something
-   * that will not answer — which is worse than no sample, because it is
-   * believed.
-   *
-   * Rendered rather than read off the data, so it covers the sample strings
-   * and the one address written straight into the page's closing band.
-   */
+  /** No hosted-looking address, across the sample strings and the closing band. */
   it('names no address nobody can reach', () => {
     expect(renderToStaticMarkup(<ReferencePage />)).not.toContain('ingot.dev');
   });
@@ -117,14 +81,7 @@ describe('the page', () => {
     }
   });
 
-  /**
-   * Every link in the sidebar lands somewhere.
-   *
-   * The endpoint anchors come from the same list the rows do, so those cannot
-   * drift. The four under "Start here" are hand-written against sections in
-   * `page.tsx`, and this is what stops one of them from quietly becoming a link
-   * to nothing when a section is renamed.
-   */
+  /** Every sidebar anchor names a section; the hand-written ones can drift, the endpoint ones cannot. */
   it('offers no anchor that is not a section', () => {
     const anchors = [...renderToStaticMarkup(<DocsNav />).matchAll(/href="#([^"]+)"/g)].flatMap(
       (match) => (match[1] ? [match[1]] : []),

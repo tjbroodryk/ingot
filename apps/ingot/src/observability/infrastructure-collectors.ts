@@ -4,21 +4,11 @@ import { DATABASE_POOL } from '../database/database.module.js';
 import { Metrics, PoolState } from './metrics/catalogue.js';
 
 /**
- * The numbers that are read rather than counted.
+ * Reads the Postgres pool gauges at scrape time rather than tracking them.
  *
- * A gauge maintained by increments is a gauge that drifts: one path that
- * returns early without decrementing, one exception between the two, and the
- * value is wrong in a way nothing will ever correct — and wrong plausibly,
- * which is the worst kind. The pool has somewhere authoritative to read from
- * at scrape time, so it is read.
- *
- * It is also the earliest warning this service has. `waiting` above zero means
- * requests are queued on a connection rather than on Postgres, and it moves
- * well before latency does.
- *
- * The other read-at-scrape gauges — overlay depth, embeddings pending — are
- * registered by the context that owns the table they count, so that this file
- * does not have to know what an overlay is.
+ * `waiting` above zero means requests are queued on a connection; it moves
+ * before latency does. Other read-at-scrape gauges are registered by the
+ * context that owns the table they count.
  */
 @Injectable()
 export class InfrastructureCollectors implements OnApplicationBootstrap {

@@ -2,19 +2,8 @@ import { z } from 'zod';
 
 /**
  * A stored tool result, described well enough to find it again.
- *
- * The two fields answer two different questions, and both matter because of
- * who is asking. An agent stores something in one session and looks for it in
- * another that remembers nothing about the first — so what it will have then
- * is a vague intention, not an id and not the schema.
- *
- * - `summary` is what this result *was*, for a human reading a listing and for
- *   a model deciding whether to open it.
- * - `searchTerm` is the question somebody would type to find it — written
- *   forwards, in the words a future caller would use, rather than as a
- *   description of the data. It is embedded and ranked against a `/query`
- *   text, which is why it is generated at all: matching a question against a
- *   *predicted question* beats matching it against a JSON blob.
+ * - `summary`: what this result was, for a human or a model reading a listing.
+ * - `searchTerm`: the question a caller would type to find it; embedded and ranked against a query.
  */
 export interface Receipt {
   readonly summary: string;
@@ -22,18 +11,8 @@ export interface Receipt {
 }
 
 /**
- * The same two fields, as a thing a provider can be *made* to produce.
- *
- * This is the reason the adapters went through the AI SDK. Asking for JSON in
- * a system prompt and hoping is what `extractJson` below exists to survive;
- * handing a schema down means OpenAI constrains decoding against it and Vertex
- * gets a `responseSchema`, so the shape is the provider's problem rather than
- * ours. The descriptions ride along into that schema, which is a second place
- * the model is told what the field is for and costs nothing to say twice.
- *
- * Widths are not declared here. A model that overruns is clamped by
- * `receiptFrom` either way, and a `max()` in the schema turns a long sentence
- * into a refusal — a failed receipt rather than a slightly trimmed one.
+ * The two fields as a schema the provider constrains its decoding against.
+ * No widths: `receiptFrom` clamps overruns, where a schema `max()` would refuse them.
  */
 export const RECEIPT_SCHEMA = z.object({
   summary: z
@@ -56,19 +35,7 @@ export interface ReceiptRequest {
   readonly body: string;
 }
 
-/**
- * Writes the précis that `receipt: "summary"` asks for.
- *
- * Separate from `Embedder` and selected separately, because they are separate
- * purchases: embedding is a per-row cost paid once, and a summary is an LLM
- * call paid every time a caller asks for a receipt. A deployment that wants
- * real semantic search should not be made to buy the second to get the first.
- *
- * Never on the `/add` path. A tool result should be queryable the instant it
- * is accepted, and a model is a network away — so `/add` queues the work and
- * `SummarisePending` does it. That is the same argument embedding already
- * makes, and it is stronger here: an LLM call is seconds, not milliseconds.
- */
+/** Writes the précis for a receipt. Selected separately from `Embedder`; runs off the `/add` path. */
 export interface Summariser {
   readonly model: string;
   summarise(request: ReceiptRequest): Promise<Receipt>;
@@ -83,15 +50,7 @@ export const MAX_BODY_CHARS = 8_000;
 export const MAX_SUMMARY_CHARS = 1_000;
 export const MAX_SEARCH_TERM_CHARS = 200;
 
-/**
- * The instruction every adapter sends, so that swapping a provider changes
- * which model answers and not what it was asked.
- *
- * Kept here rather than in each adapter because the opposite drifts: two
- * providers with two prompts produce two different shapes of summary, and the
- * difference shows up as "search got worse after we switched", which is the
- * hardest kind of regression to attribute.
- */
+/** The instruction every adapter sends, shared so swapping a provider does not change it. */
 export const RECEIPT_INSTRUCTION = [
   'You are indexing a tool result so that an agent can find it again in a',
   'later session that remembers nothing about this one.',
@@ -117,21 +76,9 @@ export function receiptPrompt(request: ReceiptRequest): string {
 }
 
 /**
- * Finds the object in a model's answer, whatever it wrapped it in.
- *
- * A schema is sent now, so most providers return bare JSON and this does
- * nothing. It is still here for the case the OpenAI adapter exists to serve:
- * `OPENAI_BASE_URL` pointing at a gateway that accepts `response_format` and
- * quietly ignores it. Every one of those gets it wrong the same two ways — a
- * fenced code block around otherwise perfect JSON, or a sentence of preamble
- * before it — and refusing them would make the feature fail for a reason the
- * caller can neither see nor fix.
- *
- * Returns the text unchanged when there is no object in it, rather than
- * throwing. This runs as a language-model middleware, where the whole call is
- * already inside the SDK's own parse-and-validate; a throw from in here would
- * replace "the model answered with prose" — which is what happened — with a
- * stack from a transform, which is not.
+ * Finds the object in a model's answer, unwrapping a fenced block or preamble
+ * from a gateway that ignores `response_format`. Returns the text unchanged
+ * when there is no object, rather than throwing from inside the SDK middleware.
  */
 export function extractJson(raw: string): string {
   const fenced = raw
@@ -144,14 +91,7 @@ export function extractJson(raw: string): string {
   return start === -1 || end <= start ? fenced : fenced.slice(start, end + 1);
 }
 
-/**
- * The validated object, clamped to what the columns hold.
- *
- * Validation is the SDK's now — this is only the half that was never the
- * model's business. A provider is entitled to write four paragraphs when it
- * was asked for three sentences, and a stored summary that widened a column
- * because one model was verbose is a migration, not a summary.
- */
+/** The validated object, clamped to what the columns hold. */
 export function receiptFrom(answer: z.infer<typeof RECEIPT_SCHEMA>): Receipt {
   return {
     summary: clamp(answer.summary, MAX_SUMMARY_CHARS),

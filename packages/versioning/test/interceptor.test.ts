@@ -7,18 +7,9 @@ import { Changeset, type Release } from '../src/index.js';
 import { VersioningModule, Wire } from '../src/nest/index.js';
 
 /**
- * The interceptor, through a real Nest app over a real socket.
- *
- * The engine's tests cover the transformations as pure functions; these cover
- * the things only a running pipeline can answer — that the request is migrated
- * *before* the ValidationPipe sees it, that the response is rendered after the
- * handler, and that the header is negotiated at all.
- *
- * The ordering claim is the one worth a server: the pipe is configured with
- * `forbidNonWhitelisted`, so an old-shaped body reaching it untransformed is
- * rejected with a 400 rather than quietly accepted. If the interceptor ran in
- * the wrong place, every old-version request would fail — and no unit test of
- * the interceptor in isolation would show it.
+ * The interceptor through a real Nest app: that the request is migrated before
+ * the ValidationPipe binds it, the response rendered after the handler, and the
+ * header negotiated.
  */
 const RELEASES: readonly Release[] = [
   { version: '2026-01-01', summary: 'The first published shape.', changes: [] },
@@ -48,7 +39,7 @@ const RELEASES: readonly Release[] = [
 ];
 
 class NoteDto {
-  /** Only the *current* name exists here. That is the whole point. */
+  /** Only the *current* name exists here. */
   @IsString()
   body!: string;
 
@@ -162,8 +153,7 @@ describe('negotiating a version', () => {
 
 describe('a request from an older caller', () => {
   it('is migrated before the ValidationPipe binds it', async () => {
-    // `text` is not a field on NoteDto, and the pipe forbids unknown ones. A
-    // 201 here is the proof that the interceptor ran first.
+    // `text` is not on NoteDto and the pipe forbids unknowns; a 201 proves the interceptor ran first.
     const answered = await call('/notes', { version: '2026-01-01', body: { text: 'hello' } });
 
     expect(answered.status).toBe(201);
@@ -221,13 +211,8 @@ describe('a response to an older caller', () => {
 
 describe('what the module registers', () => {
   /**
-   * Asserted on the DynamicModule rather than through a running container,
-   * because Nest does not expose `APP_INTERCEPTOR` providers through `get`.
-   *
-   * Registered-but-not-global is a failure with no symptom: every response
-   * would simply lack the header and no transform would ever run, on every
-   * endpoint, silently. The tests above prove that a module wired this way
-   * does intercept; this one proves it is wired this way.
+   * Asserted on the DynamicModule because Nest does not expose `APP_INTERCEPTOR`
+   * providers through `get`.
    */
   it('binds the interceptor under APP_INTERCEPTOR', async () => {
     const { APP_INTERCEPTOR } = await import('@nestjs/core');

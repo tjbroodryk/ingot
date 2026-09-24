@@ -15,18 +15,7 @@ import { BenchmarksPage } from '../src/benchmarks/benchmarks-page';
 import { sourceHref } from '../src/site/mode';
 import { BENCHMARKS } from '../src/text/benchmarks-text';
 
-/**
- * The benchmarks page, which is the only page on this site whose content comes
- * from a file another workspace writes.
- *
- * That is the thing worth holding up. Every other page's copy is a constant in
- * the module beside it, and a typo is a typo; this one renders numbers that
- * `packages/bench` produced, so the failure mode is a shape change in
- * `results.json` that silently renders an empty table on a published page. So
- * the assertions are about the contract — the file still parses to what the
- * page expects — and about the empty state, which is what visitors see until a
- * run has been published and is therefore the state most likely to ship.
- */
+/** The benchmarks page, whose numbers come from a published `results.json`. */
 
 describe('the published results file', () => {
   const file = BENCHMARK as PublishedBenchmark;
@@ -35,16 +24,13 @@ describe('the published results file', () => {
     expect(file.schema).toBe(1);
     expect(Array.isArray(file.categories)).toBe(true);
     expect(Array.isArray(file.adapters)).toBe(true);
-    // `run` and `generatedAt` are null together or set together; a file with a
-    // run and no date, or adapters and no run, is a half-written publish.
+    // `run` and `generatedAt` are null together or set together.
     expect(file.run === null).toBe(file.generatedAt === null);
     if (file.adapters.length > 0) expect(file.run).not.toBeNull();
   });
 
   it('carries provenance for every number it carries', () => {
     if (!file.run) return;
-    // A figure nobody can trace to a seed and a model is the thing this page
-    // exists to not publish.
     expect(file.run.seed).toBeGreaterThanOrEqual(0);
     expect(file.run.model.length).toBeGreaterThan(0);
     expect(file.run.provider.length).toBeGreaterThan(0);
@@ -60,10 +46,6 @@ describe('the published results file', () => {
   });
 
   it('describes the corpus it was measured over', () => {
-    // A published run with no corpus block is a table whose workload nobody
-    // can see, which is the misreading the section exists to prevent: this
-    // benchmark is over tool-call JSON, and a reader whose data is documents
-    // should be told so rather than left to assume.
     expect(file.corpus === null).toBe(file.run === null);
     if (!file.corpus) return;
 
@@ -73,8 +55,7 @@ describe('the published results file', () => {
     );
     for (const source of file.corpus.sources) {
       expect(source.records).toBeGreaterThan(0);
-      // The sample is the load-bearing part. A source that published counts
-      // and no record would leave the page asserting a shape it cannot show.
+      // A source needs a sample record, not only counts.
       expect(source.sample.length).toBeGreaterThan(0);
       expect(JSON.parse(source.sample)).toHaveProperty('ref');
     }
@@ -97,8 +78,7 @@ describe('the benchmarks page', () => {
 
   it('explains every adapter and every category', () => {
     for (const adapter of ADAPTERS) {
-      // The name is set as a kicker, which upper-cases it in the markup; the
-      // blurb is what actually has to be on the page.
+      // The name renders upper-cased as a kicker.
       expect(markup).toContain(adapter.name.toUpperCase());
       expect(markup).toContain(adapter.blurb);
     }
@@ -109,22 +89,10 @@ describe('the benchmarks page', () => {
   });
 
   it('describes every column the published table shows', () => {
-    // The inverse of the test above, and the one that catches a column added
-    // to `packages/bench`, published, and never written down. A row of numbers
-    // with no account of what produced them is a number nobody can read — and
-    // the page filters its blurbs to the run, so the omission is silent.
     const described = ADAPTERS.map((adapter) => adapter.name);
     for (const adapter of BENCHMARK.adapters) expect(described).toContain(adapter.name);
   });
 
-  /**
-   * The workload, on the page and not only in the harness.
-   *
-   * The failure this catches is a source added to `packages/bench` and
-   * published with nothing said about it — the page filters its blurbs to the
-   * run, so the omission is silent, and a card with counts and no account of
-   * what the records are is the shape of thing this page exists to not ship.
-   */
   it('says what kind of payloads it was asked about', () => {
     expect(markup).toContain(CORPUS_LEDE);
 
@@ -132,10 +100,7 @@ describe('the benchmarks page', () => {
     for (const source of BENCHMARK.corpus?.sources ?? []) {
       expect(described).toContain(source.tool);
       expect(markup).toContain(source.tool);
-      // The sample is rendered verbatim, so a distinctive line of it is enough
-      // to prove the record reached the page rather than only its counts. The
-      // quotes come back escaped, which is React doing its job and not the
-      // sample having been altered.
+      // Rendered verbatim; React escapes the quotes.
       const line = (source.sample.split('\n')[1] as string).trim();
       expect(markup).toContain(line.replaceAll('"', '&quot;'));
     }
@@ -145,11 +110,6 @@ describe('the benchmarks page', () => {
     for (const limit of LIMITS) expect(markup).toContain(limit.title);
   });
 
-  /**
-   * The page's whole standing rests on a reader being able to go and check it,
-   * so a source link that rots is worse than no link: it reads as an invitation
-   * and lands on a 404.
-   */
   it('links every source by the question it answers', () => {
     for (const source of SOURCES) {
       expect(markup).toContain(source.question);
@@ -157,11 +117,6 @@ describe('the benchmarks page', () => {
     }
   });
 
-  /**
-   * The assertion that matters most. A page about measurement that shipped
-   * invented figures would undo the only thing it is for, so the empty state
-   * has to say it is empty rather than render a table of zeroes.
-   */
   it('says so plainly when no run has been published', () => {
     if (HAS_RESULTS) {
       expect(markup).not.toContain('No run has been published yet');
@@ -169,7 +124,7 @@ describe('the benchmarks page', () => {
     }
     expect(markup).toContain('No run has been published yet');
     expect(markup).toContain('--publish');
-    // No percentages anywhere: nothing numeric should reach the page.
+    // Nothing numeric should reach the page.
     expect(markup).not.toMatch(/>\d+%</);
   });
 });
@@ -182,12 +137,6 @@ describe('the markdown half', () => {
     for (const limit of LIMITS) expect(body).toContain(limit.title);
   });
 
-  /**
-   * The half of the page most likely to be read by a model rather than a
-   * person, and the answer it gives to "is this better than a vector store"
-   * is conditional on a workload. Quoting the accuracy without the corpus is
-   * the same failure as quoting it without the model.
-   */
   it('carries the corpus and a record of it verbatim', () => {
     for (const source of BENCHMARK.corpus?.sources ?? []) {
       expect(body).toContain(source.tool);

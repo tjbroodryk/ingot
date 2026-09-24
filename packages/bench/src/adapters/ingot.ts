@@ -3,16 +3,9 @@ import { authoredMapping, FTS_COLUMNS, type MappingSource } from './ingot-mappin
 import type { AdapterTool, MemoryAdapter } from './types.js';
 
 /**
- * The tools left in front of the model, per mode.
- *
- * `full` is the read surface a real agent gets: the schema, SQL, and ranking
- * by meaning. `text-search-only` is the ablation — the same store, the same
- * embeddings, the same rows, reachable only through top-k semantic search.
- *
- * The ablation is the most important column in the table. Ingot contains a
- * vector index; if it beats a vector store, the interesting question is
- * whether that came from structure or merely from better chunking, and
- * `text-search-only` is the only column that can answer it.
+ * Read tools per mode. `full` gives schema, SQL and ranking by meaning;
+ * `text-search-only` is the ablation — the same store reachable only through
+ * top-k `recall`.
  */
 const READ_TOOLS: Record<IngotMode, readonly string[]> = {
   full: ['describe', 'query', 'recall'],
@@ -59,17 +52,8 @@ interface McpClientLike {
 }
 
 /**
- * Ingot, over the MCP surface an agent actually connects to.
- *
- * Deliberately not the REST API. The thing being benchmarked is the retrieval
- * *interface* — tool names, descriptions, and the schema the server hands over
- * at connect time — and reimplementing that against `/query` would benchmark a
- * version of Ingot no agent uses.
- *
- * The schema summary the server sends as MCP instructions is passed through to
- * the system prompt. It is a real property of the product, it costs no tool
- * call, and withholding it to make the columns look more alike would be
- * measuring something nobody ships.
+ * Ingot over the MCP surface an agent connects to. The schema summary the
+ * server sends as MCP instructions is passed through to the system prompt.
  */
 export class IngotAdapter implements MemoryAdapter {
   readonly name: string;
@@ -85,10 +69,7 @@ export class IngotAdapter implements MemoryAdapter {
 
   constructor(private readonly options: IngotOptions) {
     this.mode = options.mode ?? 'full';
-    // The mode says what was taken away; the column name says what the row is
-    // for. Those are different sentences, and the one a reader meets in a
-    // table should be the second — see `names.ts` for the spellings this has
-    // answered to.
+    // The column name says what the row is for; see `names.ts` for old spellings.
     this.name = this.mode === 'full' ? 'ingot-mcp' : 'control-same-store-top-k';
     this.mapping = options.mapping ?? authoredMapping;
     this.embedTimeoutMs = options.embedTimeoutMs ?? 300_000;
@@ -111,8 +92,7 @@ export class IngotAdapter implements MemoryAdapter {
     const client = await this.connect(`${this.base()}/${this.options.account}/${this.ingotId}/mcp`);
     this.client = client;
 
-    // Writes go in corpus order, one page at a time, exactly as they would if
-    // the agent had produced them: no bulk path, no privileged ingestion.
+    // Writes go in corpus order, one page at a time, as an agent would produce them.
     const mappings = new Map<ToolName, Awaited<ReturnType<MappingSource>>>();
     for (const result of corpus) {
       let mapping = mappings.get(result.tool);
@@ -133,8 +113,7 @@ export class IngotAdapter implements MemoryAdapter {
       );
     }
 
-    // Keyword search is off until asked for, so a run that did not ask for it
-    // would be measuring Ingot with a documented feature switched off.
+    // Keyword search is off until enabled.
     for (const [table, columns] of Object.entries(FTS_COLUMNS)) {
       if (!this.tables.has(table)) continue;
       expectOk(
@@ -148,8 +127,7 @@ export class IngotAdapter implements MemoryAdapter {
 
     this.instructions = client.getInstructions?.() ?? '';
     if (!this.instructions) {
-      // Older servers may not send instructions; `describe` carries the same
-      // schema and costs one call at setup rather than one per question.
+      // Older servers may not send instructions; `describe` carries the same schema.
       const described = await client.callTool({ name: 'describe', arguments: {} });
       this.instructions = textOf(described);
     }
@@ -158,11 +136,7 @@ export class IngotAdapter implements MemoryAdapter {
     await this.loadTools();
   }
 
-  /**
-   * Embedding happens on a sweeper, not on the write path, so querying
-   * immediately after ingest would rank against a half-filled column. Poll
-   * `recall` until it comes back with rows.
-   */
+  /** Embedding runs on a sweeper, not the write path; poll `recall` until it returns rows. */
   private async waitForEmbeddings(): Promise<void> {
     const table = this.embeddedTable;
     const client = this.client;
@@ -219,10 +193,8 @@ export class IngotAdapter implements MemoryAdapter {
     const client = this.client;
     if (!client) throw new Error('ingot adapter: ingest before calling tools');
     const reply = await client.callTool({ name, arguments: input });
-    // Ingot reports tool errors to the model rather than throwing, because the
-    // model is the one who can fix a mistyped column. Passing the error text
-    // through preserves that, and a run where the model recovers from its own
-    // bad SQL is a run that reflects how the product behaves.
+    // Tool errors are returned to the model, not thrown, so it can recover
+    // from a mistyped column.
     return textOf(reply);
   }
 
@@ -231,8 +203,7 @@ export class IngotAdapter implements MemoryAdapter {
     this.client = null;
     if (!client) return;
     try {
-      // The memory carries `retainFor: 12h`, so this is tidiness rather than
-      // correctness — a failed delete must not fail the run.
+      // `retainFor` handles expiry; a failed delete must not fail the run.
       const account = await this.connect(`${this.base()}/${this.options.account}/mcp`);
       try {
         if (this.ingotId) {

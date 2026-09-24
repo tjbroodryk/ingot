@@ -1,14 +1,6 @@
 /**
- * What can fall behind in this service.
- *
- * None of these mirror somebody else's system — an ingot holds only what was
- * posted to it. What they reconcile is our own background
- * work: the roll-up that has not caught up, the embedding that has not run.
- * The failure mode is the same shape, though, and so is the fix: a delivery is
- * the fast path and a sweep is the floor.
- *
- * `SWEEPERS` is a `Record` over this enum, so adding a kind without a ticker
- * fails to compile.
+ * Background work that can fall behind and needs reconciling. `SWEEPERS` is a
+ * `Record` over this enum, so a kind without a ticker fails to compile.
  */
 export enum SweptKind {
   RollUp = 'roll_up',

@@ -4,16 +4,9 @@ import type { Category } from '../questions/questions.js';
 import { summarise, type ReportHeader, type RunRecord } from './report.js';
 
 /**
- * The shape the site renders.
- *
- * A *summary*, deliberately: aggregates and provenance, never the transcripts.
- * Those are the expensive, private half of a run — they carry every tool call
- * and every returned row — and a published page needs none of it.
- *
- * The whole point of writing this file from the run rather than by hand is
- * that the page cannot drift from the data. A number on `/benchmarks` that
- * nobody can trace to a seed and a model is marketing, and this file is what
- * makes the difference: it carries what produced it alongside what it found.
+ * The shape the site renders: a summary — aggregates and provenance, never the
+ * transcripts. Written from the run so the page cannot drift from the data, and
+ * carries what produced it alongside what it found.
  */
 export interface PublishedBenchmark {
   /** The version of this file's own shape, so the page can refuse a stale one. */
@@ -27,18 +20,9 @@ export interface PublishedBenchmark {
 }
 
 /**
- * The workload, described rather than asserted.
- *
- * "Is this better than a vector store" is unanswerable without "over what",
- * and the answer here is specific: not documents, not prose, but the payloads
- * an agent's tool calls hand back — paginated JSON listings, and at `--logs N`
- * one unpaginated flood. A reader who does not know that is reading the table
- * as a claim about their own corpus, which it is not.
- *
- * Computed from the seed rather than written down, for the same reason every
- * other number on the page is: the world and the corpus are pure functions of
- * `--seed`, so this block is as reproducible as the accuracies beside it and
- * cannot drift from the fixture once somebody edits the generator.
+ * The workload, described from the seed rather than asserted: the payloads an
+ * agent's tool calls return — paginated JSON listings, and at `--logs N` one
+ * unpaginated flood — not documents. Reproducible from `--seed`.
  */
 export interface PublishedCorpus {
   /** Tool results — payloads that arrived in the conversation. */
@@ -77,13 +61,9 @@ export interface PublishedRun {
   readonly embedder: string;
   readonly mapping: string;
   /**
-   * Log lines in the corpus, as one unpaginated result. 0 is the ordinary run.
-   *
-   * Published because it is the flag that decides which experiment this is: at
-   * any interesting value the corpus stops fitting in a context window and
-   * `raw-context` is refused rather than scored, so a page that did not say
-   * which kind of run it was showing would be putting two of them under one
-   * heading.
+   * Log lines in the corpus, as one unpaginated result. 0 is the ordinary run;
+   * at any interesting value the corpus stops fitting and `raw-context` is
+   * refused rather than scored.
    */
   readonly logs: number;
   readonly questions: number;
@@ -103,14 +83,8 @@ export interface PublishedAdapter {
   readonly toolCalls: number;
   readonly contextTokens: number;
   /**
-   * Runs where the provider threw and nothing was answered.
-   *
-   * Scored wrong, because a memory that could not be asked did not answer —
-   * but published separately, because "did badly" and "a fifth of its runs
-   * never happened" are different readings and only one of them is about
-   * retrieval. It lands hardest on the columns nobody here is rooting for, so
-   * leaving it out of the summary would be the most comfortable omission on
-   * the page.
+   * Runs where the provider threw and nothing was answered. Scored wrong, but
+   * published separately: "did badly" and "never ran" are different readings.
    */
   readonly failures: number;
   /** Accuracy per category; a category with no questions is absent. */
@@ -133,20 +107,14 @@ interface Page {
 }
 
 /**
- * The corpus this run's seed produces, measured.
- *
- * Rebuilt here rather than threaded through the run because it is free and
- * exact: `buildWorld` and `buildCorpus` are pure functions of the seed, so
- * this is the identical array of payloads every adapter ingested, down to the
- * bytes. Replaying an old run with `--from` therefore republishes the corpus
- * it was actually asked about.
+ * The corpus this run's seed produces, measured. `buildWorld`/`buildCorpus`
+ * are pure, so this is the identical array every adapter ingested and `--from`
+ * republishes the corpus actually asked about.
  */
 export function corpusShape(seed: number, logs: number): PublishedCorpus {
   const corpus = buildCorpus(buildWorld({ seed, logs }));
 
-  // Grouped in the order the tools first appear, which is the order an agent
-  // met them: a table sorted by size would put the shape of the corpus second
-  // to the arithmetic of it.
+  // Grouped in the order the tools first appear.
   const order: string[] = [];
   const grouped = new Map<string, ToolResult[]>();
   for (const result of corpus) {
@@ -161,9 +129,7 @@ export function corpusShape(seed: number, logs: number): PublishedCorpus {
   const sources = order.map((tool): PublishedSource => {
     const results = grouped.get(tool) as ToolResult[];
     const items = results.map((result) => (result.result as Page).items ?? []);
-    // What the payload weighs as it arrives, not what the world object weighs:
-    // the corpus is a lossy view of the world and the lossy view is the thing
-    // that costs context.
+    // What the payload weighs as it arrives, which is what costs context.
     const sizes = results.map((result) => JSON.stringify(result.result).length);
     const sum = (values: readonly number[]): number => values.reduce((total, n) => total + n, 0);
     const first = items[0]?.[0];
@@ -173,7 +139,7 @@ export function corpusShape(seed: number, logs: number): PublishedCorpus {
       results: results.length,
       records: sum(items.map((page) => page.length)),
       perResult: Math.max(...items.map((page) => page.length)),
-      // Only `logs.search` says so, and saying so is the whole point of it.
+      // Only `logs.search` sets this false.
       paginated: (results[0] as ToolResult).args.paginated !== false,
       bytes: sum(sizes),
       largest: Math.max(...sizes),
@@ -216,8 +182,8 @@ export function publishable(
       evidencePrecision: overall.evidencePrecision,
       toolCalls: overall.toolCalls,
       contextTokens: Math.round(overall.finalInputTokens),
-      // Same rule as the report's banner: the provider throwing is an
-      // infrastructure failure, a corpus that does not fit is a finding.
+      // Same rule as the report's banner: a provider error is a failure, a
+      // corpus that does not fit is a finding.
       failures: mine.filter(
         (row) => row.stopReason === 'provider-error' || row.stopReason?.startsWith('error:'),
       ).length,
@@ -254,8 +220,7 @@ export function publishable(
       warnings: header.warnings,
     },
     corpus: corpusShape(header.seed, header.logs),
-    // Only the categories this run actually asked about, so the page never
-    // renders a column with nothing under it.
+    // Only the categories this run asked about, so no empty column renders.
     categories: categories.filter((category) => categoryCounts[category] !== undefined),
     adapters,
   };
