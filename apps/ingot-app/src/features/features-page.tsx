@@ -7,6 +7,7 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { BENCHMARKS_HREF, DOCS_HREF, REPO_URL } from '../site/mode';
+import { previewMetadata } from '../site/og/cards';
 // The frame, the hero and the closing band are the landing page's.
 import '../landing/landing.css';
 import './features.css';
@@ -15,6 +16,7 @@ import { COMBINED, FEATURES, FEATURES_DESCRIPTION, FEATURES_LEDE, type Feature }
 export const featuresMetadata: Metadata = {
   title: 'Features',
   description: FEATURES_DESCRIPTION,
+  ...previewMetadata('features'),
 };
 
 // Only what the rail reads: it is a client component, and the rest would be

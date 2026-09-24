@@ -3,6 +3,7 @@ import { Archivo, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { LEDE } from '../landing/sections';
 import { SITE_URL } from '../site/mode';
+import { previewMetadata } from '../site/og/cards';
 import './globals.css';
 
 /**
@@ -57,6 +58,7 @@ export const metadata: Metadata = {
   // second string here, because a preview and a hero that disagree is a thing
   // nobody sees from inside either file.
   description: LEDE,
+  ...previewMetadata('home'),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

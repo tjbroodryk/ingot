@@ -18,15 +18,15 @@ import {
 export const WHY_TITLE = 'Memory is a query problem';
 
 export const WHY_DESCRIPTION =
-  'Why Ingot keeps tool results as typed tables: agents mostly ask counts, orderings, absences and joins, which similarity search cannot answer. The hypothesis, the benchmark that tests it, and what is still unproven.';
+  'Why Ingot keeps tool results as typed tables: a question like “how many deals closed last quarter” needs a query, and similarity search can’t run one. The hypothesis, the benchmark that tests it, and what is still unproven.';
 
 export const ABSTRACT =
-  'Agents store what their tools return as text and retrieve it by similarity. That works for questions phrased like the record, and fails for counts, ordering, absence and joins, which are most of the questions an agent asks about its own work. We argue that tool output is already structured, that memory should keep that structure, and that doing so makes answers both more accurate and cheaper to produce.';
+  'Agents usually remember tool results as blobs of text, then search those blobs by similarity. That’s fine when the question sounds like the original record. It breaks the moment the agent asks anything operational: how many, which came first, what’s missing, what links to what. In other words, most questions an agent asks about its own work. Tool output is already structured. Memory should preserve that structure — not flatten it and hope embeddings can reconstruct the answer later. The result is more accurate answers, fewer tokens, and less guesswork.';
 
 export const INTRODUCTION = {
   title: 'Agents remember in the wrong shape',
   before: [
-    'An agent calls a CRM, a CI system, an issue tracker. Each returns JSON with fields, types and keys. The usual memory layer throws that away: it flattens the payload to text, cuts it into chunks and embeds them.',
+    'An agent calls a CRM, a CI system, an issue tracker. Each returns JSON with named, typed fields. The usual memory layer throws that away: it flattens the payload to text, cuts it into chunks and embeds them.',
     'Later the agent asks which three builds were slowest, or how many deals closed last quarter. A similarity index can return records that look relevant. It can’t sort them, count them, or show what’s missing.',
   ],
   quote: 'The structure was there when the data arrived. Memory is where it gets lost.',
@@ -61,7 +61,7 @@ WHERE i.id = 'INC-01'`,
     },
   },
   after:
-    'So the agent reads more to make up for it: more chunks, more calls, more tokens. It still guesses the answer.',
+    'So the agent pulls in more chunks and makes more calls to compensate, and still ends up guessing.',
 } as const;
 
 export const HYPOTHESIS = {
@@ -70,7 +70,7 @@ export const HYPOTHESIS = {
   claims: [
     {
       n: 'H1',
-      text: 'Structured memory is more accurate on aggregate, ordering, absence and join questions.',
+      text: 'Structured memory is more accurate on questions that need a query, like “which three builds were slowest” or “who was on call for INC-01”.',
     },
     {
       n: 'H2',

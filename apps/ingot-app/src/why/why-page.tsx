@@ -5,6 +5,7 @@ import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { Prose } from '../docs/prose';
 import { BENCHMARKS_HREF, DOCS_HREF, FEATURES_HREF, REPO_URL } from '../site/mode';
+import { previewMetadata } from '../site/og/cards';
 // The frame and the closing band are the landing page's.
 import '../landing/landing.css';
 import './why.css';
@@ -24,6 +25,7 @@ export const whyMetadata: Metadata = {
   // The nav's word rather than the headline: a tab is read at 90px wide.
   title: 'Why Ingot',
   description: WHY_DESCRIPTION,
+  ...previewMetadata('why'),
 };
 
 const pct = (value: number): string => `${Math.round(value * 100)}%`;

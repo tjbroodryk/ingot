@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { previewMetadata } from '../site/og/cards';
 import results from './results.json';
 
 /**
@@ -375,6 +376,7 @@ export const BENCHMARKS_DESCRIPTION =
 export const benchmarksMetadata: Metadata = {
   title: 'Benchmarks',
   description: BENCHMARKS_DESCRIPTION,
+  ...previewMetadata('benchmarks'),
 };
 
 export const BENCHMARKS_LEDE =

@@ -6,6 +6,7 @@ import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { DOCS_HREF, REPO_URL } from '../site/mode';
+import { previewMetadata } from '../site/og/cards';
 import {
   DEPLOYMENT_DESCRIPTION,
   DEPLOYMENT_LEDE,
@@ -21,6 +22,7 @@ import { RUN_TARGETS } from './targets';
 export const deploymentMetadata: Metadata = {
   title: 'Deployment',
   description: DEPLOYMENT_DESCRIPTION,
+  ...previewMetadata('deployment'),
 };
 
 /**

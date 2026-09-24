@@ -121,7 +121,7 @@ export function BenchmarksPage(): ReactNode {
               id="results"
               kicker="Results"
               title="Accuracy, and what it cost"
-              lede="An answer counts only when it is exactly right. The bar is overall accuracy; the number beside it is the mean prompt the model had to read to produce each answer."
+              lede="An answer counts only when it is exactly right. The bar is overall accuracy; Ctx tokens is the average prompt size, in tokens, the model read to produce each answer."
             >
               {table ? (
                 <>

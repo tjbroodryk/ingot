@@ -3,6 +3,7 @@ import { Fragment } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { DASHBOARD_HREF, IS_LANDING, REPO_URL } from '../site/mode';
+import { previewMetadata } from '../site/og/cards';
 import { CodeBlock } from './code-block';
 import { DocsNav } from './docs-nav';
 import { EndpointRow } from './endpoint-row';
@@ -20,6 +21,7 @@ import { GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 export const referenceMetadata: Metadata = {
   title: REFERENCE_TITLE,
   description: REFERENCE_DESCRIPTION,
+  ...previewMetadata('docs'),
 };
 
 /**
