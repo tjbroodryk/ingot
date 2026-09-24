@@ -1,5 +1,5 @@
 import type { ToolName, ToolResult } from '../corpus/stream.js';
-import { authoredMapping, FTS_COLUMNS, type MappingSource } from './ingot-mapping.js';
+import { authoredMapping, FTS_COLUMNS, unembeddedSql, type MappingSource } from './ingot-mapping.js';
 import { schema, type AdapterTool, type MemoryAdapter } from './types.js';
 
 /**
@@ -131,7 +131,8 @@ export class IngotRestAdapter implements MemoryAdapter {
   private ingotId: string | null = null;
   private note = '';
   private tables = new Set<string>();
-  private embedded: { table: string; column: string } | null = null;
+  /** Every embedded column, keyed `table.column` — readiness waits on all of them. */
+  private embedded = new Map<string, { table: string; column: string }>();
   /** Payloads `/add` would not hold. See `MemoryAdapter.refusals`. */
   private readonly refused: string[] = [];
 
@@ -160,9 +161,8 @@ export class IngotRestAdapter implements MemoryAdapter {
         mappings.set(result.tool, mapping);
       }
       this.tables.add(mapping.table);
-      const embedded = Object.entries(mapping.columns).find(([, column]) => column.embed);
-      if (embedded && !this.embedded) {
-        this.embedded = { table: mapping.table, column: embedded[0] };
+      for (const [column, spec] of Object.entries(mapping.columns)) {
+        if (spec.embed) this.embedded.set(`${mapping.table}.${column}`, { table: mapping.table, column });
       }
       /*
        * A payload the store will not hold costs its rows, not the column.
@@ -213,33 +213,36 @@ export class IngotRestAdapter implements MemoryAdapter {
 
   /**
    * Embedding happens on a sweeper, not on the write path, so querying
-   * immediately after ingest would rank against a half-filled column. Poll a
-   * semantic query until it comes back with rows.
+   * immediately after ingest would rank against a half-filled column. Wait until
+   * every embedded column has a vector on every row — one ready row in one table
+   * let questions start while `issues` was still empty to `recall`.
    */
   private async waitForEmbeddings(): Promise<void> {
-    const embedded = this.embedded;
-    if (!embedded) return;
+    if (this.embedded.size === 0) return;
 
     const deadline = Date.now() + this.embedTimeoutMs;
     let delay = 1000;
+    let waitingOn = [...this.embedded.keys()];
     while (Date.now() < deadline) {
-      try {
-        const probe = await this.send<QueryResult>('POST', `${this.memory()}/query`, {
-          text: 'a probe for readiness',
-          table: embedded.table,
-          column: embedded.column,
-          limit: 1,
-        });
-        if (probe.rows.length > 0) return;
-      } catch {
-        // A query against a column with no vectors in it yet is an error, not
-        // an empty result. Both mean "not ready", and both are worth retrying.
+      const still: string[] = [];
+      for (const [key, { table, column }] of this.embedded) {
+        try {
+          const probe = await this.send<QueryResult>('POST', `${this.memory()}/query`, {
+            sql: unembeddedSql(table, column),
+          });
+          if (Number(probe.rows[0]?.missing ?? 1) > 0) still.push(key);
+        } catch {
+          // The vector column may not exist until the sweeper's first pass.
+          still.push(key);
+        }
       }
+      if (still.length === 0) return;
+      waitingOn = still;
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * 2, 15_000);
     }
     throw new Error(
-      `ingot embeddings for ${embedded.table} were not ready within ${this.embedTimeoutMs}ms; ` +
+      `ingot embeddings for ${waitingOn.join(', ')} were not ready within ${this.embedTimeoutMs}ms; ` +
         'raise embedTimeoutMs rather than reporting a run against a half-embedded table',
     );
   }

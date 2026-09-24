@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { previewMetadata } from '../site/og/cards';
 import results from './results.json';
+import scaling from './scaling.json';
 
 /**
  * The published benchmark, and the words around it.
@@ -102,6 +103,54 @@ export const BENCHMARK = results as PublishedBenchmark;
 
 /** Every published run, in the order the page offers them. */
 export const TABLES: readonly PublishedTable[] = BENCHMARK.tables ?? [];
+
+/**
+ * The same questions asked over a growing memory, one point per `--scale`.
+ *
+ * Its own file because `--scale --publish` writes it whole, trimmed to what the
+ * chart reads; see `SiteScaling` in `packages/bench/src/run/publish.ts`.
+ */
+export interface PublishedScaling {
+  readonly schema: 2;
+  readonly categories: readonly string[];
+  readonly run: Pick<PublishedRun, 'model' | 'seed'>;
+  /** Ascending scale. */
+  readonly points: readonly PublishedPoint[];
+}
+
+export interface PublishedPoint {
+  /** Multiples of the ordinary 90 days of history held in the memory. */
+  readonly scale: number;
+  readonly questions: number;
+  readonly repeats: number;
+  readonly corpus: Pick<PublishedCorpus, 'results' | 'records'> & {
+    readonly sources: readonly PublishedPointSource[];
+  };
+  readonly adapters: readonly PublishedPointAdapter[];
+}
+
+/** One tool's share of a point's corpus. */
+export interface PublishedPointSource
+  extends Pick<PublishedSource, 'tool' | 'results' | 'records' | 'sample'> {
+  /** The sample as Ingot's authored mapping stores it; null when an agent wrote the mapping. */
+  readonly stored: {
+    readonly table: string;
+    readonly columns: readonly {
+      readonly name: string;
+      readonly type: string;
+      readonly value: unknown;
+      readonly embedded: boolean;
+    }[];
+  } | null;
+}
+
+export interface PublishedPointAdapter
+  extends Pick<PublishedAdapter, 'name' | 'runs' | 'accuracy' | 'contextTokens'> {
+  /** Runs refused because the prompt no longer fit the model's window. Scored wrong. */
+  readonly overflowed: number;
+}
+
+export const SCALING = scaling as PublishedScaling;
 
 /**
  * The transcripts, fetched at runtime rather than imported.

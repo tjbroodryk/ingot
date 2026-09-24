@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { flattenRecords, refsIn } from '../src/corpus/records.js';
 import { buildCorpus, corpusRefs } from '../src/corpus/stream.js';
-import { buildWorld } from '../src/corpus/world.js';
+import { buildWorld, RECENT_SINCE, type World } from '../src/corpus/world.js';
 
 describe('the corpus', () => {
   test('is identical for a seed and different for another', () => {
@@ -13,8 +13,35 @@ describe('the corpus', () => {
     expect(JSON.stringify(first)).not.toBe(JSON.stringify(other));
   });
 
-  test('carries every world record exactly once', () => {
-    const world = buildWorld({ seed: 3 });
+  test('at 1× is the ordinary corpus, byte for byte', () => {
+    const plain = buildCorpus(buildWorld({ seed: 1 }));
+    const scaled = buildCorpus(buildWorld({ seed: 1, scale: 1 }));
+    expect(JSON.stringify(scaled)).toBe(JSON.stringify(plain));
+  });
+
+  /**
+   * What makes a `--scale` series one experiment rather than several: the
+   * recent 90 days are the same records at every scale, and everything added
+   * is older than the window the questions ask about.
+   */
+  test('grows only with history older than the recent window', () => {
+    const small = buildWorld({ seed: 1, scale: 1 });
+    const large = buildWorld({ seed: 1, scale: 4 });
+    const since = Date.parse(RECENT_SINCE);
+    const recentOf = (world: World) => ({
+      pullRequests: world.pullRequests.filter((pr) => Date.parse(pr.createdAt) >= since),
+      issues: world.issues.filter((issue) => Date.parse(issue.createdAt) >= since),
+    });
+
+    expect(large.pullRequests).toHaveLength(small.pullRequests.length * 4);
+    expect(large.issues).toHaveLength(small.issues.length * 4);
+    expect(recentOf(large)).toEqual(recentOf(small));
+    expect(recentOf(small).pullRequests).toEqual([...small.pullRequests]);
+    expect(large.incidents).toEqual(small.incidents);
+  });
+
+  test('carries every world record exactly once, at any scale', () => {
+    const world = buildWorld({ seed: 3, scale: 3 });
     const corpus = buildCorpus(world);
     const refs = corpusRefs(corpus);
 

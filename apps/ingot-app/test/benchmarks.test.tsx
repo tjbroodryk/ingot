@@ -12,6 +12,7 @@ import {
   CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
+  SCALING,
   SOURCE_BLURBS,
   SOURCES,
   TRANSCRIPTS_FILE,
@@ -112,6 +113,30 @@ describe('the published results file', () => {
   });
 });
 
+/** The `--scale` series, written whole by `packages/bench` and imported by the chart. */
+describe('the published scaling file', () => {
+  it('is the shape the chart reads', () => {
+    expect(SCALING.schema).toBe(2);
+    expect(SCALING.points.length).toBeGreaterThanOrEqual(2);
+    const scales = SCALING.points.map((point) => point.scale);
+    expect(scales).toEqual([...scales].sort((a, b) => a - b));
+  });
+
+  it('holds figures the chart can place', () => {
+    for (const point of SCALING.points) {
+      for (const adapter of point.adapters) {
+        expect(adapter.accuracy).toBeGreaterThanOrEqual(0);
+        expect(adapter.accuracy).toBeLessThanOrEqual(1);
+        expect(adapter.contextTokens).toBeGreaterThanOrEqual(0);
+        expect(adapter.overflowed).toBeLessThanOrEqual(adapter.runs);
+      }
+      // The drill-in's totals and its per-tool rows have to agree.
+      const records = point.corpus.sources.reduce((sum, source) => sum + source.records, 0);
+      expect(records).toBe(point.corpus.records);
+    }
+  });
+});
+
 /**
  * The transcript sidecar, the other file `packages/bench` writes for this page.
  *
@@ -204,6 +229,27 @@ describe('the benchmarks page', () => {
     // open, and a control on the empty page would load data that never arrives.
     if (HAS_RESULTS) expect(markup).toContain('Show the transcripts');
     else expect(markup).not.toContain('Show the transcripts');
+  });
+
+  it('draws the scaling chart with every memory in the series', () => {
+    if (!HAS_RESULTS) return;
+    expect(markup).toContain('More history, same answers');
+    const names = new Set(SCALING.points.flatMap((point) => point.adapters.map((a) => a.name)));
+    for (const name of names) expect(markup).toContain(adapterLabel(name));
+  });
+
+  it('opens the largest memory in the drill-in, with every tool that went into it', () => {
+    if (!HAS_RESULTS) return;
+    const last = SCALING.points[SCALING.points.length - 1];
+    if (!last) return;
+    expect(markup).toContain(`Corpus at ${last.scale}×`);
+    for (const source of last.corpus.sources) expect(markup).toContain(source.tool);
+  });
+
+  it('says how accuracy is scored inside the run', () => {
+    if (!HAS_RESULTS) return;
+    expect(markup).toContain('Exactly right, or wrong');
+    expect(markup).toContain('No partial credit');
   });
 
   it('explains every adapter and every category', () => {

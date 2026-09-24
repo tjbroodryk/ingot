@@ -1,4 +1,4 @@
-import type { Ref, World } from '../corpus/world.js';
+import { RECENT_SINCE, type Ref, type World } from '../corpus/world.js';
 
 /**
  * Questions, and the gold answers computed from the world that produced the
@@ -38,12 +38,32 @@ export interface Question {
 export interface QuestionOptions {
   /** Per template, not per category. Keeps the mix stable as the world grows. */
   readonly perTemplate?: number;
+  /**
+   * Ask only about pull requests, CI runs and issues from {@link RECENT_SINCE}
+   * on, and say so in the question.
+   *
+   * For `--scale`, whose extra history is all older than that: scoped this way,
+   * every scale asks the identical questions with the identical gold answers.
+   */
+  readonly recentOnly?: boolean;
 }
 
-export function buildQuestions(world: World, options: QuestionOptions = {}): readonly Question[] {
+export function buildQuestions(
+  fullWorld: World,
+  options: QuestionOptions = {},
+): readonly Question[] {
   const limit = options.perTemplate ?? 3;
   const questions: Question[] = [];
   let sequence = 0;
+
+  const recentOnly = options.recentOnly ?? false;
+  const world = recentOnly ? recent(fullWorld) : fullWorld;
+  const scoped = (noun: string, verb: string): string =>
+    recentOnly ? `${noun} ${verb} on or after ${RECENT_SINCE}` : noun;
+  const prsNoun = scoped('pull requests', 'opened');
+  const prNoun = scoped('pull request', 'opened');
+  const ciRunsNoun = scoped('CI runs', 'started');
+  const issuesNoun = scoped('issues', 'created');
 
   const add = (
     category: Category,
@@ -71,7 +91,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (matching.length === 0) continue;
     add(
       'aggregate',
-      `How many pull requests touched at least one file under \`${prefix}\`?`,
+      `How many ${prsNoun} touched at least one file under \`${prefix}\`?`,
       { kind: 'number', value: matching.length },
       null,
     );
@@ -84,7 +104,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     const matching = world.ciRuns.filter((run) => run.failedStep === step);
     add(
       'aggregate',
-      `How many CI runs failed at the step "${step}"?`,
+      `How many ${ciRunsNoun} failed at the step "${step}"?`,
       { kind: 'number', value: matching.length },
       null,
     );
@@ -107,7 +127,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   if (unassigned.length > 0) {
     add(
       'absence',
-      'Which issues have no assignee? Answer with their refs.',
+      `Which ${issuesNoun} have no assignee? Answer with their refs.`,
       { kind: 'set', values: unassigned.map((issue) => issue.ref) },
       unassigned.map((issue) => issue.ref),
     );
@@ -119,7 +139,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   if (untouched.length > 0 && untouched.length < world.files.length) {
     add(
       'absence',
-      'Which files were never touched by any pull request? Answer with their refs.',
+      `Which files were never touched by any ${prNoun}? Answer with their refs.`,
       { kind: 'set', values: untouched.map((file) => file.ref) },
       untouched.map((file) => file.ref),
     );
@@ -136,7 +156,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (top.length < count + 1 || durations.size !== top.length) continue;
     add(
       'ordering',
-      `List the refs of the ${count} longest-running CI runs, longest first.`,
+      `List the refs of the ${count} longest-running ${ciRunsNoun}, longest first.`,
       { kind: 'list', values: ranked.slice(0, count).map((run) => run.ref) },
       ranked.slice(0, count).map((run) => run.ref),
     );
@@ -150,7 +170,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   if (oldestOpen.length === 3 && openTimes.size === Math.min(4, openByAge.length)) {
     add(
       'ordering',
-      'List the refs of the 3 oldest pull requests still open, oldest first.',
+      `List the refs of the 3 oldest ${prsNoun} still open, oldest first.`,
       { kind: 'list', values: oldestOpen.map((pr) => pr.ref) },
       oldestOpen.map((pr) => pr.ref),
     );
@@ -168,7 +188,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (matching.length === 0) continue;
     add(
       'join',
-      `Which pull requests authored by ${author} had at least one failing CI run? Answer with their refs.`,
+      `Which ${prsNoun} authored by ${author} had at least one failing CI run? Answer with their refs.`,
       { kind: 'set', values: matching.map((pr) => pr.ref) },
       matching.map((pr) => pr.ref),
     );
@@ -252,7 +272,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (service?.owner) {
       add(
         'multi-hop',
-        'Which team owns the service with the most open issues? Answer with the team name.',
+        `Which team owns the service with the most open ${issuesNoun}? Answer with the team name.`,
         { kind: 'set', values: [service.owner] },
         null,
       );
@@ -317,7 +337,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (file) {
       add(
         'multi-hop',
-        'Which service owns the file with the most total churn (additions plus deletions summed over every pull request that touched it)? Answer with the service ref.',
+        `Which service owns the file with the most total churn (additions plus deletions summed over every ${prNoun} that touched it)? Answer with the service ref.`,
         { kind: 'set', values: [`svc:${file.service}`] },
         [file.ref, `svc:${file.service}`],
       );
@@ -389,7 +409,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (matching.length === 0) continue;
     add(
       'join',
-      `Which pull requests are still open and touched a file belonging to a service owned by the ${team} team? Answer with their refs.`,
+      `Which ${prsNoun} are still open and touched a file belonging to a service owned by the ${team} team? Answer with their refs.`,
       { kind: 'set', values: matching.map((pr) => pr.ref) },
       matching.map((pr) => pr.ref),
     );
@@ -431,7 +451,7 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
     if (service?.owner) {
       add(
         'multi-hop',
-        'Which team owns the service whose files have the most total churn (additions plus deletions summed over every pull request that touched a file in that service)? Answer with the team name.',
+        `Which team owns the service whose files have the most total churn (additions plus deletions summed over every ${prNoun} that touched a file in that service)? Answer with the team name.`,
         { kind: 'set', values: [service.owner] },
         /*
          * Scored on the answer alone, by the same rule as the aggregates.
@@ -450,6 +470,19 @@ export function buildQuestions(world: World, options: QuestionOptions = {}): rea
   }
 
   return questions;
+}
+
+/** The world as a `recentOnly` question sees it. */
+function recent(world: World): World {
+  const since = Date.parse(RECENT_SINCE);
+  const pullRequests = world.pullRequests.filter((pr) => Date.parse(pr.createdAt) >= since);
+  const numbers = new Set(pullRequests.map((pr) => pr.number));
+  return {
+    ...world,
+    pullRequests,
+    ciRuns: world.ciRuns.filter((run) => numbers.has(run.pr)),
+    issues: world.issues.filter((issue) => Date.parse(issue.createdAt) >= since),
+  };
 }
 
 /** How many questions each category contributed, for the report header. */

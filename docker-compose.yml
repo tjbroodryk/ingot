@@ -82,8 +82,9 @@ services:
   # Ingot falls back to the local filesystem when no bucket is configured, so
   # this is optional for `bun run dev`; it is the suite that wants it.
   minio:
-    # quay.io rather than Docker Hub, where MinIO no longer publishes.
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Chainguard's build, because MinIO has pulled its own images from both
+    # Docker Hub and quay.io. Chainguard only tags `latest`, so pin the digest.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: ingot-minio
     command: server /data --console-address ':9001'
     environment:
@@ -105,7 +106,9 @@ services:
   # because a service that creates its own bucket needs credentials that can,
   # which is more than it should be trusted with in production.
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    # The server image, not chainguard/minio-client: that one has no shell,
+    # and this one ships both sh and mc.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: ingot-minio-init
     depends_on:
       minio:

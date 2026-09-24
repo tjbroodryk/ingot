@@ -1,0 +1,2240 @@
+{
+  "schema": 2,
+  "categories": [
+    "aggregate",
+    "ordering",
+    "semantic",
+    "multi-hop"
+  ],
+  "run": {
+    "model": "gpt-5-mini",
+    "seed": 1
+  },
+  "points": [
+    {
+      "scale": 1,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 19,
+        "records": 501,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 5,
+            "records": 120,
+            "sample": "{\n  \"ref\": \"pr:1400\",\n  \"number\": 1400,\n  \"title\": \"document the retry path\",\n  \"author\": \"akiyama\",\n  \"state\": \"open\",\n  \"created_at\": \"2026-05-26T18:00:00.000Z\",\n  \"merged_at\": null,\n  \"additions\": 469,\n  \"deletions\": 88,\n  \"files\": [\n    \"src/auth/cache.ts\",\n    \"src/delivery/config.ts\",\n    \"src/notify/client.ts\",\n    \"src/search/schema.ts\"\n  ],\n  \"labels\": []\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1400",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1400,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "document the retry path",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "akiyama",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-26T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 469,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 88,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/cache.ts",
+                    "src/delivery/config.ts",
+                    "src/notify/client.ts",
+                    "src/search/schema.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 6,
+            "records": 226,
+            "sample": "{\n  \"ref\": \"ci:run-0001\",\n  \"id\": \"run-0001\",\n  \"pr\": 1400,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 854,\n  \"started_at\": \"2026-05-26T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0001",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0001",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1400,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "unit",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 854,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-26T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 3,
+            "records": 60,
+            "sample": "{\n  \"ref\": \"iss:ENG-200\",\n  \"id\": \"ENG-200\",\n  \"title\": \"refactor the retry path in billing\",\n  \"service\": \"billing\",\n  \"state\": \"open\",\n  \"assignee\": \"kowalski\",\n  \"created_at\": \"2026-05-13T17:00:00.000Z\",\n  \"body\": \"Reported against billing. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-200",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-200",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "refactor the retry path in billing",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "billing",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "kowalski",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-13T17:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against billing. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.4166666666666667,
+          "contextTokens": 21300,
+          "overflowed": 0
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9722222222222222,
+          "contextTokens": 5487,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.6111111111111112,
+          "contextTokens": 16233,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.6111111111111112,
+          "contextTokens": 16146,
+          "overflowed": 0
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 32,
+        "records": 894,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 10,
+            "records": 240,
+            "sample": "{\n  \"ref\": \"pr:1520\",\n  \"number\": 1520,\n  \"title\": \"fix the pagination cursor\",\n  \"author\": \"devi\",\n  \"state\": \"merged\",\n  \"created_at\": \"2026-02-15T18:00:00.000Z\",\n  \"merged_at\": \"2026-02-16T12:00:00.000Z\",\n  \"additions\": 293,\n  \"deletions\": 351,\n  \"files\": [\n    \"src/auth/worker.ts\",\n    \"src/catalog/client.ts\",\n    \"src/search/router.ts\"\n  ],\n  \"labels\": [\n    \"perf\"\n  ]\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1520",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the pagination cursor",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "merged",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-02-15T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-02-16T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 293,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 351,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/worker.ts",
+                    "src/catalog/client.ts",
+                    "src/search/router.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [
+                    "perf"
+                  ],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 11,
+            "records": 439,
+            "sample": "{\n  \"ref\": \"ci:run-0227\",\n  \"id\": \"run-0227\",\n  \"pr\": 1520,\n  \"workflow\": \"lint\",\n  \"status\": \"success\",\n  \"duration_sec\": 1836,\n  \"started_at\": \"2026-02-15T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "lint",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 1836,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-02-15T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 6,
+            "records": 120,
+            "sample": "{\n  \"ref\": \"iss:ENG-260\",\n  \"id\": \"ENG-260\",\n  \"title\": \"remove the token refresh in delivery\",\n  \"service\": \"delivery\",\n  \"state\": \"open\",\n  \"assignee\": \"devi\",\n  \"created_at\": \"2026-03-10T14:00:00.000Z\",\n  \"body\": \"Reported against delivery. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "remove the token refresh in delivery",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "delivery",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-03-10T14:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against delivery. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.3888888888888889,
+          "contextTokens": 35367,
+          "overflowed": 1
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9722222222222222,
+          "contextTokens": 5966,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.5555555555555556,
+          "contextTokens": 16990,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.5,
+          "contextTokens": 18963,
+          "overflowed": 0
+        }
+      ]
+    },
+    {
+      "scale": 4,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 60,
+        "records": 1708,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 20,
+            "records": 480,
+            "sample": "{\n  \"ref\": \"pr:1520\",\n  \"number\": 1520,\n  \"title\": \"fix the pagination cursor\",\n  \"author\": \"devi\",\n  \"state\": \"merged\",\n  \"created_at\": \"2025-11-17T18:00:00.000Z\",\n  \"merged_at\": \"2025-11-18T12:00:00.000Z\",\n  \"additions\": 293,\n  \"deletions\": 351,\n  \"files\": [\n    \"src/auth/worker.ts\",\n    \"src/catalog/client.ts\",\n    \"src/search/router.ts\"\n  ],\n  \"labels\": [\n    \"perf\"\n  ]\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1520",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the pagination cursor",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "merged",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-11-17T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-11-18T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 293,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 351,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/worker.ts",
+                    "src/catalog/client.ts",
+                    "src/search/router.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [
+                    "perf"
+                  ],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 23,
+            "records": 893,
+            "sample": "{\n  \"ref\": \"ci:run-0227\",\n  \"id\": \"run-0227\",\n  \"pr\": 1520,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 3039,\n  \"started_at\": \"2025-11-17T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "unit",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 3039,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-11-17T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 12,
+            "records": 240,
+            "sample": "{\n  \"ref\": \"iss:ENG-260\",\n  \"id\": \"ENG-260\",\n  \"title\": \"harden the config loader in notify\",\n  \"service\": \"notify\",\n  \"state\": \"open\",\n  \"assignee\": \"devi\",\n  \"created_at\": \"2026-03-27T00:00:00.000Z\",\n  \"body\": \"Reported against notify. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "harden the config loader in notify",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "notify",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-03-27T00:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against notify. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.3888888888888889,
+          "contextTokens": 27891,
+          "overflowed": 2
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9722222222222222,
+          "contextTokens": 5914,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.5,
+          "contextTokens": 21366,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.5,
+          "contextTokens": 20891,
+          "overflowed": 0
+        }
+      ]
+    },
+    {
+      "scale": 6,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 86,
+        "records": 2535,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 29,
+            "records": 720,
+            "sample": "{\n  \"ref\": \"pr:1520\",\n  \"number\": 1520,\n  \"title\": \"fix the pagination cursor\",\n  \"author\": \"devi\",\n  \"state\": \"merged\",\n  \"created_at\": \"2025-08-20T18:00:00.000Z\",\n  \"merged_at\": \"2025-08-21T12:00:00.000Z\",\n  \"additions\": 293,\n  \"deletions\": 351,\n  \"files\": [\n    \"src/auth/worker.ts\",\n    \"src/catalog/client.ts\",\n    \"src/search/router.ts\"\n  ],\n  \"labels\": [\n    \"perf\"\n  ]\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1520",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the pagination cursor",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "merged",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-08-20T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-08-21T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 293,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 351,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/worker.ts",
+                    "src/catalog/client.ts",
+                    "src/search/router.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [
+                    "perf"
+                  ],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 34,
+            "records": 1360,
+            "sample": "{\n  \"ref\": \"ci:run-0227\",\n  \"id\": \"run-0227\",\n  \"pr\": 1520,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 3260,\n  \"started_at\": \"2025-08-20T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "unit",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 3260,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-08-20T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 18,
+            "records": 360,
+            "sample": "{\n  \"ref\": \"iss:ENG-260\",\n  \"id\": \"ENG-260\",\n  \"title\": \"fix the retry path in ingest\",\n  \"service\": \"ingest\",\n  \"state\": \"closed\",\n  \"assignee\": \"brennan\",\n  \"created_at\": \"2025-08-29T23:00:00.000Z\",\n  \"body\": \"Reported against ingest. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the retry path in ingest",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "ingest",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "closed",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "brennan",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-08-29T23:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against ingest. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.3333333333333333,
+          "contextTokens": 38202,
+          "overflowed": 2
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9444444444444444,
+          "contextTokens": 6740,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.5,
+          "contextTokens": 29333,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.3611111111111111,
+          "contextTokens": 28734,
+          "overflowed": 0
+        }
+      ]
+    },
+    {
+      "scale": 8,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 114,
+        "records": 3340,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 39,
+            "records": 960,
+            "sample": "{\n  \"ref\": \"pr:1520\",\n  \"number\": 1520,\n  \"title\": \"fix the pagination cursor\",\n  \"author\": \"devi\",\n  \"state\": \"merged\",\n  \"created_at\": \"2025-05-22T18:00:00.000Z\",\n  \"merged_at\": \"2025-05-23T12:00:00.000Z\",\n  \"additions\": 293,\n  \"deletions\": 351,\n  \"files\": [\n    \"src/auth/worker.ts\",\n    \"src/catalog/client.ts\",\n    \"src/search/router.ts\"\n  ],\n  \"labels\": [\n    \"perf\"\n  ]\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1520",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the pagination cursor",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "merged",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-05-22T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-05-23T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 293,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 351,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/worker.ts",
+                    "src/catalog/client.ts",
+                    "src/search/router.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [
+                    "perf"
+                  ],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 46,
+            "records": 1805,
+            "sample": "{\n  \"ref\": \"ci:run-0227\",\n  \"id\": \"run-0227\",\n  \"pr\": 1520,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 1573,\n  \"started_at\": \"2025-05-22T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "unit",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 1573,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-05-22T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 24,
+            "records": 480,
+            "sample": "{\n  \"ref\": \"iss:ENG-260\",\n  \"id\": \"ENG-260\",\n  \"title\": \"harden the error mapper in delivery\",\n  \"service\": \"delivery\",\n  \"state\": \"open\",\n  \"assignee\": \"lindqvist\",\n  \"created_at\": \"2025-04-12T12:00:00.000Z\",\n  \"body\": \"Reported against delivery. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "harden the error mapper in delivery",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "delivery",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "lindqvist",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2025-04-12T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against delivery. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.3333333333333333,
+          "contextTokens": 36470,
+          "overflowed": 4
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9722222222222222,
+          "contextTokens": 4645,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.4722222222222222,
+          "contextTokens": 27502,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.4444444444444444,
+          "contextTokens": 31937,
+          "overflowed": 0
+        }
+      ]
+    },
+    {
+      "scale": 16,
+      "questions": 18,
+      "repeats": 2,
+      "corpus": {
+        "results": 221,
+        "records": 6583,
+        "sources": [
+          {
+            "tool": "catalog.list_services",
+            "results": 1,
+            "records": 8,
+            "sample": "{\n  \"ref\": \"svc:auth\",\n  \"name\": \"auth\",\n  \"owner\": null,\n  \"tier\": 2\n}",
+            "stored": {
+              "table": "services",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "svc:auth",
+                  "embedded": false
+                },
+                {
+                  "name": "name",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "owner",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                },
+                {
+                  "name": "tier",
+                  "type": "INTEGER",
+                  "value": 2,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "catalog.list_files",
+            "results": 2,
+            "records": 73,
+            "sample": "{\n  \"ref\": \"file:f-001\",\n  \"path\": \"src/auth/router.ts\",\n  \"service\": \"auth\",\n  \"loc\": 431\n}",
+            "stored": {
+              "table": "files",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "file:f-001",
+                  "embedded": false
+                },
+                {
+                  "name": "path",
+                  "type": "VARCHAR",
+                  "value": "src/auth/router.ts",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "auth",
+                  "embedded": false
+                },
+                {
+                  "name": "loc",
+                  "type": "INTEGER",
+                  "value": 431,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "github.list_pull_requests",
+            "results": 77,
+            "records": 1920,
+            "sample": "{\n  \"ref\": \"pr:1520\",\n  \"number\": 1520,\n  \"title\": \"fix the pagination cursor\",\n  \"author\": \"devi\",\n  \"state\": \"merged\",\n  \"created_at\": \"2024-05-29T18:00:00.000Z\",\n  \"merged_at\": \"2024-05-30T12:00:00.000Z\",\n  \"additions\": 293,\n  \"deletions\": 351,\n  \"files\": [\n    \"src/auth/worker.ts\",\n    \"src/catalog/client.ts\",\n    \"src/search/router.ts\"\n  ],\n  \"labels\": [\n    \"perf\"\n  ]\n}",
+            "stored": {
+              "table": "pull_requests",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "pr:1520",
+                  "embedded": false
+                },
+                {
+                  "name": "number",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "fix the pagination cursor",
+                  "embedded": true
+                },
+                {
+                  "name": "author",
+                  "type": "VARCHAR",
+                  "value": "devi",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "merged",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2024-05-29T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "merged_at",
+                  "type": "TIMESTAMP",
+                  "value": "2024-05-30T12:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "additions",
+                  "type": "INTEGER",
+                  "value": 293,
+                  "embedded": false
+                },
+                {
+                  "name": "deletions",
+                  "type": "INTEGER",
+                  "value": 351,
+                  "embedded": false
+                },
+                {
+                  "name": "files",
+                  "type": "JSON",
+                  "value": [
+                    "src/auth/worker.ts",
+                    "src/catalog/client.ts",
+                    "src/search/router.ts"
+                  ],
+                  "embedded": false
+                },
+                {
+                  "name": "labels",
+                  "type": "JSON",
+                  "value": [
+                    "perf"
+                  ],
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "ci.list_runs",
+            "results": 91,
+            "records": 3608,
+            "sample": "{\n  \"ref\": \"ci:run-0227\",\n  \"id\": \"run-0227\",\n  \"pr\": 1520,\n  \"workflow\": \"unit\",\n  \"status\": \"success\",\n  \"duration_sec\": 3506,\n  \"started_at\": \"2024-05-29T18:00:00.000Z\",\n  \"failed_step\": null\n}",
+            "stored": {
+              "table": "ci_runs",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "ci:run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "run_id",
+                  "type": "VARCHAR",
+                  "value": "run-0227",
+                  "embedded": false
+                },
+                {
+                  "name": "pr",
+                  "type": "INTEGER",
+                  "value": 1520,
+                  "embedded": false
+                },
+                {
+                  "name": "workflow",
+                  "type": "VARCHAR",
+                  "value": "unit",
+                  "embedded": false
+                },
+                {
+                  "name": "status",
+                  "type": "VARCHAR",
+                  "value": "success",
+                  "embedded": false
+                },
+                {
+                  "name": "duration_sec",
+                  "type": "INTEGER",
+                  "value": 3506,
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2024-05-29T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "failed_step",
+                  "type": "VARCHAR",
+                  "value": null,
+                  "embedded": false
+                }
+              ]
+            }
+          },
+          {
+            "tool": "pagerduty.list_incidents",
+            "results": 2,
+            "records": 14,
+            "sample": "{\n  \"ref\": \"inc:INC-01\",\n  \"id\": \"INC-01\",\n  \"title\": \"catalog degraded\",\n  \"service\": \"catalog\",\n  \"severity\": \"sev2\",\n  \"started_at\": \"2026-05-04T18:00:00.000Z\",\n  \"resolved_at\": \"2026-05-04T20:00:00.000Z\",\n  \"summary\": \"Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.\"\n}",
+            "stored": {
+              "table": "incidents",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "inc:INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "incident_id",
+                  "type": "VARCHAR",
+                  "value": "INC-01",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "catalog degraded",
+                  "embedded": false
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "catalog",
+                  "embedded": false
+                },
+                {
+                  "name": "severity",
+                  "type": "VARCHAR",
+                  "value": "sev2",
+                  "embedded": false
+                },
+                {
+                  "name": "started_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T18:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "resolved_at",
+                  "type": "TIMESTAMP",
+                  "value": "2026-05-04T20:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "summary",
+                  "type": "VARCHAR",
+                  "value": "Customers saw elevated errors on catalog. The cause was that the connection pool was exhausted under sustained write load.",
+                  "embedded": true
+                }
+              ]
+            }
+          },
+          {
+            "tool": "linear.search_issues",
+            "results": 48,
+            "records": 960,
+            "sample": "{\n  \"ref\": \"iss:ENG-260\",\n  \"id\": \"ENG-260\",\n  \"title\": \"document the health probe in search\",\n  \"service\": \"search\",\n  \"state\": \"open\",\n  \"assignee\": \"kowalski\",\n  \"created_at\": \"2023-06-16T01:00:00.000Z\",\n  \"body\": \"Reported against search. Needs a look before the next release.\"\n}",
+            "stored": {
+              "table": "issues",
+              "columns": [
+                {
+                  "name": "ref",
+                  "type": "VARCHAR",
+                  "value": "iss:ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "issue_id",
+                  "type": "VARCHAR",
+                  "value": "ENG-260",
+                  "embedded": false
+                },
+                {
+                  "name": "title",
+                  "type": "VARCHAR",
+                  "value": "document the health probe in search",
+                  "embedded": true
+                },
+                {
+                  "name": "service",
+                  "type": "VARCHAR",
+                  "value": "search",
+                  "embedded": false
+                },
+                {
+                  "name": "state",
+                  "type": "VARCHAR",
+                  "value": "open",
+                  "embedded": false
+                },
+                {
+                  "name": "assignee",
+                  "type": "VARCHAR",
+                  "value": "kowalski",
+                  "embedded": false
+                },
+                {
+                  "name": "created_at",
+                  "type": "TIMESTAMP",
+                  "value": "2023-06-16T01:00:00.000Z",
+                  "embedded": false
+                },
+                {
+                  "name": "body",
+                  "type": "VARCHAR",
+                  "value": "Reported against search. Needs a look before the next release.",
+                  "embedded": false
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "adapters": [
+        {
+          "name": "control-same-store-top-k",
+          "runs": 36,
+          "accuracy": 0.3055555555555556,
+          "contextTokens": 41081,
+          "overflowed": 5
+        },
+        {
+          "name": "ingot-rest",
+          "runs": 36,
+          "accuracy": 0.9444444444444444,
+          "contextTokens": 5181,
+          "overflowed": 0
+        },
+        {
+          "name": "vector",
+          "runs": 36,
+          "accuracy": 0.3333333333333333,
+          "contextTokens": 35997,
+          "overflowed": 0
+        },
+        {
+          "name": "turbopuffer",
+          "runs": 36,
+          "accuracy": 0.3333333333333333,
+          "contextTokens": 37365,
+          "overflowed": 0
+        }
+      ]
+    }
+  ]
+}

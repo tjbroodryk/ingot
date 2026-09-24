@@ -157,10 +157,20 @@ const AUTHORED: Record<ToolName, RememberMapping> = {
 };
 
 export const authoredMapping: MappingSource = async (tool) => {
-  const mapping = AUTHORED[tool];
+  const mapping = authoredFor(tool);
   if (!mapping) throw new Error(`no authored mapping for ${tool}`);
   return mapping;
 };
+
+/** The authored mapping for a tool, if there is one. Sync, for the publisher. */
+export function authoredFor(tool: string): RememberMapping | undefined {
+  return AUTHORED[tool as ToolName];
+}
+
+/** Rows of `table` whose `column` the sweeper has not embedded yet, as `missing`. */
+export function unembeddedSql(table: string, column: string): string {
+  return `SELECT count(*) FILTER (WHERE "${column}_vec" IS NULL) AS missing FROM "${table}"`;
+}
 
 /** Which tables are worth a keyword index, and on which columns. */
 export const FTS_COLUMNS: Record<string, readonly string[]> = {
