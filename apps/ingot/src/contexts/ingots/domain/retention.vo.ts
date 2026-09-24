@@ -37,7 +37,7 @@ export class Retention extends ValueObject {
 
     if (!match?.[1] || !match[2]) {
       throw new InvariantViolation(
-        `"${raw}" is not a retention. Use a whole number and a unit: ` + '30m, 12h, 14d, 4w.',
+        `"${raw}" is not a retention. Use a whole number and a unit: 30m, 12h, 14d, 4w.`,
       );
     }
 

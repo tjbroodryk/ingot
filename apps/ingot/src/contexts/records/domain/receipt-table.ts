@@ -21,17 +21,6 @@ export const RECEIPT_ROWS = 'row_count';
 export const RECEIPT_MODEL = 'model';
 
 /**
- * The three embedded columns: `search_term` (a predicted question), `summary`
- * (prose about the result), and `body` (the result itself, matching on
- * unmentioned identifiers). Default `search_term`, chosen with `column`.
- */
-export const RECEIPT_EMBEDDED: readonly string[] = [
-  RECEIPT_SEARCH_TERM,
-  RECEIPT_SUMMARY,
-  RECEIPT_BODY,
-];
-
-/**
  * The schema, declared once. `source_batch` is the key, since it is what a
  * receipt hands back and its query must keep finding the same receipt later.
  */

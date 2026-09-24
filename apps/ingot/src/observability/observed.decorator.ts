@@ -1,10 +1,5 @@
 import { Metrics } from './metrics/catalogue.js';
-import {
-  NOTHING_RECORDED,
-  instrumentMethod,
-  operationRecorder,
-  outcomeRecorder,
-} from './observe.js';
+import { instrumentMethod, operationRecorder, outcomeRecorder } from './observe.js';
 import type { Detail } from './tracing/tracer.js';
 
 /** Any method the decorators below can wrap. `never[]` so any parameter types satisfy it. */
@@ -43,26 +38,14 @@ export function Observed(options: ObservedOptions = {}) {
   };
 }
 
-/** Traces a method without giving it a time series, for layers where a metric would be noise. */
-export function Traced(options: ObservedOptions = {}) {
-  return <T extends Method>(
-    target: object,
-    propertyKey: string | symbol,
-    descriptor: TypedPropertyDescriptor<T>,
-  ): void => {
-    const op = options.op ?? defaultName(target, propertyKey);
-    instrumentMethod(descriptor, op, options.detail, NOTHING_RECORDED);
-  };
-}
-
 /**
  * Marks a method as a call to an external service; the decorator form of
  * `upstream()`. Records into `UpstreamDuration`.
  *
  * ```ts
- * class GithubForge {
- *   @Upstream({ host: 'github', operation: 'list_repos' })
- *   async listRepos(actor: Actor): Promise<Repo[]> { … }
+ * class OpenAiEmbedder {
+ *   @Upstream({ host: 'openai', operation: 'embeddings' })
+ *   async embed(texts: string[]): Promise<number[][]> { … }
  * }
  * ```
  */

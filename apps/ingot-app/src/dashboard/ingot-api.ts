@@ -55,12 +55,11 @@ export function runQuery(
   credentials: Credentials,
   ingotId: string,
   sql: string,
-  limit?: number,
 ): Promise<QueryResult> {
   return call<QueryResult>(
     credentials,
     `/api/v1/${enc(credentials.account)}/${enc(ingotId)}/query`,
-    { method: 'POST', body: JSON.stringify({ sql, ...(limit ? { limit } : {}) }) },
+    { method: 'POST', body: JSON.stringify({ sql }) },
   );
 }
 

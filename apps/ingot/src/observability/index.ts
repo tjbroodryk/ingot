@@ -28,15 +28,13 @@ export { METRIC_PREFIX, registry, resetMetrics } from './metrics/registry.js';
 export {
   instrumented,
   observe,
-  observeSync,
   operationRecorder,
   outcomeRecorder,
   timed,
-  traced,
   upstream,
   type Recorder,
 } from './observe.js';
-export { Observed, Traced, Upstream, type ObservedOptions } from './observed.decorator.js';
+export { Observed, Upstream, type ObservedOptions } from './observed.decorator.js';
 export { ObservabilityModule } from './observability.module.js';
 export { Outcome } from './outcome.js';
 export { startTelemetry, stopTelemetry } from './telemetry.js';

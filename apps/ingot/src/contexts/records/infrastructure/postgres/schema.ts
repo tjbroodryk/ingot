@@ -140,5 +140,3 @@ export const receiptDeliveryQueue = pgTable(
     index('receipt_delivery_queue_ingot').on(table.ingotId),
   ],
 );
-
-export type OverlayRowRecord = typeof overlayRow.$inferSelect;

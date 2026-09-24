@@ -23,11 +23,6 @@ export function handlerFor(mediaType: MediaType): FormatHandler {
   return FORMATS[mediaType];
 }
 
-/** Every supported format. */
-export function supportedTypes(): readonly MediaType[] {
-  return Object.keys(FORMATS) as MediaType[];
-}
-
 /** The format claiming an extension, or null. Walked, not a second table. */
 export function typeForExtension(extension: string): MediaType | null {
   const wanted = extension.toLowerCase();

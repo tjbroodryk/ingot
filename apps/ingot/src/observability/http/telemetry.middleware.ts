@@ -68,7 +68,7 @@ export class TelemetryMiddleware implements NestMiddleware {
 }
 
 /**
- * The route template as Express matched it (`/projects/:projectId/repos`), not
+ * The route template as Express matched it (`/api/v1/:account/:ingot/query`), not
  * the resolved path; keeps the metric's cardinality bounded. Unmatched paths
  * collapse to a single `unmatched` series.
  */

@@ -7,8 +7,8 @@ export interface VersioningOptions {
   readonly changeset: Changeset;
   /**
    * The header a caller names a version in and the service answers with —
-   * `Ingot-Version`, `Forge-Version`. Branded rather than a generic
-   * `Api-Version` so a proxy juggling several APIs never confuses them.
+   * `Ingot-Version`, say. Branded rather than a generic `Api-Version` so a
+   * proxy juggling several APIs never confuses them.
    */
   readonly header: string;
 }

@@ -1,4 +1,4 @@
-import { type SQL, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { index, integer, jsonb, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import type { ColumnType, DeliveryStrategy, FtsConfig } from '@ingot/shared/ingot-v1';
 
@@ -80,8 +80,3 @@ export const ingotTable = pgTable(
 
 export type IngotRow = typeof ingot.$inferSelect;
 export type IngotTableRow = typeof ingotTable.$inferSelect;
-
-/** `jsonb` needs the cast spelled out when a document is written as a literal. */
-export function asJsonb<T>(value: T): SQL {
-  return sql`${JSON.stringify(value)}::jsonb`;
-}

@@ -7,7 +7,8 @@ import { VersionInterceptor } from './version.interceptor.js';
 export interface VersioningModuleOptions extends VersioningOptions {
   /**
    * How this service names the shapes on its routes. Defaults to reading the
-   * `@Wire` decorator.
+   * `@Wire` decorator; a service that already annotates its routes another way
+   * supplies one that reads that metadata instead.
    */
   readonly resolver?: Type<ShapeResolver>;
 }

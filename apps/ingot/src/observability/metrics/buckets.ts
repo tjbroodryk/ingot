@@ -11,7 +11,4 @@ export const Buckets = {
 
   /** Calls to an external service; stretched to 30s for a slow-but-not-down tail. */
   Upstream: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30] as const,
-
-  /** Queue latency from recorded to handled; near zero to minutes. */
-  Lag: [0.01, 0.05, 0.1, 0.5, 1, 5, 15, 60, 300] as const,
 } as const;

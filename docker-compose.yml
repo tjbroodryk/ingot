@@ -1,6 +1,6 @@
-# What Ingot talks to locally: Postgres, a Restate server, and MinIO.
+# What Ingot talks to locally: Postgres and MinIO.
 #
-# All three are addressed by the defaults in apps/ingot/.env.example, so
+# Both are addressed by the defaults in apps/ingot/.env.example, so
 # `bun run dev` and `bun run test` find them with no extra configuration.
 #
 #   docker compose up -d --wait   # blocks until everything is accepting traffic

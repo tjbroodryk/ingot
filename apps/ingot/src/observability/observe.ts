@@ -37,23 +37,15 @@ export function observe<T>(
   return instrumented(op, detail, operationRecorder(op), work);
 }
 
-/** `observe` for a synchronous block; separate so the return type is not a promise. */
-export function observeSync<T>(op: string, work: Work<T>): T;
-export function observeSync<T>(op: string, detail: Detail, work: Work<T>): T;
-export function observeSync<T>(op: string, detailOrWork: Detail | Work<T>, maybeWork?: Work<T>): T {
-  const [detail, work] = split(detailOrWork, maybeWork);
-  return instrumented(op, detail, operationRecorder(op), work);
-}
-
 /**
  * `observe`, but recording into a caller-declared histogram instead of the
  * shared operation one — for operations that need labels of their own. The
  * metric supplies `outcome`, so it is the one label not passed (and must be declared).
  *
  * ```ts
- * await timed('knowledge.index', Metrics.UpstreamDuration,
- *   { host: 'turbopuffer', operation: 'upsert' },
- *   async () => this.client.upsert(vectors));
+ * await timed('ingot.embed', Metrics.UpstreamDuration,
+ *   { host: 'openai', operation: 'embeddings' },
+ *   async () => this.client.embeddings.create(request));
  * ```
  */
 export function timed<T, N extends LabelNames>(
@@ -69,26 +61,14 @@ export function timed<T, N extends LabelNames>(
  * A call to an external service, recorded into `UpstreamDuration`.
  *
  * ```ts
- * const repos = await upstream('github', 'list_repos', () =>
- *   this.octokit.repos.listForAuthenticatedUser());
+ * const vectors = await upstream('openai', 'embeddings', () =>
+ *   this.client.embeddings.create(request));
  * ```
  *
  * `operation` is a code constant, never a URL.
  */
 export function upstream<T>(host: string, operation: string, work: Work<Promise<T>>): Promise<T> {
   return timed(`${host}.${operation}`, Metrics.UpstreamDuration, { host, operation }, work);
-}
-
-/** A span with no metric behind it, for work worth seeing in a trace but not worth a time series. */
-export function traced<T>(op: string, work: Work<Promise<T>>): Promise<T>;
-export function traced<T>(op: string, detail: Detail, work: Work<Promise<T>>): Promise<T>;
-export function traced<T>(
-  op: string,
-  detailOrWork: Detail | Work<Promise<T>>,
-  maybeWork?: Work<Promise<T>>,
-): Promise<T> {
-  const [detail, work] = split(detailOrWork, maybeWork);
-  return instrumented(op, detail, NOTHING_RECORDED, work);
 }
 
 /** Records into the shared operation histogram under this name. */
@@ -108,15 +88,12 @@ export function outcomeRecorder<N extends LabelNames>(
   };
 }
 
-/** For spans that are worth seeing and not worth counting. */
-export const NOTHING_RECORDED: Recorder = () => {};
-
 /**
  * Replaces a method with one that measures itself, in place. The shared body of
- * `@Observed`, `@Traced` and `@Upstream`, which differ only in `record`.
+ * `@Observed` and `@Upstream`, which differ only in `record`.
  *
- * Copies the original's metadata onto the wrapper so decorators like `@Get` and
- * `@Scope` applied underneath keep working regardless of order.
+ * Copies the original's metadata onto the wrapper so decorators like `@Post` and
+ * `@AccountScope` applied underneath keep working regardless of order.
  */
 export function instrumentMethod<T extends (...args: never[]) => unknown>(
   descriptor: TypedPropertyDescriptor<T>,

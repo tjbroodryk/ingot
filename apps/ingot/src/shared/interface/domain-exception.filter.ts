@@ -1,11 +1,4 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   ActionNotPermitted,
@@ -59,5 +52,3 @@ function describe(cause: unknown): string {
   if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
   return cause === undefined ? 'no cause recorded' : String(cause);
 }
-
-export { HttpException };

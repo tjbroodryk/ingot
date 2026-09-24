@@ -1274,8 +1274,7 @@ src/
 ```
 
 Four layers per context, dependencies pointing inward, ports as
-`interface X` + `export const X = Symbol('X')` in one file — the same shape as
-`@forge/api`, and its README is the longer explanation of why.
+`interface X` + `export const X = Symbol('X')` in one file.
 
 Two pieces sit _below_ the contexts because more than one of them needs the
 identical behaviour and they must not diverge: `SessionBuilder`, which assembles
@@ -1328,21 +1327,18 @@ the whole retention window. Per-tenant detail goes on the span, where
   the two are indistinguishable, so an empty answer falls back to materialising
   everything. Wrong in the safe direction, always.
 - **Vector search is brute force.** See above.
-- **No webhook when a receipt lands.** `ReceiptNotifier` is called on every one
-  and the only adapter logs. What is missing is a place for a caller to say
-  where to deliver.
 - **`@duckdb/node-api` is pinned exactly.** It is a native N-API addon; the
   `-r.N` suffix makes range matching a guessing game. `scripts/spike-duckdb.ts`
   runs the assumptions under both Bun and Node and should be re-run on upgrade.
-- **Observability is copied from `@forge/api`, not shared.** The rules are
-  identical and the code is duplicated. A third service is the moment to extract
-  `packages/observability` — with a real reason rather than a guess about one.
-- **No durable execution, deliberately.** `src/restate/` was copied from
-  `@forge/api` too, and it was removed rather than kept: the only thing using it
-  here was four cron chains, and no work item ever lived in it — the queues are
-  Postgres tables claimed with `FOR UPDATE SKIP LOCKED` under a lease. What it
+- **Observability is a local toolkit, not a shared package.** It is
+  self-contained under `src/observability/`. A second service is the moment to
+  extract `packages/observability` — with a real reason rather than a guess
+  about one.
+- **No durable execution, deliberately.** A durable-execution layer was tried
+  and removed rather than kept: the only thing using it here was a handful of
+  cron chains, and no work item ever lived in it — the queues are Postgres
+  tables claimed with `FOR UPDATE SKIP LOCKED` under a lease. What it
   contributed was a timer that survived a restart, a retry, and one chain across
   replicas, which is `src/sweepers/scheduler.ts` and an advisory lock. The
-  moment that stops being enough is inbound webhooks, where a journalled retry
-  of somebody else's delivery is worth a broker; `git log` has the integration
-  to bring back.
+  moment that stops being enough is durable inbound retries, where a journalled
+  retry of somebody else's delivery is worth a broker.

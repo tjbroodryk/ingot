@@ -35,9 +35,6 @@ export const FILE_TITLE = 'title';
 /** What it is about, in two or three sentences. **Embedded.** */
 export const FILE_SUMMARY = 'summary';
 
-/** Document-level embedded columns. Null until a summariser runs. */
-export const FILE_EMBEDDED: readonly string[] = [FILE_TITLE, FILE_SUMMARY];
-
 // ── ingot_file_chunks ──────────────────────────────────────────────────────────
 
 /** Which document. Half the key, and the join to `ingot_files`. */
@@ -59,8 +56,6 @@ export const CHUNK_TOKENS = 'tokens';
  * text the document carried, so `WHERE ocr IS NULL` is the decoded-only text.
  */
 export const CHUNK_OCR = 'ocr';
-
-export const CHUNK_EMBEDDED: readonly string[] = [CHUNK_TEXT];
 
 /**
  * The document table's schema. Everything a parse discovers is optional, since

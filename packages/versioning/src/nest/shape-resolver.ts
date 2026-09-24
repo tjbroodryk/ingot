@@ -4,8 +4,8 @@ import { asShapeRef, readWire, type ShapeRef } from './wire.decorator.js';
 
 /**
  * How a service says which wire shapes a route deals in. A port: `@ingot/server`
- * declares it with `@Wire`; `@forge/api` supplies a resolver that reads its
- * existing `@Returns`/`@WireBody` metadata.
+ * declares it with `@Wire`; a service that already annotates its routes another
+ * way supplies a resolver that reads its existing `@Returns`/`@WireBody` metadata.
  */
 export interface ShapeResolver {
   accepts(context: ExecutionContext): ShapeRef | null;
