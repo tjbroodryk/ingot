@@ -37,10 +37,10 @@ const PASSES = 4;
  * WriteReceipt   tx ~2ms    the ingot_receipts row, and out of the queue
  * ```
  *
- * There is a precedent for the shape: `TurnReconciler` in `@forge/api` does
- * its own I/O and then applies what it found through the same command an event
- * would have. A service that orchestrates commands is fine; a service that
- * writes rows behind their back is not, and this one does not.
+ * The shape is a reconciler: it does its own I/O and then applies what it
+ * found through the same command an event would have. A service that
+ * orchestrates commands is fine; a service that writes rows behind their back
+ * is not, and this one does not.
  *
  * It must never be called from inside a command, or the three dispatches join
  * that transaction and the whole point is lost — `PgUnitOfWork.run` joins

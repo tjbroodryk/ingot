@@ -1,11 +1,10 @@
 /**
  * Text to vectors.
  *
- * Four lines, deliberately. `@forge/api` has the same port in its knowledge
- * context and the two are not shared: an interface this small is cheaper to
- * declare twice than to couple two services through, and the day a third
- * consumer appears is the day to extract `packages/embed` — with a real reason
- * rather than a guess about one.
+ * Four lines, deliberately. An interface this small is cheaper to declare
+ * where it is used than to couple services through a shared package, and the
+ * day a third consumer appears is the day to extract `packages/embed` — with a
+ * real reason rather than a guess about one.
  *
  * `dimensions` is on the port rather than discovered from a response because
  * the width is baked into every stored vector and into the `FLOAT[N]` column a

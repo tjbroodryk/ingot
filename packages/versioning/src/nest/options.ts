@@ -7,7 +7,7 @@ export interface VersioningOptions {
   readonly changeset: Changeset;
   /**
    * The request header a caller names a version in, and the response header
-   * this service answers with — `Ingot-Version`, `Forge-Version`.
+   * this service answers with — `Ingot-Version`, say.
    *
    * Branded rather than a generic `Api-Version` for the reason Stripe brands
    * theirs: a proxy or a client library juggling several APIs should not have

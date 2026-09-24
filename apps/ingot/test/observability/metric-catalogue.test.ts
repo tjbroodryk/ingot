@@ -47,8 +47,8 @@ describe('the metric catalogue', () => {
   });
 
   it.each(declared)('%s is namespaced to this service', (_key, metric) => {
-    // `@forge/api` exports `forge_*` from its own registry and the two are
-    // scraped together. A collision would silently merge two services' series.
+    // A neighbouring service exports its own prefix into the same Prometheus.
+    // A collision would silently merge two services' series.
     expect(metric.name.startsWith(METRIC_PREFIX)).toBe(true);
     expect(METRIC_PREFIX).toBe('ingot_');
   });

@@ -29,11 +29,6 @@ export function handlerFor(mediaType: MediaType): FormatHandler {
   return FORMATS[mediaType];
 }
 
-/** Every format, for the line at boot and for the refusal at `/file`. */
-export function supportedTypes(): readonly MediaType[] {
-  return Object.keys(FORMATS) as MediaType[];
-}
-
 /**
  * Walked rather than kept as a second table, so an extension stays a property of
  * its format. A collision is caught at startup by `assertConsistent` rather than

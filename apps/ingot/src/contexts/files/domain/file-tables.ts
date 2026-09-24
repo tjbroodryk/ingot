@@ -70,22 +70,6 @@ export const FILE_TITLE = 'title';
 /** What it is about, in two or three sentences. **Embedded.** */
 export const FILE_SUMMARY = 'summary';
 
-/**
- * The document-level embedded columns, and why a chunk's text is not enough.
- *
- * A chunk ranks against a question about a *passage* — "what is the notice
- * period" — and ranks badly against a question about a *document*: "the deck
- * about Q3 pricing" matches no single slide especially well, because the thing
- * being described is the whole of it. Ranking files and ranking chunks are two
- * searches, so they are two sets of vectors over two tables, and a caller picks
- * by naming the table.
- *
- * Both are null until a summariser has run, and both stay null on a deployment
- * that never buys one. That is deliberate: a document is chunked, embedded and
- * searchable with no model anywhere, and this is the rung above.
- */
-export const FILE_EMBEDDED: readonly string[] = [FILE_TITLE, FILE_SUMMARY];
-
 // ── ingot_file_chunks ──────────────────────────────────────────────────────────
 
 /** Which document. Half the key, and the join to `ingot_files`. */
@@ -122,8 +106,6 @@ export const CHUNK_TOKENS = 'tokens';
  * caller who cares is entitled to tell them apart.
  */
 export const CHUNK_OCR = 'ocr';
-
-export const CHUNK_EMBEDDED: readonly string[] = [CHUNK_TEXT];
 
 /**
  * The document table's schema, declared once.

@@ -1,10 +1,5 @@
 import { Metrics } from './metrics/catalogue.js';
-import {
-  NOTHING_RECORDED,
-  instrumentMethod,
-  operationRecorder,
-  outcomeRecorder,
-} from './observe.js';
+import { instrumentMethod, operationRecorder, outcomeRecorder } from './observe.js';
 import type { Detail } from './tracing/tracer.js';
 
 /**
@@ -24,7 +19,7 @@ export interface ObservedOptions {
    * Defaults to `Class.method`, which is a fine name and a poor one: it is
    * accurate, and it changes when somebody renames a class, taking a
    * dashboard panel and an alert rule with it. Name the operation explicitly
-   * — `forge.list_repos` — anywhere the number is going to be looked at
+   * — `ingot.roll_up` — anywhere the number is going to be looked at
    * twice.
    */
   op?: string;
@@ -68,37 +63,18 @@ export function Observed(options: ObservedOptions = {}) {
 }
 
 /**
- * Traces a method without giving it a time series.
- *
- * For the layers where a span is the useful signal and a metric would be
- * noise: a projector step, a mapper, anything called often enough and varied
- * enough that its aggregate duration would not mean much. The trace still
- * shows it, which is where you would be looking anyway.
- */
-export function Traced(options: ObservedOptions = {}) {
-  return <T extends Method>(
-    target: object,
-    propertyKey: string | symbol,
-    descriptor: TypedPropertyDescriptor<T>,
-  ): void => {
-    const op = options.op ?? defaultName(target, propertyKey);
-    instrumentMethod(descriptor, op, options.detail, NOTHING_RECORDED);
-  };
-}
-
-/**
  * Marks a method as a call to somebody else's service.
  *
  * ```ts
- * class GithubForge {
- *   @Upstream({ host: 'github', operation: 'list_repos' })
- *   async listRepos(actor: Actor): Promise<Repo[]> { … }
+ * class OpenAiEmbedder {
+ *   @Upstream({ host: 'openai', operation: 'embeddings' })
+ *   async embed(texts: string[]): Promise<number[][]> { … }
  * }
  * ```
  *
  * The decorator form of `upstream()`, and the natural fit for a provider
  * adapter, where the whole class is calls to one host and every public method
- * is one endpoint. Records into `forge_upstream_request_duration_seconds`
+ * is one endpoint. Records into `ingot_upstream_request_duration_seconds`
  * with the wider bucket set that external latency needs.
  */
 export function Upstream(options: { host: string; operation: string; detail?: Detail }) {

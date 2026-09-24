@@ -38,23 +38,6 @@ export const RECEIPT_ROWS = 'row_count';
 export const RECEIPT_MODEL = 'model';
 
 /**
- * The three embedded columns, and why there are three rather than one.
- *
- * They answer differently-shaped questions and a single concatenated blob
- * would answer all of them worse. `search_term` is a predicted question, so it
- * ranks best against a real one — that is the point of generating it.
- * `summary` is prose about the result, which ranks well against a description
- * of what somebody is looking for. `body` is the tool result itself, which is
- * the only one that still matches on an identifier the model did not think to
- * mention. A caller picks with `column`, or gets `search_term` by default.
- */
-export const RECEIPT_EMBEDDED: readonly string[] = [
-  RECEIPT_SEARCH_TERM,
-  RECEIPT_SUMMARY,
-  RECEIPT_BODY,
-];
-
-/**
  * The schema, declared once.
  *
  * `source_batch` is the key rather than a bare column, because it is what a

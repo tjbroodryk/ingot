@@ -31,6 +31,3 @@ export interface Drained {
    */
   readonly more: boolean;
 }
-
-/** Nothing was waiting. The common case, and the one that stops a chain. */
-export const IDLE: Drained = { done: 0, more: false };

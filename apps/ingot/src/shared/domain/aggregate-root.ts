@@ -5,12 +5,12 @@ import type { Identifier } from './identifier.js';
  * The consistency boundary. Every invariant that must hold at all times lives
  * inside one aggregate, and a transaction changes exactly one of them.
  *
- * Unlike the same class in `@forge/api`, this one records no domain events.
+ * Deliberately without domain events, unlike the textbook aggregate root.
  * Nothing in this service subscribes to them: a memory server's whole write
  * path is "accept rows, roll them up", and inventing an event bus for two
  * consumers that do not exist would be machinery to maintain rather than
- * behaviour to rely on. When something does need to react to a write, the
- * outbox pattern in `@forge/api` is the shape to copy.
+ * behaviour to rely on. When something does need to react to a write, an
+ * outbox pattern is the shape to copy.
  */
 export abstract class AggregateRoot<TId extends Identifier> extends Entity<TId> {
   #version: number;

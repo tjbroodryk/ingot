@@ -12,9 +12,9 @@ export type MetricRegistry = Registry<OpenMetricsContentType>;
  *
  * One namespace per service is what keeps a shared Prometheus legible: a
  * panel can ask for `ingot_*` and get this service's view of itself rather
- * than whatever else happens to be scraped into the same store. `@forge/api`
- * exports `forge_*` from its own registry; the two are scraped together and
- * must not collide.
+ * than whatever else happens to be scraped into the same store. A sidecar or a
+ * neighbouring service exports its own prefix; the two are scraped together
+ * and must not collide.
  */
 export const METRIC_PREFIX = 'ingot_';
 

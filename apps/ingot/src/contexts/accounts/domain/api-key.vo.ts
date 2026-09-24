@@ -12,8 +12,8 @@ const VISIBLE = KEY_PREFIX.length + 6;
  *
  * The secret is returned to the caller in the response that created it and is
  * never stored — Postgres holds `digest` and nothing else. That is the same
- * bargain `project_invitation` makes in `@forge/api`, and for the same reason:
- * a table of live credentials is a table worth stealing, and a digest is not.
+ * bargain a password hash makes, and for the same reason: a table of live
+ * credentials is a table worth stealing, and a digest is not.
  */
 export class ApiKey extends ValueObject {
   readonly secret: string;

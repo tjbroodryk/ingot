@@ -51,20 +51,6 @@ export function observe<T>(
 }
 
 /**
- * `observe` for a block that does not await anything.
- *
- * Separate rather than overloaded because the return type is the difference
- * that matters: a synchronous caller getting a promise back is a bug that
- * typechecks, and it is exactly the bug an "either" signature would allow.
- */
-export function observeSync<T>(op: string, work: Work<T>): T;
-export function observeSync<T>(op: string, detail: Detail, work: Work<T>): T;
-export function observeSync<T>(op: string, detailOrWork: Detail | Work<T>, maybeWork?: Work<T>): T {
-  const [detail, work] = split(detailOrWork, maybeWork);
-  return instrumented(op, detail, operationRecorder(op), work);
-}
-
-/**
  * `observe`, but recording into a metric you declared instead of the shared
  * operation histogram.
  *
@@ -72,9 +58,9 @@ export function observeSync<T>(op: string, detailOrWork: Detail | Work<T>, maybe
  * you want to group or alert by, which `op` alone cannot express:
  *
  * ```ts
- * await timed('knowledge.index', Metrics.UpstreamDuration,
- *   { host: 'turbopuffer', operation: 'upsert' },
- *   async () => this.client.upsert(vectors));
+ * await timed('ingot.embed', Metrics.UpstreamDuration,
+ *   { host: 'openai', operation: 'embeddings' },
+ *   async () => this.client.embeddings.create(request));
  * ```
  *
  * The metric supplies `outcome` itself, so it is the one label you do not
@@ -96,12 +82,12 @@ export function timed<T, N extends LabelNames>(
  *
  * Its own helper because external calls are where the latency and the
  * outages actually come from, and because getting them into one metric with
- * one label vocabulary is what makes "is it us or is it GitHub" a question
+ * one label vocabulary is what makes "is it us or is it OpenAI" a question
  * with an answer:
  *
  * ```ts
- * const repos = await upstream('github', 'list_repos', () =>
- *   this.octokit.repos.listForAuthenticatedUser());
+ * const vectors = await upstream('openai', 'embeddings', () =>
+ *   this.client.embeddings.create(request));
  * ```
  *
  * `operation` is a code constant, never a URL — one series per endpoint, not
@@ -109,26 +95,6 @@ export function timed<T, N extends LabelNames>(
  */
 export function upstream<T>(host: string, operation: string, work: Work<Promise<T>>): Promise<T> {
   return timed(`${host}.${operation}`, Metrics.UpstreamDuration, { host, operation }, work);
-}
-
-/**
- * A span with no metric behind it.
- *
- * For work that is worth seeing inside a trace but not worth a time series —
- * a step so fast that its own duration is noise, or one that appears in so
- * many shapes that an `op` label would be meaningless. The trace still shows
- * where the time went, which is usually the question being asked at that
- * depth.
- */
-export function traced<T>(op: string, work: Work<Promise<T>>): Promise<T>;
-export function traced<T>(op: string, detail: Detail, work: Work<Promise<T>>): Promise<T>;
-export function traced<T>(
-  op: string,
-  detailOrWork: Detail | Work<Promise<T>>,
-  maybeWork?: Work<Promise<T>>,
-): Promise<T> {
-  const [detail, work] = split(detailOrWork, maybeWork);
-  return instrumented(op, detail, NOTHING_RECORDED, work);
 }
 
 /** Records into the shared operation histogram under this name. */
@@ -148,28 +114,26 @@ export function outcomeRecorder<N extends LabelNames>(
   };
 }
 
-/** For spans that are worth seeing and not worth counting. */
-export const NOTHING_RECORDED: Recorder = () => {};
-
 /**
  * Replaces a method with one that measures itself, in place.
  *
- * The shared body of `@Observed`, `@Traced` and `@Upstream` — they differ
- * only in what they record, which is the `record` argument.
+ * The shared body of `@Observed` and `@Upstream` — they differ only in what
+ * they record, which is the `record` argument.
  *
  * Copying the original's metadata onto the wrapper is the part that is not
  * optional. Legacy decorators are applied bottom-up, so a method written as
  *
  * ```ts
  * @Observed()
- * @Scope('repo:view')
- * @Get(':repoId')
- * findOne(…) {}
+ * @AccountScope()
+ * @Post('delete')
+ * forget(…) {}
  * ```
  *
- * has `@Get` and `@Scope` stamp their metadata onto the original function
- * before this ever sees it — and a wrapper that did not carry that metadata
- * across would leave Nest with a handler that has no route and no scope. It
+ * has `@Post` and `@AccountScope` stamp their metadata onto the original
+ * function before this ever sees it — and a wrapper that did not carry that
+ * metadata across would leave Nest with a handler that has no route and no
+ * scope. It
  * would compile, boot, and 404. Carrying it means the decorator is safe in
  * any order, which is the only way to use one people will not have to think
  * about.
@@ -189,7 +153,7 @@ export function instrumentMethod<T extends (...args: never[]) => unknown>(
     return instrumented(op, detail, record, () => original.apply(this, args) as unknown);
   };
 
-  // A stack trace, a Nest handler name, and `route-scopes.test.ts` all read
+  // A stack trace, a Nest handler name, and `route-accounts.test.ts` all read
   // this; an instrumented method should be indistinguishable from the one it
   // replaced everywhere except in a trace.
   Object.defineProperty(wrapper, 'name', { value: original.name, configurable: true });

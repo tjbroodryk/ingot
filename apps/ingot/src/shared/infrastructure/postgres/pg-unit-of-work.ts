@@ -41,7 +41,7 @@ export class PgUnitOfWork implements UnitOfWork {
 
     // Measured around the transaction only, so the sample is the time a
     // connection was held and rows were locked — not the time the request
-    // took. When this diverges from `forge_command_duration_seconds` the
+    // took. When this diverges from `ingot_command_duration_seconds` the
     // difference is work the handler did outside the write, which is exactly
     // the question you ask when commands are slow but Postgres looks idle.
     const result = await instrumented(

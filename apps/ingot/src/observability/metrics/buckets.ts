@@ -7,8 +7,8 @@
  * first bucket", and one whose boundaries are all below gives `+Inf`. Both are
  * useless, and you find out weeks later when you need the number.
  *
- * Hence a small vocabulary rather than a free choice per metric: three or four
- * shapes cover everything this service does, and reusing one means the
+ * Hence a small vocabulary rather than a free choice per metric: three shapes
+ * cover everything this service does, and reusing one means the
  * boundaries line up across metrics, which is what lets a single Grafana panel
  * overlay command latency against the HTTP latency that contains it.
  *
@@ -30,17 +30,10 @@ export const Buckets = {
   Internal: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5] as const,
 
   /**
-   * Calls to somebody else's service — GitHub, WorkOS, the vector store.
-   * Stretched to 30s because a code host under load is slow long before it is
-   * down, and the shape of that tail is the argument for a circuit breaker.
+   * Calls to somebody else's service — an embedder, a summariser, an OCR
+   * engine. Stretched to 30s because a model host under load is slow long
+   * before it is down, and the shape of that tail is the argument for a
+   * circuit breaker.
    */
   Upstream: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30] as const,
-
-  /**
-   * Queue-ish latencies measured from when something was recorded to when it
-   * was finally dealt with. Starts near zero and runs to minutes, because the
-   * whole point of watching it is spotting the transition from "prompt" to
-   * "backlogged".
-   */
-  Lag: [0.01, 0.05, 0.1, 0.5, 1, 5, 15, 60, 300] as const,
 } as const;

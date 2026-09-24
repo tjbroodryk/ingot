@@ -10,10 +10,10 @@ import { attachPrincipal } from './principal-resolution.js';
  * Authentication: establishes who is calling, and nothing else.
  *
  * Runs before `AccountScopeGuard`, which decides what they may reach. Keeping
- * the two apart is the same split `@forge/api` makes between `AccessTokenGuard`
- * and `ScopeGuard`, and it matters here for the same reason: "your key is not
- * valid" and "your key is not valid *for this account*" are different answers
- * and want different status codes.
+ * the two apart is the usual split between authentication and authorization,
+ * and it matters here for the same reason: "your key is not valid" and "your
+ * key is not valid *for this account*" are different answers and want
+ * different status codes.
  *
  * It resolves the `AUTHENTICATOR` port rather than one implementation, and
  * that is the extent of what it knows: whether this deployment accepts a

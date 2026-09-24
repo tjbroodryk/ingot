@@ -12,7 +12,7 @@ const logger = new Logger('Metrics');
  * hosts, error rates — and none of that is anybody's business but the
  * cluster's. Putting it on its own port means it cannot be reached through
  * the public ingress even if somebody misconfigures one, and there is no
- * `@Scope('public:any')` hole punched in a guard that is otherwise
+ * `@Account.Open()` hole punched in a guard that is otherwise
  * fail-closed.
  *
  * It also sidesteps the global `ValidationPipe`, the `/api/v1` prefix and both

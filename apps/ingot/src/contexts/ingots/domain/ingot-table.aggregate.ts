@@ -194,18 +194,6 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
   }
 
   /**
-   * Widens the schema to accept a write, or refuses it.
-   *
-   * A column the table has never seen is added, and added *optional*, because
-   * every Parquet file already written lacks it. A column whose declared type
-   * differs from the one on record is refused outright: silently widening
-   * `INTEGER` to `VARCHAR` would change what a saved query returns without
-   * anyone asking, and there is no honest coercion in the other direction.
-   *
-   * Returns the names it added, so `/add` can tell the caller what their
-   * mapping changed about the table.
-   */
-  /**
    * Refuses a write that would change what identifies a row.
    *
    * Fixed for the same reason a column's type is: every receipt handed out so
@@ -228,6 +216,18 @@ export class IngotTable extends AggregateRoot<IngotTableId> {
     );
   }
 
+  /**
+   * Widens the schema to accept a write, or refuses it.
+   *
+   * A column the table has never seen is added, and added *optional*, because
+   * every Parquet file already written lacks it. A column whose declared type
+   * differs from the one on record is refused outright: silently widening
+   * `INTEGER` to `VARCHAR` would change what a saved query returns without
+   * anyone asking, and there is no honest coercion in the other direction.
+   *
+   * Returns the names it added, so `/add` can tell the caller what their
+   * mapping changed about the table.
+   */
   accommodate(incoming: readonly ColumnSpec[]): readonly string[] {
     const added: string[] = [];
     for (const column of incoming) {

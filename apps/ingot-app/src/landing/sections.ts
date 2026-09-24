@@ -484,7 +484,7 @@ export const MCP_TOOLS: readonly { readonly scope: string; readonly tools: strin
 
 /*
  * Getting started used to be a constant here, printed in the closing band.
- * It is `src/landing/targets.ts` now — the local target's `run` and `check` —
+ * It is `src/deployment/targets.ts` now — the local target's `run` and `check` —
  * because it stopped being the only way to bring one up the moment there was a
  * chart, and a quickstart written in two places is one that disagrees with
  * itself on the second edit.

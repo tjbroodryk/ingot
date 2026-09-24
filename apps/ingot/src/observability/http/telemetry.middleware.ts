@@ -9,8 +9,9 @@ import { markFailed, tracer } from '../tracing/tracer.js';
  *
  * Middleware rather than a Nest interceptor, and the reason is the requests an
  * interceptor never sees. Nest runs middleware → guards → interceptors, so a
- * request refused by `AccessTokenGuard` or `ScopeGuard` is finished before any
- * interceptor is entered — and 401s and 403s are precisely the traffic you go
+ * request refused by `AuthenticationGuard` or `AccountScopeGuard` is finished
+ * before any interceptor is entered — and 401s and 403s are precisely the
+ * traffic you go
  * looking for. Same for a 404, which never reaches a controller at all. From
  * here, everything that arrives is counted, whatever became of it.
  *
@@ -87,13 +88,13 @@ export class TelemetryMiddleware implements NestMiddleware {
 }
 
 /**
- * The route as Express matched it — `/api/v1/projects/:projectId/repos` — not
+ * The route as Express matched it — `/api/v1/:account/:ingot/query` — not
  * as the caller wrote it.
  *
  * This is the single most important line in the file. `route` labels a metric,
- * and a metric labelled with resolved paths has one time series per project
- * id: the cardinality grows with the data, the store falls over, and it does
- * so gradually enough that nobody connects it to this decision.
+ * and a metric labelled with resolved paths has one time series per account
+ * and ingot: the cardinality grows with the data, the store falls over, and
+ * it does so gradually enough that nobody connects it to this decision.
  *
  * Anything unmatched collapses to one series for the same reason. A scanner
  * walking `/wp-admin`, `/.env` and ten thousand other paths is a 404 counter,

@@ -1,8 +1,8 @@
 /**
  * What can fall behind in this service.
  *
- * Unlike `@forge/api`, none of these mirror somebody else's system — an ingot
- * holds only what was posted to it. What they reconcile is our own background
+ * None of these mirror somebody else's system — an ingot holds only what was
+ * posted to it. What they reconcile is our own background
  * work: the roll-up that has not caught up, the embedding that has not run.
  * The failure mode is the same shape, though, and so is the fix: a delivery is
  * the fast path and a sweep is the floor.

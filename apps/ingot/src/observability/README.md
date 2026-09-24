@@ -117,10 +117,6 @@ Blocks nest into spans with no plumbing — an `observe` inside an `observe` is 
 child span, and inside a command handler it is a child of `command.Analyse`,
 which is a child of the HTTP request.
 
-`observeSync` is the same for work that awaits nothing. It is a separate
-function rather than an overload because a synchronous caller handed a promise
-back is a bug that typechecks.
-
 **A call to somebody else's service** — `@Upstream` / `upstream`:
 
 ```ts
@@ -148,15 +144,12 @@ supplies the `outcome` itself:
 
 ```ts
 await timed(
-  'knowledge.upsert',
+  'ingot.embed',
   Metrics.UpstreamDuration,
-  { host: 'turbopuffer', operation: 'upsert' },
-  async () => this.client.upsert(vectors),
+  { host: 'openai', operation: 'embeddings' },
+  async () => this.client.embeddings.create(request),
 );
 ```
-
-And `traced` opens a span with no time series behind it, for work worth seeing
-inside a trace but not worth a series of its own.
 
 ## Labels and attributes are not the same thing
 
@@ -211,7 +204,7 @@ It is a complete inventory of what this service does and how often: route
 names, event types, upstream hosts, error rates. That belongs to the cluster,
 not to the internet. Its own listener means it cannot be reached through the
 public ingress even if someone misconfigures one, and there is no
-`@Scope('public:any')` hole in a guard that is otherwise fail-closed.
+`@Account.Open()` hole in a guard that is otherwise fail-closed.
 
 Bind it to the pod network. `METRICS_HOST` defaults to `0.0.0.0` because a
 container needs to be reachable from the node; a network policy is what makes

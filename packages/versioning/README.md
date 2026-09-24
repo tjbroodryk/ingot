@@ -109,8 +109,8 @@ Default is the `@Wire` decorator:
 ```
 
 A service that already carries the information supplies its own `ShapeResolver`
-instead — `@forge/api` reads the `@Returns` and `@WireBody` metadata it has had
-since before versioning existed, rather than repeating itself on fifty routes.
+instead — one that reads existing `@Returns` and `@WireBody` metadata, say,
+rather than repeating itself on fifty routes.
 
 ## Testing a changeset
 
