@@ -46,21 +46,26 @@ export class VectorAdapter implements MemoryAdapter {
 
   async call(name: string, input: Record<string, unknown>): Promise<string> {
     if (name !== 'search') throw new Error(`${this.name}: no tool named ${name}`);
+    const ranked = await this.rank(input);
+    return renderHits(ranked.map(({ record, score }) => ({ text: record.text, score })));
+  }
 
+  /** The top-k records for a `search` call, best first. */
+  protected async rank(
+    input: Record<string, unknown>,
+  ): Promise<readonly { readonly record: CorpusRecord; readonly score: number }[]> {
     const query = String(input.query ?? '');
     const k = clampK(input.k);
     const [queryVector] = await this.embedder.embed([query]);
     if (!queryVector) throw new Error('embedder returned nothing for the query');
 
-    const ranked = this.records
+    return this.records
       .map((record, index) => ({
-        text: record.text,
+        record,
         score: cosine(queryVector, this.vectors[index] ?? []),
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
-
-    return renderHits(ranked);
   }
 
   async teardown(): Promise<void> {

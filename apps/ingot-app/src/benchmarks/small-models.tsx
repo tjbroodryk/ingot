@@ -11,7 +11,7 @@ function isOurs(adapter: string): boolean {
   return adapter.startsWith('ingot');
 }
 
-/** The pairing the section leads with: the smaller model on Ingot, the larger on a baseline. */
+/** The pairing the section leads with: the smaller model on Ingot, the larger on its best baseline. */
 export function headline(
   matchup: PublishedMatchup,
 ): { readonly small: MatchupCell; readonly large: MatchupCell } | null {
@@ -19,7 +19,12 @@ export function headline(
   const largeModel = matchup.models[matchup.models.length - 1];
   if (!smallModel || !largeModel || smallModel === largeModel) return null;
   const small = matchup.cells.find((cell) => cell.model === smallModel && isOurs(cell.adapter));
-  const large = matchup.cells.find((cell) => cell.model === largeModel && !isOurs(cell.adapter));
+  const large = matchup.cells
+    .filter((cell) => cell.model === largeModel && !isOurs(cell.adapter))
+    .reduce<MatchupCell | undefined>(
+      (best, cell) => (best && best.accuracy >= cell.accuracy ? best : cell),
+      undefined,
+    );
   return small && large ? { small, large } : null;
 }
 

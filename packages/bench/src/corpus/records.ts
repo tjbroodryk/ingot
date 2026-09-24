@@ -13,6 +13,8 @@ import type { Ref } from './world.js';
 export interface CorpusRecord {
   readonly ref: Ref;
   readonly tool: string;
+  /** The id of the tool result this record came from. */
+  readonly source: string;
   readonly item: Record<string, unknown>;
   readonly text: string;
 }
@@ -31,6 +33,7 @@ export function flattenRecords(corpus: readonly ToolResult[]): readonly CorpusRe
       records.push({
         ref,
         tool: result.tool,
+        source: result.id,
         item,
         // The tool name is part of the text because it is part of what the
         // record means — "author: gupta" is ambiguous without knowing it came

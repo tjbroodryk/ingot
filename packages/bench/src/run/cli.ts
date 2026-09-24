@@ -13,6 +13,7 @@ import { PineconeAdapter } from '../adapters/pinecone.js';
 import { TurbopufferAdapter } from '../adapters/turbopuffer.js';
 import type { MemoryAdapter } from '../adapters/types.js';
 import { VectorAdapter } from '../adapters/vector.js';
+import { VectorFetchAdapter } from '../adapters/vector-fetch.js';
 import { buildCorpus, corpusRefs } from '../corpus/stream.js';
 import { buildWorld } from '../corpus/world.js';
 import { embedderFromEnv } from '../embed/embedder.js';
@@ -67,6 +68,7 @@ const ADAPTERS = [
   'ingot-rest',
   'control-same-store-top-k-rest',
   'vector',
+  'vector-fetch',
   'pinecone',
   'turbopuffer',
   'hyperspell',
@@ -88,6 +90,7 @@ type AdapterName = (typeof ADAPTERS)[number];
  */
 const LOCAL_EMBEDDING_ADAPTERS: ReadonlySet<AdapterName> = new Set([
   'vector',
+  'vector-fetch',
   'pinecone',
   'turbopuffer',
 ]);
@@ -560,9 +563,11 @@ async function build(
         mapping,
       });
     case 'vector':
-      // These three embed here rather than server-side. Ingot's vectors are
+      // These embed here rather than server-side. Ingot's vectors are
       // the server's, so a run without one of them in it needs no embedder.
       return new VectorAdapter(embedderFromEnv(env));
+    case 'vector-fetch':
+      return new VectorFetchAdapter(embedderFromEnv(env));
     case 'pinecone':
       return new PineconeAdapter(
         {

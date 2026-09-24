@@ -3,10 +3,16 @@ import { RawContextAdapter } from '../src/adapters/controls.js';
 import { HyperspellAdapter } from '../src/adapters/hyperspell.js';
 import { IngotRestAdapter, renderSchema } from '../src/adapters/ingot-rest.js';
 import { PineconeAdapter } from '../src/adapters/pinecone.js';
-import { clampK, MAX_K, renderHits } from '../src/adapters/semantic-search.js';
+import {
+  clampK,
+  MAX_K,
+  renderHits,
+  SEMANTIC_SEARCH_TOOL,
+} from '../src/adapters/semantic-search.js';
 import { TurbopufferAdapter } from '../src/adapters/turbopuffer.js';
 import type { MemoryAdapter } from '../src/adapters/types.js';
 import { VectorAdapter } from '../src/adapters/vector.js';
+import { MAX_FETCH, VectorFetchAdapter } from '../src/adapters/vector-fetch.js';
 import { refsIn } from '../src/corpus/records.js';
 import { buildCorpus, corpusRefs } from '../src/corpus/stream.js';
 import { buildWorld } from '../src/corpus/world.js';
@@ -54,6 +60,44 @@ describe('the vector adapter', () => {
   test('offers exactly one tool', async () => {
     const adapter = new VectorAdapter(new HashEmbedder());
     expect(adapter.tools().map((tool) => tool.name)).toEqual(['search']);
+  });
+});
+
+describe('the vector-fetch adapter', () => {
+  test('searches with the vector tool and ranking, each hit naming its tool result', async () => {
+    const plain = new VectorAdapter(new HashEmbedder());
+    const fetching = new VectorFetchAdapter(new HashEmbedder());
+    await plain.ingest(corpus);
+    await fetching.ingest(corpus);
+
+    expect(fetching.tools()[0]).toEqual(SEMANTIC_SEARCH_TOOL);
+    const input = { query: 'a pull request that was merged', k: 5 };
+    const hits = await fetching.call('search', input);
+    expect(refsIn(hits, knownRefs)).toEqual(refsIn(await plain.call('search', input), knownRefs));
+    expect(hits).toMatch(/tool_result: tr-\d{3}/);
+  });
+
+  test('lists every tool result', async () => {
+    const adapter = new VectorFetchAdapter(new HashEmbedder());
+    await adapter.ingest(corpus);
+
+    const listing = await adapter.call('list_sources', {});
+    expect(listing.split('\n')).toHaveLength(corpus.length);
+    expect(listing).toContain('github.list_pull_requests');
+  });
+
+  test('fetches tool results whole, and caps how many per call', async () => {
+    const adapter = new VectorFetchAdapter(new HashEmbedder());
+    await adapter.ingest(corpus);
+    const [first] = corpus;
+    if (!first) throw new Error('empty corpus');
+
+    const one = await adapter.call('fetch_sources', { ids: [first.id] });
+    expect(refsIn(one, knownRefs)).toEqual(new Set(first.refs));
+
+    const many = await adapter.call('fetch_sources', { ids: corpus.map((result) => result.id) });
+    expect(many.match(/^## tr-/gm)).toHaveLength(MAX_FETCH);
+    expect(await adapter.call('fetch_sources', { ids: ['tr-999'] })).toContain('No tool result');
   });
 });
 

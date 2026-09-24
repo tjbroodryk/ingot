@@ -508,6 +508,11 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
       'The shape of every “just put it in a vector store” answer: embed, rank by cosine, return top-k. Chunked one document per record, so nothing is split mid-object and no chunk mixes two records — the friendliest chunking available. It uses the same embedding model as Ingot in these benchmarks.',
   },
   {
+    name: 'vector-fetch',
+    blurb:
+      'The same search as `vector`, plus two tools that reach the raw tool results behind it: one lists them, the other returns them whole. It’s the usual fix for top-k missing rows, which is to let the agent read the source documents.',
+  },
+  {
     name: 'pinecone',
     blurb:
       'The hosted vector database, given the identical embeddings, chunking and search tool as `vector`. It is here to answer the obvious objection that a baseline written in this repository is a strawman: if a production ANN index cannot beat brute-force cosine over the same vectors, then what the top-k rows cannot do belongs to top-k retrieval and not to the baseline. Pinecone’s own embedding models are deliberately not used — one embedder across the whole table is the rule.',
