@@ -334,6 +334,8 @@ part of `bun run test` at the repository root, and spends real money.
                        More than one splices their columns into one table.
 --rescore              With --from: run the scorer again over the transcripts.
 --mapping MODE         authored | agent
+--scale 1,2,4,8,16     One run per scale, over a growing memory. See below.
+--series               With --from: each file is one point of a --scale series.
 --categories a,b       Restrict to these question categories.
 --out DIR              Where the JSONL and the report are written. (results)
 --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -367,6 +369,62 @@ question](#the-interface-question) for why both are in the table.
 key: each run creates its own namespace, and drops it on the way out. Pinecone
 additionally creates the index itself the first time, at whatever width the
 configured embedder produces.
+
+### Accuracy as the memory grows
+
+```bash
+bun run bench --scale 1,2,4,8,16 --adapters ingot-mcp,control-same-store-top-k,vector,raw-context \
+  --repeats 2 --publish ../../apps/ingot-app/src/benchmarks/scaling.json
+```
+
+The ordinary corpus is 90 days of pull requests, CI runs and issues. At `--scale 4`
+it is 360 days: the same 90 recent days, record for record, plus 270 older ones.
+Every question in a `--scale` run is scoped to those recent 90 days ("pull
+requests opened on or after 2026-04-01"), so each point asks the same 33
+questions with the same gold answers. The only thing that changes along the line
+is how much older memory sits around the answer.
+
+Scaling the whole world would have been simpler, but the answers grow with it.
+At 32× "which issues have no assignee" is a 579-ref answer, and a model that
+fails to write out 579 refs has told you nothing about its memory.
+
+Services, files and incidents do not grow. The incident questions still get
+harder, because there's more memory around them, but there are no extra
+incidents among the records themselves.
+
+At about 16× the corpus no longer fits in `raw-context`'s window. Those runs are
+refused rather than scored, and the published series counts them per point as
+`overflowed`.
+
+Each scale is its own run, with its own JSONL and report. `--publish` writes the
+series to its own file, supplementary to `results.json`, which it never touches.
+The file is written whole, so publishing needs at least two points. If a sweep
+dies partway, buy the missing scales without `--publish` and assemble the series
+from the files:
+
+```bash
+bun run bench --from results/…-x4.jsonl,results/…-x8.jsonl,… --series --publish …
+```
+
+The published series uses the ordinary run as its 1× point rather than buying a
+`--scale 1`. The memory and all 33 gold answers are identical, but 19 of the
+questions are worded without the date, so the series carries a published
+warning saying so. Repeats can differ between points, because each point's ±
+comes from its own runs.
+
+It is also narrowed to the categories where top-k and SQL come apart:
+aggregate, ordering and multi-hop, 12 questions. `--categories` narrows the
+ordinary run to match, and the series refuses points that asked different
+questions:
+
+```bash
+bun run bench --scale 4,8,16 --adapters control-same-store-top-k,ingot-rest,vector,turbopuffer \
+  --categories multi-hop,ordering,aggregate --repeats 3 --concurrency 8
+bun run bench --from "results/<ordinary>.jsonl,$(ls results/*-x{4,8,16}.jsonl | paste -sd, -)" \
+  --series --adapters control-same-store-top-k,ingot-rest,vector,turbopuffer \
+  --categories multi-hop,ordering,aggregate \
+  --publish ../../apps/ingot-app/src/benchmarks/scaling.json
+```
 
 ### Adding a column without re-buying the table
 

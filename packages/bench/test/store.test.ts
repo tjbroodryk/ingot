@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import type { RunRecord } from '../src/run/report.js';
 import {
+  asSeries,
   comparisonAxis,
   metaPathFor,
   observedTextOf,
@@ -35,6 +36,7 @@ const META: RunMeta = {
   mapping: 'authored',
   notes: [],
   logs: 0,
+  scale: null,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -317,6 +319,52 @@ describe('merging finished runs', () => {
  * difference means there is nothing to measure, and two differences mean the
  * number belongs to neither change.
  */
+describe('a --scale series', () => {
+  const run = (meta: Partial<RunMeta>) => ({
+    meta: { ...META, ...meta },
+    rows: [ROW],
+  });
+
+  test('orders the points by scale', () => {
+    const series = asSeries([run({ runId: 'b', scale: 8 }), run({ runId: 'a', scale: 1 })]);
+    expect(series.map((point) => point.meta.scale)).toEqual([1, 8]);
+  });
+
+  test('takes an ordinary run as the 1× point, and says so', () => {
+    const series = asSeries([
+      run({ runId: 'old', scale: null, repeats: 3 }),
+      run({ runId: 'new', scale: 4, repeats: 2 }),
+    ]);
+    expect(series.map((point) => point.meta.scale)).toEqual([1, 4]);
+    expect(series[0]?.meta.warnings.join(' ')).toContain('old, an ordinary run spliced in');
+  });
+
+  test('refuses an ordinary run beside a real 1× point', () => {
+    expect(() =>
+      asSeries([run({ runId: 'old', scale: null }), run({ runId: 'new', scale: 1 })]),
+    ).toThrow(/both at 1×/);
+  });
+
+  test('refuses two runs at the same scale', () => {
+    expect(() =>
+      asSeries([run({ runId: 'a', scale: 2 }), run({ runId: 'b', scale: 2 })]),
+    ).toThrow(/both at 2×/);
+  });
+
+  test('refuses points that asked different questions', () => {
+    const narrow = { meta: { ...META, runId: 'b', scale: 4 }, rows: [{ ...ROW, questionId: 'q-009' }] };
+    expect(() => asSeries([run({ runId: 'a', scale: 1 }), narrow as never])).toThrow(
+      /asked different questions/,
+    );
+  });
+
+  test('refuses points that differ in anything but the scale', () => {
+    expect(() =>
+      asSeries([run({ runId: 'a', scale: 1 }), run({ runId: 'b', scale: 2, model: 'other' })]),
+    ).toThrow(/Only the scale may change/);
+  });
+});
+
 describe('the axis two runs are compared across', () => {
   const meta = (extra: Partial<RunMeta>): RunMeta => ({ ...META, ...extra });
 

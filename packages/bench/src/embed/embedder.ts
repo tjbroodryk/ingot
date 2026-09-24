@@ -94,18 +94,27 @@ export class OpenAiEmbedder implements Embedder {
   }
 
   private async chunk(texts: readonly string[]): Promise<number[][]> {
-    const response = await fetch(`${this.settings.baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${this.settings.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.settings.model,
-        dimensions: this.settings.dimensions,
-        input: texts,
-      }),
-    });
+    const request = (): Promise<Response> =>
+      fetch(`${this.settings.baseUrl}/embeddings`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.settings.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.settings.model,
+          dimensions: this.settings.dimensions,
+          input: texts,
+        }),
+      });
+
+    // Azure's S0 tier rate-limits a large corpus mid-ingest; one 429 used to
+    // skip the whole adapter at the scales the benchmark is meant to measure.
+    let response = await request();
+    for (let attempt = 1; response.status === 429 && attempt <= RATE_LIMIT_RETRIES; attempt++) {
+      await sleep(retryAfterMs(response, await response.text(), attempt));
+      response = await request();
+    }
 
     if (!response.ok) {
       throw new Error(`embeddings ${response.status}: ${await response.text()}`);
@@ -128,6 +137,21 @@ export class OpenAiEmbedder implements Embedder {
     }
     return ordered as number[][];
   }
+}
+
+const RATE_LIMIT_RETRIES = 8;
+
+/** The server's own hint (header, or Azure's "retry after N seconds"), else backoff. */
+function retryAfterMs(response: Response, body: string, attempt: number): number {
+  const header = Number(response.headers.get('retry-after'));
+  if (Number.isFinite(header) && header > 0) return header * 1000 + 500;
+  const hinted = /retry after (\d+) seconds?/i.exec(body)?.[1];
+  if (hinted) return Number(hinted) * 1000 + 500;
+  return Math.min(60_000, 2 ** attempt * 1000);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function cosine(a: readonly number[], b: readonly number[]): number {

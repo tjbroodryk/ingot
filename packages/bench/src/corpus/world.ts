@@ -292,6 +292,17 @@ const DAY = 86_400_000;
 /** A fixed clock. Relative dates in questions would make gold answers rot. */
 const NOW = '2026-06-30T00:00:00.000Z';
 
+/** How far back the ordinary world's pull requests, CI runs and issues go. */
+const RECENT_DAYS = 90;
+
+/**
+ * The first day of the ordinary world, and the window `--scale` questions ask
+ * about. Everything `scale` adds is dated before it.
+ */
+export const RECENT_SINCE = new Date(Date.parse(NOW) - RECENT_DAYS * DAY)
+  .toISOString()
+  .slice(0, 10);
+
 export interface WorldOptions {
   readonly seed: number;
   readonly pullRequests?: number;
@@ -308,11 +319,27 @@ export interface WorldOptions {
    * Opt in with `--logs N`. See `LogLine` for what it is for.
    */
   readonly logs?: number;
+  /**
+   * How many times over the ordinary 90 days of pull requests, CI runs and
+   * issues the world holds. 1 is the ordinary world.
+   *
+   * The extra history is dated before {@link RECENT_SINCE} and drawn after
+   * everything else, so the recent 90 days are identical at every scale. A
+   * question scoped to that window has the same gold answer at 1× and at 16×,
+   * and the only thing that grows is what surrounds it. Services, files and
+   * incidents do not grow: they are the shape of the codebase, and each
+   * incident needs a distinct cause.
+   */
+  readonly scale?: number;
 }
 
 export function buildWorld(options: WorldOptions): World {
   const rng = new Rng(options.seed);
   const nowMs = Date.parse(NOW);
+  const scale = options.scale ?? 1;
+  if (!Number.isInteger(scale) || scale < 1) {
+    throw new Error(`scale must be a positive integer, got ${scale}`);
+  }
   const prCount = options.pullRequests ?? 120;
   const incidentCount = Math.min(options.incidents ?? 14, CAUSES.length);
   const issueCount = options.issues ?? 60;
@@ -346,46 +373,86 @@ export function buildWorld(options: WorldOptions): World {
     }
   }
 
-  const pullRequests: PullRequest[] = [];
-  for (let index = 0; index < prCount; index += 1) {
-    const number = 1400 + index;
-    const createdDaysAgo = rng.int(1, 90);
-    const state = rng.chance(0.72) ? 'merged' : rng.chance(0.6) ? 'open' : 'closed';
-    const touched = rng.sample(files, rng.int(1, 5)).map((file) => file.path);
-    pullRequests.push({
-      ref: `pr:${number}`,
-      number,
-      title: `${rng.pick(PR_VERBS)} ${rng.pick(PR_OBJECTS)}`,
-      author: rng.pick(PEOPLE),
-      state,
-      createdAt: at(createdDaysAgo, rng.int(0, 23)),
-      mergedAt: state === 'merged' ? at(Math.max(0, createdDaysAgo - rng.int(0, 3)), 12) : null,
-      additions: rng.int(3, 600),
-      deletions: rng.int(0, 400),
-      files: touched,
-      labels: rng.sample(LABELS, rng.int(0, 2)),
-    });
-  }
-
-  const ciRuns: CiRun[] = [];
-  let runSeq = 0;
-  for (const pr of pullRequests) {
-    for (let attempt = 0; attempt < rng.int(1, 3); attempt += 1) {
-      runSeq += 1;
-      const status = rng.chance(0.74) ? 'success' : rng.chance(0.85) ? 'failure' : 'cancelled';
-      ciRuns.push({
-        ref: `ci:run-${String(runSeq).padStart(4, '0')}`,
-        id: `run-${String(runSeq).padStart(4, '0')}`,
-        pr: pr.number,
-        workflow: rng.pick(WORKFLOWS),
-        status,
-        // A wide range, so "the longest three" has an unambiguous answer.
-        durationSec: rng.int(40, 3600),
-        startedAt: pr.createdAt,
-        failedStep: status === 'failure' ? rng.pick(FAILED_STEPS) : null,
+  // `fromDay`..`toDay` is how many days ago they were opened. The history
+  // `scale` adds calls these again with older days, after every other draw.
+  const makePullRequests = (
+    count: number,
+    firstNumber: number,
+    fromDay: number,
+    toDay: number,
+  ): PullRequest[] => {
+    const made: PullRequest[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const number = firstNumber + index;
+      const createdDaysAgo = rng.int(fromDay, toDay);
+      const state = rng.chance(0.72) ? 'merged' : rng.chance(0.6) ? 'open' : 'closed';
+      const touched = rng.sample(files, rng.int(1, 5)).map((file) => file.path);
+      made.push({
+        ref: `pr:${number}`,
+        number,
+        title: `${rng.pick(PR_VERBS)} ${rng.pick(PR_OBJECTS)}`,
+        author: rng.pick(PEOPLE),
+        state,
+        createdAt: at(createdDaysAgo, rng.int(0, 23)),
+        mergedAt: state === 'merged' ? at(Math.max(0, createdDaysAgo - rng.int(0, 3)), 12) : null,
+        additions: rng.int(3, 600),
+        deletions: rng.int(0, 400),
+        files: touched,
+        labels: rng.sample(LABELS, rng.int(0, 2)),
       });
     }
-  }
+    return made;
+  };
+
+  let runSeq = 0;
+  const makeCiRuns = (prs: readonly PullRequest[]): CiRun[] => {
+    const made: CiRun[] = [];
+    for (const pr of prs) {
+      for (let attempt = 0; attempt < rng.int(1, 3); attempt += 1) {
+        runSeq += 1;
+        const status = rng.chance(0.74) ? 'success' : rng.chance(0.85) ? 'failure' : 'cancelled';
+        made.push({
+          ref: `ci:run-${String(runSeq).padStart(4, '0')}`,
+          id: `run-${String(runSeq).padStart(4, '0')}`,
+          pr: pr.number,
+          workflow: rng.pick(WORKFLOWS),
+          status,
+          // A wide range, so "the longest three" has an unambiguous answer.
+          durationSec: rng.int(40, 3600),
+          startedAt: pr.createdAt,
+          failedStep: status === 'failure' ? rng.pick(FAILED_STEPS) : null,
+        });
+      }
+    }
+    return made;
+  };
+
+  const makeIssues = (
+    count: number,
+    firstId: number,
+    fromDay: number,
+    toDay: number,
+  ): Issue[] => {
+    const made: Issue[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const service = rng.pick(services);
+      const id = `ENG-${String(firstId + index)}`;
+      made.push({
+        ref: `iss:${id}`,
+        id,
+        title: `${rng.pick(PR_VERBS)} ${rng.pick(PR_OBJECTS)} in ${service.name}`,
+        service: service.name,
+        state: rng.chance(0.45) ? 'closed' : 'open',
+        assignee: rng.chance(0.7) ? rng.pick(PEOPLE) : null,
+        createdAt: at(rng.int(fromDay, toDay), rng.int(0, 23)),
+        body: `Reported against ${service.name}. Needs a look before the next release.`,
+      });
+    }
+    return made;
+  };
+
+  const pullRequests = makePullRequests(prCount, 1400, 1, RECENT_DAYS);
+  const ciRuns = makeCiRuns(pullRequests);
 
   const incidents: Incident[] = [];
   const chosenCauses = rng.sample(CAUSES, incidentCount);
@@ -407,21 +474,7 @@ export function buildWorld(options: WorldOptions): World {
     });
   }
 
-  const issues: Issue[] = [];
-  for (let index = 0; index < issueCount; index += 1) {
-    const service = rng.pick(services);
-    const id = `ENG-${String(200 + index)}`;
-    issues.push({
-      ref: `iss:${id}`,
-      id,
-      title: `${rng.pick(PR_VERBS)} ${rng.pick(PR_OBJECTS)} in ${service.name}`,
-      service: service.name,
-      state: rng.chance(0.45) ? 'closed' : 'open',
-      assignee: rng.chance(0.7) ? rng.pick(PEOPLE) : null,
-      createdAt: at(rng.int(1, 90), rng.int(0, 23)),
-      body: `Reported against ${service.name}. Needs a look before the next release.`,
-    });
-  }
+  const issues = makeIssues(issueCount, 200, 1, RECENT_DAYS);
 
   const logs: LogLine[] = [];
   const logCount = options.logs ?? 0;
@@ -450,15 +503,34 @@ export function buildWorld(options: WorldOptions): World {
     });
   }
 
+  // Last, so nothing above draws differently at a larger scale. Numbered after
+  // the recent records because their numbers are already taken; nothing reads
+  // age off a number.
+  const olderDays = RECENT_DAYS * (scale - 1);
+  const olderPullRequests = makePullRequests(
+    prCount * (scale - 1),
+    1400 + prCount,
+    RECENT_DAYS + 1,
+    RECENT_DAYS + olderDays,
+  );
+  const olderCiRuns = makeCiRuns(olderPullRequests);
+  const olderIssues = makeIssues(
+    issueCount * (scale - 1),
+    200 + issueCount,
+    RECENT_DAYS + 1,
+    RECENT_DAYS + olderDays,
+  );
+
   return {
     seed: options.seed,
     now: NOW,
     services,
     files,
-    pullRequests,
-    ciRuns,
+    // The older history first, since an agent would have met it first.
+    pullRequests: [...olderPullRequests, ...pullRequests],
+    ciRuns: [...olderCiRuns, ...ciRuns],
     incidents,
-    issues,
+    issues: [...olderIssues, ...issues],
     logs,
   };
 }

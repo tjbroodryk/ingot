@@ -36,6 +36,7 @@ import {
   TABLES,
   mappingWriter,
   LIMITS,
+  SCALING,
   SOURCE_BLURBS,
   SOURCES,
   TRANSCRIPTS_FILE,
@@ -44,6 +45,7 @@ import {
   type PublishedTranscripts,
   type TranscriptRun,
 } from './benchmarks';
+import { ScalingChart } from './scaling-chart';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 const count = (value: number): string => value.toLocaleString('en-GB');
@@ -129,6 +131,7 @@ export function BenchmarksPage(): ReactNode {
                   <RankedAccuracy adapters={table.adapters} />
                   <Failures adapters={table.adapters} />
                   <CostTable adapters={table.adapters} concurrency={table.run.concurrency} />
+                  {SCALING.points.length > 1 ? <ScalingChart scaling={SCALING} /> : null}
                 </>
               ) : (
                 <div className="bench-empty">
@@ -457,7 +460,7 @@ function TheRun({
           <div className="bench-spec-cell">
             <div className="bench-spec-label label">Scoring</div>
             <div className="bench-spec-value">No judge model</div>
-            <p>Counts exact, sets by F1, ordered lists in order.</p>
+            <p>Exact match, decided by code. No partial credit.</p>
           </div>
         </div>
 
@@ -476,19 +479,41 @@ function TheRun({
   );
 }
 
-/** How `packages/bench/src/score/score.ts` decides what the tables count. */
-const SCORING_TERMS: readonly [string, string][] = [
+/** How `packages/bench/src/score/score.ts` gets from an answer to a verdict. */
+const SCORING_STEPS: readonly [string, string][] = [
   [
-    'correct',
-    'exactly right — a set counts only at F1 = 1, and F1 is reported apart as partial credit',
+    'The correct answer',
+    'The corpus comes from a fixed seed, so the harness knows the true state of the fake project and computes each answer from it. For “which team owns the service with the most open issues since 2026-04-01” it counts open issues per service, takes the top one and looks up its owner: `infra`.',
   ],
   [
-    'normalisation',
-    'light: answers are trimmed and lowercased, and a comma-separated string stands in for an array, so the envelope is not what gets marked',
+    'The submission',
+    'The model has to answer through a `submit_answer` tool. Text in the reply doesn’t count.',
   ],
   [
-    'evidence recall',
-    'scored apart from the answer — whether the answer-bearing records came back through the tools. Empty for aggregate questions and for `raw-context`, which does no retrieval',
+    'Normalised',
+    'Both sides are lower-cased and trimmed. A comma-separated string is accepted in place of an array.',
+  ],
+  ['Compared', 'By the type of answer, with the rules below.'],
+];
+
+const ANSWER_TYPES: readonly [string, string][] = [
+  ['Number', 'Exactly equal.'],
+  ['Ordered list', 'The same items in the same order.'],
+  ['Set', 'Exactly the right items: nothing missing and nothing extra.'],
+];
+
+const SCORING_NOTES: readonly [string, string][] = [
+  [
+    'Counts as wrong',
+    'Not submitting at all: running out of tool calls, a timeout, or a context overflow. Overflows are tagged separately, so the results can say why.',
+  ],
+  [
+    'The ± on each number',
+    'The binomial standard error, `√(p(1−p)/n)`, where n is the number of attempts. It gets large when n is small: at 6 attempts it’s about ±15–20 points in the middle of the range.',
+  ],
+  [
+    'Evidence recall and precision',
+    'Scored separately, by scanning tool output for the record ids that support the answer. They check what came back through the tools, and don’t affect accuracy.',
   ],
 ];
 
@@ -647,14 +672,68 @@ function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): Reac
 
 function Scoring(): ReactNode {
   return (
-    <div className="bench-block">
-      <Rule label="How it is scored" />
-      <dl className="bench-terms">
-        {SCORING_TERMS.map(([term, gloss]) => (
+    <div className="bench-scoring" id="scoring">
+      <Rule label="How accuracy is scored" />
+      <h3 className="bench-scoring-title">Exactly right, or wrong</h3>
+      <p className="bench-scoring-lede">
+        Accuracy is the share of attempts where the submitted answer exactly matches the correct
+        one. Code decides it, in{' '}
+        <a href={sourceHref('packages/bench/src/score/score.ts')}>
+          <code>src/score/score.ts</code>
+        </a>
+        . No model grades the answers.
+      </p>
+
+      <ol className="bench-scoring-steps">
+        {SCORING_STEPS.map(([title, body], index) => (
+          <li key={title}>
+            <span className="bench-scoring-n label">{String(index + 1).padStart(2, '0')}</span>
+            <span className="bench-scoring-step label">{title}</span>
+            <p>
+              <Prose text={body} />
+            </p>
+          </li>
+        ))}
+      </ol>
+
+      <table className="bench-scoring-types">
+        <thead>
+          <tr className="label label-sm">
+            <th scope="col" className="bench-scoring-col bench-scoring-col-type">
+              Answer type
+            </th>
+            <th scope="col" className="bench-scoring-col">
+              Correct when
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ANSWER_TYPES.map(([type, rule]) => (
+            <tr key={type}>
+              <th scope="row" className="bench-scoring-type label">
+                {type}
+              </th>
+              <td className="bench-scoring-rule">{rule}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="bench-scoring-callout">
+        <span className="bench-scoring-badge label label-sm">No partial credit</span>
+        <p>
+          An answer of <code>svc:billing</code> scored as wrong, even though the model had found the
+          right team, <code>infra</code>, on the way. Partial credit is recorded separately as F1
+          (the “set F1” column) and doesn’t count towards accuracy.
+        </p>
+      </div>
+
+      <dl className="bench-scoring-notes">
+        {SCORING_NOTES.map(([term, body]) => (
           <div key={term}>
             <dt className="label label-sm">{term}</dt>
             <dd>
-              <Prose text={gloss} />
+              <Prose text={body} />
             </dd>
           </div>
         ))}

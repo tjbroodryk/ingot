@@ -29,6 +29,7 @@ import {
   NO_RESULTS,
   NO_TRANSCRIPTS,
   publishable,
+  publishableScaling,
   transcriptsPathFor,
   transcriptTable,
   withTable,
@@ -38,12 +39,14 @@ import {
 } from './publish.js';
 import { pool } from './pool.js';
 import {
+  asSeries,
   comparisonAxis,
   observedTextOf,
   readRun,
   readRuns,
   writeMeta,
   type RunMeta,
+  type StoredRun,
 } from './store.js';
 
 /**
@@ -146,6 +149,12 @@ interface Options {
   publish: string | null;
   /** Log lines in one unpaginated tool result. 0 leaves the corpus as it was. */
   logs: number;
+  /** `--scale`: the sweep asked for, ascending. Null for an ordinary run. */
+  scales: number[] | null;
+  /** The one scale `main` is running now, out of `scales`. */
+  scale: number | null;
+  /** With `--from`: each file is one point of a `--scale` series. */
+  series: boolean;
   /** How many agent runs to have in flight at once, within one adapter. */
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
@@ -196,6 +205,9 @@ function parse(argv: readonly string[]): Options {
     thinking: true,
     publish: null,
     logs: 0,
+    scales: null,
+    scale: null,
+    series: false,
     // One by default. Concurrency makes a run faster and its latency column
     // meaningless, and that is a trade the person running it should make on
     // purpose rather than inherit from a default.
@@ -293,6 +305,22 @@ function parse(argv: readonly string[]): Options {
       case '--logs':
         options.logs = Number(next(flag, value));
         at += 1;
+        break;
+      case '--scale': {
+        const scales = next(flag, value)
+          .split(',')
+          .map((one) => Number(one.trim()));
+        for (const scale of scales) {
+          if (!Number.isInteger(scale) || scale < 1) {
+            throw new Error(`--scale takes positive integers, got "${value}"`);
+          }
+        }
+        options.scales = [...new Set(scales)].sort((a, b) => a - b);
+        at += 1;
+        break;
+      }
+      case '--series':
+        options.series = true;
         break;
       case '--concurrency': {
         const concurrency = Number(next(flag, value));
@@ -444,6 +472,20 @@ const HELP = `bun run bench [flags]
                          window: raw-context is refused rather than scored, and
                          top-k finds a shrinking share of what an aggregate
                          needs while SQL is indifferent to the row count.
+  --scale 1,2,4,8,16     Sweep memory size: one run per scale, each holding that
+                         many times the ordinary 90 days of PRs, CI runs and
+                         issues. Every question is scoped to the most recent 90
+                         days, which are identical at every scale, so the
+                         questions and gold answers do not change — only how
+                         much older history surrounds them. With --publish,
+                         writes the series as its own JSON file, replacing
+                         it whole, e.g. ../../apps/ingot-app/src/benchmarks/
+                         scaling.json. Needs at least two scales.
+  --series               With --from: each file is one point of a --scale
+                         series. Publishes the series, e.g. to finish a sweep
+                         that died partway: run the missing scales, then
+                         --from every point's file --series --publish. An
+                         ordinary run can stand in as 1×, with a warning.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -568,7 +610,12 @@ async function onlyMissingFrom(
   const path = options.questionsNotIn as string;
   const { meta, rows } = await readRun(path);
 
-  const defining: readonly (keyof Options & keyof RunMeta)[] = ['seed', 'perTemplate', 'logs'];
+  const defining: readonly (keyof Options & keyof RunMeta)[] = [
+    'seed',
+    'perTemplate',
+    'logs',
+    'scale',
+  ];
   for (const key of defining) {
     if (meta[key] === options[key]) continue;
     throw new Error(
@@ -588,13 +635,18 @@ async function onlyMissingFrom(
   return missing;
 }
 
-async function main(options: Options): Promise<void> {
-  const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}`;
+async function main(options: Options): Promise<StoredRun | null> {
+  const runId =
+    `${new Date().toISOString().replace(/[:.]/g, '-')}-seed${options.seed}` +
+    (options.scale === null ? '' : `-x${options.scale}`);
 
-  const world = buildWorld({ seed: options.seed, logs: options.logs });
+  const world = buildWorld({ seed: options.seed, logs: options.logs, scale: options.scale ?? 1 });
   const corpus = buildCorpus(world);
   const knownRefs = corpusRefs(corpus);
-  const all = buildQuestions(world, { perTemplate: options.perTemplate });
+  const all = buildQuestions(world, {
+    perTemplate: options.perTemplate,
+    recentOnly: options.scale !== null,
+  });
   const byCategory = options.categories
     ? all.filter((question) => options.categories?.includes(question.category))
     : all;
@@ -603,7 +655,8 @@ async function main(options: Options): Promise<void> {
     : byCategory;
 
   console.log(
-    `corpus: ${corpus.length} tool results, ${knownRefs.size} records\n` +
+    (options.scale === null ? '' : `\n══ ${options.scale}× history ══\n`) +
+      `corpus: ${corpus.length} tool results, ${knownRefs.size} records\n` +
       `questions: ${questions.length} — ${JSON.stringify(categoryCounts(questions))}`,
   );
 
@@ -614,17 +667,19 @@ async function main(options: Options): Promise<void> {
             'would ask. Report on it with --from.'
         : 'No questions match those filters, so there is nothing to run.',
     );
-    return;
+    return null;
   }
 
   if (options.dryRun) {
-    for (const question of questions) {
+    // A sweep asks the same questions at every scale, so once is enough.
+    const first = options.scales === null || options.scale === options.scales[0];
+    for (const question of first ? questions : []) {
       console.log(`\n${question.id} [${question.category}] ${question.text}`);
       console.log(`  gold: ${JSON.stringify(question.gold)}`);
     }
     const runs = options.adapters.length * questions.length * options.repeats;
     console.log(`\n${runs} agent runs would be executed. Nothing was spent.`);
-    return;
+    return null;
   }
 
   // Only the locally-embedding adapters can be spoiled by the offline
@@ -713,6 +768,7 @@ async function main(options: Options): Promise<void> {
     embedder: embedder?.model ?? 'none (no local vector adapter in this run)',
     mapping: options.mapping,
     logs: options.logs,
+    scale: options.scale,
     provider: options.provider,
     thinking: options.thinking,
     warnings,
@@ -825,6 +881,7 @@ async function main(options: Options): Promise<void> {
           answer: run.answer,
           submitted: run.submitted,
           stopReason: run.stopReason,
+          ...(run.failure ? { failure: run.failure } : {}),
           correct: score.correct,
           f1: score.f1,
           evidenceRecall: score.evidenceRecall,
@@ -852,7 +909,115 @@ async function main(options: Options): Promise<void> {
     }
   }
 
-  await emit(meta, rows, jsonlPath, options.publish);
+  await emit(meta, rows, jsonlPath, options.scales === null ? options.publish : null);
+  return { meta, rows };
+}
+
+/**
+ * `--scale`: one run per scale, then the series.
+ *
+ * Each point is an ordinary run with its own JSONL and report, so a sweep that
+ * dies at 16× keeps every point before it, and `--from ... --series` finishes
+ * the job once the rest are bought.
+ */
+async function sweep(options: Options): Promise<void> {
+  const scales = options.scales as number[];
+  // A publish replaces the whole series, so one point would wipe the others.
+  if (options.publish && scales.length < 2 && !options.dryRun) {
+    throw new Error(
+      '--publish with --scale writes the whole series, and one scale is not a line. Pass ' +
+        'at least two, or buy this point without --publish and add it with --from ... --series.',
+    );
+  }
+
+  const runs: StoredRun[] = [];
+  for (const scale of scales) {
+    const run = await main({ ...options, scale });
+    if (run) runs.push(run);
+  }
+  if (runs.length > 0) await emitSeries(asSeries(runs), options.out, options.publish);
+}
+
+/** The series: a table of accuracy by scale, and its own JSON file for the site. */
+async function emitSeries(
+  runs: readonly StoredRun[],
+  out: string,
+  publish: string | null,
+): Promise<void> {
+  const scaling = publishableScaling(runs, CATEGORIES);
+  const names = [...new Set(scaling.points.flatMap((point) => point.adapters.map((a) => a.name)))];
+
+  const lines = [
+    `# Accuracy as memory grows — seed ${scaling.run.seed}, ${scaling.run.model}`,
+    '',
+    `Questions scoped to ${scaling.since} on; every point asks the same ones.`,
+    '',
+    `| | ${scaling.points.map((point) => `${point.scale}× (${point.corpus.results} results)`).join(' | ')} |`,
+    `| --- | ${scaling.points.map(() => '---').join(' | ')} |`,
+    ...names.map((name) => {
+      const cells = scaling.points.map((point) => {
+        const adapter = point.adapters.find((one) => one.name === name);
+        if (!adapter) return '—';
+        if (adapter.overflowed === adapter.runs) return 'does not fit';
+        return `${(adapter.accuracy * 100).toFixed(0)}%`;
+      });
+      return `| \`${name}\` | ${cells.join(' | ')} |`;
+    }),
+    '',
+    ...scaling.run.warnings.map((warning) => `> **${warning}**`),
+    '',
+    ...scaling.points.map((point) => `- ${point.scale}×: ${point.runId}`),
+  ];
+  const report = `${lines.join('\n')}\n`;
+  await mkdir(out, { recursive: true });
+  const reportPath = join(out, `series-seed${scaling.run.seed}-${stamp()}.md`);
+  await writeFile(reportPath, report);
+  console.log(`\n${report}\nseries: ${reportPath}`);
+
+  if (publish) {
+    // The file is written whole, so a single point would wipe the line that
+    // is there — typically because the other points' files were never passed.
+    if (scaling.points.length < 2) {
+      throw new Error(
+        `Not published: the series has ${scaling.points.length} point(s) and a line needs at ` +
+          'least two. Check that every scale’s file is in --from.',
+      );
+    }
+    // Written whole, so pointing this at the main summary would erase every
+    // published run on the page.
+    const existing = await readFile(publish, 'utf8').catch(() => null);
+    if (existing !== null && (JSON.parse(existing) as { tables?: unknown }).tables !== undefined) {
+      throw new Error(
+        `Not published: ${publish} holds the benchmark summary (results.json), which a series ` +
+          'would overwrite. Publish the series to its own file, e.g. scaling.json.',
+      );
+    }
+    await mkdir(dirname(publish), { recursive: true });
+    await writeFile(publish, `${JSON.stringify(scaling, null, 2)}\n`);
+    console.log(`published: ${publish} — series of ${scaling.points.length} points`);
+  }
+}
+
+function stamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+/**
+ * The published summary as it stands, to add to rather than replace.
+ *
+ * A file that cannot be read or cannot be parsed is treated as absent rather
+ * than fatal: the first publish into a fresh checkout is exactly that case,
+ * and so is a file left half-written by an interrupted one.
+ */
+async function readPublished(path: string): Promise<PublishedBenchmark> {
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as PublishedBenchmark;
+    if (parsed.schema === 2 && Array.isArray(parsed.tables)) return parsed;
+    console.log(`note: ${path} is not a schema-2 file; starting a new one`);
+  } catch {
+    // No file yet, or an unreadable one. Either way there is nothing to keep.
+  }
+  return NO_RESULTS;
 }
 
 /**
@@ -885,22 +1050,9 @@ async function emit(
      * that used to be there. A run whose label matches one already in
      * the file replaces it, because that is a re-publish of the same
      * experiment. See `withTable`.
-     *
-     * A file that cannot be read or cannot be parsed is treated as absent
-     * rather than fatal: the first publish into a fresh checkout is exactly
-     * that case, and so is a file left half-written by an interrupted one.
      */
-    let existing = NO_RESULTS;
-    try {
-      const parsed = JSON.parse(await readFile(publish, 'utf8')) as PublishedBenchmark;
-      if (parsed.schema === 2 && Array.isArray(parsed.tables)) existing = parsed;
-      else console.log(`note: ${publish} is not a schema-2 file; starting a new one`);
-    } catch {
-      // No file yet, or an unreadable one. Either way there is nothing to keep.
-    }
-
     const table = publishable(meta, rows, CATEGORIES);
-    const merged = withTable(existing, table);
+    const merged = withTable(await readPublished(publish), table);
     // Pretty-printed and newline-terminated because it is a tracked file that
     // people will read in a diff: a one-line JSON blob makes every run look
     // like a total rewrite.
@@ -966,6 +1118,25 @@ async function replay(options: Options): Promise<void> {
   // column retired since the run was bought, or one being looked at alone. The
   // rows on disk keep every column they were bought with.
   const keep = options.adaptersGiven ? new Set<string>(options.adapters) : undefined;
+
+  if (options.series) {
+    if (options.rescore || options.against) {
+      throw new Error('--series reports finished points as they are; drop --rescore and --against.');
+    }
+    const points = await Promise.all(paths.map((path) => readRuns([path], keep)));
+    // With --categories, the spliced 1× point is narrowed to the questions the
+    // sweep asked; `asSeries` refuses points whose question sets differ.
+    const asked = options.categories;
+    const narrowed = asked
+      ? points.map((point) => ({
+          ...point,
+          rows: point.rows.filter((row) => asked.includes(row.category as Category)),
+        }))
+      : points;
+    await emitSeries(asSeries(narrowed), options.out, options.publish);
+    return;
+  }
+
   const { meta, rows } = await readRuns(paths, keep);
 
   // A comparison is a different output from a different pair of inputs, so it
@@ -1014,10 +1185,13 @@ async function replay(options: Options): Promise<void> {
   // `logs` comes off the sidecar rather than off this invocation: re-scoring
   // has to rebuild the corpus the run was bought over, not the one whatever
   // flags happen to be on the command line would produce.
-  const world = buildWorld({ seed: meta.seed, logs: meta.logs });
+  const world = buildWorld({ seed: meta.seed, logs: meta.logs, scale: meta.scale ?? 1 });
   const knownRefs = corpusRefs(buildCorpus(world));
   const questions = new Map(
-    buildQuestions(world, { perTemplate: meta.perTemplate }).map((question) => [
+    buildQuestions(world, {
+      perTemplate: meta.perTemplate,
+      recentOnly: meta.scale !== null,
+    }).map((question) => [
       question.id,
       question,
     ]),
@@ -1055,4 +1229,7 @@ async function replay(options: Options): Promise<void> {
 }
 
 const parsed = parse(process.argv.slice(2));
-await (parsed.from ? replay(parsed) : main(parsed));
+if (parsed.series && !parsed.from) throw new Error('--series reads finished runs; pass them with --from');
+if (parsed.from) await replay(parsed);
+else if (parsed.scales) await sweep(parsed);
+else await main(parsed);

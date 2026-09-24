@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { canonicalAdapter } from '../adapters/names.js';
+import { RECENT_SINCE } from '../corpus/world.js';
 import type { ReportHeader, RunRecord } from './report.js';
 
 /**
@@ -78,7 +79,9 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
   // reached, so it needs the same treatment as the rows or a merge would report
   // a column under one name and list it under another.
   const adapters = meta.adapters.map(canonicalAdapter);
-  return { meta: { ...meta, adapters }, rows: rows as readonly RunRecord[] };
+  // Runs from before `--scale` existed were all the ordinary corpus.
+  const scale = meta.scale ?? null;
+  return { meta: { ...meta, adapters, scale }, rows: rows as readonly RunRecord[] };
 }
 
 /**
@@ -86,7 +89,7 @@ export async function readRun(jsonlPath: string): Promise<StoredRun> {
  * one table.
  *
  * Everything that could move a number: the corpus and questions (`seed`,
- * `perTemplate`, `logs`), the agent (`model`, `provider`, `effort`,
+ * `perTemplate`, `logs`, `scale`), the agent (`model`, `provider`, `effort`,
  * `thinking`, `maxToolCalls`), the vectors (`embedder`), who wrote the
  * mappings, and `repeats` — because the ± in the report is a function of how
  * many runs are behind each cell, and a column bought once beside columns
@@ -107,6 +110,7 @@ export const MUST_MATCH: readonly (keyof RunMeta)[] = [
   'mapping',
   'embedder',
   'logs',
+  'scale',
 ];
 
 /**
@@ -226,24 +230,14 @@ export async function readRuns(
   }
 
   for (const run of rest) {
-    for (const key of MUST_MATCH) {
-      if (base.meta[key] === run.meta[key]) continue;
-      // A run with no locally-embedding adapter in it built no embedder and
-      // records so. That is the absence of a claim, not a conflicting one:
-      // Ingot's vectors are the server's, so an Ingot-only run says nothing
-      // about `text-embedding-3-small` and cannot disagree with a run that
-      // does. Treating the two as a mismatch would refuse exactly the merge
-      // this exists to allow — a new column beside a table already bought —
-      // while still catching the case that matters, which is two runs that
-      // each name an embedder and name different ones.
-      if (key === 'embedder' && !(namesEmbedder(base.meta) && namesEmbedder(run.meta))) continue;
-      throw new Error(
-        `${run.meta.runId} has ${key}=${JSON.stringify(run.meta[key])} where ` +
-          `${base.meta.runId} has ${JSON.stringify(base.meta[key])}. Columns from runs that ` +
-          'disagree about that are not a comparison of retrieval — re-run one of them to ' +
-          'match, or report them as two tables.',
-      );
-    }
+    const key = firstMismatch(base.meta, run.meta, MUST_MATCH);
+    if (key === null) continue;
+    throw new Error(
+      `${run.meta.runId} has ${key}=${JSON.stringify(run.meta[key])} where ` +
+        `${base.meta.runId} has ${JSON.stringify(base.meta[key])}. Columns from runs that ` +
+        'disagree about that are not a comparison of retrieval — re-run one of them to ' +
+        'match, or report them as two tables.',
+    );
   }
 
   /*
@@ -354,6 +348,93 @@ export async function readRuns(
     },
     rows: runs.flatMap((run) => run.rows),
   };
+}
+
+/** The first of `keys` two runs disagree about, or null. */
+function firstMismatch(
+  left: RunMeta,
+  right: RunMeta,
+  keys: readonly (keyof RunMeta)[],
+): keyof RunMeta | null {
+  for (const key of keys) {
+    if (left[key] === right[key]) continue;
+    // A run with no locally-embedding adapter in it built no embedder and
+    // records so. That is the absence of a claim, not a conflicting one:
+    // Ingot's vectors are the server's, so an Ingot-only run says nothing
+    // about `text-embedding-3-small` and cannot disagree with a run that
+    // does. Treating the two as a mismatch would refuse exactly the merge
+    // this exists to allow — a new column beside a table already bought —
+    // while still catching the case that matters, which is two runs that
+    // each name an embedder and name different ones.
+    if (key === 'embedder' && !(namesEmbedder(left) && namesEmbedder(right))) continue;
+    return key;
+  }
+  return null;
+}
+
+/**
+ * Finished `--scale` runs, as the points of one series.
+ *
+ * The same rules as a merge with `scale` as the one setting that has to
+ * differ: two points at one scale would be two readings of the same x.
+ * `repeats` may differ too, because each point's ± is computed from its own
+ * runs. Returned in scale order. A point finished across several sittings is
+ * merged with `--from A,B` first and passed here as the file that wrote.
+ *
+ * An ordinary run may stand in as the 1× point. Its corpus and gold answers
+ * are identical to `--scale 1`'s, but its questions carry no date, and the
+ * series says so rather than letting the wording change pass as memory.
+ */
+export function asSeries(runs: readonly StoredRun[]): readonly StoredRun[] {
+  if (runs.length === 0) throw new Error('no run files to read');
+  const points = runs.map((run): StoredRun => {
+    if (run.meta.scale !== null) return run;
+    const warning =
+      `The 1× point is ${run.meta.runId}, an ordinary run spliced in rather than bought for ` +
+      'this series. Its memory and gold answers are identical to a --scale 1 run, but its ' +
+      `questions do not say "on or after ${RECENT_SINCE}" and every other point's do.`;
+    return { ...run, meta: { ...run.meta, scale: 1, warnings: [...run.meta.warnings, warning] } };
+  });
+
+  const [base] = points as [StoredRun];
+  const questionsOf = (run: StoredRun): string =>
+    [...new Set(run.rows.map((row) => row.questionId))].sort().join(',');
+  const seen = new Map<number, string>();
+  for (const run of points) {
+    const scale = run.meta.scale as number;
+    const { runId } = run.meta;
+    // Ids are positional and identical across scales, so the same ids are the
+    // same questions. Different ones mean a point was bought with a different
+    // --categories, and the line would move for that reason alone.
+    if (questionsOf(run) !== questionsOf(base)) {
+      throw new Error(
+        `${runId} asked different questions from ${base.meta.runId}. Every point on a line ` +
+          'has to ask the same ones; pass --categories to narrow the wider run to match.',
+      );
+    }
+    const already = seen.get(scale);
+    if (already) {
+      throw new Error(
+        `${already} and ${runId} are both at ${scale}×. A series has one run per scale; ` +
+          'merge them with --from first if they are halves of one point.',
+      );
+    }
+    seen.set(scale, runId);
+
+    const key = firstMismatch(
+      base.meta,
+      run.meta,
+      MUST_MATCH.filter((one) => one !== 'scale' && one !== 'repeats'),
+    );
+    if (key !== null) {
+      throw new Error(
+        `${runId} has ${key}=${JSON.stringify(run.meta[key])} where ${base.meta.runId} has ` +
+          `${JSON.stringify(base.meta[key])}. Only the scale may change along a series, or ` +
+          'the line measures two things at once.',
+      );
+    }
+  }
+  return points.sort((a, b) => (a.meta.scale as number) - (b.meta.scale as number));
 }
 
 /**

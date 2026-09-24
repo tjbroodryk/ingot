@@ -49,6 +49,26 @@ describe('the question set', () => {
   });
 });
 
+describe('the --scale question set', () => {
+  const at = (scale: number) =>
+    buildQuestions(buildWorld({ seed: 11, scale }), { perTemplate: 3, recentOnly: true });
+
+  // The point of scoping to the recent window: a line across scales is the
+  // same questions over more memory, not different questions.
+  test('is identical at every scale', () => {
+    const base = at(1);
+    expect(at(4)).toEqual(base);
+    expect(at(16)).toEqual(base);
+  });
+
+  test('matches the ordinary set in number, and says which window it asks about', () => {
+    const scoped = at(1);
+    expect(scoped.map((question) => question.id)).toEqual(questions.map((question) => question.id));
+    expect(scoped.some((question) => question.text.includes('on or after'))).toBe(true);
+    expect(questions.some((question) => question.text.includes('on or after'))).toBe(false);
+  });
+});
+
 /**
  * The questions whose answer is in no single payload.
  *

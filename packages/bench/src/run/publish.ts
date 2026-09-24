@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path';
+import { authoredFor } from '../adapters/ingot-mapping.js';
 import { buildCorpus, type ToolResult } from '../corpus/stream.js';
-import { buildWorld } from '../corpus/world.js';
+import { buildWorld, RECENT_SINCE } from '../corpus/world.js';
 import type { Category, Gold } from '../questions/questions.js';
 import { summarise, type ReportHeader, type RunRecord } from './report.js';
 
@@ -36,6 +37,70 @@ export interface PublishedBenchmark {
    * corpus. Empty until a run has been published.
    */
   readonly tables: readonly PublishedTable[];
+}
+
+/**
+ * The same questions asked over a growing memory: one point per `--scale`.
+ *
+ * Supplementary to {@link PublishedBenchmark} and published as its own file,
+ * written whole each time. Every question is scoped to the 90 days from
+ * {@link PublishedScaling.since} on, and those 90 days are identical at every
+ * scale, so each point has the same questions and the same gold answers. What
+ * changes is how much older history sits around them.
+ */
+export interface PublishedScaling {
+  /** The version of this file's own shape, so the page can refuse a stale one. */
+  readonly schema: 1;
+  readonly generatedAt: string;
+  /** Questions ask only about pull requests, CI runs and issues from this day on. */
+  readonly since: string;
+  /** What every point shares. The rest is per point. */
+  readonly run: Omit<
+    PublishedRun,
+    'runId' | 'scale' | 'repeats' | 'questions' | 'categoryCounts'
+  >;
+  readonly categories: readonly Category[];
+  /** Ascending scale. */
+  readonly points: readonly PublishedPoint[];
+}
+
+export interface PublishedPoint {
+  readonly scale: number;
+  readonly runId: string;
+  /** Can differ between points; each point's `stderr` is over its own runs. */
+  readonly repeats: number;
+  readonly corpus: Omit<PublishedCorpus, 'sources'> & {
+    readonly sources: readonly PublishedPointSource[];
+  };
+  readonly questions: number;
+  readonly categoryCounts: Readonly<Record<string, number>>;
+  readonly adapters: readonly PublishedPointAdapter[];
+}
+
+/** One tool's share of a point's corpus, for the page's drill-in. */
+export interface PublishedPointSource
+  extends Pick<PublishedSource, 'tool' | 'results' | 'records' | 'sample'> {
+  /** The sample as the authored mapping stores it; null under `--mapping agent`. */
+  readonly stored: PublishedStored | null;
+}
+
+export interface PublishedStored {
+  readonly table: string;
+  readonly columns: readonly {
+    readonly name: string;
+    readonly type: string;
+    readonly value: unknown;
+    readonly embedded: boolean;
+  }[];
+}
+
+export interface PublishedPointAdapter extends PublishedAdapter {
+  /**
+   * Runs refused before inference because the prompt did not fit in the
+   * window. Scored wrong, but a point where this equals `runs` has no accuracy
+   * worth plotting: it is where `raw-context` stops.
+   */
+  readonly overflowed: number;
 }
 
 /** One run, and everything the page needs to render it on its own. */
@@ -122,6 +187,8 @@ export interface PublishedRun {
    * heading.
    */
   readonly logs: number;
+  /** `--scale`, or null for the ordinary run. See {@link PublishedScaling}. */
+  readonly scale: number | null;
   readonly questions: number;
   readonly categoryCounts: Readonly<Record<string, number>>;
   readonly warnings: readonly string[];
@@ -181,6 +248,7 @@ export const NO_RESULTS: PublishedBenchmark = {
  */
 export function labelFor(run: PublishedRun): { label: string; rank: number } {
   const parts: string[] = [];
+  if (run.scale != null) parts.push(`${run.scale}× history`);
   if (run.logs > 0) parts.push(`${run.logs.toLocaleString('en-GB')} log lines`);
   if (run.mapping === 'agent') parts.push('agent-mapped');
   return {
@@ -211,6 +279,94 @@ export function withTable(existing: PublishedBenchmark, table: PublishedTable): 
   return { schema: 2, generatedAt: new Date().toISOString(), tables };
 }
 
+/**
+ * The series the page plots, from runs `asSeries` has already checked agree
+ * about everything but the scale.
+ */
+export function publishableScaling(
+  runs: readonly { readonly meta: ReportHeader; readonly rows: readonly RunRecord[] }[],
+  categories: readonly Category[],
+): PublishedScaling {
+  const tables = runs.map(({ meta, rows }) => ({ rows, table: publishable(meta, rows, categories) }));
+  const first = (tables[0] as { table: PublishedTable }).table.run;
+  const {
+    runId: _runId,
+    scale: _scale,
+    repeats: _repeats,
+    questions: _q,
+    categoryCounts: _c,
+    ...shared
+  } = first;
+
+  const points = tables.map(({ rows, table }): PublishedPoint => {
+    const { sources, ...totals } = table.corpus;
+    return {
+      scale: table.run.scale as number,
+      runId: table.run.runId,
+      repeats: table.run.repeats,
+      corpus: {
+        ...totals,
+        sources: sources.map(({ tool, results, records, sample }) => ({
+          tool,
+          results,
+          records,
+          sample,
+          stored: table.run.mapping === 'authored' ? storedView(tool, sample) : null,
+        })),
+      },
+      questions: table.run.questions,
+      categoryCounts: table.run.categoryCounts,
+      adapters: table.adapters.map((adapter) => ({
+        ...adapter,
+        overflowed: rows.filter(
+          (row) => row.adapter === adapter.name && row.stopReason === 'context-overflow',
+        ).length,
+      })),
+    };
+  });
+
+  return {
+    schema: 1,
+    generatedAt: new Date().toISOString(),
+    since: RECENT_SINCE,
+    run: {
+      ...shared,
+      // Every point's warnings, once each: a warning on one point is a caveat
+      // on the line it sits on.
+      warnings: [...new Set(tables.flatMap(({ table }) => table.run.warnings))],
+    },
+    categories: categories.filter((category) =>
+      tables.some(({ table }) => table.categories.includes(category)),
+    ),
+    points,
+  };
+}
+
+/** A source's sample record run through its authored mapping: the row Ingot keeps. */
+function storedView(tool: string, sample: string): PublishedStored | null {
+  const mapping = authoredFor(tool);
+  if (!mapping || sample === '') return null;
+  const record = JSON.parse(sample) as Record<string, unknown>;
+  return {
+    table: mapping.table,
+    columns: Object.entries(mapping.columns).map(([name, column]) => ({
+      name,
+      type: column.type,
+      value: column.from ? pick(record, column.from) : (column.value ?? null),
+      embedded: column.embed === true,
+    })),
+  };
+}
+
+/** `$.a.b` against one row. The authored mappings use nothing fancier. */
+function pick(record: Record<string, unknown>, path: string): unknown {
+  let at: unknown = record;
+  for (const key of path.replace(/^\$\.?/, '').split('.').filter(Boolean)) {
+    at = at && typeof at === 'object' ? (at as Record<string, unknown>)[key] : undefined;
+  }
+  return at ?? null;
+}
+
 /** What a paginated payload looks like from the outside. */
 interface Page {
   readonly items?: readonly Record<string, unknown>[];
@@ -225,8 +381,8 @@ interface Page {
  * bytes. Replaying an old run with `--from` therefore republishes the corpus
  * it was actually asked about.
  */
-export function corpusShape(seed: number, logs: number): PublishedCorpus {
-  const corpus = buildCorpus(buildWorld({ seed, logs }));
+export function corpusShape(seed: number, logs: number, scale: number | null): PublishedCorpus {
+  const corpus = buildCorpus(buildWorld({ seed, logs, scale: scale ?? 1 }));
 
   // Grouped in the order the tools first appear, which is the order an agent
   // met them: a table sorted by size would put the shape of the corpus second
@@ -337,6 +493,7 @@ export function publishable(
     embedder: header.embedder,
     mapping: header.mapping,
     logs: header.logs,
+    scale: header.scale,
     questions: questionIds.size,
     categoryCounts,
     warnings: header.warnings,
@@ -345,7 +502,7 @@ export function publishable(
   return {
     label: labelFor(run).label,
     run,
-    corpus: corpusShape(header.seed, header.logs),
+    corpus: corpusShape(header.seed, header.logs, header.scale),
     // Only the categories this run actually asked about, so the page never
     // renders a column with nothing under it.
     categories: categories.filter((category) => categoryCounts[category] !== undefined),

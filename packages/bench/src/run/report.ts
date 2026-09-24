@@ -1,4 +1,5 @@
 import type { ToolCallRecord } from '../agent/loop.js';
+import { RECENT_SINCE } from '../corpus/world.js';
 import type { Category, Gold } from '../questions/questions.js';
 
 /**
@@ -17,6 +18,8 @@ export interface RunRecord {
   readonly answer: unknown;
   readonly submitted: boolean;
   readonly stopReason: string | null;
+  /** The provider's error message when `stopReason` is `provider-error` or `context-overflow`. */
+  readonly failure?: string;
   readonly correct: boolean;
   readonly f1: number;
   readonly evidenceRecall: number | null;
@@ -99,6 +102,12 @@ export interface ReportHeader {
    */
   readonly logs: number;
   /**
+   * `--scale`: how many times over the ordinary 90 days of history the corpus
+   * holds, with every question scoped to those 90 days. Null for the ordinary
+   * run, whose questions carry no date. See `WorldOptions.scale`.
+   */
+  readonly scale: number | null;
+  /**
    * Operational facts about how the run was executed, kept out of the
    * published summary.
    *
@@ -132,7 +141,8 @@ export function renderReport(
       `${header.repeats} run(s) per question · ${header.perTemplate} per template · ` +
       `budget ${header.maxToolCalls} tool calls · ` +
       `${header.concurrency === 1 ? 'serial' : `${header.concurrency} in flight`} · ` +
-      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\``,
+      `embedder \`${header.embedder}\` · ingot mapping \`${header.mapping}\`` +
+      (header.scale === null ? '' : ` · ${header.scale}× history, questions since ${RECENT_SINCE}`),
   );
   lines.push('');
 

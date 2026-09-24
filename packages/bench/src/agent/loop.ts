@@ -71,6 +71,8 @@ function overflowed(error: unknown): boolean {
     text.includes('context window') ||
     text.includes('too many tokens') ||
     text.includes('maximum context') ||
+    // Foundry GPT: "Input tokens exceed the configured limit of 272000 tokens."
+    (text.includes('input tokens') && text.includes('exceed')) ||
     (text.includes('prompt') && text.includes('too long'))
   );
 }
@@ -92,6 +94,9 @@ Rules:
 - Call submit_answer exactly once, when you have the answer. That is the only answer that is read.`;
 
 const SUBMIT = 'submit_answer';
+
+// Generous: gpt-5-mini at high effort takes tens of seconds per step.
+const STEP_TIMEOUT_MS = 5 * 60_000;
 
 function answerSchema(question: Question): Record<string, unknown> {
   if (question.gold.kind === 'number') {
@@ -149,6 +154,11 @@ export async function runAgent(
       description: spec.description,
       inputSchema: jsonSchema(spec.input_schema),
       execute: async (input: unknown) => {
+        // `prepareStep` only gates between steps; one step of parallel calls
+        // can otherwise overrun the budget (seen: 23 calls against 12).
+        if (retrievalCalls >= config.maxToolCalls) {
+          return 'Tool budget spent. Submit your answer now.';
+        }
         retrievalCalls += 1;
         const callStarted = Date.now();
         let output: string;
@@ -188,6 +198,9 @@ export async function runAgent(
     // use the answer channel. The +2 leaves room for the budget-exhausted turn
     // and one nudge, so "ran out of calls" stays distinguishable from "wrong".
     stopWhen: [hasToolCall(SUBMIT), stepCountIs(config.maxToolCalls + 2)],
+    // A stalled provider socket otherwise hangs the whole run; a timeout lands
+    // in the catch below as a `provider-error` result and the run moves on.
+    timeout: { stepMs: STEP_TIMEOUT_MS },
     // Once the retrieval budget is spent the tools come off the table and only
     // the answer channel is left. Cutting the run off entirely would score
     // "ran out of calls" the same as "answered wrongly".

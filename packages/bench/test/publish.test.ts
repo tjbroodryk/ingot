@@ -6,6 +6,7 @@ import {
   NO_RESULTS,
   NO_TRANSCRIPTS,
   publishable,
+  publishableScaling,
   transcriptsPathFor,
   transcriptTable,
   withTable,
@@ -35,6 +36,7 @@ const HEADER: ReportHeader = {
   mapping: 'authored',
   notes: [],
   logs: 0,
+  scale: null,
   provider: 'foundry-gpt',
   thinking: true,
   warnings: [],
@@ -137,7 +139,7 @@ describe('publishable', () => {
    */
   test('describes the corpus the seed produces', () => {
     const published = publishable(HEADER, [row({})], CATEGORIES);
-    const corpus = corpusShape(HEADER.seed, HEADER.logs);
+    const corpus = corpusShape(HEADER.seed, HEADER.logs, HEADER.scale);
 
     expect(published.corpus).toEqual(corpus);
     expect(published.run?.logs).toBe(0);
@@ -154,7 +156,7 @@ describe('publishable', () => {
   });
 
   test('gives the log flood its own row when a run opted into one', () => {
-    const flooded = corpusShape(HEADER.seed, 500);
+    const flooded = corpusShape(HEADER.seed, 500, null);
     const logs = flooded.sources.find((source) => source.tool === 'logs.search');
 
     // The whole point of `--logs`: one result, however many lines. A corpus
@@ -226,6 +228,29 @@ describe('publishing into a file that already has a run in it', () => {
     expect(labelFor(table({ logs: 5000, mapping: 'agent' }).run).label).toBe(
       '5,000 log lines, agent-mapped',
     );
+    expect(labelFor(table({ scale: 4 }).run).label).toBe('4× history');
+  });
+
+  test('a series counts the runs that did not fit, per point', () => {
+    const overflow = row({
+      adapter: 'raw-context',
+      correct: false,
+      stopReason: 'context-overflow',
+    });
+    const series = publishableScaling(
+      [
+        { meta: { ...HEADER, runId: 'x1', scale: 1 }, rows: [row({ adapter: 'raw-context' })] },
+        { meta: { ...HEADER, runId: 'x16', scale: 16 }, rows: [overflow] },
+      ],
+      CATEGORIES,
+    );
+
+    expect(series.points.map((point) => point.scale)).toEqual([1, 16]);
+    expect(series.points.map((point) => point.adapters[0]?.overflowed)).toEqual([0, 1]);
+    // Measured at each scale, and growing with it.
+    const [small, large] = series.points;
+    expect(large?.corpus.results).toBeGreaterThan(small?.corpus.results as number);
+    expect(series.run).not.toHaveProperty('runId');
   });
 
   test('starts empty and says so', () => {

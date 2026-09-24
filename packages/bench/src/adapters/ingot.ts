@@ -1,5 +1,5 @@
 import type { ToolName, ToolResult } from '../corpus/stream.js';
-import { authoredMapping, FTS_COLUMNS, type MappingSource } from './ingot-mapping.js';
+import { authoredMapping, FTS_COLUMNS, unembeddedSql, type MappingSource } from './ingot-mapping.js';
 import type { AdapterTool, MemoryAdapter } from './types.js';
 
 /**
@@ -80,7 +80,8 @@ export class IngotAdapter implements MemoryAdapter {
   private ingotId: string | null = null;
   private instructions = '';
   private tables = new Set<string>();
-  private embeddedTable: string | null = null;
+  /** Every embedded column, keyed `table.column` — readiness waits on all of them. */
+  private embedded = new Map<string, { table: string; column: string }>();
   /** Payloads `remember` would not hold. See `MemoryAdapter.refusals`. */
   private readonly refused: string[] = [];
   private available: AdapterTool[] = [];
@@ -123,8 +124,9 @@ export class IngotAdapter implements MemoryAdapter {
         mappings.set(result.tool, mapping);
       }
       this.tables.add(mapping.table);
-      const embedded = Object.entries(mapping.columns).find(([, column]) => column.embed);
-      if (embedded && !this.embeddedTable) this.embeddedTable = mapping.table;
+      for (const [column, spec] of Object.entries(mapping.columns)) {
+        if (spec.embed) this.embedded.set(`${mapping.table}.${column}`, { table: mapping.table, column });
+      }
 
       // A payload the store will not hold costs its rows, not the column. The
       // same rule as the REST adapter's, and for the same reason — see the
@@ -177,27 +179,34 @@ export class IngotAdapter implements MemoryAdapter {
 
   /**
    * Embedding happens on a sweeper, not on the write path, so querying
-   * immediately after ingest would rank against a half-filled column. Poll
-   * `recall` until it comes back with rows.
+   * immediately after ingest would rank against a half-filled column. Wait until
+   * every embedded column has a vector on every row — one ready row in one table
+   * let questions start while `issues` was still empty to `recall`.
    */
   private async waitForEmbeddings(): Promise<void> {
-    const table = this.embeddedTable;
     const client = this.client;
-    if (!table || !client) return;
+    if (this.embedded.size === 0 || !client) return;
 
     const deadline = Date.now() + this.embedTimeoutMs;
     let delay = 1000;
+    let waitingOn = [...this.embedded.keys()];
     while (Date.now() < deadline) {
-      const reply = await client.callTool({
-        name: 'recall',
-        arguments: { text: 'a probe for readiness', table, limit: 1 },
-      });
-      if (!reply.isError && textOf(reply).includes('"')) return;
+      const still: string[] = [];
+      for (const [key, { table, column }] of this.embedded) {
+        const reply = await client.callTool({
+          name: 'query',
+          arguments: { sql: unembeddedSql(table, column) },
+        });
+        // An error means the vector column does not exist yet: not ready.
+        if (reply.isError || missingOf(textOf(reply)) !== 0) still.push(key);
+      }
+      if (still.length === 0) return;
+      waitingOn = still;
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay = Math.min(delay * 2, 15_000);
     }
     throw new Error(
-      `ingot embeddings for ${table} were not ready within ${this.embedTimeoutMs}ms; ` +
+      `ingot embeddings for ${waitingOn.join(', ')} were not ready within ${this.embedTimeoutMs}ms; ` +
         'raise embedTimeoutMs rather than reporting a run against a half-embedded table',
     );
   }
@@ -285,6 +294,16 @@ export class IngotAdapter implements MemoryAdapter {
     });
     await client.connect(transport);
     return client;
+  }
+}
+
+/** `missing` from an `unembeddedSql` reply; DuckDB may send the BIGINT as a string. */
+function missingOf(text: string): number {
+  try {
+    const parsed = JSON.parse(text) as { rows?: { missing?: unknown }[] };
+    return Number(parsed.rows?.[0]?.missing ?? Number.NaN);
+  } catch {
+    return Number.NaN;
   }
 }
 
