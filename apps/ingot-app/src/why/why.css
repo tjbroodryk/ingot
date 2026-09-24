@@ -81,13 +81,20 @@
   padding-right: 28px;
 }
 
+/* Content sits in a 900px column centred in the main one; the rules and the
+   abstract's stock run full width. */
+.why-abstract,
+.why-section {
+  padding-inline: max(48px, calc((100% - 900px) / 2));
+}
+
 .why-kicker {
   margin-bottom: 14px;
   color: var(--color-accent);
 }
 
 .why-abstract {
-  padding: 40px 48px 44px;
+  padding-block: 40px 44px;
   border-bottom: var(--rule);
   background: var(--color-stock);
 }
@@ -100,7 +107,7 @@
 }
 
 .why-section {
-  padding: 64px 48px 56px;
+  padding-block: 64px 56px;
   border-bottom: var(--rule);
 }
 
