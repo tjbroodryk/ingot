@@ -30,6 +30,7 @@ import {
   NO_TRANSCRIPTS,
   publishable,
   forSite,
+  publishableMatchup,
   publishableScaling,
   transcriptsPathFor,
   transcriptTable,
@@ -40,6 +41,7 @@ import {
 } from './publish.js';
 import { pool } from './pool.js';
 import {
+  asMatchup,
   asSeries,
   comparisonAxis,
   observedTextOf,
@@ -156,6 +158,8 @@ interface Options {
   scale: number | null;
   /** With `--from`: each file is one point of a `--scale` series. */
   series: boolean;
+  /** With `--from`: each file is one model's run, for a model × memory grid. */
+  matchup: boolean;
   /** How many agent runs to have in flight at once, within one adapter. */
   concurrency: number;
   /** A finished run's JSONL to report on, instead of buying a new one. */
@@ -209,6 +213,7 @@ function parse(argv: readonly string[]): Options {
     scales: null,
     scale: null,
     series: false,
+    matchup: false,
     // One by default. Concurrency makes a run faster and its latency column
     // meaningless, and that is a trade the person running it should make on
     // purpose rather than inherit from a default.
@@ -322,6 +327,9 @@ function parse(argv: readonly string[]): Options {
       }
       case '--series':
         options.series = true;
+        break;
+      case '--matchup':
+        options.matchup = true;
         break;
       case '--concurrency': {
         const concurrency = Number(next(flag, value));
@@ -489,7 +497,12 @@ const HELP = `bun run bench [flags]
                          ordinary run can stand in as 1×, with a warning.
                          Files at the same scale merge into one point, so
                          categories bought in separate sweeps add up.
-  --publish FILE         Also write the site's summary JSON here, e.g.
+  --matchup              With --from: each file is one model's run over the
+                         same questions, smaller model first. Reports the
+                         model × memory grid; with --publish, writes it whole,
+                         e.g. ../../apps/ingot-app/src/benchmarks/matchup.json.
+                         Files from the same model merge into one row.
+  --publish FILE        Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
   --dry-run              Print the corpus and questions, spend nothing.
@@ -1001,6 +1014,60 @@ async function emitSeries(
   }
 }
 
+/** The model × memory grid: a table per cell, and its own JSON file for the site. */
+async function emitMatchup(
+  runs: readonly StoredRun[],
+  out: string,
+  publish: string | null,
+): Promise<void> {
+  const matchup = publishableMatchup(runs, CATEGORIES);
+  const { run } = matchup;
+  const percent = (value: number): string => `${(value * 100).toFixed(0)}%`;
+
+  const lines = [
+    `# Models × memories — seed ${run.seed}`,
+    '',
+    `${matchup.categories.join(', ')} · ${run.questions} questions × ${run.repeats} runs per cell · ` +
+      `budget ${run.maxToolCalls} tool calls`,
+    '',
+    '| model | adapter | accuracy | correct | tool calls | at limit | context tokens | run time |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...matchup.cells.map(
+      (cell) =>
+        `| ${cell.model} | \`${cell.adapter}\` | ${percent(cell.accuracy)} ±${percent(cell.stderr)} | ` +
+        `${cell.correct} of ${cell.runs} | ${cell.toolCalls.toFixed(1)} | ${cell.atLimit} | ` +
+        `${cell.contextTokens.toLocaleString('en-GB')} | ${(cell.runMs / 1000).toFixed(0)}s |`,
+    ),
+    '',
+    ...runs.map((one) => `- ${one.meta.model}: ${one.meta.runId}`),
+  ];
+  const report = `${lines.join('\n')}\n`;
+  await mkdir(out, { recursive: true });
+  const reportPath = join(out, `matchup-seed${run.seed}-${stamp()}.md`);
+  await writeFile(reportPath, report);
+  console.log(`\n${report}\nmatchup: ${reportPath}`);
+
+  if (publish) {
+    if (matchup.models.length < 2) {
+      throw new Error(
+        `Not published: the matchup has ${matchup.models.length} model and needs at least two.`,
+      );
+    }
+    // Written whole, so it must not land on either of the other site files.
+    const existing = await readFile(publish, 'utf8').catch(() => null);
+    const held = existing === null ? {} : (JSON.parse(existing) as Record<string, unknown>);
+    if (held.tables !== undefined || held.points !== undefined) {
+      throw new Error(
+        `Not published: ${publish} holds the benchmark summary or the scaling series, which a ` +
+          'matchup would overwrite. Publish it to its own file, e.g. matchup.json.',
+      );
+    }
+    await mkdir(dirname(publish), { recursive: true });
+    await writeFile(publish, `${JSON.stringify(matchup, null, 2)}\n`);
+    console.log(`published: ${publish} — ${matchup.cells.length} cells`);
+  }
+}
+
 function stamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
@@ -1148,6 +1215,23 @@ async function replay(options: Options): Promise<void> {
     return;
   }
 
+  if (options.matchup) {
+    if (options.rescore || options.against) {
+      throw new Error('--matchup reports finished runs as they are; drop --rescore and --against.');
+    }
+    // Files from the same model are columns of one run, e.g. ingot and vector
+    // bought separately, and merge under `readRuns`' rules.
+    const models = await Promise.all(paths.map(async (path) => (await readRun(path)).meta.model));
+    const groups = new Map<string, string[]>();
+    paths.forEach((path, index) => {
+      const model = models[index] as string;
+      groups.set(model, [...(groups.get(model) ?? []), path]);
+    });
+    const runs = await Promise.all([...groups.values()].map((group) => readRuns(group, keep)));
+    await emitMatchup(asMatchup(runs), options.out, options.publish);
+    return;
+  }
+
   const { meta, rows } = await readRuns(paths, keep);
 
   // A comparison is a different output from a different pair of inputs, so it
@@ -1241,6 +1325,8 @@ async function replay(options: Options): Promise<void> {
 
 const parsed = parse(process.argv.slice(2));
 if (parsed.series && !parsed.from) throw new Error('--series reads finished runs; pass them with --from');
+if (parsed.matchup && !parsed.from) throw new Error('--matchup reads finished runs; pass them with --from');
+if (parsed.matchup && parsed.series) throw new Error('--matchup and --series are different reports; pick one');
 if (parsed.from) await replay(parsed);
 else if (parsed.scales) await sweep(parsed);
 else await main(parsed);

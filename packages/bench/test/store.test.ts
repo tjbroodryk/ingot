@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import type { RunRecord } from '../src/run/report.js';
 import {
+  asMatchup,
   asSeries,
   comparisonAxis,
   metaPathFor,
@@ -362,6 +363,35 @@ describe('a --scale series', () => {
     expect(() =>
       asSeries([run({ runId: 'a', scale: 1 }), run({ runId: 'b', scale: 2, model: 'other' })]),
     ).toThrow(/Only the scale may change/);
+  });
+});
+
+describe('a --matchup grid', () => {
+  const run = (meta: Partial<RunMeta>) => ({
+    meta: { ...META, ...meta },
+    rows: [ROW],
+  });
+
+  test('keeps the runs in the order given', () => {
+    const grid = asMatchup([run({ runId: 'a', model: 'small' }), run({ runId: 'b', model: 'big' })]);
+    expect(grid.map((one) => one.meta.model)).toEqual(['small', 'big']);
+  });
+
+  test('refuses two runs of the same model', () => {
+    expect(() => asMatchup([run({ runId: 'a' }), run({ runId: 'b' })])).toThrow(/both/);
+  });
+
+  test('refuses runs that asked different questions', () => {
+    const narrow = { meta: { ...META, runId: 'b', model: 'big' }, rows: [{ ...ROW, questionId: 'q-009' }] };
+    expect(() => asMatchup([run({ runId: 'a' }), narrow as never])).toThrow(
+      /asked different questions/,
+    );
+  });
+
+  test('refuses runs that differ in anything but the model', () => {
+    expect(() =>
+      asMatchup([run({ runId: 'a' }), run({ runId: 'b', model: 'big', effort: 'low' })]),
+    ).toThrow(/Only the model may change/);
   });
 });
 

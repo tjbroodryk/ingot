@@ -438,6 +438,47 @@ export function asSeries(runs: readonly StoredRun[]): readonly StoredRun[] {
 }
 
 /**
+ * Runs that differ only in the model, for a model × memory grid. Kept in the
+ * order given, since the page reads the first model as the smaller one.
+ */
+export function asMatchup(runs: readonly StoredRun[]): readonly StoredRun[] {
+  if (runs.length === 0) throw new Error('no run files to read');
+  const [base] = runs as [StoredRun];
+  const questionsOf = (run: StoredRun): string =>
+    [...new Set(run.rows.map((row) => row.questionId))].sort().join(',');
+
+  const seen = new Set<string>();
+  for (const run of runs) {
+    const { runId, model } = run.meta;
+    if (seen.has(model)) {
+      throw new Error(
+        `Two runs are both ${model}. Merge them with --from first if they are columns of one ` +
+          'model’s run.',
+      );
+    }
+    seen.add(model);
+    if (questionsOf(run) !== questionsOf(base)) {
+      throw new Error(
+        `${runId} asked different questions from ${base.meta.runId}. Every cell has to ask the ` +
+          'same ones; buy both with the same --categories.',
+      );
+    }
+    const key = firstMismatch(
+      base.meta,
+      run.meta,
+      MUST_MATCH.filter((one) => one !== 'model' && one !== 'provider'),
+    );
+    if (key !== null) {
+      throw new Error(
+        `${runId} has ${key}=${JSON.stringify(run.meta[key])} where ${base.meta.runId} has ` +
+          `${JSON.stringify(base.meta[key])}. Only the model may change across a matchup.`,
+      );
+    }
+  }
+  return runs;
+}
+
+/**
  * The line that reconciles a narrowed table with its own provenance.
  *
  * Warnings are inherited from the runs that were merged, and they are prose
