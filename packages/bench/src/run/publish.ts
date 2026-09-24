@@ -94,6 +94,30 @@ export interface PublishedStored {
   }[];
 }
 
+/**
+ * What `scaling.json` holds: only the fields the page's chart reads.
+ *
+ * The full {@link PublishedScaling} stays in the series report; the page bundles
+ * this file, so provenance and unplotted figures stay out of it.
+ */
+export interface SiteScaling {
+  readonly schema: 2;
+  readonly categories: readonly Category[];
+  readonly run: Pick<PublishedRun, 'model' | 'seed'>;
+  readonly points: readonly {
+    readonly scale: number;
+    readonly questions: number;
+    readonly repeats: number;
+    readonly corpus: Pick<PublishedCorpus, 'results' | 'records'> & {
+      readonly sources: readonly PublishedPointSource[];
+    };
+    readonly adapters: readonly Pick<
+      PublishedPointAdapter,
+      'name' | 'runs' | 'accuracy' | 'contextTokens' | 'overflowed'
+    >[];
+  }[];
+}
+
 export interface PublishedPointAdapter extends PublishedAdapter {
   /**
    * Runs refused before inference because the prompt did not fit in the
@@ -339,6 +363,32 @@ export function publishableScaling(
       tables.some(({ table }) => table.categories.includes(category)),
     ),
     points,
+  };
+}
+
+/** The series cut down to what the page plots. See {@link SiteScaling}. */
+export function forSite(scaling: PublishedScaling): SiteScaling {
+  return {
+    schema: 2,
+    categories: scaling.categories,
+    run: { model: scaling.run.model, seed: scaling.run.seed },
+    points: scaling.points.map((point) => ({
+      scale: point.scale,
+      questions: point.questions,
+      repeats: point.repeats,
+      corpus: {
+        results: point.corpus.results,
+        records: point.corpus.records,
+        sources: point.corpus.sources,
+      },
+      adapters: point.adapters.map(({ name, runs, accuracy, contextTokens, overflowed }) => ({
+        name,
+        runs,
+        accuracy,
+        contextTokens,
+        overflowed,
+      })),
+    })),
   };
 }
 

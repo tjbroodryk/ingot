@@ -6,6 +6,7 @@ import {
   NO_RESULTS,
   NO_TRANSCRIPTS,
   publishable,
+  forSite,
   publishableScaling,
   transcriptsPathFor,
   transcriptTable,
@@ -251,6 +252,29 @@ describe('publishing into a file that already has a run in it', () => {
     const [small, large] = series.points;
     expect(large?.corpus.results).toBeGreaterThan(small?.corpus.results as number);
     expect(series.run).not.toHaveProperty('runId');
+  });
+
+  test('the site copy of a series keeps only what the chart plots', () => {
+    const series = publishableScaling(
+      [
+        { meta: { ...HEADER, runId: 'x1', scale: 1 }, rows: [row({ adapter: 'vector' })] },
+        { meta: { ...HEADER, runId: 'x2', scale: 2 }, rows: [row({ adapter: 'vector' })] },
+      ],
+      CATEGORIES,
+    );
+    const site = forSite(series);
+
+    expect(site.schema).toBe(2);
+    expect(Object.keys(site.run).sort()).toEqual(['model', 'seed']);
+    expect(Object.keys(site.points[0]?.adapters[0] ?? {}).sort()).toEqual([
+      'accuracy',
+      'contextTokens',
+      'name',
+      'overflowed',
+      'runs',
+    ]);
+    // The drill-in reads each tool's share, so the sources survive the cut.
+    expect(site.points[0]?.corpus.sources.length).toBeGreaterThan(0);
   });
 
   test('starts empty and says so', () => {

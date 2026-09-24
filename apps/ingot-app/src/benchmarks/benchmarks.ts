@@ -107,16 +107,13 @@ export const TABLES: readonly PublishedTable[] = BENCHMARK.tables ?? [];
 /**
  * The same questions asked over a growing memory, one point per `--scale`.
  *
- * Its own file because `--scale --publish` writes it whole; see
- * `PublishedScaling` in `packages/bench/src/run/publish.ts`.
+ * Its own file because `--scale --publish` writes it whole, trimmed to what the
+ * chart reads; see `SiteScaling` in `packages/bench/src/run/publish.ts`.
  */
 export interface PublishedScaling {
-  readonly schema: 1;
-  readonly generatedAt: string;
-  /** Questions ask only about records from this day on, at every scale. */
-  readonly since: string;
-  readonly run: Omit<PublishedRun, 'runId' | 'repeats' | 'questions' | 'categoryCounts'>;
+  readonly schema: 2;
   readonly categories: readonly string[];
+  readonly run: Pick<PublishedRun, 'model' | 'seed'>;
   /** Ascending scale. */
   readonly points: readonly PublishedPoint[];
 }
@@ -124,13 +121,11 @@ export interface PublishedScaling {
 export interface PublishedPoint {
   /** Multiples of the ordinary 90 days of history held in the memory. */
   readonly scale: number;
-  readonly runId: string;
+  readonly questions: number;
   readonly repeats: number;
-  readonly corpus: Omit<PublishedCorpus, 'sources'> & {
+  readonly corpus: Pick<PublishedCorpus, 'results' | 'records'> & {
     readonly sources: readonly PublishedPointSource[];
   };
-  readonly questions: number;
-  readonly categoryCounts: Readonly<Record<string, number>>;
   readonly adapters: readonly PublishedPointAdapter[];
 }
 
@@ -149,7 +144,8 @@ export interface PublishedPointSource
   } | null;
 }
 
-export interface PublishedPointAdapter extends PublishedAdapter {
+export interface PublishedPointAdapter
+  extends Pick<PublishedAdapter, 'name' | 'runs' | 'accuracy' | 'contextTokens'> {
   /** Runs refused because the prompt no longer fit the model's window. Scored wrong. */
   readonly overflowed: number;
 }

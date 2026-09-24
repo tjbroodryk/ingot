@@ -29,6 +29,7 @@ import {
   NO_RESULTS,
   NO_TRANSCRIPTS,
   publishable,
+  forSite,
   publishableScaling,
   transcriptsPathFor,
   transcriptTable,
@@ -995,7 +996,7 @@ async function emitSeries(
       );
     }
     await mkdir(dirname(publish), { recursive: true });
-    await writeFile(publish, `${JSON.stringify(scaling, null, 2)}\n`);
+    await writeFile(publish, `${JSON.stringify(forSite(scaling), null, 2)}\n`);
     console.log(`published: ${publish} — series of ${scaling.points.length} points`);
   }
 }

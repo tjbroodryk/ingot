@@ -116,7 +116,7 @@ describe('the published results file', () => {
 /** The `--scale` series, written whole by `packages/bench` and imported by the chart. */
 describe('the published scaling file', () => {
   it('is the shape the chart reads', () => {
-    expect(SCALING.schema).toBe(1);
+    expect(SCALING.schema).toBe(2);
     expect(SCALING.points.length).toBeGreaterThanOrEqual(2);
     const scales = SCALING.points.map((point) => point.scale);
     expect(scales).toEqual([...scales].sort((a, b) => a - b));
