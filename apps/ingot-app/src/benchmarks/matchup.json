@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "categories": [
+    "multi-hop"
+  ],
+  "run": {
+    "seed": 1,
+    "questions": 3,
+    "repeats": 3,
+    "maxToolCalls": 12
+  },
+  "models": [
+    "gpt-5-mini",
+    "gpt-5.1"
+  ],
+  "adapters": [
+    "ingot-rest",
+    "vector"
+  ],
+  "cells": [
+    {
+      "model": "gpt-5-mini",
+      "adapter": "ingot-rest",
+      "runs": 9,
+      "correct": 8,
+      "accuracy": 0.8888888888888888,
+      "stderr": 0.10475656017578484,
+      "toolCalls": 3.888888888888889,
+      "atLimit": 0,
+      "contextTokens": 5559,
+      "runMs": 27738
+    },
+    {
+      "model": "gpt-5.1",
+      "adapter": "vector",
+      "runs": 9,
+      "correct": 4,
+      "accuracy": 0.4444444444444444,
+      "stderr": 0.16563466499998442,
+      "toolCalls": 11.333333333333334,
+      "atLimit": 7,
+      "contextTokens": 42079,
+      "runMs": 102283
+    }
+  ]
+}

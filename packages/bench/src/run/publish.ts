@@ -392,6 +392,75 @@ export function forSite(scaling: PublishedScaling): SiteScaling {
   };
 }
 
+/**
+ * What `matchup.json` holds: models crossed with memories over the same
+ * questions, one cell per (model, adapter) that was run.
+ *
+ * Written whole by `--from … --matchup --publish`, from runs `asMatchup` has
+ * checked agree about everything but the model.
+ */
+export interface SiteMatchup {
+  readonly schema: 1;
+  readonly categories: readonly Category[];
+  readonly run: Pick<PublishedRun, 'seed' | 'questions' | 'repeats' | 'maxToolCalls'>;
+  /** In the order the runs were passed: the page reads the first as the smaller model. */
+  readonly models: readonly string[];
+  readonly adapters: readonly string[];
+  readonly cells: readonly MatchupCell[];
+}
+
+export interface MatchupCell
+  extends Pick<
+    PublishedAdapter,
+    'runs' | 'accuracy' | 'stderr' | 'toolCalls' | 'contextTokens' | 'runMs'
+  > {
+  readonly model: string;
+  readonly adapter: string;
+  readonly correct: number;
+  /** Runs that spent the whole tool-call budget. */
+  readonly atLimit: number;
+}
+
+export function publishableMatchup(
+  runs: readonly { readonly meta: ReportHeader; readonly rows: readonly RunRecord[] }[],
+  categories: readonly Category[],
+): SiteMatchup {
+  const tables = runs.map(({ meta, rows }) => ({ meta, rows, table: publishable(meta, rows, categories) }));
+  const first = tables[0] as (typeof tables)[number];
+
+  const cells = tables.flatMap(({ meta, rows, table }) =>
+    table.adapters.map((adapter): MatchupCell => {
+      const mine = rows.filter((row) => row.adapter === adapter.name);
+      return {
+        model: meta.model,
+        adapter: adapter.name,
+        runs: adapter.runs,
+        correct: mine.filter((row) => row.correct).length,
+        accuracy: adapter.accuracy,
+        stderr: adapter.stderr,
+        toolCalls: adapter.toolCalls,
+        atLimit: mine.filter((row) => row.toolCalls >= meta.maxToolCalls).length,
+        contextTokens: adapter.contextTokens,
+        runMs: adapter.runMs,
+      };
+    }),
+  );
+
+  return {
+    schema: 1,
+    categories: first.table.categories,
+    run: {
+      seed: first.meta.seed,
+      questions: first.table.run.questions,
+      repeats: first.meta.repeats,
+      maxToolCalls: first.meta.maxToolCalls,
+    },
+    models: [...new Set(cells.map((cell) => cell.model))],
+    adapters: [...new Set(cells.map((cell) => cell.adapter))],
+    cells,
+  };
+}
+
 /** A source's sample record run through its authored mapping: the row Ingot keeps. */
 function storedView(tool: string, sample: string): PublishedStored | null {
   const mapping = authoredFor(tool);

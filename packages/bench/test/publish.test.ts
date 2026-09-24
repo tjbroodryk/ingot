@@ -7,6 +7,7 @@ import {
   NO_TRANSCRIPTS,
   publishable,
   forSite,
+  publishableMatchup,
   publishableScaling,
   transcriptsPathFor,
   transcriptTable,
@@ -275,6 +276,32 @@ describe('publishing into a file that already has a run in it', () => {
     ]);
     // The drill-in reads each tool's share, so the sources survive the cut.
     expect(site.points[0]?.corpus.sources.length).toBeGreaterThan(0);
+  });
+
+  test('a matchup has one cell per model and adapter, in the order the runs came', () => {
+    const matchup = publishableMatchup(
+      [
+        {
+          meta: { ...HEADER, runId: 'mini', model: 'gpt-5-mini' },
+          rows: [row({ adapter: 'ingot-rest', toolCalls: 3, ms: 20_000 })],
+        },
+        {
+          meta: { ...HEADER, runId: 'big', model: 'gpt-5.1' },
+          rows: [
+            row({ adapter: 'vector', toolCalls: 12, correct: false }),
+            row({ adapter: 'vector', toolCalls: 7, repeat: 1 }),
+          ],
+        },
+      ],
+      CATEGORIES,
+    );
+
+    expect(matchup.models).toEqual(['gpt-5-mini', 'gpt-5.1']);
+    expect(matchup.adapters).toEqual(['ingot-rest', 'vector']);
+    expect(matchup.run).toEqual({ seed: 42, questions: 1, repeats: 2, maxToolCalls: 12 });
+    const vector = matchup.cells.find((cell) => cell.adapter === 'vector');
+    expect(vector).toMatchObject({ model: 'gpt-5.1', runs: 2, correct: 1, atLimit: 1, accuracy: 0.5 });
+    expect(matchup.cells[0]?.runMs).toBe(20_000);
   });
 
   test('starts empty and says so', () => {

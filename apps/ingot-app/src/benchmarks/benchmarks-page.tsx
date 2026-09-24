@@ -36,6 +36,7 @@ import {
   TABLES,
   mappingWriter,
   LIMITS,
+  MATCHUP,
   SCALING,
   SOURCE_BLURBS,
   SOURCES,
@@ -46,6 +47,9 @@ import {
   type TranscriptRun,
 } from './benchmarks';
 import { ScalingChart } from './scaling-chart';
+import { headline, SmallModels } from './small-models';
+
+const HAS_MATCHUP = headline(MATCHUP) !== null;
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 const count = (value: number): string => value.toLocaleString('en-GB');
@@ -148,6 +152,17 @@ export function BenchmarksPage(): ReactNode {
                 </div>
               )}
             </Band>
+
+            {HAS_MATCHUP ? (
+              <Band
+                id="small-models"
+                kicker="Small models"
+                title="Get more out of small models"
+                lede="Exact tool answers leave the model less to reason about. So a small model with Ingot should keep up with a large one using a vector store."
+              >
+                <SmallModels matchup={MATCHUP} />
+              </Band>
+            ) : null}
 
             {table ? (
               <Band
@@ -284,8 +299,9 @@ export function BenchmarksPage(): ReactNode {
  * agree with the `[ 0n ]` counters on the kickers.
  */
 function contents(table: PublishedTable | null): readonly RailItem[] {
-  const bands: readonly (RailItem & { readonly needsRun: boolean })[] = [
+  const bands: readonly (RailItem & { readonly needsRun: boolean; readonly shown?: boolean })[] = [
     { id: 'results', title: 'Results', needsRun: false },
+    { id: 'small-models', title: 'Small models', needsRun: false, shown: HAS_MATCHUP },
     { id: 'classes', title: 'Task class', needsRun: true },
     { id: 'questions', title: 'Questions', needsRun: false },
     { id: 'corpus', title: 'Corpus', needsRun: false },
@@ -295,7 +311,7 @@ function contents(table: PublishedTable | null): readonly RailItem[] {
     { id: 'check', title: 'Check it', needsRun: false },
   ];
   const numbered = bands
-    .filter((band) => table || !band.needsRun)
+    .filter((band) => (table || !band.needsRun) && band.shown !== false)
     .map(({ id, title }, index) => ({ id, title, n: sectionNumber(index) }));
   return table ? [{ id: 'setup', title: 'Setup', n: '00' }, ...numbered] : numbered;
 }
