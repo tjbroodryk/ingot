@@ -1661,6 +1661,245 @@ td.bench-heat-5 {
   color: var(--ink-100);
 }
 
+/* ── small models ─────────────────────────────────────────────────────── */
+
+.bench-sm-table {
+  width: 100%;
+  margin-bottom: 24px;
+  border: var(--rule-heavy);
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bench-sm-table th,
+.bench-sm-table td {
+  min-width: 0;
+  padding: 13px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bench-sm-table thead th {
+  padding: 12px 14px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--ink-60);
+  border-bottom: var(--rule-heavy);
+}
+
+.bench-sm-table thead th:first-child {
+  width: 22%;
+}
+
+.bench-sm-table thead th:last-child {
+  width: 112px;
+}
+
+.bench-sm-table thead strong {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.bench-sm-table thead .bench-sm-ours,
+.bench-sm-table thead .bench-sm-ours strong {
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+.bench-sm-with {
+  opacity: 0.8;
+}
+
+.bench-sm-table tbody tr + tr {
+  border-top: 1px solid var(--ink-12);
+}
+
+.bench-sm-metric,
+.bench-sm-hint {
+  display: block;
+  font-family: var(--font-code);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bench-sm-metric {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.bench-sm-hint {
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 400;
+  color: var(--ink-50);
+}
+
+.bench-sm-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-sm-value strong {
+  font-size: 15px;
+}
+
+.bench-sm-value span {
+  font-size: 10.5px;
+  color: var(--ink-50);
+}
+
+.bench-sm-track {
+  position: relative;
+  display: block;
+  height: 5px;
+  margin-top: 7px;
+  background: var(--ink-08);
+}
+
+.bench-sm-diff {
+  padding: 4px 9px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border: 1px solid var(--ink-45);
+  color: var(--ink-70);
+}
+
+.bench-sm-diff-ahead {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+.bench-sm-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink-45);
+}
+
+.bench-sm-fill-ours {
+  background: var(--color-accent);
+}
+
+.bench-sm-grid-wrap {
+  margin-top: 32px;
+}
+
+.bench-sm-grid-lede {
+  max-width: 62ch;
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-70);
+}
+
+.bench-sm-grid {
+  width: 100%;
+  border: 1px solid var(--color-ink);
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.bench-sm-grid th,
+.bench-sm-grid td {
+  padding: 14px 16px;
+  border: 1px solid var(--ink-16);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bench-sm-grid thead th {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--ink-60);
+}
+
+.bench-sm-grid thead td,
+.bench-sm-grid tbody th {
+  width: 150px;
+}
+
+.bench-sm-grid tbody th {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.bench-sm-grid .bench-sm-grid-ours {
+  color: var(--color-accent);
+}
+
+.bench-sm-cell {
+  height: 74px;
+  background: var(--ink-08);
+}
+
+.bench-sm-cell > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.bench-sm-cell > strong {
+  font-family: var(--font-code);
+  font-size: 14px;
+}
+
+.bench-sm-cell-ours {
+  background: var(--color-accent);
+  color: var(--color-ink-inverse);
+}
+
+.bench-sm-cell-empty {
+  color: var(--ink-50);
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--ink-08) 6px 7px);
+}
+
+@media (max-width: 720px) {
+  .bench-sm-grid thead td,
+  .bench-sm-grid tbody th {
+    width: 96px;
+  }
+
+  .bench-sm-grid th,
+  .bench-sm-grid td {
+    padding: 12px 10px;
+  }
+
+  .bench-sm-table th,
+  .bench-sm-table td,
+  .bench-sm-table thead th {
+    padding: 10px 8px;
+  }
+
+  .bench-sm-table thead th:first-child {
+    width: 28%;
+  }
+
+  .bench-sm-table thead th:last-child {
+    width: 74px;
+  }
+
+  .bench-sm-table thead th,
+  .bench-sm-metric,
+  .bench-sm-hint {
+    font-size: 9px;
+    letter-spacing: 0.02em;
+  }
+
+  .bench-sm-diff {
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+}
+
 .bench-scale-plot {
   padding: 16px 12px 8px;
   border: 1px solid var(--ink-16);

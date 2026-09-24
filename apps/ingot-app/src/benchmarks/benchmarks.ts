@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { previewMetadata } from '../site/og/cards';
 import results from './results.json';
+import matchup from './matchup.json';
 import scaling from './scaling.json';
 
 /**
@@ -151,6 +152,34 @@ export interface PublishedPointAdapter
 }
 
 export const SCALING = scaling as PublishedScaling;
+
+/**
+ * Models crossed with memories over the same questions. Written whole by
+ * `--matchup --publish`; see `SiteMatchup` in `packages/bench/src/run/publish.ts`.
+ */
+export interface PublishedMatchup {
+  readonly schema: 1;
+  readonly categories: readonly string[];
+  readonly run: Pick<PublishedRun, 'seed' | 'questions' | 'repeats' | 'maxToolCalls'>;
+  /** Smaller model first. */
+  readonly models: readonly string[];
+  readonly adapters: readonly string[];
+  readonly cells: readonly MatchupCell[];
+}
+
+export interface MatchupCell
+  extends Pick<
+    PublishedAdapter,
+    'runs' | 'accuracy' | 'stderr' | 'toolCalls' | 'contextTokens' | 'runMs'
+  > {
+  readonly model: string;
+  readonly adapter: string;
+  readonly correct: number;
+  /** Runs that spent the whole tool-call budget. */
+  readonly atLimit: number;
+}
+
+export const MATCHUP = matchup as PublishedMatchup;
 
 /**
  * The transcripts, fetched at runtime rather than imported.

@@ -12,6 +12,7 @@ import {
   CORPUS_LEDE,
   HAS_RESULTS,
   LIMITS,
+  MATCHUP,
   SCALING,
   SOURCE_BLURBS,
   SOURCES,
@@ -20,6 +21,7 @@ import {
   type PublishedTranscripts,
 } from '../src/benchmarks/benchmarks';
 import { BenchmarksPage } from '../src/benchmarks/benchmarks-page';
+import { headline } from '../src/benchmarks/small-models';
 import { sourceHref } from '../src/site/mode';
 import { BENCHMARKS } from '../src/text/benchmarks-text';
 
@@ -137,6 +139,19 @@ describe('the published scaling file', () => {
   });
 });
 
+describe('the published matchup file', () => {
+  it('is the shape the small-models section reads', () => {
+    expect(MATCHUP.schema).toBe(1);
+    for (const cell of MATCHUP.cells) {
+      expect(MATCHUP.models).toContain(cell.model);
+      expect(MATCHUP.adapters).toContain(cell.adapter);
+      expect(cell.correct).toBeLessThanOrEqual(cell.runs);
+      expect(cell.atLimit).toBeLessThanOrEqual(cell.runs);
+      expect(cell.toolCalls).toBeLessThanOrEqual(MATCHUP.run.maxToolCalls);
+    }
+  });
+});
+
 /**
  * The transcript sidecar, the other file `packages/bench` writes for this page.
  *
@@ -236,6 +251,15 @@ describe('the benchmarks page', () => {
     expect(markup).toContain('More history, same answers');
     const names = new Set(SCALING.points.flatMap((point) => point.adapters.map((a) => a.name)));
     for (const name of names) expect(markup).toContain(adapterLabel(name));
+  });
+
+  it('pits the smaller model with Ingot against the larger one, and shows every cell', () => {
+    const pair = headline(MATCHUP);
+    if (!pair) return;
+    expect(markup).toContain('Get more out of small models');
+    expect(markup).toContain(`${pair.small.correct} of ${pair.small.runs}`);
+    expect(markup).toContain(`${pair.large.correct} of ${pair.large.runs}`);
+    for (const model of MATCHUP.models) expect(markup).toContain(model);
   });
 
   it('opens the largest memory in the drill-in, with every tool that went into it', () => {
