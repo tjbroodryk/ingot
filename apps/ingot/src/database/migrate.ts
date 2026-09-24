@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import pg from 'pg';
+import { errorMessage } from '../shared/error-message.js';
 
 /**
  * Bring a database up to schema from outside the service.
@@ -39,7 +40,7 @@ async function migrate(): Promise<void> {
         process.stdout.write(`  applied ${file}\n`);
       } catch (error) {
         await client.query('ROLLBACK');
-        throw new Error(`${file} failed: ${error instanceof Error ? error.message : error}`);
+        throw new Error(`${file} failed: ${errorMessage(error)}`);
       }
     }
   } finally {
@@ -50,6 +51,6 @@ async function migrate(): Promise<void> {
 }
 
 migrate().catch((error: unknown) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.stderr.write(`${errorMessage(error)}\n`);
   process.exitCode = 1;
 });

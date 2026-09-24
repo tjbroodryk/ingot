@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OCR, type Ocr } from '../../../ai/ocr.port.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
+import { errorMessage } from '../../../shared/error-message.js';
 import { OBJECT_STORE, type ObjectStore } from '../../../storage/object-store.port.js';
 import type { Drained } from '../../records/application/drained.js';
 import { chunk } from '../domain/chunker.js';
@@ -68,12 +69,12 @@ export class FileWorker {
       // The attempt was charged at claim. Whether it was the last decides if a
       // terminal `failed` row is written now.
       const terminal = job.attempts >= MAX_FILE_ATTEMPTS;
-      await this.dispatcher.send(new FailFile(job, message(error), terminal));
+      await this.dispatcher.send(new FailFile(job, errorMessage(error), terminal));
 
       if (terminal) {
         this.logger.warn(
           `Gave up on "${job.filename}" (${job.fileId}) after ${job.attempts} attempts: ` +
-            `${message(error)}. The row in ingot_files says so.`,
+            `${errorMessage(error)}. The row in ingot_files says so.`,
         );
       }
     }
@@ -168,8 +169,4 @@ async function withDeadline<T>(work: Promise<T>, ms: number, message: string): P
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function message(error: unknown): string {
-  return String(error instanceof Error ? error.message : error);
 }

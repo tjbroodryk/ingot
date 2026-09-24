@@ -4,6 +4,7 @@ import type { FileBody, FileResult } from '@ingot/shared/ingot-v1';
 import { Wire } from '@ingot/versioning/nest';
 import { InvariantViolation } from '../../../shared/domain/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
+import { errorMessage } from '../../../shared/error-message.js';
 import { WireShape } from '../../../versioning/shapes.js';
 import type { Account } from '../../accounts/domain/index.js';
 import { Account as AccountScope } from '../../accounts/interface/account.decorator.js';
@@ -90,7 +91,7 @@ function parseBody(raw: string | undefined): FileBody {
     return parsed as FileBody;
   } catch (error) {
     throw new InvariantViolation(
-      `The "body" part is not a JSON object: ${error instanceof Error ? error.message : error}. ` +
+      `The "body" part is not a JSON object: ${errorMessage(error)}. ` +
         'It holds the upload’s options — externalId, extract, chunkTokens — and may be omitted ' +
         'entirely, which parses and chunks the document with no extraction.',
     );

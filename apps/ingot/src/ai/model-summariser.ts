@@ -12,6 +12,7 @@ import {
   wrapLanguageModel,
 } from 'ai';
 import { DependencyUnavailable } from '../shared/domain/index.js';
+import { errorLine } from '../shared/error-message.js';
 import type {
   GcpSummariser as GcpSettings,
   OpenAiSummariser as OpenAiSettings,
@@ -100,10 +101,10 @@ export class ModelSummariser implements Summariser {
     if (NoOutputGeneratedError.isInstance(error)) return this.silent(undefined);
 
     if (TypeValidationError.isInstance(error)) {
-      return `${this.model} did not answer with a receipt — ${firstLine(error)}`;
+      return `${this.model} did not answer with a receipt — ${errorLine(error)}`;
     }
 
-    return `${this.model} could not be reached — ${firstLine(error)} ${this.advice()}`.trim();
+    return `${this.model} could not be reached — ${errorLine(error)} ${this.advice()}`.trim();
   }
 
   private silent(finishReason: string | undefined): string {
@@ -179,8 +180,4 @@ type Wrappable = Parameters<typeof wrapLanguageModel>[0]['model'];
 
 function isTimeout(error: unknown): boolean {
   return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-}
-
-function firstLine(error: unknown): string {
-  return String(error instanceof Error ? error.message : error).split('\n')[0] ?? '';
 }

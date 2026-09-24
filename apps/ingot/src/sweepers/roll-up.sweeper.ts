@@ -6,6 +6,7 @@ import {
 import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
 import { Cron, minutes } from './cron.js';
 import { Dispatcher } from '../shared/application/index.js';
+import { errorMessage } from '../shared/error-message.js';
 
 const EVERY = minutes(5);
 
@@ -50,7 +51,7 @@ export class RollUpSweeper {
       } catch (error) {
         this.logger.error(
           `Rolling up ${candidate.tableId} failed: ` +
-            `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+            `${errorMessage(error)}. The next tick tries again.`,
         );
       }
     }

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common
 import { type DeliveredReceipt, type DeliveryStrategy, DeliveryKind } from '@ingot/shared/ingot-v1';
 import type * as amqp from 'amqplib';
 import { upstream } from '../observability/index.js';
+import { errorMessage } from '../shared/error-message.js';
 import { AMQP_CONNECT, type AmqpConnect } from './amqp.port.js';
 import { DELIVERY_SETTINGS, type DeliverySettings } from './delivery-settings.js';
 import { DeliveryRefused, type DeliveryTransport } from './delivery-transport.port.js';
@@ -80,7 +81,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
       } catch (error) {
         // The channel is unusable after most AMQP errors; drop it so the next attempt builds a fresh one.
         this.discard();
-        throw new DeliveryRefused('rmq', message(error));
+        throw new DeliveryRefused('rmq', errorMessage(error));
       }
     });
   }
@@ -99,14 +100,14 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
     const url = this.settings.brokerUrl as string;
     try {
       const model = await this.connector(url, { recovery: true });
-      model.on('error', (error) => this.logger.warn(`Broker connection: ${message(error)}`));
+      model.on('error', (error) => this.logger.warn(`Broker connection: ${errorMessage(error)}`));
       // amqplib reconnects silently; a returned broker may be empty, so drop what we think it declared.
       model.on('connect', () => {
         this.declared.clear();
         this.logger.log('Reconnected to the broker');
       });
       // Not a reason to drop anything: amqplib is reconnecting, and an in-flight delivery fails and is retried.
-      model.on('disconnect', (error) => this.logger.warn(`Broker away: ${message(error)}`));
+      model.on('disconnect', (error) => this.logger.warn(`Broker away: ${errorMessage(error)}`));
 
       const channel = await model.createConfirmChannel();
       this.model = model;
@@ -115,7 +116,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
       return channel;
     } catch (error) {
       this.discard();
-      throw new DeliveryRefused('rmq', `could not reach the broker: ${message(error)}`);
+      throw new DeliveryRefused('rmq', `could not reach the broker: ${errorMessage(error)}`);
     }
   }
 
@@ -153,7 +154,3 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
  * round trip per queue.
  */
 export const MAX_DECLARED = 1024;
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

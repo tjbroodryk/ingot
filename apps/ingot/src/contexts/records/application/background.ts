@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { errorMessage } from '../../../shared/error-message.js';
 import { FileWorker } from '../../files/application/file-worker.js';
 import { DeliveryWorker } from './delivery-worker.js';
 import type { Drained } from './drained.js';
@@ -103,7 +104,7 @@ export class BackgroundWork {
         // and the sweeper covers it. Throwing would be an unhandled rejection
         // in a detached promise.
         this.logger.warn(
-          `Waking ${key} failed: ${error instanceof Error ? error.message : String(error)}. ` +
+          `Waking ${key} failed: ${errorMessage(error)}. ` +
             'The sweeper will pick it up.',
         );
       })

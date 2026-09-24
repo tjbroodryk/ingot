@@ -1,4 +1,5 @@
 import { InvariantViolation } from '../../../../shared/domain/index.js';
+import { errorMessage } from '../../../../shared/error-message.js';
 import {
   type Block,
   BlockKind,
@@ -208,7 +209,7 @@ function join(items: readonly TextItem[]): string {
 /** A refusal a caller can act on: names the password and not-a-PDF cases. */
 function readable(error: unknown, filename: string): string {
   const name = (error as { name?: string } | null)?.name ?? '';
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
 
   if (name === 'PasswordException') {
     return (

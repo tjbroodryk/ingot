@@ -8,6 +8,7 @@ import {
 } from '@duckdb/node-api';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { InvariantViolation } from '../shared/domain/index.js';
+import { errorLine } from '../shared/error-message.js';
 import { Metrics, RefusalReason, observe } from '../observability/index.js';
 import { OBJECT_STORE, type ObjectStore } from '../storage/object-store.port.js';
 import type {
@@ -460,7 +461,7 @@ export class DuckDbEngine implements AnalyticalEngine {
     } catch (error) {
       throw new Refused(
         RefusalReason.DidNotParse,
-        `That is not SQL DuckDB can parse: ${firstLine(error)}`,
+        `That is not SQL DuckDB can parse: ${errorLine(error)}`,
       );
     }
     if (count === 0) {
@@ -480,7 +481,7 @@ export class DuckDbEngine implements AnalyticalEngine {
 
     let type: StatementType;
     const prepared = await connection.prepare(sql).catch((error: unknown) => {
-      throw new Refused(RefusalReason.DidNotParse, `That query will not run: ${firstLine(error)}`);
+      throw new Refused(RefusalReason.DidNotParse, `That query will not run: ${errorLine(error)}`);
     });
     try {
       type = prepared.statementType;
@@ -640,11 +641,6 @@ function duckType(type: ColumnType): string {
  */
 function bindQueryVector(sql: string, vector: readonly number[]): string {
   return sql.replaceAll(/\$q\b/g, floatArray(vector));
-}
-
-function firstLine(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.split('\n')[0] ?? message;
 }
 
 export { Refused };

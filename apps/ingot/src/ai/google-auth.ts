@@ -1,5 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { DependencyUnavailable } from '../shared/domain/index.js';
+import { errorLine } from '../shared/error-message.js';
 import { upstream } from '../observability/index.js';
 
 /** Vertex takes the broad platform scope; there is no narrower one for it. */
@@ -31,7 +32,7 @@ export class GoogleCredentials {
           'Could not get an access token for Vertex AI. This service authenticates with ' +
             'Application Default Credentials — under Kubernetes that is the workload identity ' +
             "bound to the pod's service account, otherwise GOOGLE_APPLICATION_CREDENTIALS " +
-            `pointing at a key file. (${firstLine(error)})`,
+            `pointing at a key file. (${errorLine(error)})`,
           { cause: error },
         );
       },
@@ -65,8 +66,4 @@ export function vertexUrl(input: {
     `${root}/v1/projects/${input.project}/locations/${input.location}` +
     `/publishers/google/models/${input.model}:${input.method}`
   );
-}
-
-function firstLine(error: unknown): string {
-  return String(error instanceof Error ? error.message : error).split('\n')[0] ?? '';
 }

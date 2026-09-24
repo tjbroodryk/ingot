@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Storage } from '@google-cloud/storage';
 import { Injectable, Logger } from '@nestjs/common';
 import { DependencyUnavailable } from '../shared/domain/index.js';
+import { errorLine } from '../shared/error-message.js';
 import { upstream } from '../observability/index.js';
 import type { ObjectStore, PendingWrite } from './object-store.port.js';
 import { quote } from './secret-sql.js';
@@ -140,7 +141,7 @@ export class GcsObjectStore implements ObjectStore {
         'Could not get an access token for Google Cloud Storage. This service authenticates ' +
           'with Application Default Credentials — under Kubernetes that is the workload ' +
           "identity bound to the pod's service account, otherwise GOOGLE_APPLICATION_CREDENTIALS " +
-          `pointing at a key file. (${firstLine(error)})`,
+          `pointing at a key file. (${errorLine(error)})`,
       );
     });
 
@@ -163,9 +164,4 @@ export class GcsObjectStore implements ObjectStore {
     );
     return this.staging;
   }
-}
-
-function firstLine(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.split('\n')[0] ?? message;
 }
