@@ -486,6 +486,8 @@ const HELP = `bun run bench [flags]
                          that died partway: run the missing scales, then
                          --from every point's file --series --publish. An
                          ordinary run can stand in as 1×, with a warning.
+                         Files at the same scale merge into one point, so
+                         categories bought in separate sweeps add up.
   --publish FILE         Also write the site's summary JSON here, e.g.
                          ../../apps/ingot-app/src/benchmarks/results.json
   --allow-hash-embedder  Permit a run with the offline stand-in embedder.
@@ -1123,7 +1125,15 @@ async function replay(options: Options): Promise<void> {
     if (options.rescore || options.against) {
       throw new Error('--series reports finished points as they are; drop --rescore and --against.');
     }
-    const points = await Promise.all(paths.map((path) => readRuns([path], keep)));
+    // Files at the same scale are halves of one point — e.g. multi-hop bought
+    // first and the other categories later — and merge under `readRuns`' rules.
+    const scales = await Promise.all(paths.map(async (path) => (await readRun(path)).meta.scale));
+    const groups = new Map<number | null, string[]>();
+    paths.forEach((path, index) => {
+      const scale = scales[index] ?? null;
+      groups.set(scale, [...(groups.get(scale) ?? []), path]);
+    });
+    const points = await Promise.all([...groups.values()].map((group) => readRuns(group, keep)));
     // With --categories, the spliced 1× point is narrowed to the questions the
     // sweep asked; `asSeries` refuses points whose question sets differ.
     const asked = options.categories;
