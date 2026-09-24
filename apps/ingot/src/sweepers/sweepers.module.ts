@@ -12,17 +12,8 @@ import { RollUpSweeper } from './roll-up.sweeper.js';
 import { Scheduler, TICKERS, type Ticker } from './scheduler.js';
 
 /**
- * One ticker per kind of thing that can fall behind.
- *
- * A `Record` over the enum rather than a list, so a kind added to `SweptKind`
- * without a ticker fails to compile. The failure it prevents is the quiet one:
- * background work that nothing reconciles looks perfectly correct — rows are
- * stored, queries answer — right up until the overlay is large enough that
- * every query is slow, and then stays that way.
- *
- * It is also the list `Scheduler` runs, so a sweeper that exists and is not in
- * here does not tick. There is no discovery step and nothing to register: this
- * is the registration.
+ * One ticker per `SweptKind`, as a `Record` so a kind without a ticker fails to
+ * compile. Also the list `Scheduler` runs — a sweeper not here does not tick.
  */
 export const SWEEPERS: Record<SweptKind, Type<Ticker>> = {
   [SweptKind.RollUp]: RollUpSweeper,

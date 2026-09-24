@@ -1,17 +1,8 @@
-/**
- * Rendering a credential into the SQL that installs it.
- *
- * Two functions, shared by the object stores that install a secret, because a
- * second copy of either is where one of them stops escaping.
- */
+/** Rendering a credential into the SQL that installs it. Shared so both object stores escape identically. */
 
 /**
- * A string literal for `CREATE SECRET`.
- *
- * These values are configuration and never caller input, so the literal is safe
- * already. It is still escaped, because a secret with an apostrophe in it
- * should fail to authenticate rather than fail to parse — which is a wholly
- * different afternoon for whoever is reading the error.
+ * A string literal for `CREATE SECRET`. Escaped so a secret containing `'` fails
+ * to authenticate rather than to parse.
  */
 export function quote(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;

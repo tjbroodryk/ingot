@@ -6,14 +6,7 @@ import {
 } from '../../src/observability/metrics/catalogue.js';
 import { METRIC_PREFIX } from '../../src/observability/metrics/registry.js';
 
-/**
- * The naming and cardinality rules, held mechanically.
- *
- * A metric's cost is not paid where it is recorded — it is paid in the store,
- * for the whole retention window — so the rules that keep it affordable cannot
- * be enforced at the call site. They are enforced here, over the one file that
- * declares them all.
- */
+/** Naming and cardinality rules over the one file that declares every metric. */
 interface Declared {
   name: string;
   help: string;
@@ -21,22 +14,12 @@ interface Declared {
   buckets?: readonly number[];
 }
 
-/**
- * A declaration is inert until something records through it — see
- * `metric.ts` — so the spec lives on `.declaration` rather than on the
- * instrument, and that is what this reads.
- */
+/** The spec lives on `.declaration` rather than on the instrument. */
 const declared = Object.entries(Metrics).map(
   ([key, metric]) => [key, (metric as { declaration: Declared }).declaration] as const,
 );
 
-/**
- * Histograms whose unit is not time, with the reason.
- *
- * A list rather than a loosened rule, so that adding one is a visible edit
- * here: "every histogram is in seconds" is right often enough that the
- * exceptions are worth naming.
- */
+// Histograms whose unit is not seconds, listed so adding one is a visible edit.
 const NOT_SECONDS: Readonly<Record<string, string>> = {
   ingot_query_rows_returned: 'Counts rows in a result, which have no unit suffix.',
 };
@@ -47,8 +30,6 @@ describe('the metric catalogue', () => {
   });
 
   it.each(declared)('%s is namespaced to this service', (_key, metric) => {
-    // `@forge/api` exports `forge_*` from its own registry and the two are
-    // scraped together. A collision would silently merge two services' series.
     expect(metric.name.startsWith(METRIC_PREFIX)).toBe(true);
     expect(METRIC_PREFIX).toBe('ingot_');
   });
@@ -74,15 +55,8 @@ describe('the metric catalogue', () => {
     expect(metric.labels.length).toBeLessThanOrEqual(4);
   });
 
-  /**
-   * The rule this service needs most.
-   *
-   * It is multi-tenant, so a label carrying an account, an ingot or a table
-   * name is one series per tenant per table, kept for the whole retention
-   * window — a slow leak that looks fine until it is the reason Prometheus
-   * fell over. Per-tenant detail belongs on the span, where `observe(op,
-   * detail, work)` puts it and where it costs nothing.
-   */
+  // No tenant identity on a label: it would be one series per tenant. Per-tenant
+  // detail goes on the span instead.
   it.each(declared)('%s carries no tenant identity on a label', (_key, metric) => {
     const forbidden = ['account', 'ingot', 'table', 'id', 'key', 'user', 'slug', 'row_id'];
     const offending = metric.labels.filter((label) =>
@@ -106,21 +80,8 @@ describe('the metric catalogue', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  /**
-   * Which gauges may be summed, decided here rather than on a dashboard.
-   *
-   * Some of these report this process's own state — requests in flight,
-   * connections checked out — and `sum()` across replicas is exactly right.
-   * Others are read out of Postgres at scrape time, so every replica answers
-   * with the same number: the depth of a queue they all share. `sum()` over
-   * one of those is wrong by the replica count, and wrong in the direction
-   * that hurts — a backlog that looks ten times worse than it is, on a panel
-   * nobody has reason to distrust.
-   *
-   * Nothing can stop somebody writing `sum()`. What this can do is force the
-   * question to be answered when a gauge is added rather than when a dashboard
-   * is already lying, which is what the two lists are for.
-   */
+  // Gauges split into those reporting per-process state (summable) and those
+  // read from shared Postgres at scrape time (not summable).
   const gauges = declared.filter(
     ([, metric]) => metric.buckets === undefined && !metric.name.endsWith('_total'),
   );
@@ -143,10 +104,7 @@ describe('the metric catalogue', () => {
     expect(invented).toEqual([]);
   });
 
-  /**
-   * The instruction goes where somebody will see it: Prometheus renders `help`
-   * beside the metric, which is the moment a query is being written.
-   */
+  // The aggregation instruction lives in `help`, beside the metric.
   it.each(DEPLOYMENT_WIDE.map((name) => [name] as const))('%s says how to aggregate it', (name) => {
     const metric = declared.find(([, candidate]) => candidate.name === name)?.[1];
     expect(metric?.help).toContain('max()');

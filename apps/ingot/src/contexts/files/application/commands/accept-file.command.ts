@@ -44,32 +44,17 @@ export class AcceptFile extends Command<FileResult> {
   }
 }
 
-/** How long a caller's own handle may be. `/add` bounds `externalId` the same. */
+/** Max length of the external id the caller supplies. */
 const MAX_EXTERNAL_ID = 200;
 
-/** A filename is a label in a column, not a path — but it is still a column. */
+/** Max filename length. */
 const MAX_FILENAME = 500;
 
 /**
- * The fast half of `/file`: store the bytes, queue the work, hand back the SQL.
+ * Fast half of `/file`: store the bytes, queue the work, hand back the SQL.
  *
- * **Nothing here reads the document**, and that is the design rather than an
- * economy. Parsing a two-hundred-page PDF is seconds to minutes, and
- * `Dispatcher.send` wraps every command in a Postgres transaction over a pool
- * of ten connections — so a handler that parsed would hold a tenth of the pool
- * for the length of a document and starve the queries this service exists to
- * answer, while presenting as a database problem. `FileWorker` does the reading
- * afterwards, with no transaction and no connection held.
- *
- * What this *does* do is refuse everything refusable while the caller is still
- * holding the response. That is the `/add` rule, and it matters more here: at
- * `/add` a bad mapping is a 422 to somebody who can fix it, and at `/file` the
- * work happens in a sweeper minutes later, with nowhere to complain to but a
- * column. So the media type, the size, the extraction mapping and the chunking
- * knobs are all settled here, before a single byte is stored.
- *
- * The response is a promissory note, which is the same thing `receipt: "summary"`
- * hands back and for the same reason: here is how to find this later.
+ * Reads nothing; `FileWorker` parses afterwards. Everything refusable — media
+ * type, size, mapping, chunking knobs — is settled here before a byte is stored.
  */
 @CommandHandler(AcceptFile)
 export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
@@ -80,14 +65,7 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     @Inject(FILE_SETTINGS) private readonly settings: FileSettings,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
-    /**
-     * From `RecordsModule`, which `FilesModule` imports for this alone.
-     *
-     * The import is one-way and stays one-way. The other direction — this
-     * class's worker being drained by `BackgroundWork` — goes through the
-     * global `FileStoreModule` rather than an import back, which is what keeps
-     * the two contexts from depending on each other.
-     */
+    /** From `RecordsModule`, which `FilesModule` imports for this alone. */
     private readonly background: BackgroundWork,
   ) {}
 
@@ -118,37 +96,16 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     }
 
     const filename = nameOf(upload.filename);
-    // Both halves are consulted and both have to agree. A declared type alone
-    // is a caller choosing which decoder runs; four sniffed bytes alone cannot
-    // tell a .docx from a .pptx, because every OOXML file is a zip.
+    // Declared type and sniffed bytes both consulted; both must agree.
     const mediaType = mediaTypeOf({
-      // The caller's own word for it, which beats both the part header and the
-      // filename — and is still checked against the bytes like either of them.
+      // The caller's explicit type; still checked against the bytes.
       override: body.mediaType,
       declared: upload.mediaType,
       filename,
       head: upload.content.subarray(0, SNIFF_BYTES),
     });
 
-    /*
-     * There is no "can this build read it" check here any more, and its absence
-     * is the point of the registry.
-     *
-     * There used to be one: `MediaType` named formats the product understood and
-     * a parser's `handles` said which of those it could actually read, so the
-     * two could drift and a gap between them had to be caught at runtime — or
-     * else discovered by a sweeper, four attempts into a document that was never
-     * going to parse.
-     *
-     * `FORMATS` is a `Record<MediaType, FormatHandler>`, so that gap cannot
-     * exist: every name has a handler or the build does not compile.
-     * `mediaTypeOf` above already refused anything outside the enum, which means
-     * by this line the format is known to be readable.
-     */
-
-    // Parsed before anything is stored: a caller who
-    // wrote a mapping this service cannot honour should be told now rather
-    // than handed a file id whose parse fails in a sweeper.
+    // Parsed before anything is stored, so a bad mapping is refused now.
     const mapping = body.extract
       ? FileMapping.parse(body.extract, { tabular: isTabular(mediaType) })
       : null;
@@ -165,21 +122,8 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
     const fileId = newIdValue('file');
     const objectKey = Keys.file(ingot.accountId, ingot.id.value, fileId);
 
-    /*
-     * The object first, then the row, and the order is the whole of it.
-     *
-     * Neither half is transactional with the other — an object store has no
-     * rollback — so one of the two failure modes has to be chosen deliberately.
-     * Writing the object first risks an orphan if the transaction then rolls
-     * back: bytes nobody references, under the memory's own prefix, removed
-     * with it by the `removePrefix` that already removes the Parquet. Writing
-     * the row first risks a queue entry pointing at an object that is not
-     * there, which is a parse that fails four times and a document the caller
-     * was told had been accepted.
-     *
-     * An orphan costs storage until the memory is deleted. The other costs a
-     * caller a document they believe they uploaded. That is not a close call.
-     */
+    // Object before row: a rollback then leaves an orphan object, rather than a
+    // queue row pointing at bytes that were never stored.
     await this.objects.put(objectKey, upload.content);
 
     await this.queue.enqueue({
@@ -199,9 +143,7 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
 
     Metrics.FilesAccepted.inc({ outcome: Outcome.Ok }, 1);
 
-    // Told, rather than left to be found on the next tick. A minute of latency
-    // on a document somebody is waiting for is a minute they experience; the
-    // sweeper stays as the floor under a wake that never happened.
+    // Wake the worker now rather than waiting for the next sweep.
     this.uow.afterCommit(async () => this.background.wakeFiles());
 
     return {
@@ -209,8 +151,7 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
       filename,
       mediaType,
       bytes,
-      // Always pending, and it cannot be anything else: this returns before
-      // the bytes have been read. `query` is what says how it turned out.
+      // Always pending: this returns before the bytes are read.
       status: FileStatus.Pending,
       query: queryForFile(fileId),
       chunksQuery: queryForChunks(fileId),
@@ -219,15 +160,7 @@ export class AcceptFileHandler implements ICommandHandler<AcceptFile> {
   }
 }
 
-/**
- * The filename, bounded and stripped of any path a client attached.
- *
- * Browsers send a bare name and `curl -F` sends whatever was typed, which may
- * be `../../etc/passwd`. **This is defence in depth and not the defence**: the
- * object key is built by `Keys.file` from an id this service generated, so the
- * filename never reaches a path at all. What this protects is the column and
- * the log line, where a name full of separators is merely confusing.
- */
+/** The filename, bounded and stripped of any path a client attached. */
 function nameOf(raw: string): string {
   const bare = raw.split(/[/\\]/).pop() ?? '';
   const trimmed = bare.trim();
@@ -238,13 +171,7 @@ function nameOf(raw: string): string {
   return trimmed.length > MAX_FILENAME ? trimmed.slice(0, MAX_FILENAME) : trimmed;
 }
 
-/**
- * The caller's own id for this document, or null.
- *
- * Bounded rather than trusted: it is stored in a `VARCHAR` and echoed back.
- * Blank is treated as absent, because a caller sending `""` meant to send
- * nothing.
- */
+/** The caller's own id for this document, or null. Blank counts as absent. */
 function externalIdOf(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
 
@@ -259,7 +186,7 @@ function externalIdOf(raw: unknown): string | null {
   return trimmed;
 }
 
-/** A chunking knob, checked against the same bounds the deployment default is. */
+/** A chunking knob, checked against the same bounds as the default. */
 function bounded(value: number | undefined, field: string): number | null {
   if (value === undefined) return null;
   if (!Number.isInteger(value) || value < MIN_CHUNK_TOKENS || value > MAX_CHUNK_TOKENS) {
@@ -271,7 +198,7 @@ function bounded(value: number | undefined, field: string): number | null {
   return value;
 }
 
-/** Sizes in the units the person reading the error is thinking in. */
+/** Bytes as MiB, for error messages. */
 function megabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }

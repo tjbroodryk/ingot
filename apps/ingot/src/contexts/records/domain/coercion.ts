@@ -2,24 +2,15 @@ import { ColumnType } from '@ingot/shared/ingot-v1';
 import { InvariantViolation } from '../../../shared/domain/index.js';
 
 /**
- * What a coerced value looks like on its way to the overlay.
- *
- * Timestamps and dates become ISO strings rather than `Date`, because the
- * overlay stores a JSON document and this is the form that survives the round
- * trip into DuckDB without a second parse deciding what it meant.
+ * A coerced value on its way to the overlay. Timestamps and dates are ISO
+ * strings, not `Date`, since the overlay stores a JSON document.
  */
 export type Coerced = string | number | boolean | null;
 
 /**
- * Turns a JSON value into the declared column type, or refuses.
- *
- * Coercion happens at `/add`, which is the whole point: the caller who wrote
- * the mapping is the person who can fix it, and they are still on the phone.
- * Deferring this to query time means the error surfaces to somebody else,
- * months later, as a column that is mysteriously empty.
- *
- * Absent is not an error. A tool result that omitted a field reads as null —
- * that is a fact about the result, not a mistake in the mapping.
+ * Turns a JSON value into the declared column type, or refuses. Coerced at
+ * `/add` rather than query time, so the error reaches whoever wrote the mapping.
+ * Absent reads as null, which is a fact about the result, not an error.
  */
 export function coerce(value: unknown, type: ColumnType, column: string): Coerced {
   if (value === undefined || value === null) return null;
@@ -28,9 +19,8 @@ export function coerce(value: unknown, type: ColumnType, column: string): Coerce
     case ColumnType.Varchar:
       if (typeof value === 'string') return value;
       if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-      // Deliberately not JSON.stringify: silently stringifying an object gives
-      // a column full of `[object Object]`-shaped surprises that only show up
-      // in a query. Declare it JSON instead.
+      // Not JSON.stringify: stringifying an object gives `[object Object]`;
+      // declare the column JSON instead.
       throw refuse(column, value, 'VARCHAR', 'declare this column JSON to keep the structure');
 
     case ColumnType.Integer:
@@ -65,7 +55,7 @@ export function coerce(value: unknown, type: ColumnType, column: string): Coerce
     }
 
     case ColumnType.Json:
-      // The one type that takes anything, because that is what it is for.
+      // JSON takes anything.
       return JSON.stringify(value);
   }
 }
@@ -95,12 +85,7 @@ function refuse(column: string, value: unknown, type: string, why: string): Inva
   );
 }
 
-/**
- * A short, safe rendering of the offending value.
- *
- * Truncated because the value came from a tool result and could be a whole
- * file; an error message is not a place to echo one back.
- */
+/** A short, safe rendering of the offending value; truncated since it may be a whole file. */
 function preview(value: unknown): string {
   const rendered = typeof value === 'string' ? `"${value}"` : JSON.stringify(value);
   const text = rendered ?? String(value);

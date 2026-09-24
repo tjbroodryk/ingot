@@ -13,12 +13,8 @@ import {
 } from '../src/run/store.js';
 
 /**
- * Reading a paid-for run back off disk.
- *
- * The transcripts are the expensive half of this package and everything
- * downstream of them is meant to be replayable for free, so the read path is
- * worth asserting on: a run that cannot be re-opened is a run that has to be
- * bought again.
+ * Reading a paid-for run back off disk. The read path is worth asserting on: a
+ * run that cannot be re-opened has to be bought again.
  */
 
 const META: RunMeta = {
@@ -96,8 +92,7 @@ describe('a run on disk', () => {
     const jsonl = join(dir, 'orphan.jsonl');
     await writeFile(jsonl, `${JSON.stringify(ROW)}\n`);
 
-    // The failure mode this guards against is a published number nobody can
-    // trace to a seed and a model, which is worse than no published number.
+    // Guards against a published number nobody can trace to a seed and model.
     expect(readRun(jsonl)).rejects.toThrow(/no .*orphan\.meta\.json/);
   });
 
@@ -107,13 +102,9 @@ describe('a run on disk', () => {
 });
 
 /**
- * Splicing a new column into a table already paid for.
- *
- * The reason this is a function rather than a `cat` is that it is the easiest
- * way in the whole package to publish something that looks like a comparison
- * and is not — one column bought from a different model, at a different seed,
- * or with a different number of repeats behind its ±. So the assertions here
- * are mostly about what it refuses.
+ * Splicing a new column into a table already paid for. The assertions are
+ * mostly about what it refuses — the easy way to publish something that looks
+ * like a comparison and is not.
  */
 describe('merging finished runs', () => {
   const write = async (
@@ -161,14 +152,7 @@ describe('merging finished runs', () => {
     expect(warning).toContain('`pinecone` from extra');
   });
 
-  /**
-   * Reporting on part of a finished run.
-   *
-   * The case that made this necessary: `oracle` was retired after the run that
-   * bought it, and a published table showing a column for an adapter that no
-   * longer exists is a table nobody can reproduce. The rows keep it — they are
-   * the record of what ran — and the report leaves it out.
-   */
+  /** Reporting on part of a finished run. The rows keep a retired column; the report leaves it out. */
   test('keeps only the columns asked for, and says so in the provenance', async () => {
     const dir = await scratch();
     const base = await write(dir, 'base', {}, ['vector', 'hyperspell']);
@@ -184,8 +168,7 @@ describe('merging finished runs', () => {
     expect(warning).toContain('`vector` from base');
     expect(warning).not.toContain('hyperspell');
 
-    // And the table says what it is not showing, because the warnings a merge
-    // inherits were written when the run was bought and go on naming it.
+    // And the table says what it is not showing.
     expect(merged.meta.warnings.join(' ')).toContain('also hold `hyperspell`');
   });
 
@@ -194,8 +177,7 @@ describe('merging finished runs', () => {
     const base = await write(dir, 'base', {}, ['vector']);
     const extra = await write(dir, 'extra', {}, ['pinecone']);
 
-    // Silently dropping the file would report a two-run merge as a one-run
-    // table, warning and all.
+    // Silently dropping the file would report a two-run merge as one run.
     expect(readRuns([base, extra], new Set(['vector']))).rejects.toThrow(/no rows left/);
   });
 
@@ -204,16 +186,15 @@ describe('merging finished runs', () => {
     const base = await write(dir, 'base', {}, ['vector']);
     const other = await write(dir, 'other', { repeats: 3 }, ['pinecone']);
 
-    // Not a comparison: a column bought once beside a column bought three
-    // times is a difference in spread nobody chose.
+    // Not a comparison: a column bought once beside one bought three times is a
+    // difference in spread nobody chose.
     expect(readRuns([base, other])).rejects.toThrow(/repeats=3 where base has 1/);
   });
 
   test('an Ingot-only run makes no claim about the embedder, so it cannot clash', async () => {
     const dir = await scratch();
     const base = await write(dir, 'base', {}, ['vector']);
-    // What `cli.ts` records when no adapter in the run embeds locally: Ingot's
-    // vectors are the server's, so the run built no embedder at all.
+    // What `cli.ts` records when no adapter embeds locally.
     const ingot = await write(
       dir,
       'ingot',
@@ -230,8 +211,7 @@ describe('merging finished runs', () => {
     const base = await write(dir, 'base', {}, ['vector']);
     const hashed = await write(dir, 'hashed', { embedder: 'hash-bow-v1' }, ['pinecone']);
 
-    // The case the rule exists for: one column ranked lexically, the other
-    // semantically, in a table about semantic search.
+    // One column ranked lexically, the other semantically.
     expect(readRuns([base, hashed])).rejects.toThrow(/embedder="hash-bow-v1"/);
   });
 
@@ -244,13 +224,9 @@ describe('merging finished runs', () => {
   });
 
   /**
-   * The top-up: the same columns, the questions they had not been asked.
-   *
-   * This is the merge that a column-wide rule would have refused, and it is
-   * the one the question set growing makes necessary. Accuracy is a mean over
-   * rows, so a mean over two disjoint halves is the mean over the whole — the
-   * table is what one sitting would have produced, and the only thing that
-   * differs is when the rows were bought.
+   * The top-up: the same columns, the questions they had not been asked. The
+   * merge a column-wide rule would refuse; accuracy is a mean over rows, so a
+   * mean over two disjoint halves is the mean over the whole.
    */
   test('joins the same columns over questions neither file duplicates', async () => {
     const dir = await scratch();
@@ -263,12 +239,10 @@ describe('merging finished runs', () => {
       new Set(['q-001', 'q-002', 'q-003']),
     );
 
-    // And the reader is told, because a column finished across two sittings is
-    // not the same claim as a column bought in one.
+    // A column finished across two sittings is told to the reader.
     const [warning] = merged.meta.warnings;
     expect(warning).toContain('`vector`, `hyperspell` from base on 2 questions');
-    // Named once. The second run's columns are the same nine (here two), and
-    // repeating them buries which questions came from where.
+    // Named once; repeating the same columns buries which questions came from where.
     expect(warning).toContain('the same columns from top-up on 1 question');
     expect(warning).toContain('finished across more than one sitting');
   });
@@ -299,8 +273,7 @@ describe('merging finished runs', () => {
     const base = await write(dir, 'base', { concurrency: 1 }, ['vector']);
     const extra = await write(dir, 'extra', { concurrency: 5 }, ['pinecone']);
 
-    // It moves the ms column, which is not published, so it is operator
-    // detail rather than a reason to block a table.
+    // It moves only the unpublished `ms` column, so it is operator detail.
     const merged = await readRuns([base, extra]);
     expect(merged.meta.notes.join(' ')).toContain('different concurrency');
   });

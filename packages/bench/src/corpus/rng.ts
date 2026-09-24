@@ -1,10 +1,6 @@
 /**
- * A seeded PRNG, because a benchmark nobody else can reproduce is an anecdote.
- *
- * mulberry32: 32 bits of state, one multiply-xor round. It is not
- * cryptographic and does not need to be — what it needs is to produce the same
- * stream on every machine and every version of Bun, which `Math.random` does
- * not.
+ * A seeded PRNG (mulberry32) that produces the same stream on every machine,
+ * unlike `Math.random`. Not cryptographic.
  */
 export class Rng {
   private state: number;

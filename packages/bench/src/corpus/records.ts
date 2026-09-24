@@ -2,13 +2,9 @@ import type { ToolResult } from './stream.js';
 import type { Ref } from './world.js';
 
 /**
- * The corpus flattened to one document per record.
- *
- * This is the chunking the vector baselines get, and it is deliberately the
- * most favourable one available: a record boundary is a semantic boundary, so
- * nothing is split mid-object and no chunk mixes two records. Any weakness the
- * baselines show is therefore a weakness of top-k retrieval over a corpus, not
- * an artefact of a chunker chosen to make them look bad.
+ * The corpus flattened to one document per record — the chunking the vector
+ * baselines get. A record boundary is a semantic boundary, so nothing is split
+ * mid-object and no chunk mixes two records.
  */
 export interface CorpusRecord {
   readonly ref: Ref;
@@ -32,9 +28,8 @@ export function flattenRecords(corpus: readonly ToolResult[]): readonly CorpusRe
         ref,
         tool: result.tool,
         item,
-        // The tool name is part of the text because it is part of what the
-        // record means — "author: gupta" is ambiguous without knowing it came
-        // from a pull request listing.
+        // The tool name is part of the text: "author: gupta" is ambiguous
+        // without knowing it came from a pull request listing.
         text: `source: ${result.tool}\n${JSON.stringify(item, null, 2)}`,
       });
     }
@@ -43,11 +38,8 @@ export function flattenRecords(corpus: readonly ToolResult[]): readonly CorpusRe
 }
 
 /**
- * Which known refs appear in a piece of text a tool handed back.
- *
- * Refs are shaped `pr:1421`, `inc:INC-03` — distinctive enough that a match is
- * not a coincidence, and present in every adapter's payloads, so this is one
- * measurement rather than six that have to be argued as equivalent.
+ * Which known refs appear in text a tool returned. Refs are distinctive
+ * (`pr:1421`, `inc:INC-03`), so a match is not a coincidence.
  */
 export function refsIn(text: string, known: ReadonlySet<Ref>): ReadonlySet<Ref> {
   const found = new Set<Ref>();

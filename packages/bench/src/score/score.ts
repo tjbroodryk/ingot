@@ -3,13 +3,8 @@ import type { Ref } from '../corpus/world.js';
 import type { Question } from '../questions/questions.js';
 
 /**
- * Scoring, with no model in it.
- *
- * Every category is machine-scorable by construction — counts, sets of refs,
- * ordered lists of refs — so there is no LLM judge anywhere in this benchmark.
- * That is a design choice worth defending: a judge is a second model whose
- * failures land in the same column as the retrieval failures being measured,
- * and removing it removes an argument nobody can settle from the numbers.
+ * Scoring, with no model in it. Every category is machine-scorable — counts,
+ * sets of refs, ordered lists — so there is no LLM judge in this benchmark.
  */
 export interface Score {
   /** The strict verdict: exactly right, no partial credit. */
@@ -18,15 +13,10 @@ export interface Score {
   readonly f1: number;
   /**
    * Fraction of the answer-bearing records whose refs came back through the
-   * tools. `null` for questions whose answer is a statistic — see the note on
-   * `Question.evidence`.
+   * tools. `null` for statistic answers — see `Question.evidence`.
    */
   readonly evidenceRecall: number | null;
-  /**
-   * Fraction of the refs the tools returned that were answer-bearing. The
-   * noise measure: a query that returns three rows and a top-50 search that
-   * happens to contain the same three are not the same retrieval.
-   */
+  /** Fraction of the refs the tools returned that were answer-bearing — the noise measure. */
   readonly evidencePrecision: number | null;
 }
 
@@ -37,9 +27,7 @@ function normalise(value: unknown): string {
 function toStrings(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(normalise);
   if (value === undefined || value === null) return [];
-  // A model that answered with a comma-separated string rather than an array
-  // got the retrieval right and the envelope wrong; that is not what is being
-  // measured here.
+  // A comma-separated string is the envelope wrong, not the retrieval.
   return normalise(value)
     .split(',')
     .map((part) => part.trim())
@@ -87,17 +75,9 @@ export function scoreRun(
   observedText: string,
   knownRefs: ReadonlySet<Ref>,
   /**
-   * Whether this adapter reaches its memory through tools at all.
-   *
-   * `raw-context` does not: its evidence is placed in the prompt,
-   * so nothing ever comes back through a tool call and scanning the tool
-   * output finds nothing. Scoring that as 0% recall would report the two
-   * controls — one of which holds *every* record and the other exactly the
-   * right ones — as the worst retrieval in the table. They are not bad at
-   * retrieval; they are not doing retrieval, and the honest cell is empty.
-   *
-   * A retrieval adapter that made no calls is a different thing and still
-   * scores zero, because there the absence of evidence is the failure.
+   * Whether this adapter reaches its memory through tools. `raw-context` does
+   * not — its evidence is in the prompt — so its evidence cell is empty rather
+   * than 0%. A retrieval adapter that made no calls still scores zero.
    */
   retrieves = true,
 ): Score {

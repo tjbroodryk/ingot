@@ -61,12 +61,8 @@ import { openDatabase } from './database.js';
 
 /**
  * The service, assembled for a test, with a scratch directory for its base tier.
- *
- * The real object store and the real engine — a filesystem `ObjectStore` is a
- * first-class adapter rather than a stub, so a roll-up in a test writes real
- * Parquet and reads it back through real DuckDB. The alternative would prove
- * the code compiles and nothing else, and the property this whole design rests
- * on is that a query returns the same answer either side of a roll-up.
+ * A filesystem `ObjectStore` and the real engine, so a roll-up writes real
+ * Parquet and reads it back through real DuckDB.
  */
 export interface World {
   readonly app: TestingModule;
@@ -76,25 +72,17 @@ export interface World {
   readonly dataDir: string;
 
   /**
-   * Every background queue this world's writes woke, in order.
-   *
-   * The stand-in collects rather than runs, because what `/add` tells the
-   * background is a property worth asserting on: a write that queues embedding
-   * work and wakes nothing has silently lost the fast path, and the only
-   * evidence is a row that stays unembedded for up to a minute in production
-   * and for ever in a test.
+   * Every background queue this world's writes woke, in order. The stand-in
+   * collects rather than runs, so a test can assert a write woke the right work.
    */
   readonly wakes: readonly BackgroundKind[];
 
   ingot(name?: string): Promise<string>;
   add(ingotId: string, body: AddBody): Promise<AddResult>;
   /**
-   * Uploads a document, exactly as the controller would.
-   *
-   * The bytes and the JSON half are given separately because that is what a
-   * multipart part actually delivers — going through `AcceptFile` rather than
-   * through HTTP keeps the suite off a socket while still exercising every
-   * check that matters, since the controller does nothing but decode the form.
+   * Uploads a document, as the controller would. The bytes and JSON half are
+   * given separately because that is what a multipart part delivers; it goes
+   * through `AcceptFile` rather than HTTP.
    */
   file(
     ingotId: string,
@@ -124,23 +112,10 @@ export interface World {
 
 let accounts = 0;
 
-/**
- * What a test may swap out.
- *
- * Only the summariser so far, and only because one property is impossible to
- * observe from outside: whether the model is asked with a transaction still
- * open. A fake that looks around while it is being called is the only vantage
- * point there is.
- */
+/** What a test may swap out. */
 export interface WorldOverrides {
   readonly summariser?: Summariser;
-  /**
-   * Where deliveries go instead of out.
-   *
-   * Swapped for the same reason as the summariser: the real transports call
-   * somebody else, and what a test wants to assert is *what* was sent and how
-   * a refusal is handled — neither of which needs a socket.
-   */
+  /** Where deliveries go instead of out. */
   readonly transport?: DeliveryTransport;
 }
 
@@ -149,29 +124,14 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   await database.truncate();
 
   const dataDir = mkdtempSync(join(tmpdir(), 'ingot-world-'));
-  // The filesystem driver, named rather than inferred, which is the
-  // composition these tests want: real Parquet, no network. A developer with
-  // a bucket in their own environment does not change what the suite writes.
+  // The filesystem driver, named rather than inferred: real Parquet, no network.
   process.env.INGOT_STORAGE = 'filesystem';
   process.env.INGOT_DATA_DIR = dataDir;
-  // The models are pinned in `test/support/environment.ts`, preloaded before
-  // any test file, because the tests that compile the real `AppModule` never
-  // come through here.
+  // Models are pinned in `test/support/environment.ts`, preloaded before any test file.
 
-  /**
-   * The background, written down instead of run.
-   *
-   * `/add` wakes the workers the moment it commits. Left real, every write in
-   * the suite would start a drain that runs after the assertion it belongs to
-   * — a test would be racing its own background rather than describing it — so
-   * it is bound out here, in the harness, rather than by an environment
-   * variable that a deployment could also set. Overriding the provider is what
-   * keeps "the suite does not drain by itself" a fact about the test, and it
-   * means the production path has no branch in it to be wrong about.
-   *
-   * `embedAll` and `summariseAll` below are the tests' own way in, so a test
-   * says when the background ran.
-   */
+  // The background, written down instead of run. `/add` wakes the workers on
+  // commit; bound out here so a test isn't racing its own background.
+  // `embedAll` and `summariseAll` below are the tests' way to run it.
   const wakes: BackgroundKind[] = [];
 
   const building = Test.createTestingModule({
@@ -214,8 +174,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   await app.init();
 
   const dispatcher = app.get(Dispatcher);
-  // A slug unique per world, since several test files share one database and
-  // the truncate between them does not help a world built inside another's run.
+  // A slug unique per world, since several test files share one database.
   accounts += 1;
   const slug = `acct-${accounts}-${Math.abs(hash(dataDir)) % 9973}`;
   const created = await dispatcher.send(new CreateAccount(slug, 'Test account'));
@@ -253,15 +212,12 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       );
     },
 
-    // The worker directly, never through the dispatcher, for the reason the
-    // other three are: it is three transactions with a parse in the middle,
-    // and dispatching it would put all three back inside the transaction the
-    // split exists to avoid.
+    // The worker directly, not through the dispatcher: it is three transactions
+    // with a parse between, and dispatching would nest them in one transaction.
     async parseAll() {
       let total = 0;
-      // Bounded rather than `for(;;)`: a document that keeps failing stays in
-      // the queue until it runs out of attempts, and an unbounded loop over one
-      // would hang the suite instead of failing it.
+      // Bounded rather than `for(;;)`: a document that keeps failing would hang
+      // an unbounded loop instead of failing the test.
       for (let pass = 0; pass < 100; pass++) {
         const found = await app.get(FileWorker, { strict: false }).next();
         if (!found) return total;
@@ -304,10 +260,8 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       return result.rowsForgotten;
     },
 
-    // The workers directly, never through the dispatcher. Each is three
-    // transactions with a model call between them, and dispatching one would
-    // put all three back inside the transaction the split exists to avoid —
-    // `PgUnitOfWork.run` joins an open scope rather than nesting.
+    // The workers directly, not through the dispatcher: each is three
+    // transactions with a model call between, and dispatching would nest them.
     async embedAll() {
       let total = 0;
       for (;;) {
@@ -319,9 +273,8 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
     async summariseAll() {
       let total = 0;
-      // Bounded rather than `for(;;)`: a receipt that keeps failing stays in the
-      // queue until it runs out of attempts, and an unbounded loop over one
-      // would hang the suite instead of failing it.
+      // Bounded rather than `for(;;)`: a receipt that keeps failing would hang
+      // an unbounded loop instead of failing the test.
       for (let pass = 0; pass < 100; pass++) {
         const found = await app.get(ReceiptWorker, { strict: false }).next();
         if (!found) return total;
@@ -332,10 +285,8 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
 
     async deliverAll() {
       let total = 0;
-      // Bounded for the same reason: a delivery to a receiver that keeps
-      // refusing stays in the outbox until it runs out of attempts, and its
-      // lease is cleared on failure — so an unbounded loop would send the same
-      // row for ever rather than failing the test.
+      // Bounded for the same reason: an endlessly-refusing delivery would loop
+      // for ever otherwise.
       for (let pass = 0; pass < 100; pass++) {
         const found = await app.get(DeliveryWorker, { strict: false }).next();
         if (!found) return total;

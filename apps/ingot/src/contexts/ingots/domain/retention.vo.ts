@@ -19,20 +19,7 @@ const MILLISECONDS: Record<RetentionUnit, number> = {
 const SHORTEST = MILLISECONDS[RetentionUnit.Minutes];
 const LONGEST = 520 * MILLISECONDS[RetentionUnit.Weeks]; // ten years
 
-/**
- * How long a memory is kept — `30m`, `12h`, `14d`, `4w`.
- *
- * A duration rather than a timestamp because the question a caller is asking is
- * "how long", and making them do date arithmetic to express it is a way to get
- * a memory that expires in 1970. A short grammar rather than a count of seconds
- * because `14d` cannot be misread by three orders of magnitude and `1209600`
- * can — and the thing on the other end of this mistake is an irreversible
- * delete.
- *
- * Bounded at both ends for the same reason. `0d` would mean "delete this the
- * moment I create it", which nobody means, and a retention past the heat death
- * of the sun is a typo rather than a plan.
- */
+/** How long a memory is kept — `30m`, `12h`, `14d`, `4w`. Bounded at both ends. */
 export class Retention extends ValueObject {
   readonly value: string;
   readonly milliseconds: number;

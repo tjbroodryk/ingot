@@ -1,19 +1,4 @@
-/**
- * What `/why` says, as data — the same argument
- * `src/landing/sections.ts` makes for its own page.
- *
- * This one is the only page on the site that is a *position* rather than a
- * description, which raises rather than lowers the bar on it: a claim about
- * why something is built this way is checkable against the thing it is built
- * into, and every claim below is. Where one of them is a fact about the
- * repository, the file that decides it is named in the comment above it, so
- * that a reader who does not believe the page can go and disagree with the
- * code instead.
- *
- * The samples obey the same rule the landing page's do — real requests against
- * `@ingot/shared/ingot-v1`, `localhost` addresses because that is the only
- * kind Ingot has, and no line wider than the pane it renders in.
- */
+/** What `/why` says, as data. Samples are real requests against `@ingot/shared/ingot-v1`. */
 
 /** What the tab, the index entry and the metadata description call this. */
 export const WHY_TITLE = 'Similarity is not a join';
@@ -21,13 +6,7 @@ export const WHY_TITLE = 'Similarity is not a join';
 export const WHY_DESCRIPTION =
   'Why Ingot is a query engine rather than a vector store: models write SQL, tool results are tables, and the questions worth asking are joins across them. What a memory is scoped to, what it costs to keep, and who owns what is in it.';
 
-/**
- * The paragraph under the title, and the page's `description`.
- *
- * A constant for the reason `LEDE` is one over on the landing page: it is read
- * in either order — a visitor who arrives from a search has read the preview
- * first — and two copies drift on the edit that only remembers one.
- */
+/** The paragraph under the title, and the page's `description`. */
 export const WHY_LEDE =
   'A vector store answers exactly one question: what is this like? That is rarely the question an agent actually has. The real ones are joins — which of these also, how many, in what order, compared to when. Models write SQL well enough to ask all of those, so we think a memory’s job is to hold tool results as tables and then get out of the way.';
 
@@ -42,13 +21,7 @@ export interface Loss {
   readonly cost: string;
 }
 
-/**
- * The three, and they are the three because they are exhaustive rather than
- * illustrative: a tool result is kept in the window, replaced by prose about
- * itself, or turned into vectors. There is no fourth thing anybody does with
- * one, which is what makes the section an argument rather than a list of
- * complaints.
- */
+/** The three things done with a tool result today: kept, summarised, embedded. */
 export const LOSSES: readonly Loss[] = [
   {
     kicker: 'Kept',
@@ -70,20 +43,13 @@ export const LOSSES: readonly Loss[] = [
   },
 ];
 
-/** The strip under the three, which is the claim they add up to. */
+/** The strip under the three. */
 export const LOSS_CLAIM =
   'All three lose the same thing, which is the structure. The fact that this was four hundred rows of six typed fields, and that you could have asked a real question of them.';
 
 /* ── 02 · why SQL ────────────────────────────────────────────────────────── */
 
-/**
- * Three tools that have never heard of each other, writing into one memory.
- *
- * The point of the sample is the `"table"` line in each block and nothing
- * else: three calls, three tables, one ingot. Each is a real `/add` — a JSON
- * path per column, a `type` per column, and `key` only on the one that has an
- * identity worth upserting on.
- */
+/** Three tools that have never heard of each other, writing into one memory. */
 export const THREE_TOOLS = `# three tools. one memory. three tables.
 POST /api/v1/acme/ing_01H8Z…/add
 {
@@ -122,18 +88,7 @@ POST /api/v1/acme/ing_01H8Z…/add
   "result": deskResult
 }`;
 
-/**
- * The question none of the three tools could have answered.
- *
- * Three tables in one FROM clause, which works because a query is offered
- * every table its memory holds and the engine narrows to the ones the
- * statement names — `sessions.all(tables)` in
- * `apps/ingot/src/contexts/query/application/queries/query-ingot.query.ts`.
- *
- * `INTERVAL '30 days'` rather than `INTERVAL 30 DAY`: both are DuckDB, and the
- * quoted form is the one that is also every other dialect, so a reader porting
- * the shape somewhere else is not copying a DuckDB-ism they did not ask for.
- */
+/** The question none of the three tools could have answered: three tables in one FROM clause. */
 export const THE_JOIN = `# a question no tool call could have answered
 POST /api/v1/acme/ing_01H8Z…/query
 {
@@ -167,13 +122,7 @@ export interface SqlNote {
   readonly source: string;
 }
 
-/**
- * What the sample above is standing on. Each is a fact about a named file
- * rather than a property of SQL in general, because the interesting half of
- * this argument is that the guard rails exist — a model writing SQL against a
- * memory is only a good idea if the worst statement it can write is a slow
- * SELECT.
- */
+/** What the sample above is standing on: each a fact about a named file, not SQL in general. */
 export const SQL_NOTES: readonly SqlNote[] = [
   {
     kicker: 'Scope',
@@ -197,19 +146,7 @@ export const SQL_NOTES: readonly SqlNote[] = [
 
 /* ── 03 · where the embeddings went ──────────────────────────────────────── */
 
-/**
- * Meaning as one predicate among several.
- *
- * Deliberately not the landing page's retrieval sample: that one ranks a
- * single table and makes the "no vector database" argument. This one *joins*
- * while it ranks, which is the argument this page is making — the cosine is an
- * expression in a SELECT list, so it composes with everything else a SELECT
- * can do. The version with a vector store beside it cannot write this
- * statement at all.
- *
- * `$q` is bound only when `text` and `sql` arrive together, so the `text` line
- * is load-bearing rather than decorative.
- */
+/** Meaning as one predicate among several: cosine as a SELECT expression, joined while it ranks. `$q` is bound only when `text` and `sql` arrive together. */
 export const VECTOR_COLUMN = `# rank by meaning, inside a join
 POST /api/v1/acme/ing_01H8Z…/query
 {
@@ -235,15 +172,7 @@ export interface Grain {
   readonly body: string;
 }
 
-/**
- * Four scopes, and the point is that Ingot has an opinion about none of them.
- *
- * The retentions are real: `retainFor` takes a whole number and a unit from
- * one minute to ten years, or is omitted to keep a memory until something
- * deletes it — `apps/ingot/src/contexts/ingots/domain/retention.vo.ts`. The
- * four below are the shapes people actually have, not the four the grammar
- * allows.
- */
+/** Four scopes Ingot has no opinion about. */
 export const GRAINS: readonly Grain[] = [
   {
     retention: 'retainFor: "30m"',
@@ -267,14 +196,7 @@ export const GRAINS: readonly Grain[] = [
   },
 ];
 
-/**
- * The constraint that makes the choice above a real one.
- *
- * Said plainly rather than left to be discovered, because it is the single
- * thing on this page that could disappoint somebody after they had built on
- * it: a query resolves the tables of one ingot, and there is no statement that
- * spans two.
- */
+/** The constraint that makes the scope choice a real one: a query spans one memory. */
 export const GRAIN_LIMIT =
   'A statement sees the tables of one memory, and there is no query across two. So this is the one decision worth making deliberately: **the grain you pick is the grain you can join across**. Casting a memory is one POST, though, so it is also a decision you are allowed to change your mind about.';
 
@@ -298,14 +220,7 @@ export interface Tier {
   readonly note: string;
 }
 
-/**
- * The storage model, which is an LSM tree and nothing more exotic. Every
- * number here is read off the service: the roll-up is `minutes(5)` in
- * `apps/ingot/src/sweepers/roll-up.sweeper.ts`, and one generation is one
- * complete rewrite of the table rather than a delta —
- * `compact-table.command.ts` writes a single part per generation from the base
- * files unioned with the overlay.
- */
+/** The storage model, an LSM tree: overlay in Postgres, base in Parquet, DuckDB per query. */
 export const TIERS: readonly Tier[] = [
   {
     n: '01',
@@ -334,14 +249,7 @@ export interface Cost {
   readonly body: string;
 }
 
-/**
- * What a memory actually costs, including the three lines that are zero.
- *
- * The zeroes are the argument. A vector database is priced on being resident —
- * an index sized to the corpus, kept warm whether or not anybody is asking —
- * and none of the three tiers above is resident, so the bill for a memory
- * nobody is querying is the bytes it occupies.
- */
+/** What a memory actually costs, including the three lines that are zero. */
 export const COSTS: readonly Cost[] = [
   {
     item: 'Bucket bytes',
@@ -371,15 +279,7 @@ export const COSTS: readonly Cost[] = [
 
 /* ── 06 · whose memory it is ─────────────────────────────────────────────── */
 
-/**
- * The base tier, read without Ingot in the picture.
- *
- * Honest in the two places it would be easy not to be. The highest `gen-`
- * directory is the current one *and* is the whole table, because a compaction
- * rewrites rather than appends — so this is not a partial view somebody would
- * have to reassemble. And the last few minutes of writes are not in it, which
- * the sample says out loud rather than leaving to be found.
- */
+/** The base tier, read without Ingot in the picture. */
 export const OWN_IT = `# ingot is not running. the memory still is.
 # the highest gen- directory is the whole table.
 

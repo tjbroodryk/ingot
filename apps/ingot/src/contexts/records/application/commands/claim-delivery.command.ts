@@ -9,17 +9,9 @@ import {
 } from '../ports/delivery-outbox.port.js';
 
 /**
- * Takes one announced receipt, leases it, and hands it over to be sent.
- *
- * The first of three, and the split is `ReceiptWorker`'s, for the same reason.
- * A delivery is claimed, somebody else's endpoint or broker is called, and the
- * outcome is written — with the transaction held for only the first and the
- * last. Doing all three in one command would keep a Postgres connection for the
- * length of an HTTP round trip to a receiver we do not control, and there are
- * ten in the pool: a receiver that takes ten seconds to answer would starve the
- * requests this service exists to answer, while looking like a database problem.
- *
- * `DeliveryWorker` is what runs the three in order.
+ * Takes one announced receipt, leases it, and hands it over to be sent. First
+ * of three steps run by `DeliveryWorker`; the claim and the write hold a
+ * transaction, the call to the receiver does not.
  */
 export class ClaimDelivery extends Command<PendingDelivery | null> {
   constructor(readonly maxAttempts: number) {

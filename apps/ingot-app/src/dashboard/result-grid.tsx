@@ -8,20 +8,8 @@ import type { QueryResult } from '@ingot/shared/ingot-v1';
 import { type ReactNode, useMemo } from 'react';
 
 /**
- * A `QueryResult`, as a grid.
- *
- * The columns are not known until the query comes back — that is the whole
- * point of a SQL console — so they are built from `result.columns` and the
- * view model is rebuilt for each result. That resets sort and column widths
- * per query, which is the right behaviour: a new statement is a new grid, and
- * a sort carried across a change of columns would be dropped anyway. What
- * matters is that it does *not* rebuild per render, or every keystroke in the
- * editor above would throw the grid's state away.
- *
- * The rows are wrapped rather than mutated. `getRowId` needs something stable
- * and a DuckDB row has no identity of its own, so the position in the result
- * is the identity — and hanging an `_id` on the caller's row object would be
- * writing into data that is on its way to a cell renderer.
+ * A `QueryResult`, as a grid. Columns and the view model are rebuilt per result,
+ * not per render. Rows are wrapped so `getRowId` can key on position.
  */
 
 interface GridRow {
@@ -57,14 +45,7 @@ export function ResultGrid({ result }: { result: QueryResult }): ReactNode {
   );
 }
 
-/**
- * What a cell shows.
- *
- * Three cases the default would get wrong for this data: `null` is a value
- * DuckDB means, and it must not read as an empty cell; a `JSON` column arrives
- * as an object, and `String(…)` on one is `[object Object]`; and a boolean is
- * worth marking, because `false` and empty look the same at a glance.
- */
+/** What a cell shows. `null`, objects (JSON) and booleans are rendered distinctly from plain text. */
 function Cell({ value }: { value: unknown }): ReactNode {
   if (value === null || value === undefined) return <span className="cell-null">null</span>;
   if (typeof value === 'object') return <span className="cell-json">{JSON.stringify(value)}</span>;
@@ -73,15 +54,7 @@ function Cell({ value }: { value: unknown }): ReactNode {
   return <>{String(value)}</>;
 }
 
-/**
- * A column's type, from the first row that has a value in it.
- *
- * The result carries no schema — `QueryResult` is columns and rows — so this
- * is a guess, and it is only used for alignment, the filter UI and the stats
- * chart. Reading past the first non-null value would not make it a better
- * guess: a column whose values disagree about their type is one the grid
- * should be treating as text anyway.
- */
+/** A column's type, guessed from the first row that has a value in it. Used only for alignment and the filter UI. */
 function typeOf(
   name: string,
   rows: readonly Readonly<Record<string, unknown>>[],
@@ -94,7 +67,6 @@ function typeOf(
     return 'text';
   }
 
-  // Every row was null. `unknown` is the honest answer, and it stops the grid
-  // offering a numeric filter on a column it has never seen a number in.
+  // Every row was null: no numeric filter on a column with no seen values.
   return 'unknown';
 }

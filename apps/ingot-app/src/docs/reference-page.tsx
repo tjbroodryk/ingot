@@ -22,19 +22,7 @@ export const referenceMetadata: Metadata = {
   description: REFERENCE_DESCRIPTION,
 };
 
-/**
- * The reference.
- *
- * A component rather than a page, because which URL it is served at depends on
- * the build: it is the front page of a dashboard build and `/docs` of a
- * landing one, and both of those are two lines that render this. See
- * `src/site/mode.ts`.
- *
- * A server component with no data fetching in it: the content is a module, so
- * this renders once at build time into static HTML. The one interactive thing
- * on the page — the sidebar — is an anchor list, which needs no JavaScript at
- * all.
- */
+/** The reference. A component, not a page: the front page of a dashboard build and `/docs` of a landing one. Rendered at build time. */
 export function ReferencePage() {
   return (
     <>
@@ -42,12 +30,7 @@ export function ReferencePage() {
         current={SiteSection.Docs}
         actions={
           <>
-            {/*
-              The sign-up route, which is the page's own first section — and a
-              landing build points at the repository instead, because a
-              self-hosted service has no account to hand out until somebody has
-              brought one up.
-            */}
+            {/* A landing build points at the repository; a dashboard build at the sign-up section. */}
             {IS_LANDING ? (
               <a className="btn-solid" href={REPO_URL}>
                 Get the source
@@ -133,11 +116,7 @@ export function ReferencePage() {
             <h2>Endpoints</h2>
           </div>
 
-          {/*
-            Fragments rather than wrappers: the group head's rule is drawn by
-            `.reference-head + .grouphead`, and a div between them would break
-            the adjacency and leave a double rule under the title.
-          */}
+          {/* Fragments, not wrappers: a div would break the `.reference-head + .grouphead` adjacency rule. */}
           {GROUP_ORDER.map((group) => {
             const endpoints = endpointsIn(group);
             return (

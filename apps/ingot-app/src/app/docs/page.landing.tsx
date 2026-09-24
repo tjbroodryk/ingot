@@ -1,10 +1,6 @@
 import { ReferencePage, referenceMetadata } from '../../docs/reference-page';
 
-/**
- * `/docs` in a landing build, where `/` is the landing page and the reference
- * needs somewhere else to be. A dashboard build serves it at `/` and has no
- * `/docs` at all — see the `pageExtensions` note in `next.config.ts`.
- */
+/** `/docs` in a landing build: the reference. A dashboard build serves it at `/` instead. */
 export const metadata = referenceMetadata;
 
 export default ReferencePage;

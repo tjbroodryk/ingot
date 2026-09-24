@@ -22,16 +22,9 @@ export class GetIngotInfo extends Query<IngotInfo> {
 }
 
 /**
- * The information schema, answered from the manifest.
- *
- * No bucket read and no DuckDB session: everything here is in Postgres, which
- * is the point of keeping the catalogue there rather than in the Parquet. A
- * model about to write SQL against this memory calls this first, and it should
- * not cost a round trip to object storage to find out what the columns are.
- *
- * `rows` and `pending` are reported separately because the difference is
- * operationally meaningful: `pending` is what roll-up has not caught up with,
- * and a number that keeps climbing is the signal that it has stopped.
+ * The information schema, answered from the manifest in Postgres — no bucket
+ * read, no DuckDB session. `rows` and `pending` are separate: `pending` is what
+ * roll-up has not yet absorbed.
  */
 @QueryHandler(GetIngotInfo)
 export class GetIngotInfoHandler implements IQueryHandler<GetIngotInfo> {
@@ -56,9 +49,7 @@ export class GetIngotInfoHandler implements IQueryHandler<GetIngotInfo> {
       createdAt: ingot.createdAt.toISOString(),
       expiresAt: ingot.expiresAt?.toISOString() ?? null,
       embedding: ingot.embedding,
-      // Defaults included, never partial — so "where do this memory's receipts
-      // go" has an answer here rather than requiring somebody to remember
-      // whether they ever configured it.
+      // Full config with defaults, never partial.
       config: ingot.config,
       tables: described.sort((left, right) => left.name.localeCompare(right.name)),
     };

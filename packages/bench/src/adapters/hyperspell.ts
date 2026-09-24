@@ -43,22 +43,10 @@ export interface HyperspellOptions {
 }
 
 /**
- * Hyperspell, against its documented REST surface: `POST /memories/add` to
- * ingest and `POST /memories/query` to retrieve.
- *
- * Configured the way its own documentation says to configure it. Two choices
- * are worth stating because they could be argued either way:
- *
- * - One memory per record, matching the chunking the local baseline gets. The
- *   alternative — one memory per tool-result page — would hand Hyperspell a
- *   worse index than the baseline and make the comparison meaningless.
- * - `answer: false`. Hyperspell can synthesise an answer server-side, but then
- *   the row measures Hyperspell's model rather than its retrieval, and the
- *   agent under test is no longer the same agent across columns.
- *
- * Runs are isolated by a `run` key in each memory's metadata and a matching
- * `options.filter` on every query, so a shared account cannot leak one run's
- * corpus into another's results.
+ * Hyperspell over its REST surface: `POST /memories/add` and `/memories/query`.
+ * One memory per record; `answer: false` so the row measures retrieval, not
+ * Hyperspell's model. Runs are isolated by a `run` key in metadata and a
+ * matching query filter.
  */
 export class HyperspellAdapter implements MemoryAdapter {
   readonly name = 'hyperspell';
@@ -74,9 +62,7 @@ export class HyperspellAdapter implements MemoryAdapter {
   async ingest(corpus: readonly ToolResult[]): Promise<void> {
     this.records = flattenRecords(corpus);
 
-    // Two at a time, not four. The documented ceiling is 300 writes a minute
-    // and a 429 costs a full minute of waiting, so pacing under the limit
-    // finishes sooner than racing at it and backing off.
+    // Two at a time, to stay under the write rate limit.
     await pool(this.records, 2, async (record) => {
       const body = await this.post<AddResponse>('/memories/add', {
         text: record.text,
@@ -91,12 +77,7 @@ export class HyperspellAdapter implements MemoryAdapter {
     await this.waitForIndexing();
   }
 
-  /**
-   * Indexing is asynchronous, so querying straight after the last write would
-   * benchmark a half-built index. Rather than guess at a fixed sleep, poll the
-   * query endpoint for a record known to be in the corpus and wait until the
-   * store admits it exists.
-   */
+  /** Indexing is asynchronous; poll for a known record until it is queryable. */
   private async waitForIndexing(): Promise<void> {
     const probe = this.records.at(-1);
     if (!probe) return;
@@ -141,25 +122,14 @@ export class HyperspellAdapter implements MemoryAdapter {
   private query(query: string, k: number): Promise<QueryResponse> {
     return this.post<QueryResponse>('/memories/query', {
       query,
-      // Server-side synthesis is off on purpose: see the note on the class.
+      // Server-side answer synthesis off, so the row measures retrieval.
       answer: false,
       ...(this.options.sources ? { sources: [...this.options.sources] } : {}),
       options: { filter: { run: this.options.runId }, max_results: k },
     });
   }
 
-  /**
-   * One request, waiting out a rate limit rather than failing the column.
-   *
-   * Hyperspell allows 300 writes a minute and this corpus is five hundred
-   * records, so ingest *will* meet a 429 — that is the service working, not an
-   * error, and a benchmark that reported "hyperspell: skipped" because it was
-   * asked to slow down would be publishing a fact about the harness.
-   *
-   * `Retry-After` is honoured where it is sent, and a minute is assumed where
-   * it is not, because the limit is per minute and a shorter guess just burns
-   * another attempt against it.
-   */
+  /** One request, retrying a 429 by waiting: `Retry-After` if sent, else a minute. */
   private async post<T>(path: string, body: unknown, attempt = 0): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
@@ -184,12 +154,7 @@ export class HyperspellAdapter implements MemoryAdapter {
     return (await response.json()) as T;
   }
 
-  /**
-   * Nothing is deleted. Every memory carries this run's id and every query
-   * filters on it, so leftovers cannot affect a later run — and a benchmark
-   * that issues bulk deletes against somebody's account on the way out is a
-   * worse failure mode than a few stale rows.
-   */
+  /** Nothing is deleted; every memory and query is scoped by run id. */
   async teardown(): Promise<void> {
     this.records = [];
   }
@@ -200,9 +165,7 @@ function render(document: QueryDocument): string {
   if (document.title) parts.push(`title: ${document.title}`);
   if (document.metadata?.ref) parts.push(`ref: ${String(document.metadata.ref)}`);
   if (document.summary) parts.push(document.summary);
-  // The document body's shape is not pinned by the API reference, so it is
-  // serialised rather than reached into. Whatever it holds, the ref that
-  // retrieval is scored on was written into the text we stored.
+  // Body shape is not pinned by the API, so serialise it rather than reach in.
   if (document.document !== undefined) parts.push(JSON.stringify(document.document));
   return parts.join('\n');
 }

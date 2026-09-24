@@ -1,9 +1,6 @@
 /**
- * Run `worker` over `items` with at most `limit` in flight.
- *
- * Bounded because ingestion is hundreds of writes against somebody's API, and
- * an unbounded `Promise.all` over that is how a benchmark earns a rate-limit
- * ban halfway through a paid run.
+ * Run `worker` over `items` with at most `limit` in flight. Bounded so ingest
+ * does not fire hundreds of writes at once. Results come back in item order.
  */
 export async function pool<T, R>(
   items: readonly T[],

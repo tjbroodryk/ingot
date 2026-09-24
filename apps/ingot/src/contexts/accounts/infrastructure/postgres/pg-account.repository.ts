@@ -59,17 +59,14 @@ export class PgAccountRepository implements AccountRepository {
           .returning({ id: account.id }),
       );
     } catch (error) {
-      // The handler checks the slug for the sake of the message; this catches
-      // the race between two requests that both passed that check.
+      // The handler checks the slug for the message; this catches the race.
       if (isUniqueViolation(error)) {
         throw new ConflictingState(`The account slug "${aggregate.slug.value}" is taken`);
       }
       throw error;
     }
 
-    // Keys are part of the aggregate, so they land in the transaction the
-    // version guard just succeeded in. Upsert with no delete pass: a key is
-    // never removed from an account, only revoked, so the set only grows.
+    // Upsert keys in the same transaction; keys are never deleted, only revoked.
     for (const key of aggregate.keys) {
       const keyRow = {
         id: key.id.value,

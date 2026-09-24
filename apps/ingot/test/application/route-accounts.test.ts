@@ -14,18 +14,7 @@ interface Route {
   binding: AccountBinding | null;
 }
 
-/**
- * Every route in the service, found by reading the decorators off every
- * controller on disk.
- *
- * Deliberately not by booting Nest: whether a route declares an account is a
- * property of the source, and tying the check to a working database and a
- * fully wired module graph would mean it stops protecting anything the first
- * time unrelated infrastructure is mid-change.
- *
- * `AccountScopeGuard` refuses an undeclared route at runtime too. This is the
- * half that fails in CI instead of in production.
- */
+/** Every route in the service, read from the decorators on each controller on disk. */
 async function routes(): Promise<Route[]> {
   const found: Route[] = [];
 
@@ -67,8 +56,7 @@ async function routes(): Promise<Route[]> {
 
 describe('every route', () => {
   it('finds the controllers at all', async () => {
-    // Otherwise an empty glob would make every assertion below vacuous, which
-    // is the way a test like this quietly stops testing anything.
+    // Guards against an empty glob making every assertion below vacuous.
     const found = await routes();
     expect(found.length).toBeGreaterThan(10);
     expect(new Set(found.map((route) => route.controller)).size).toBeGreaterThan(3);
@@ -82,22 +70,8 @@ describe('every route', () => {
     expect(undeclared).toEqual([]);
   });
 
-  /**
-   * Unauthenticated routes, listed here so that adding one is a visible edit
-   * to a test rather than a decorator nobody reviews.
-   *
-   * - Health, because a load balancer does not hold credentials.
-   * - The version list, because deciding whether to integrate with a service
-   *   is something you do before you have a key. It exposes the changelog and
-   *   nothing else.
-   *
-   * Neither of them writes anything, and that is now the rule rather than a
-   * coincidence: `AccountsController.create` used to be on this list, and it
-   * was an unauthenticated write that handed back a permanent credential.
-   * Which accounts exist is decided by `INGOT_AUTH` at boot. If a mode is ever
-   * added that needs a sign-up route, it belongs to that mode's module and
-   * this list has to grow deliberately.
-   */
+  // The two unauthenticated routes (health check, version list), listed so
+  // adding one is a visible test edit. Neither writes.
   it('has exactly two open routes, and neither of them writes', async () => {
     const open = (await routes())
       .filter((route) => route.binding?.open === true)
@@ -116,32 +90,20 @@ describe('every route', () => {
           `${route.controller}.${route.handler} wants :${route.binding?.param} in ${route.path}`,
       );
 
-    // A binding naming a parameter the path does not have is refused at
-    // runtime with a 403 — correct, but only discovered by calling it.
     expect(mismatched).toEqual([]);
   });
 });
 
 describe('route registration order', () => {
-  /**
-   * `/:account/:ingot` is as greedy as a pattern gets. Registered before the
-   * accounts controller it would swallow `/accounts/acme/keys` and route key
-   * management into the memory API — an authenticated caller managing
-   * credentials would instead be told there is no ingot called "acme".
-   *
-   * Two things prevent it, and this asserts the first. The second is
-   * `AccountSlug` refusing to mint an account named `accounts`.
-   */
+  // The wildcard `/:account/:ingot` would swallow `/accounts/...` if registered
+  // first, so `AccountsModule` must come before it.
   it('puts AccountsModule before the modules with wildcard paths', async () => {
     const source = await Bun.file('src/app.module.ts').text();
     const order = ['AccountsModule', 'IngotsModule', 'RecordsModule', 'QueryModule', 'McpModule'];
 
     const positions = order.map((name) => ({
       name,
-      // The import list, not the import statements at the top: a bare entry on
-      // its own line. Matched by shape rather than by a fixed indent, because
-      // the list moved a level deeper when `AppModule` became a dynamic module
-      // and a test that broke on that would have been reporting nothing.
+      // Matches the bare entry in the import list, by shape rather than a fixed indent.
       at: source.search(new RegExp(`^\\s+${name},$`, 'm')),
     }));
 
@@ -160,7 +122,7 @@ describe('route registration order', () => {
     for (const reserved of RESERVED_SLUGS) {
       expect(() => AccountSlug.of(reserved)).toThrow(/reserved/);
     }
-    // The two that matter most, spelled out so a shortened list is noticed.
+    // Spelled out so a shortened list is noticed.
     expect(RESERVED_SLUGS).toContain('accounts');
     expect(RESERVED_SLUGS).toContain('health');
   });

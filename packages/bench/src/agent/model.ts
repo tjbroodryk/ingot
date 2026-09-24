@@ -2,15 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { JSONValue, LanguageModel } from 'ai';
 
-/**
- * Where the agent under test runs.
- *
- * The provider is a property of a whole run, never of one adapter. Every
- * column in a report must have been produced by the same model on the same
- * platform, or the comparison is between platforms wearing a benchmark's
- * clothes — so this is chosen once in the CLI and stamped into the report
- * header.
- */
+/** Where the agent under test runs. Chosen once per run and stamped into the report header. */
 export type Provider = 'anthropic' | 'foundry-claude' | 'foundry-gpt';
 
 export interface ModelChoice {
@@ -49,9 +41,8 @@ export function buildModel({ provider, model, env }: ModelChoice): LanguageModel
     }
 
     case 'foundry-claude': {
-      // Foundry authenticates Claude with `x-api-key`, which is the header the
-      // Anthropic provider already sends for `apiKey` — so pointing it at the
-      // resource is the whole of the integration.
+      // Foundry authenticates Claude with `x-api-key`, the header the Anthropic
+      // provider already sends for `apiKey`.
       return createAnthropic({
         apiKey: foundryKey(env),
         baseURL: foundryBase(env, 'anthropic/v1'),
@@ -59,10 +50,9 @@ export function buildModel({ provider, model, env }: ModelChoice): LanguageModel
     }
 
     case 'foundry-gpt': {
-      // Foundry's OpenAI-compatible v1 endpoint accepts `Authorization:
-      // Bearer`, so the stock OpenAI provider works unmodified. `.chat()`
-      // pins Chat Completions rather than the Responses API, because that is
-      // the surface the deployment was verified against.
+      // Foundry's v1 endpoint accepts `Authorization: Bearer`, so the stock
+      // OpenAI provider works. `.chat()` pins Chat Completions, not the
+      // Responses API.
       return createOpenAI({
         apiKey: foundryKey(env),
         baseURL: foundryBase(env, 'openai/v1'),
@@ -72,11 +62,9 @@ export function buildModel({ provider, model, env }: ModelChoice): LanguageModel
 }
 
 /**
- * The reasoning knob, which is not the same parameter on both families.
- *
- * Returned as `providerOptions` so the loop stays provider-agnostic. Anthropic
- * takes adaptive thinking; OpenAI takes `reasoningEffort`, whose scale stops at
- * `high` — so `xhigh` and `max` are clamped rather than sent and rejected.
+ * The reasoning knob, returned as `providerOptions` so the loop stays
+ * provider-agnostic. Anthropic takes adaptive thinking; OpenAI takes
+ * `reasoningEffort`, whose scale stops at `high`, so `xhigh`/`max` are clamped.
  */
 export function reasoningOptions(
   provider: Provider,

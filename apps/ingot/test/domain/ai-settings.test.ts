@@ -34,16 +34,9 @@ import { MAX_UPSTREAM_TIMEOUT_MS } from '../../src/shared/claim-lease.js';
 /**
  * Which models a deployment gets, and which configurations it is refused.
  *
- * The same argument as `storage.test.ts`, applied to the other thing an
- * operator has to decide. The failure it is written against is quieter than
- * a bucket's, because the service works either way: a mistyped variable falls
- * back to a hash, every search silently becomes lexical, and every summary
- * becomes a sentence about column names. Nobody finds that by reading a
- * dashboard — so it is refused at boot, and this is what refusal looks like.
- *
- * Pure throughout. Settings are parsed from a reader and adapters are built
- * from settings, so the whole matrix is covered without a key, a network, or
- * a bill.
+ * A mistyped variable would fall back to a hash and make search lexical without
+ * erroring, so it is refused at boot. Pure throughout: settings are parsed from
+ * a reader and adapters built from them, with no key or network.
  */
 
 /** An environment, as `ConfigService.get` would present it. */
@@ -88,9 +81,8 @@ describe('choosing an embedder', () => {
   });
 
   it('refuses a provider named without its credentials', () => {
-    // The whole point of naming the provider rather than inferring it: an
-    // operator who meant to configure OpenAI and left the key out should be
-    // told, not quietly given a hash that ranks by word overlap.
+    // Naming the provider rather than inferring it: a missing key is told, not
+    // quietly answered with a hash.
     expect(() => embedderSettings(env({ INGOT_EMBEDDER: 'openai' }))).toThrow(AiMisconfigured);
     expect(() => embedderSettings(env({ INGOT_EMBEDDER: 'gcp' }))).toThrow(/INGOT_GCP_PROJECT/);
   });
@@ -100,8 +92,7 @@ describe('choosing an embedder', () => {
   });
 
   it('treats a blank variable as unset', () => {
-    // A deployment template that exports every key, some of them empty, is
-    // the normal case; `INGOT_EMBEDDER=""` means "I did not choose".
+    // An exported-but-empty variable means "I did not choose".
     expect(embedderSettings(env({ INGOT_EMBEDDER: '   ' }))).toEqual({
       provider: AiProvider.Local,
     });
@@ -113,8 +104,7 @@ describe('choosing an embedder', () => {
     );
     expect(settings).toMatchObject({ dimensions: 512 });
 
-    // Declared rather than discovered, because the width is baked into every
-    // stored vector — so a typo here is a re-embed, and worth refusing.
+    // The width is baked into every stored vector, so a typo is a re-embed.
     for (const bad of ['0', '-1', '1.5', 'wide', '99999']) {
       expect(() =>
         embedderSettings(
@@ -125,8 +115,7 @@ describe('choosing an embedder', () => {
   });
 
   it('retargets OpenAI at a gateway, without the trailing slash', () => {
-    // A base URL is how an Azure deployment, a proxy or a local vLLM becomes
-    // this adapter rather than a fourth one.
+    // A base URL retargets this adapter at a gateway or proxy.
     expect(
       embedderSettings(
         env({ INGOT_EMBEDDER: 'openai', ...OPENAI, OPENAI_BASE_URL: 'http://gateway/v1/' }),
@@ -142,9 +131,7 @@ describe('choosing a summariser', () => {
   });
 
   it('is selected independently of the embedder', () => {
-    // The reason there are two variables. Wanting real semantic search is not
-    // wanting an LLM call on every receipt, and one selector for both would
-    // make the cheap half impossible to buy on its own.
+    // Two variables: real semantic search need not mean an LLM call per receipt.
     const both = env({ INGOT_EMBEDDER: 'openai', ...OPENAI });
 
     expect(buildEmbedder(embedderSettings(both))).toBeInstanceOf(OpenAiEmbedder);
@@ -163,11 +150,8 @@ describe('choosing a summariser', () => {
   });
 
   it('builds the adapter each provider names', () => {
-    // Both hosted providers are one class now, so the assertion is on what
-    // that class was pointed at rather than on which class it is. `host` is
-    // the metric label `ingot_upstream_duration` is cut by, and `model` is
-    // recorded beside every receipt — getting either wrong is the failure
-    // this test exists for, and neither is visible from the type.
+    // Both hosted providers are one class, so the assertion is on what it was
+    // pointed at: `host` and `model`, neither visible from the type.
     const openai = buildSummariser(
       summariserSettings(env({ INGOT_SUMMARISER: 'openai', ...OPENAI })),
     );
@@ -185,8 +169,7 @@ describe('choosing a summariser', () => {
   });
 
   it('names the selector in the message, not the other one', () => {
-    // Two variables mean two ways to get this wrong, and a message naming the
-    // wrong one sends an operator to edit a line that is already correct.
+    // A message naming the wrong variable sends someone to edit a correct line.
     expect(() => summariserSettings(env({ INGOT_SUMMARISER: 'gcp' }))).toThrow(
       /INGOT_SUMMARISER=gcp/,
     );
@@ -195,9 +178,8 @@ describe('choosing a summariser', () => {
 });
 
 describe('reading what a model answered', () => {
-  // A schema is sent now and the SDK validates against it, so what is left to
-  // test here is the middleware in front of that — the concession to a gateway
-  // that accepts `response_format` and ignores it — and the clamp behind it.
+  // The SDK validates against a sent schema, so what's left is the middleware
+  // for a gateway that ignores `response_format`, and the clamp behind it.
   it('leaves a bare JSON object alone', () => {
     const bare = '{"summary":"what it was","searchTerm":"how to find it"}';
 
@@ -205,9 +187,7 @@ describe('reading what a model answered', () => {
   });
 
   it('unwraps a fenced block and a sentence of preamble', () => {
-    // Every provider that ignores the schema gets it wrong the same two ways,
-    // and refusing them would make the feature fail for a reason the caller
-    // can neither see nor fix.
+    // A provider that ignores the schema gets it wrong these two ways.
     expect(extractJson('```json\n{"summary":"a","searchTerm":"b"}\n```')).toBe(
       '{"summary":"a","searchTerm":"b"}',
     );
@@ -217,9 +197,8 @@ describe('reading what a model answered', () => {
   });
 
   it('hands prose back untouched rather than throwing', () => {
-    // This runs as a language-model middleware, inside the SDK's own parse.
-    // Throwing here would replace "the model answered with prose" — which is
-    // what happened — with a stack from a transform, which is not.
+    // Runs inside the SDK's parse: throwing would mask "the model answered with
+    // prose" behind a stack from a transform.
     expect(extractJson('I cannot help with that.')).toBe('I cannot help with that.');
   });
 
@@ -235,22 +214,13 @@ describe('reading what a model answered', () => {
 });
 
 /**
- * The deadline, and the bound on it that only shows up in a cluster.
- *
- * A batch of texts is claimed under a five-minute lease and the model is asked
- * with the transaction closed — that split is what stops a background job
- * holding a pooled connection across an HTTP round trip. A timeout longer than
- * that lease means a call still running when a second replica becomes free to
- * claim the same batch: the same texts embedded twice, paid for twice, and
- * nothing anywhere reporting it.
- *
- * Refused at boot, because the deployment large enough to hit it is the one
- * least able to see it happening.
+ * The deadline, and the bound that a timeout longer than the claim's lease
+ * would breach — a call still running when another worker claims the same
+ * batch. Refused at boot.
  */
 describe('the model deadline', () => {
   it('takes a whole number of milliseconds, and refuses a typo for one', () => {
-    // Named, because the local stand-in has no deadline to parse: it is in
-    // this process and answers before anybody could time it.
+    // Named: the local stand-in is in-process and has no deadline to parse.
     const named = { INGOT_SUMMARISER: 'openai', ...OPENAI };
 
     expect(summariserSettings(env({ ...named, INGOT_AI_TIMEOUT_MS: '5000' }))).toMatchObject({
@@ -276,18 +246,12 @@ describe('the model deadline', () => {
 });
 
 /**
- * What reads a scanned page, which is the one selector that is off by default.
+ * What reads a scanned page — the one selector off by default, because there is
+ * no cheap approximation of reading a photograph.
  *
- * The matrix differs from the other two in exactly that: an unset embedder is
- * the stand-in and an unset OCR is nothing at all, because there is no cheap
- * approximation of reading a photograph and no deployment should pay per page
- * for a feature it did not ask for.
- *
- * The tessdata directory is the other thing worth asserting. `tesseract.js`
- * fetches its language data from a CDN when it is not given a path, which for
- * this service would be a parse reaching the network on behalf of an uploaded
- * document — so the path is required for the engine that needs it, and the
- * check that the file is actually there happens at boot.
+ * The tessdata directory is required for the offline engine: `tesseract.js`
+ * would otherwise fetch its language data from a CDN, and the file's presence
+ * is checked at boot.
  */
 describe('choosing how a scan is read', () => {
   const TESSDATA = { INGOT_TESSDATA_DIR: '/opt/tessdata' };
@@ -339,13 +303,9 @@ describe('choosing how a scan is read', () => {
   });
 
   /**
-   * The fallback is a *declaration*, and this is the assertion that says so.
-   *
-   * A model and a tessdata directory together mean "model first, Tesseract for
-   * the pages it did not read". The same model with no directory means a page
-   * the model refuses stays blank — which is the honest half of the rule this
-   * file exists for: nobody silently gets something other than what they asked
-   * for, and `ocr` on each chunk says which engine produced it.
+   * The fallback is a declaration: a model with a tessdata directory means
+   * "model first, Tesseract for what it missed"; with no directory a refused
+   * page stays blank. `ocr` on each chunk says which engine produced it.
    */
   it('puts the offline engine behind a model only when the deployment named both', () => {
     expect(ocrSettings(env({ INGOT_OCR: 'openai', ...OPENAI, ...TESSDATA }))).toMatchObject({
@@ -378,11 +338,9 @@ describe('choosing how a scan is read', () => {
   });
 
   /**
-   * A boot that finds no traineddata where it was told to look.
-   *
-   * Checked here rather than left to the first scanned page, because that page
-   * arrives hours later in a worker nobody is watching, and lands as a failed
-   * document for a directory that was wrong the whole time.
+   * A boot that finds no traineddata where it was told to look — checked here
+   * rather than left to the first scanned page, which arrives hours later in a
+   * worker.
    */
   it('refuses to build an engine whose language data is not there', async () => {
     const settings = ocrSettings(env({ INGOT_OCR: 'local', INGOT_TESSDATA_DIR: '/nowhere' }));
@@ -391,11 +349,9 @@ describe('choosing how a scan is read', () => {
 });
 
 /**
- * What comes back from a model, and what is not text at all.
- *
- * A refusal is the case worth the code: "I'm sorry, I can't help with that" is
- * a perfectly good string, and storing it would put an apology in a chunk,
- * embed it, and rank it against every question anybody asks afterwards.
+ * What comes back from a model, and what is not text at all. A refusal is a
+ * valid string, and storing it would embed an apology and rank it against every
+ * question.
  */
 describe('reading what an engine answered about a page', () => {
   it('keeps a transcription, fences and all', () => {

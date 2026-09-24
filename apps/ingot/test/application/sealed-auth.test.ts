@@ -16,18 +16,9 @@ import { TEST_AUTH, TEST_ROOT_KEY, compileAppModule } from '../support/app.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 
 /**
- * Sealed mode, against the real module graph and a real database.
- *
- * The properties worth holding here are the ones that cannot be seen from
- * `auth-settings.test.ts`, which only proves the configuration was read: that
- * the account is opened without anybody asking, that the root key works with
- * nothing in `account_key` to back it, that a key minted afterwards works
- * *too*, and that the root key survives everything the service can be told to
- * do to its credentials.
- *
- * No truncate between assertions. The seed happens once at bootstrap, and a
- * table emptied underneath a running authenticator would be testing a
- * situation the service is not in.
+ * Sealed mode against the real module graph and database: the account is seeded
+ * at boot, the root key works with no `account_key` row, and minted keys work
+ * alongside it.
  */
 describe('sealed mode', () => {
   let app: TestingModule;
@@ -37,8 +28,7 @@ describe('sealed mode', () => {
 
   beforeAll(async () => {
     const { truncate } = await openDatabase();
-    // Before the seed, not between the assertions: this is the empty database
-    // the deployment's first boot meets.
+    // Empty database, seeded once at boot below; never truncated between assertions.
     await truncate();
 
     app = await compileAppModule().compile();
@@ -61,11 +51,7 @@ describe('sealed mode', () => {
       expect(account?.slug.value).toBe(TEST_AUTH.slug);
     });
 
-    /**
-     * The property that makes the chart's two replicas safe. `save` is
-     * attempted again against a slug that now exists, and the unique index
-     * turns the loser of that race into a no-op rather than a crashloop.
-     */
+    // A second seed against an existing slug is a no-op via the unique index.
     it('is idempotent, because every replica runs the same seed', async () => {
       const again = new SealedAuthenticator(
         TEST_AUTH,
@@ -89,17 +75,12 @@ describe('sealed mode', () => {
       expect(principal.account.slug.value).toBe(TEST_AUTH.slug);
     });
 
-    /**
-     * The whole argument for checking a digest held in the process rather than
-     * a row: there is nothing in the table to revoke, to leave behind on a
-     * rotation, or to go stale.
-     */
+    // The root key's digest is held in the process, not in `account_key`.
     it('has no row in account_key backing it', async () => {
       const account = await accounts.findBySlug(TEST_AUTH.slug);
       expect(account?.keys).toEqual([]);
 
-      // And the ordinary digest lookup — the one every minted key goes
-      // through — cannot find it either.
+      // The ordinary digest lookup cannot find it either.
       const lookup = accounts.findByKeyDigest(ApiKey.digestOf(TEST_ROOT_KEY.secret));
       expect(await lookup).toBeNull();
     });
@@ -114,8 +95,7 @@ describe('sealed mode', () => {
     });
 
     it('says the same thing for every kind of failure', async () => {
-      // A caller holding an invalid key has not earned the difference between
-      // "wrong key", "revoked key" and "no such account".
+      // One message for "wrong key", "revoked key" and "no such account" alike.
       const messages = await Promise.all(
         [ApiKey.mint().secret, 'hunter2', `${TEST_ROOT_KEY.secret}x`].map((presented) =>
           authenticator.authenticate(presented).catch((error: Error) => error.message),
@@ -134,23 +114,15 @@ describe('sealed mode', () => {
 
       expect(principal.via).toBe('key');
       expect(principal.account.slug.value).toBe(TEST_AUTH.slug);
-      // Which is the difference that makes one revocable and the other not.
       expect(principal.via === 'key' && principal.keyId.value).toBe(minted.id);
     });
 
-    /**
-     * The reason sealed mode keeps the digest lookup rather than being the
-     * only key: one shared secret across every agent means revoking one means
-     * rotating all of them, and rotating the root key is a restart.
-     */
     it('leave the root key working after they are revoked', async () => {
       const account = await accounts.findBySlug(TEST_AUTH.slug);
       const id = account?.id.value ?? '';
 
       const doomed = await dispatcher.send(new MintKey(id, 'to be revoked'));
-      // A second key, because `Account.revoke` refuses to take the last live
-      // one — an invariant written for a service with no root credential, and
-      // the one thing sealed mode makes stricter than it needs to be.
+      // A second key, because `Account.revoke` refuses to take the last live one.
       await dispatcher.send(new MintKey(id, 'a spare'));
 
       const { RevokeKey } = await import(
@@ -168,7 +140,7 @@ describe('sealed mode', () => {
 
     expect(description).toContain(TEST_AUTH.slug);
     expect(description).toContain(TEST_AUTH.keyPrefix);
-    // And never the secret itself, which is the point of holding a prefix.
+    // Never the secret itself.
     expect(description).not.toContain(TEST_ROOT_KEY.secret);
   });
 });

@@ -1,26 +1,14 @@
-/**
- * What this deployment exports, and to where.
- *
- * Parsed once from the environment and passed down, rather than read at the
- * point of use. Telemetry that reconfigures itself halfway through a process
- * is worse than telemetry that is off — a gap in a graph reads as an outage.
- */
+/** Telemetry export settings, parsed once from the environment. */
 export interface TelemetryConfig {
   /** The `service.name` on every span and the `service` label on every metric. */
   serviceName: string;
-  /** Deployment environment — `production`, `staging`, a developer's laptop. */
+  /** `production`, `staging`, `development`. */
   environment: string;
-  /** This process, so one pod's numbers can be told from another's. */
   instanceId: string;
 
   tracing: {
     enabled: boolean;
-    /**
-     * The OTLP/HTTP collector root — Jaeger's own, or a collector in front of
-     * it. The signal path is appended (`/v1/traces`), which is the convention
-     * every OTLP backend follows and what `OTEL_EXPORTER_OTLP_ENDPOINT` means
-     * in the specification.
-     */
+    /** OTLP/HTTP collector root; the signal path (`/v1/traces`) is appended. */
     endpoint: string;
     /** Fraction of root traces kept, 0 to 1. */
     sampleRatio: number;
@@ -28,21 +16,13 @@ export interface TelemetryConfig {
 
   metrics: {
     enabled: boolean;
-    /** Its own listener, off the product surface. See `metrics-server.ts`. */
+    /** Port for the standalone scrape listener. */
     port: number;
     host: string;
   };
 }
 
-/**
- * Reads the environment, defaulting to "on, pointed at localhost".
- *
- * On by default because the failure mode of the alternative is discovering
- * during an incident that the one service you needed to look at was the one
- * where nobody set the flag. A collector that is not there costs a warning
- * line per export attempt and nothing else — `startTelemetry` makes sure of
- * that — so the default is safe even on a laptop with no Jaeger running.
- */
+/** Reads the config from the environment, defaulting to on and pointed at localhost. */
 export function telemetryConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TelemetryConfig {
   return {
     serviceName: env.OTEL_SERVICE_NAME ?? '@ingot/server',
@@ -61,13 +41,7 @@ export function telemetryConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Te
   };
 }
 
-/**
- * Anything but an explicit `false` is on.
- *
- * The asymmetry is deliberate: a typo in `TRACING_ENABLED` should leave
- * tracing on, because a mistake that silently disables observability is one
- * nobody notices until they need it.
- */
+/** Anything but an explicit `false` or `0` is on. */
 function flag(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
   return value.toLowerCase() !== 'false' && value !== '0';

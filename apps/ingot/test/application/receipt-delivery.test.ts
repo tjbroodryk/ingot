@@ -15,22 +15,7 @@ import { type World, makeWorld } from '../support/world.js';
 
 const ENDPOINT = 'https://example.com/hooks/ingot';
 
-/**
- * A receipt reaches the target its memory nominated, and cannot be lost on the
- * way.
- *
- * The property under test is the outbox, and it is worth naming precisely
- * because both obvious alternatives are silently wrong. Calling a webhook from
- * inside `WriteReceipt`'s transaction announces state a rollback can still take
- * away, and nothing outside Postgres rolls back with it. Calling it after the
- * commit, in process, loses the delivery for good if the process dies in the
- * gap. Neither failure produces an error anybody sees.
- *
- * So the assertions here are all about the *gap between* writing a receipt and
- * sending it: that the row exists in between, that nothing has gone out yet,
- * that a refusal leaves it where it was, and that what eventually goes out says
- * what was true when the receipt landed rather than what is true now.
- */
+/** A receipt reaches its memory's nominated target via the outbox, exactly once. */
 describe('delivering a receipt', () => {
   let world: World;
 
@@ -101,13 +86,7 @@ describe('delivering a receipt', () => {
     await world.close();
   });
 
-  /**
-   * The default, and the one that must stay cheap.
-   *
-   * A memory nobody has configured writes no outbox row at all. Queueing one
-   * and draining it into a log line would be a table that fills as fast as
-   * receipts are written, for every deployment that never asked for delivery.
-   */
+  // A memory with no target writes no outbox row at all.
   it('queues nothing for a memory with no target', async () => {
     const ingot = await world.ingot('an unconfigured memory');
     const batch = await store(ingot, 'quiet');
@@ -132,11 +111,7 @@ describe('delivering a receipt', () => {
     expect((await world.info(ingot)).config).toEqual(config);
   });
 
-  /**
-   * The gap, asserted directly: after the receipt is written the row is in the
-   * outbox and **nothing has gone out**. If a future change ever sends from
-   * inside `WriteReceipt`, `sent` is non-empty here and this fails.
-   */
+  // After the receipt is written the row is in the outbox and nothing has gone out.
   it('announces into the outbox when the receipt is written, and sends afterwards', async () => {
     const ingot = await world.ingot('a delivering memory');
     await world.configureIngot(ingot, {
@@ -155,13 +130,7 @@ describe('delivering a receipt', () => {
     expect(await queued(batch)).toBeNull();
   });
 
-  /**
-   * The body a receiver actually gets.
-   *
-   * `query` is the same SELECT `/add` handed back, which is the whole reason it
-   * is in here: a delivery that named only the batch would be a second contract
-   * for finding the same thing, and the two would drift.
-   */
+  // The delivered `query` is the same SELECT `/add` handed back.
   it('sends the receipt, and the query the caller was already given', async () => {
     const ingot = await world.ingot('a memory that describes itself');
     await world.configureIngot(ingot, {
@@ -198,21 +167,13 @@ describe('delivering a receipt', () => {
     expect(delivery?.payload.summary).toBeTruthy();
     expect(delivery?.payload.searchTerm).toBeTruthy();
 
-    // The same rows the delivery describes are there to be read, by the query
-    // it carries — the delivery is a courtesy over the contract, not instead of
-    // it.
+    // The query it carries reads the rows the delivery describes.
     const rows = await world.sql(ingot, added.receipt?.receiptQuery as string);
     expect(rows).toHaveLength(1);
   });
 
-  /**
-   * The transport is called with the connection given back, and this is what
-   * proves it: an uncommitted claim is invisible to everybody else, so seeing
-   * `claimed_at` set from a second connection means the claim's transaction
-   * genuinely closed before the call. `receipt-transaction.test.ts` makes the
-   * same argument for the model call, and for the same reason — a pool of ten
-   * spent on background work presents as the service failing to answer.
-   */
+  // `claimed_at` visible from a second connection means the claim committed
+  // before the transport was called.
   it('has committed the claim, and let go of the connection, before calling out', async () => {
     const ingot = await world.ingot('a watched delivery');
     await world.configureIngot(ingot, {
@@ -223,15 +184,11 @@ describe('delivering a receipt', () => {
     await world.summariseAll();
     await world.deliverAll();
 
-    // Counted by the claim rather than by the failure handler: a worker killed
-    // by the very delivery it is making never reaches one.
+    // Counted at claim, not in the failure handler.
     expect(observed).toEqual([{ claimed: true, attempts: 1 }]);
   });
 
-  /**
-   * A receiver being down is the ordinary case, not the exception — so it must
-   * cost the attempt, keep the reason, and leave the row exactly where it was.
-   */
+  // A refusal costs the attempt, keeps the reason, and leaves the row in place.
   it('keeps a refused delivery, counts the attempt, and marks the retry', async () => {
     const ingot = await world.ingot('a memory with a flaky receiver');
     await world.configureIngot(ingot, {
@@ -241,13 +198,11 @@ describe('delivering a receipt', () => {
     await world.summariseAll();
 
     refusals = 1;
-    // Two passes: the first is refused and releases the lease, the second is
-    // the retry the sweeper would have made a minute later.
+    // Two passes: the first is refused and releases the lease, the second retries.
     expect(await world.deliverAll()).toBe(2);
 
     expect(sent).toHaveLength(1);
-    // Two, not one: the receiver has seen this batch before and the envelope
-    // has to say so, or at-least-once delivery is unliveable.
+    // The envelope reports attempt 2, since the receiver has seen this batch before.
     expect(sent[0]?.payload.attempt).toBe(2);
     expect(await queued(batch)).toBeNull();
   });
@@ -263,12 +218,11 @@ describe('delivering a receipt', () => {
     refusals = Number.POSITIVE_INFINITY;
     await world.deliverAll();
 
-    // Out of attempts and still on the row, so somebody can go and look — the
-    // gauge that counts these is the only other place it is ever mentioned.
+    // Out of attempts and still on the row.
     const abandoned = await queued(batch);
     expect(abandoned?.attempts).toBeGreaterThan(1);
 
-    // And the receipt itself is untouched. What was lost is the telling.
+    // The receipt itself is untouched; only the delivery was lost.
     const rows = await world.sql(
       ingot,
       `SELECT summary FROM ingot_receipts WHERE source_batch = '${batch}'`,
@@ -276,13 +230,8 @@ describe('delivering a receipt', () => {
     expect(rows).toHaveLength(1);
   });
 
-  /**
-   * The reason the target is copied onto the row rather than read at send time.
-   *
-   * Somebody who moves their endpoint should not have receipts that were
-   * announced under the old one silently redirected to the new one — those were
-   * promised somewhere, and the row is the record of where.
-   */
+  // The target is copied onto the row at announce time, not read at send time,
+  // so moving the endpoint does not redirect already-announced receipts.
   it('does not retarget a delivery that was already announced', async () => {
     const ingot = await world.ingot('a memory that moved');
     await world.configureIngot(ingot, {
@@ -310,8 +259,7 @@ describe('delivering a receipt', () => {
 
     await world.dispatcher.send(new DeleteIngot(ingot, world.accountId));
 
-    // Announcing this would hand a receiver a query that can only come back
-    // empty.
+    // Delivering this would hand a receiver a query that can only come back empty.
     expect(await queued(batch)).toBeNull();
     expect(await world.deliverAll()).toBe(0);
   });
@@ -330,13 +278,8 @@ describe('delivering a receipt', () => {
     expect(world.wakes.slice(before)).toContain(BackgroundKind.Deliveries);
   });
 
-  /**
-   * Refused on the call that names it, not in a worker an hour later.
-   *
-   * The suite configures no broker, so this is the shape a deployment without
-   * RabbitMQ sees — and the message has to name the variable, because the
-   * person making the call is the one who can set it.
-   */
+  // An unconfigured transport is refused at the configure call, naming the var
+  // that would enable it.
   it('refuses a transport this deployment cannot honour', async () => {
     const ingot = await world.ingot('a memory wanting a queue');
 

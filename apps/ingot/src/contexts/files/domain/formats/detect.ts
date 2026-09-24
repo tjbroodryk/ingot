@@ -9,11 +9,7 @@ const OPAQUE = new Set(['application/octet-stream', 'binary/octet-stream', '']);
 /** Enough bytes for every signature below, and for a NUL to show up in. */
 export const SNIFF_BYTES = 4096;
 
-/**
- * Where a claim about the type came from. Named so a refusal can say which of
- * the three was believed — otherwise a caller who set all three has no way to
- * tell which one the service acted on.
- */
+/** Where a claim about the type came from, so a refusal can name which was believed. */
 export enum ClaimSource {
   Override = 'the "mediaType" you sent',
   Header = 'the upload’s Content-Type',
@@ -23,26 +19,9 @@ export enum ClaimSource {
 /**
  * What this upload actually is, or a refusal naming what is allowed.
  *
- * A claim and the bytes are both consulted and **both have to agree**, which is
- * the whole point. A claim alone is a caller telling us which decoder to run; a
- * sniffed shape alone is a guess from four bytes that every OOXML format shares.
- * Together they are a claim that has been checked: a `.pptx` that is really a
- * PDF is refused, and so is a PDF renamed to `.txt`.
- *
- * There are three places a claim can come from, tried in order of how
- * deliberate they are — an explicit `mediaType`, then the part's `Content-Type`,
- * then the filename. **Adding the override changed which source is believed and
- * nothing about the check**, which is the only reason it is safe to offer: a
- * caller who could name a decoder for arbitrary bytes would be exactly the thing
- * the agreement rule exists to prevent.
- *
- * What is never allowed is deciding from the bytes alone: `PK\x03\x04` is a
- * `.pptx`, a `.docx`, a `.xlsx` and a jar, and picking one would be picking a
- * decoder on the caller's behalf.
- *
- * This lives beside the registry rather than beside the enum because it *reads*
- * the registry — every fact it needs is on a handler. The enum stays a leaf so
- * both can import it without a cycle.
+ * A claim and the bytes are both consulted and both must agree. The claim comes
+ * from the override, then the part's `Content-Type`, then the filename. Deciding
+ * from the bytes alone is never allowed: every OOXML format is a zip.
  */
 export function mediaTypeOf(input: {
   /** The caller's explicit `mediaType`, which wins when they gave one. */
@@ -66,14 +45,7 @@ export function mediaTypeOf(input: {
   return claimed.type;
 }
 
-/**
- * The most deliberate claim available.
- *
- * An override beats a header because somebody wrote it for this upload; a header
- * beats an extension because a filename is a label. The extension is last and is
- * only reached when the header says nothing useful — `application/octet-stream`,
- * which is what a great many clients send for everything.
- */
+/** The most deliberate claim available: override, then header, then extension. */
 function claim(input: {
   override?: string | undefined;
   declared: string | undefined;
@@ -82,9 +54,7 @@ function claim(input: {
   const overridden = normalise(input.override);
   if (overridden.length > 0) {
     return {
-      // The same closed set the header is held to. An override is a stronger
-      // signal about *which* format, never permission to name one this service
-      // does not have a handler for.
+      // The same closed set as the header; not permission to name an unknown format.
       type: Guard.oneOf(overridden, Object.values(MediaType), 'mediaType'),
       source: ClaimSource.Override,
     };
@@ -114,14 +84,7 @@ function normalise(value: string | undefined): string {
   return (value ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
-/**
- * What the first bytes say, at the only resolution they honestly support.
- *
- * Text is the absence of a signature rather than the presence of one, so it is
- * the fallback and it is checked negatively: a NUL byte in the first block is
- * something binary that is not a format we know, and there is no text file that
- * legitimately contains one.
- */
+/** What the first bytes say. Text is the absence of a signature, so it is checked negatively. */
 export function shapeOf(head: Buffer): ByteShape {
   if (head.subarray(0, 5).toString('latin1') === '%PDF-') return ByteShape.Pdf;
   // Local file header. The other two zip signatures — an empty archive and a

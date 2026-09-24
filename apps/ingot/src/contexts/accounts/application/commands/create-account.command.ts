@@ -16,14 +16,7 @@ export class CreateAccount extends Command<CreatedAccount> {
   }
 }
 
-/**
- * The one unauthenticated write in the service.
- *
- * It hands back a key, which is the only moment that key exists in a readable
- * form — everything after this point is digests. So the response is the
- * product: a caller who loses it has to mint another, and cannot recover this
- * one.
- */
+/** Creates an account and returns its first key — the only time it is readable. */
 @CommandHandler(CreateAccount)
 export class CreateAccountHandler implements ICommandHandler<CreateAccount> {
   constructor(
@@ -35,10 +28,7 @@ export class CreateAccountHandler implements ICommandHandler<CreateAccount> {
     const now = this.clock.now();
     const account = Account.open({ slug: command.slug, name: command.name, now });
 
-    // Checked here for the message, enforced by a unique index for the race.
-    // Two requests for the same slug in the same instant both pass this and
-    // one of them hits the constraint; the repository turns that into the
-    // same ConflictingState, so the caller sees one answer either way.
+    // Checked here for a clear message; the unique index enforces it against races.
     if (await this.accounts.findBySlug(account.slug.value)) {
       throw new ConflictingState(`The account slug "${account.slug.value}" is taken`);
     }

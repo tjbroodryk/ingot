@@ -7,26 +7,9 @@ import type {
   QueryResult,
 } from '@ingot/shared/ingot-v1';
 
-/**
- * The browser's half of the Ingot API.
- *
- * Types come from `@ingot/shared/ingot-v1` — the same contract the service
- * compiles against — imported as types only. The package is CommonJS and would
- * not survive a bundle, but nothing here needs a value from it: every one of
- * these is an interface, erased before webpack sees the file.
- *
- * There is no interceptor, no retry and no client-side cache. A dashboard
- * where one person runs one query at a time does not need them, and each would
- * be a place for a failure to be hidden rather than shown.
- */
+/** The browser's half of the Ingot API. Types are imported type-only from `@ingot/shared/ingot-v1`. */
 
-/**
- * Where the service is.
- *
- * `NEXT_PUBLIC_` because this is a static export: the value is inlined at
- * build time, which is the only way a page with no server can know it. The
- * default is the port `apps/ingot` listens on locally.
- */
+/** Where the service is. Inlined at build time (`NEXT_PUBLIC_`); defaults to the local Ingot port. */
 export const INGOT_URL = process.env.NEXT_PUBLIC_INGOT_URL ?? 'http://localhost:3002';
 
 /** What the sign-in form collects, and the whole of a session. */
@@ -37,13 +20,7 @@ export interface Credentials {
   readonly key: string;
 }
 
-/**
- * A refused request, with the status kept.
- *
- * The status is what decides whether the session is over: a 401 or a 403 means
- * the key will not work again, and the gate should reopen rather than the page
- * showing an error box the user can do nothing about.
- */
+/** A refused request, with the status kept. */
 export class IngotError extends Error {
   constructor(
     readonly status: number,
@@ -59,7 +36,7 @@ export class IngotError extends Error {
   }
 }
 
-/** Confirms the key works *and* that it is for this account. Both matter. */
+/** Confirms the key works and that it is for this account. */
 export function fetchAccount(credentials: Credentials): Promise<AccountDetail> {
   return call<AccountDetail>(credentials, `/api/v1/accounts/${enc(credentials.account)}`);
 }
@@ -68,26 +45,12 @@ export function listMemories(credentials: Credentials): Promise<readonly IngotSu
   return call<readonly IngotSummary[]>(credentials, `/api/v1/${enc(credentials.account)}/ingots`);
 }
 
-/**
- * The information schema for one memory.
- *
- * Fetched so the console can show what there is to query. Somebody typing SQL
- * against a memory they did not fill has no other way to learn the table names,
- * and guessing them is how you spend a minute reading a "table does not exist"
- * that is really "you spelled it differently".
- */
+/** The information schema for one memory, so the console can show what there is to query. */
 export function fetchInfo(credentials: Credentials, ingotId: string): Promise<IngotInfo> {
   return call<IngotInfo>(credentials, `/api/v1/${enc(credentials.account)}/${enc(ingotId)}/info`);
 }
 
-/**
- * One SELECT against one memory.
- *
- * `ingotId` and not a name: `:ingot` resolves through `IngotId.of`, so the
- * segment is the `ing_…` the memory was created with. The picker shows the
- * name and sends the id, which is the only place that difference should ever
- * have to be thought about.
- */
+/** One SELECT against one memory. `ingotId` is the `ing_…` id, not a name. */
 export function runQuery(
   credentials: Credentials,
   ingotId: string,
@@ -101,13 +64,7 @@ export function runQuery(
   );
 }
 
-/**
- * One document, as multipart, exactly as `/file` wants it.
- *
- * The `body` part is the options JSON and is left off entirely when there are
- * none — an empty part would be a second thing the endpoint has to read as
- * "nothing", and the interceptor counts fields.
- */
+/** One document, as multipart, exactly as `/file` wants it. The `body` part is omitted when empty. */
 export function uploadFile(
   credentials: Credentials,
   ingotId: string,
@@ -133,18 +90,14 @@ async function call<T>(credentials: Credentials, path: string, init: RequestInit
       ...init,
       headers: {
         accept: 'application/json',
-        // Not for a `FormData` body. The boundary is part of the header and
-        // only the browser knows it, so setting the type here would send a
-        // multipart body multer cannot find the parts in.
+        // Not for a `FormData` body: the browser sets the multipart boundary itself.
         ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
         authorization: `Bearer ${credentials.key}`,
         ...init.headers,
       },
     });
   } catch {
-    // A network-level failure has no status, and the browser will not say why
-    // — a CORS refusal and an unreachable host are the same `TypeError` here.
-    // Naming both is more use than repeating "failed to fetch".
+    // A network failure has no status: CORS refusal and unreachable host are the same `TypeError`.
     throw new IngotError(
       0,
       `Could not reach ${INGOT_URL}. Is it running, and does it allow this origin?`,
@@ -156,13 +109,7 @@ async function call<T>(credentials: Credentials, path: string, init: RequestInit
   return (await response.json()) as T;
 }
 
-/**
- * The service's own words, where it gave any.
- *
- * `DomainExceptionFilter` answers `{ statusCode, error, message }`, and that
- * message is written to be read — "more than one statement" is worth showing
- * verbatim where "422 Unprocessable Entity" is not.
- */
+/** The service's own error message, where it gave one. */
 async function messageOf(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { message?: unknown };

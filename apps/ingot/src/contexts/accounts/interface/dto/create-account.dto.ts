@@ -1,12 +1,7 @@
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class CreateAccountDto {
-  /**
-   * Checked here and again in `AccountSlug`. The pipe rejects the shape so the
-   * caller gets a field-level error; the value object rejects the meaning —
-   * reserved words — because that is a rule about this service rather than
-   * about the string.
-   */
+  // Shape checked here; `AccountSlug` also rejects reserved words.
   @IsString()
   @MinLength(2)
   @MaxLength(48)

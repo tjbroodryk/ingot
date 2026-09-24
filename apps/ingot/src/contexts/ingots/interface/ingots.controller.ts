@@ -18,12 +18,8 @@ import { ConfigureTableDto } from './dto/configure-table.dto.js';
 import { CreateIngotDto } from './dto/create-ingot.dto.js';
 
 /**
- * The memory itself: casting one, describing it, destroying it.
- *
- * Literal segments are declared before the parameterised ones. Express matches
- * in registration order, so `@Get('ingots')` after `@Get(':ingot/info')` would
- * be unreachable — a listing request would be read as a request for an ingot
- * called "ingots".
+ * The memory itself: casting one, describing it, destroying it. Literal route
+ * segments are declared before parameterised ones (Express matches in order).
  */
 @Controller({ path: ':account', version: '1' })
 export class IngotsController {
@@ -44,13 +40,7 @@ export class IngotsController {
     return this.dispatcher.ask(new ListIngots(account.id.value));
   }
 
-  /**
-   * What a model reads before it writes SQL.
-   *
-   * Answered entirely from Postgres — no bucket read, no DuckDB session — so
-   * asking what the columns are costs one indexed query rather than a round
-   * trip to object storage.
-   */
+  /** What a model reads before it writes SQL. Answered from Postgres, no bucket read. */
   @Get(':ingot/info')
   @AccountScope()
   @Wire({ returns: WireShape.IngotInfo })
@@ -58,19 +48,7 @@ export class IngotsController {
     return this.dispatcher.ask(new GetIngotInfo(ingot, account.id.value, account.slug.value));
   }
 
-  /**
-   * Where this memory's receipts are delivered.
-   *
-   * Declared before `:ingot/config/:table`, because Express matches in
-   * registration order and the two differ only by a trailing segment — the
-   * more specific one is unreachable if the shorter pattern could also match.
-   * It cannot here (one segment against two), but the ordering is the habit
-   * that keeps it true when somebody adds `:ingot/config/:table/:column`.
-   *
-   * A patch, like the table config beside it: sending one setting leaves the
-   * rest alone, and the whole config comes back. Turning delivery off is
-   * `{ "delivery": { "t": "none" } }` and not an omission.
-   */
+  /** Where this memory's receipts are delivered. A patch; the whole config comes back. */
   @Post(':ingot/config')
   @AccountScope()
   @Wire({ accepts: WireShape.ConfigureIngotBody, returns: WireShape.IngotConfig })
@@ -83,13 +61,7 @@ export class IngotsController {
     return this.dispatcher.send(new ConfigureIngot(ingot, account.id.value, body));
   }
 
-  /**
-   * How a table is read, not what is in it.
-   *
-   * A patch, so sending one setting leaves the rest alone, and the whole
-   * config comes back — a caller who changed one field of seven otherwise has
-   * no way to see the other six. `/info` reports the same for every table.
-   */
+  /** How a table is read, not what is in it. A patch; the whole config comes back. */
   @Post(':ingot/config/:table')
   @AccountScope()
   @Wire({ accepts: WireShape.ConfigureTableBody, returns: WireShape.TableConfig })

@@ -7,20 +7,8 @@ import {
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * The promise `receipt: "summary"` makes, kept end to end.
- *
- * The claim under test is not "an LLM was called" — the suite runs the offline
- * summariser and asserting on its prose would be asserting on a stand-in. It
- * is the loop the feature exists for: an `/add` hands back a query, a
- * background pass fills it in, and running that query later finds what was
- * stored. Everything in between — the queue, the `ingot_receipts` table, three
- * embeddings, the roll-up into Parquet — is machinery that only matters if
- * that loop closes.
- *
- * The receipt is deliberately an ordinary table, so the interesting assertions
- * are the ones that prove it really is ordinary: `/query` reads it, semantic
- * search ranks it, a roll-up does not change the answer, and no caller can
- * write to it.
+ * `receipt: "summary"` end to end: `/add` hands back a query, a background pass
+ * fills it in, and the receipt is an ordinary table nobody else can write to.
  */
 describe('a receipt', () => {
   let world: World;
@@ -36,8 +24,7 @@ describe('a receipt', () => {
     },
     rows: '$.files[*]',
     receipt: ReceiptKind.Full,
-    // The caller's own handle — a tool call id here, which is what an agent
-    // framework holds when it later wants to swap this receipt in.
+    // The caller's own handle, echoed back on the receipt.
     externalId: `call_${pr}`,
     result: {
       pull_request: { number: pr },
@@ -51,9 +38,8 @@ describe('a receipt', () => {
 
   beforeEach(async () => {
     ingot = await world.ingot('a memory that summarises');
-    // One world across the file, and both queues are service-wide rather than
-    // per-memory. Draining what earlier tests left keeps the counts below
-    // about this test's own writes.
+    // Both queues are service-wide; drain what earlier tests left so the counts
+    // below cover only this test's writes.
     await world.summariseAll();
     await world.embedAll();
   });
@@ -67,20 +53,16 @@ describe('a receipt', () => {
     const receipt = added.receipt;
     if (!receipt) throw new Error('no receipt');
 
-    // Null here, and structurally so: a model is a network away and `/add`
-    // returns the instant the rows are queryable. Whether it landed is a
-    // question only a later read can answer.
+    // Null: `/add` returns as soon as the rows are queryable, before the model runs.
     expect(receipt.summary).toBeNull();
     expect(receipt.searchTerm).toBeNull();
     expect(receipt.status).toBe(ReceiptStatus.Pending);
     expect(receipt.receiptQuery).toContain(RECEIPT_TABLE);
 
-    // The compact half a caller splices over a bulky tool output is filled in
-    // from the start — only the model-written fields have to wait.
+    // Non-model fields are filled from the start; only the model-written ones wait.
     expect(receipt.externalId).toBe('call_42');
     expect(receipt.totalResults).toBe(1);
-    // Named so a caller waiting on this can tell "not configured" from "not
-    // run yet" without reading anybody's logs.
+    // Named up front, so "not configured" reads differently from "not run yet".
     expect(receipt.model).toBe('extractive-v1');
   });
 
@@ -90,8 +72,7 @@ describe('a receipt', () => {
       receipt: ReceiptKind.Schema,
     });
 
-    // `schema` costs a read; `full` costs a model. A caller who asked for the
-    // first must not be charged for the second, and `status` is what says so.
+    // `schema` costs a read, `full` a model; asking for the first does not run the second.
     expect(added.receipt?.status).toBe(ReceiptStatus.None);
     expect(added.receipt?.receiptQuery).toBeNull();
     expect(added.receipt?.model).toBeNull();
@@ -101,8 +82,7 @@ describe('a receipt', () => {
     const added = await world.add(ingot, mapping(42, 'src/engine.ts'));
     const query = added.receipt?.receiptQuery as string;
 
-    // Nothing yet: the work is queued, not done. `ingot_receipts` does not even
-    // exist until the first receipt is written.
+    // Queued, not done; `ingot_receipts` does not exist until the first receipt is written.
     await expect(world.sql(ingot, query)).rejects.toThrow();
 
     expect(await world.summariseAll()).toBe(1);
@@ -117,8 +97,7 @@ describe('a receipt', () => {
 
   it('does no work for a write that did not ask for one', async () => {
     await world.add(ingot, { ...mapping(7, 'src/a.ts'), receipt: ReceiptKind.Schema });
-    // The cost of a receipt is an LLM call, so it is opt-in all the way down —
-    // not queued and quietly skipped, but never queued at all.
+    // Never queued at all, not queued and skipped.
     expect(await world.summariseAll()).toBe(0);
   });
 
@@ -126,8 +105,7 @@ describe('a receipt', () => {
     await world.add(ingot, mapping(42, 'src/engine.ts'));
     await world.summariseAll();
 
-    // One receipt row, three embedded columns on it. The source table has no
-    // embedded column at all, so every one of these belongs to the receipt.
+    // Three embedded columns, all on the receipt; the source table has none.
     expect(await world.embedAll()).toBe(3);
   });
 
@@ -144,8 +122,6 @@ describe('a receipt', () => {
       limit: 5,
     });
 
-    // The point of generating a search term: a question ranks against a
-    // predicted question rather than against a JSON blob.
     expect(found.rows.length).toBe(2);
   });
 
@@ -155,18 +131,14 @@ describe('a receipt', () => {
     await world.summariseAll();
 
     const before = await world.sql(ingot, query);
-    // The whole justification for two tiers is that this changes nothing. A
-    // receipt that only reads correctly out of the overlay would be a receipt
-    // that expires quietly, which is worse than one that never worked.
+    // A roll-up must not change the answer.
     await world.compact(ingot, RECEIPT_TABLE);
     expect(await world.sql(ingot, query)).toEqual(before);
   });
 
   it('cannot be written to by a caller', async () => {
-    // `ingot_receipts` is an ordinary table — that is the design, and it is
-    // also why a caller's mapping could otherwise write to it and have a
-    // receipt hand back a summary somebody else wrote. `SqlName.table` refuses
-    // the prefix; `SqlName.systemTable` is reachable from exactly one place.
+    // `SqlName.table` refuses the `ingot_` prefix; only `SqlName.systemTable`
+    // bypasses it.
     await expect(
       world.add(ingot, {
         table: RECEIPT_TABLE,
@@ -177,8 +149,7 @@ describe('a receipt', () => {
   });
 
   it('reserves the whole ingot_ namespace, not just the names in use', async () => {
-    // Reserving only what exists today would make the next service-owned
-    // table a breaking change for whoever had already taken its name.
+    // The whole `ingot_` prefix is reserved, not only the names in use.
     await expect(
       world.add(ingot, {
         table: 'ingot_anything',
@@ -187,8 +158,7 @@ describe('a receipt', () => {
       }),
     ).rejects.toThrow(/ingot_/);
 
-    // Columns are untouched by it: `ingot_id` is an ordinary thing to want,
-    // and the namespace only ever needed protecting among tables.
+    // Columns are untouched: the prefix is reserved only among table names.
     const added = await world.add(ingot, {
       table: 'notes',
       columns: { ingot_id: { from: '$.text', type: ColumnType.Varchar } },

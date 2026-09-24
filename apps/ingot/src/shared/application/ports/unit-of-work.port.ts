@@ -1,10 +1,6 @@
 /**
- * Runs work inside one database transaction.
- *
- * A port because the application layer has a legitimate need to say "these
- * writes land together or not at all" without knowing that the answer involves
- * Postgres. `Dispatcher` wraps every command in one, so a command handler gets
- * atomicity by existing rather than by remembering to ask for it.
+ * Runs work inside one database transaction, without the application layer
+ * knowing it is Postgres. `Dispatcher` wraps every command in one.
  */
 export interface UnitOfWork {
   /**
@@ -14,12 +10,8 @@ export interface UnitOfWork {
   run<T>(work: () => Promise<T>): Promise<T>;
 
   /**
-   * Defers a side effect until after the transaction commits — or runs it now
-   * if there is no transaction open.
-   *
-   * Anything that leaves the process belongs here. A push delivered from
-   * inside a transaction is a claim about state that may still be rolled back,
-   * and nothing outside the database will roll back with it.
+   * Defers a side effect until after commit, or runs it now if no transaction
+   * is open. Anything that leaves the process belongs here.
    */
   afterCommit(effect: () => Promise<void> | void): void;
 }

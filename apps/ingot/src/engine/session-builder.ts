@@ -9,18 +9,8 @@ import { OBJECT_STORE, type ObjectStore } from '../storage/object-store.port.js'
 import type { MaterialisableTable, RowVector } from './analytical-engine.port.js';
 
 /**
- * Assembles what a session needs from the two tiers.
- *
- * Sits below the contexts rather than inside one because three callers want
- * exactly the same assembly and must not diverge: a query, a delete resolving
- * its predicate, and a roll-up. If compaction built its view of a table even
- * slightly differently from the query path, "the same query returns the same
- * answer either side of a roll-up" would stop being true — and that property
- * is the whole justification for having two tiers at all.
- *
- * It talks only to ports, which is what keeps it honest about layering: it
- * knows there is a manifest, an overlay and an object store, and nothing about
- * how any of them is implemented.
+ * Assembles what a session needs from the two tiers. Below the contexts, since
+ * query, delete and roll-up must build a table identically. Talks only to ports.
  */
 @Injectable()
 export class SessionBuilder {
@@ -31,13 +21,10 @@ export class SessionBuilder {
   ) {}
 
   /**
-   * One table, as of now.
-   *
-   * `throughSeq` pins the overlay to a watermark. A query leaves it open and
-   * gets everything; a compaction pins it, so that rows arriving while the
-   * Parquet is being written are neither included in the file nor deleted
-   * afterwards. `null` is the compaction that had no rows to fold in and is
-   * running only to apply deletes — it wants nothing from the overlay.
+   * One table, as of now. `throughSeq` pins the overlay to a watermark: unset
+   * takes everything (query), a value pins it so rows arriving mid-write are
+   * neither folded in nor deleted (compaction), `null` wants no overlay rows
+   * (delete-only compaction).
    */
   async materialisable(
     table: IngotTable,
@@ -57,9 +44,7 @@ export class SessionBuilder {
     for (const entry of embedded) {
       const vectors = await this.overlay.readVectors(table.id.value, entry.column);
       for (const vector of vectors) {
-        // A vector of the wrong width is one the embedder produced before the
-        // model changed. Dropping it silently would mix two vector spaces in
-        // one ranking, which reads as "search got worse" and nothing else.
+        // Skip vectors of the wrong width (produced before a model change); mixing widths corrupts ranking.
         if (vector.vector.length !== entry.dimensions) continue;
         overlayVectors.push({ rowId: vector.rowId, column: entry.column, vector: vector.vector });
       }

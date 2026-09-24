@@ -19,29 +19,17 @@ const BATCH = 1000;
 const PAGE = 1000;
 
 /**
- * The base tier in an S3-compatible bucket — AWS, MinIO, R2, Ceph.
- *
- * The SDK is used only for the things DuckDB cannot do: heads, deletes and
- * listings. Reads and writes of Parquet go through DuckDB directly, which is
- * why `session()` exists — it installs a secret in the connection so that
- * `read_parquet('s3://…')` resolves without the bytes ever passing through
- * this process.
- *
- * `CREATE SECRET` rather than the older `SET s3_access_key_id`: the setting
- * form is global to the instance and survives into whatever runs next, and
- * this service runs untrusted SQL on those instances.
+ * The base tier in an S3-compatible bucket (AWS, MinIO, R2, Ceph). The SDK
+ * handles only what DuckDB can't (heads, deletes, listings); Parquet reads and
+ * writes go through DuckDB via the secret `session` installs. `CREATE SECRET`,
+ * not `SET s3_access_key_id`, which is instance-global and would survive into
+ * untrusted SQL.
  */
 @Injectable()
 export class S3ObjectStore implements ObjectStore {
   private readonly client: S3Client;
 
-  /**
-   * `page` is the protocol's own default and production never changes it. It
-   * is a parameter because `removePrefix` deleting only the first page is the
-   * exact failure that leaves a destroyed ingot's data in a bucket, and proving
-   * the loop covers every page is otherwise a test that has to write a thousand
-   * objects first.
-   */
+  /** The listing page size; the protocol default, overridable to exercise pagination. */
   constructor(
     private readonly settings: S3Settings,
     private readonly page = PAGE,
@@ -80,14 +68,13 @@ export class S3ObjectStore implements ObjectStore {
   }
 
   async beginWrite(key: string): Promise<PendingWrite> {
-    // DuckDB writes S3 objects itself, through the same secret `session`
-    // installed, so the target is the object and there is nothing to publish.
+    // DuckDB writes S3 objects itself via the secret `session` installs, so the
+    // target is the object and there's nothing to publish.
     return {
       target: this.uri(key),
       commit: async () => {},
-      // A `COPY … TO` that threw may still have completed a multipart upload.
-      // Nothing references it — a generation is read only once the manifest
-      // names it — but nothing would ever collect it either.
+      // A `COPY … TO` that threw may have finished a multipart upload; remove it
+      // so nothing is left behind.
       discard: async () => {
         await this.remove([key]).catch(() => {});
       },
@@ -109,10 +96,8 @@ export class S3ObjectStore implements ObjectStore {
       );
       if (!object.Body) throw new Error(`Object "${key}" came back with no body`);
 
-      // `transformToByteArray` rather than streaming into the parser, because
-      // every decoder here wants a whole buffer: a zip is read from its central
-      // directory at the end, and a PDF from its trailer. The size cap at
-      // upload is what makes holding one in memory a bounded decision.
+      // `transformToByteArray`, not streaming: decoders want a whole buffer (zip
+      // central directory, PDF trailer), and the upload size cap bounds it.
       return Buffer.from(await object.Body.transformToByteArray());
     });
   }
@@ -147,8 +132,7 @@ export class S3ObjectStore implements ObjectStore {
   }
 
   async removePrefix(prefix: string): Promise<void> {
-    // The trailing slash is load bearing: `removePrefix('a/b')` must not take
-    // `a/bc`, and an ingot id is a prefix of another one by luck alone.
+    // Trailing slash is load-bearing: `removePrefix('a/b')` must not take `a/bc`.
     let cursor: string | undefined;
     do {
       const page = await upstream('s3', 'list_objects', () =>

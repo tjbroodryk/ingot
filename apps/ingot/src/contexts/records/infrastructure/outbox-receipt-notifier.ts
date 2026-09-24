@@ -6,26 +6,8 @@ import type { ReceiptNotifier, ReceiptReady } from '../application/ports/receipt
 
 /**
  * Writes the intention to deliver, in the transaction that wrote the receipt.
- *
- * Two decisions worth stating, because both are about what happens when
- * somebody changes their mind halfway through.
- *
- * **The target is resolved here, and stored on the row.** A memory whose
- * endpoint is changed while a delivery is queued should not have that delivery
- * silently retargeted at the new one: the row records where it was going when
- * the promise was made. It also means the worker never has to load an
- * aggregate, which is what keeps it three short transactions.
- *
- * **The payload is rendered here too**, rather than rebuilt when the delivery
- * goes out. Rebuilding would mean re-reading rows a tombstone or a roll-up may
- * have moved since, and a delivery should say what was true when the receipt
- * landed — not what is true whenever a receiver happens to come back up.
- *
- * A memory with no delivery configured enqueues nothing at all. That is the
- * default and the overwhelming majority: the receipt's own SELECT is the
- * contract, and writing an outbox row for a target that is `none` would be a
- * queue that fills up as fast as receipts are written and drains into a log
- * line.
+ * Target and payload are resolved and stored here, so an in-flight delivery is
+ * not retargeted. A memory with no delivery configured enqueues nothing.
  */
 @Injectable()
 export class OutboxReceiptNotifier implements ReceiptNotifier {
@@ -39,10 +21,8 @@ export class OutboxReceiptNotifier implements ReceiptNotifier {
   async ready(receipt: ReceiptReady): Promise<void> {
     const ingot = await this.ingots.findById(IngotId.of(receipt.ingotId));
 
-    // Null is not reachable through `/add` — the receipt was queued against a
-    // memory that existed — but a memory destroyed between the queue and the
-    // summariser is. Nothing to deliver to and nothing to complain about: the
-    // receipt row is going the same way.
+    // A memory destroyed between the queue and the summariser: nothing to
+    // deliver to, and the receipt row is going the same way.
     if (!ingot?.delivery.configured) {
       this.logger.debug(
         `Receipt ready for ${receipt.batch} on "${receipt.sourceTable}" ` +
@@ -62,12 +42,9 @@ export class OutboxReceiptNotifier implements ReceiptNotifier {
 }
 
 /**
- * The receipt as a receiver sees it.
- *
- * `attempt` is 1 here and rewritten by the worker on the way out, because it is
- * the one field that is a property of the *delivery* rather than of the receipt
- * — a receiver reading it wants to know whether this is a redelivery, and the
- * row cannot know that until it is claimed.
+ * The receipt as a receiver sees it. `attempt` is 1 here and rewritten by the
+ * worker on the way out, since whether this is a redelivery is a property of the
+ * delivery, not the receipt.
  */
 function bodyOf(receipt: ReceiptReady): DeliveredReceipt {
   return {

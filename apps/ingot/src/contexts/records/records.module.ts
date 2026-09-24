@@ -30,29 +30,19 @@ import { RecordsController } from './interface/records.controller.js';
 
 /**
  * The write path, plus the three background workers that finish what it queued.
- *
- * The workers are services rather than commands on purpose: each is three
- * short transactions with a call to somebody else between them, and a command
- * is one transaction. `ReceiptWorker`, `EmbedWorker` and `DeliveryWorker` say
- * why at length; the short version is that `Dispatcher.send` would otherwise
- * hold a pooled connection for the length of an HTTP round trip.
- *
- * The three form a chain, and each link is a queue rather than a call: `/add`
- * queues a receipt, `ReceiptWorker` writes it and announces it into the outbox,
- * `DeliveryWorker` sends it. Every hand-off is a row committed with the work
- * that produced it, so nothing between them can be lost by a process dying.
+ * The workers are services, not commands: each is short transactions with a
+ * network call between, which a single command's transaction cannot hold. They
+ * chain through queues: `/add` → receipt → outbox → delivery.
  */
 @Module({
   imports: [IngotsModule],
   controllers: [RecordsController],
   providers: [
     AddRecordsHandler,
-    // `/add` wakes this on commit rather than leaving the work to be found on
-    // the next tick — see `background.ts`.
+    // `/add` wakes this on commit rather than leaving it for the sweep.
     BackgroundWork,
     // How many drains of one kind may run at once. A binding rather than a
-    // default parameter: Nest reads `design:paramtypes` and would refuse to
-    // resolve a fourth argument it had never been given.
+    // default parameter, which Nest would refuse to resolve.
     {
       provide: BACKGROUND_CONCURRENCY,
       inject: [ConfigService],
@@ -62,9 +52,8 @@ import { RecordsController } from './interface/records.controller.js';
         return bounds;
       },
     },
-    // The seam `WriteReceipt` wakes delivery through. A token rather than
-    // `BackgroundWork` itself, because importing that from a command the
-    // receipt worker dispatches would close an import cycle — the port says so.
+    // The seam `WriteReceipt` wakes delivery through. A token, not
+    // `BackgroundWork` itself, to avoid an import cycle — see the port.
     { provide: DELIVERY_TRIGGER, useExisting: BackgroundWork },
     DeleteRecordsHandler,
     CompactTableHandler,
@@ -79,10 +68,8 @@ import { RecordsController } from './interface/records.controller.js';
     FailReceiptHandler,
     ReceiptWorker,
 
-    // The outbox itself is bound in `OverlayModule` with the other queue
-    // tables, because `ingots/` empties it when a memory is destroyed and
-    // binding it here would make the two contexts import each other. These are
-    // the things that drain it.
+    // The outbox is bound in `OverlayModule` with the other queue tables, since
+    // `ingots/` empties it when a memory is destroyed. These drain it.
     ClaimDeliveryHandler,
     CompleteDeliveryHandler,
     FailDeliveryHandler,
@@ -90,24 +77,15 @@ import { RecordsController } from './interface/records.controller.js';
 
     ReceiptBuilder,
     OutboxReceiptNotifier,
-    // The seam `WriteReceipt` calls, bound to the thing that writes a row
-    // rather than the thing that makes a call — see the port for why those
-    // cannot be the same object.
+    // The seam `WriteReceipt` calls, bound to the thing that writes a row rather
+    // than the thing that makes a call — see the port.
     { provide: RECEIPT_NOTIFIER, useExisting: OutboxReceiptNotifier },
   ],
   exports: [RECEIPT_NOTIFIER, ReceiptWorker, EmbedWorker, DeliveryWorker, BackgroundWork],
 })
 export class RecordsModule {}
 
-/**
- * One line at boot saying how much of somebody else's service this deployment
- * is willing to use at once.
- *
- * Worth saying out loud, and worth saying *per replica*: the number that
- * reaches a provider is this times however many pods are running, and the
- * autoscaler moves that on CPU. An operator reading one pod's log should not
- * have to work that out from the chart.
- */
+/** Logs the per-kind drain concurrency at boot. */
 function announce(bounds: Record<BackgroundKind, number>): void {
   const said = Object.entries(bounds)
     .map(([kind, limit]) => `${kind} ${limit}`)

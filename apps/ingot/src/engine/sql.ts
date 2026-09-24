@@ -1,19 +1,10 @@
 /**
- * Building SQL by hand, safely.
- *
- * Nothing in this file is a substitute for the two boundaries that actually
- * hold: `SqlName` restricts table and column names to `[a-z_][a-z0-9_]*` at
- * the edge, and the query session refuses anything that is not a single
- * SELECT. These are the third layer, and they exist because the first two
- * protect the *caller's* SQL — the SQL this service generates around it is
- * built here, and a manifest is not a trusted input just because we wrote it.
+ * Hand-built SQL, safely. A third layer under `SqlName` (name restriction) and
+ * the single-SELECT gate, for the SQL this service generates: a manifest we
+ * wrote is still not trusted input.
  */
 
-/**
- * `at` is a DuckDB keyword and callers pick column names, so every identifier
- * this service emits is quoted. Embedded quotes are doubled, which is what
- * makes the quoting a boundary rather than a decoration.
- */
+/** Quotes an identifier, doubling embedded quotes; callers pick column names and some (`at`) are keywords. */
 export function ident(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }

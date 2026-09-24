@@ -2,44 +2,26 @@ import { DeliveryKind } from '@ingot/shared/ingot-v1';
 import { tooLongForLease } from '../shared/claim-lease.js';
 
 /**
- * What a deployment decides about delivery, as opposed to what a caller does.
- *
- * The split is the point, and it is a security boundary as much as a
- * configuration one. A memory's owner chooses *where among their own things* a
- * receipt goes — an endpoint, a queue name. The operator chooses what this
- * service is willing to connect to at all: which broker, how long to wait, how
- * many times to try. A tenant naming a broker URL would be a tenant choosing
- * where this service opens an authenticated connection.
- *
- * A pure function over a reader, like `ai-settings.ts`, so the whole matrix is
- * asserted in a unit test rather than by booting the service once per shape.
+ * Delivery configuration, as opposed to what a caller chooses per memory. The
+ * split is a security boundary: a caller names where among their own things a
+ * receipt goes, not which broker this service connects to.
  */
 export interface DeliverySettings {
   /**
-   * The AMQP broker, or null when none is configured.
-   *
-   * Null is not an error. A deployment that only ever delivers by webhook has
-   * no reason to run RabbitMQ, and one that has not configured a broker refuses
-   * `{"t":"rmq"}` at the point somebody asks for it — with a message naming
-   * this variable — rather than accepting the configuration and failing every
-   * delivery afterwards.
+   * The AMQP broker, or null when none is configured. Null is not an error;
+   * `{"t":"rmq"}` is refused when asked for, naming this variable.
    */
   readonly brokerUrl: string | null;
   /**
    * The AMQP exchange to publish through. Empty is the default exchange, which
-   * routes a message to the queue named by the routing key — which is exactly
-   * what a per-memory queue name is. A deployment that wants its own topology
-   * points this at an exchange and binds the queues itself.
+   * routes by the routing key (the per-memory queue name).
    */
   readonly exchange: string;
   /** A webhook that has not answered in this long is not going to. */
   readonly timeoutMs: number;
   /** How many times one delivery is attempted before it is left alone. */
   readonly maxAttempts: number;
-  /**
-   * Sent as `User-Agent` on every webhook, so a receiver can tell what is
-   * calling it without reading its own reverse proxy logs.
-   */
+  /** Sent as `User-Agent` on every webhook. */
   readonly userAgent: string;
 }
 
@@ -47,14 +29,8 @@ export interface DeliverySettings {
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
 /**
- * How many times one delivery is attempted before it is left alone.
- *
- * Higher than a receipt's four, and for a different reason. A receipt that
- * fails four times is usually a body a model will not summarise — the failure
- * repeats exactly, and trying harder is spending money on the same refusal. A
- * delivery that fails is usually somebody else's service being down, which is a
- * thing that ends. Ten attempts across ten sweeps is roughly ten minutes of
- * somebody else's outage absorbed without anybody being told about it.
+ * How many times one delivery is attempted before it is left alone. Higher than
+ * a receipt's four, since a delivery usually fails on a receiver being briefly down.
  */
 export const DEFAULT_DELIVERY_ATTEMPTS = 10;
 
@@ -66,7 +42,7 @@ export const DELIVERY_SETTINGS = Symbol('DeliverySettings');
 /** Reads one environment variable. `ConfigService.get` is one of these. */
 export type Setting = (key: string) => string | undefined;
 
-/** A deployment that asked for a transport it cannot reach. */
+/** A transport asked for that cannot be reached. */
 export class DeliveryMisconfigured extends Error {
   constructor(message: string) {
     super(message);
@@ -85,13 +61,8 @@ export function deliverySettings(read: Setting): DeliverySettings {
 }
 
 /**
- * Whether a deployment can deliver by a given strategy at all.
- *
- * Asked when a memory is configured, not when a delivery goes out. A caller who
- * names a transport this deployment has not been given is told so on the call
- * that names it, which is the only moment they can do anything about it —
- * accepting the configuration and failing every delivery afterwards would put
- * the answer in a log nobody reading `/info` can see.
+ * Whether a strategy is deliverable at all. Asked when a memory is configured,
+ * so a caller learns on the call that names it rather than in a later log.
  */
 export function unavailable(settings: DeliverySettings, kind: DeliveryKind): string | null {
   if (kind === DeliveryKind.Rmq && settings.brokerUrl === null) {
@@ -101,11 +72,8 @@ export function unavailable(settings: DeliverySettings, kind: DeliveryKind): str
 }
 
 /**
- * The broker URL, checked for the one thing worth checking here.
- *
- * A scheme, so that a value pasted without one — `rabbitmq:5672`, which `URL`
- * happily parses as a `rabbitmq:` scheme with no host — is refused at boot
- * rather than at the first publish.
+ * The broker URL, checked for a scheme so `rabbitmq:5672` (which `URL` parses as
+ * a scheme with no host) is refused at boot rather than at the first publish.
  */
 function broker(raw: string | undefined): string | null {
   if (raw === undefined) return null;
@@ -129,13 +97,8 @@ function tryUrl(raw: string): URL | null {
 }
 
 /**
- * The webhook deadline, bounded above by the lease a delivery is claimed under.
- *
- * A delivery still in flight when its lease lapses is one a second replica may
- * claim and send as well — which turns at-least-once into reliably-twice, for
- * every receiver, and only shows up once there are enough replicas to make the
- * second claim likely. Refused at boot rather than left as a comment, because
- * the deployment that would hit it is the one least able to see it happening.
+ * The webhook deadline, bounded above by the claim lease: a delivery still in
+ * flight when its lease lapses could be claimed and sent again. Refused at boot.
  */
 function deadline(read: Setting): number {
   const timeoutMs = positive(read, 'INGOT_DELIVERY_TIMEOUT_MS', DEFAULT_DELIVERY_TIMEOUT_MS);
@@ -156,7 +119,7 @@ function positive(read: Setting, key: string, fallback: number): number {
   return parsed;
 }
 
-/** An empty variable is an unset one — a deployment template left blank. */
+/** An empty variable is unset. */
 function value(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   return trimmed === undefined || trimmed === '' ? undefined : trimmed;

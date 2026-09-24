@@ -1,23 +1,4 @@
-/**
- * The Ingot HTTP surface, as a document.
- *
- * Written down rather than generated, and that is a decision with a shelf
- * life. `apps/api` serves a `GET /api/v1/docs` assembled off the running
- * container, so its reference cannot describe a route that is not there;
- * `apps/ingot` has no such route yet, and half of what a reader needs here —
- * the quickstart, why a POST reads rather than writes, which of two spellings
- * of a delete is the one intermediaries keep — is prose no builder produces.
- *
- * So: this file is the copy, and it stays the copy. When ingot grows the
- * reference endpoint, the *inventory* — method, path, auth, status — comes
- * from there and these entries keep the prose, the same way `@Doc` sits beside
- * the discovered route rather than repeating it. Until then
- * `test/reference.test.ts` is what stops the two drifting.
- *
- * Every sample below is checked against `@ingot/shared/ingot-v1` and the DTOs
- * under `apps/ingot/src/contexts/`. A reference that invents a field name is
- * worse than no reference, because it is believed.
- */
+/** The Ingot HTTP surface, as a document. Samples are checked against `@ingot/shared/ingot-v1`. */
 
 /** How a route is reached. `All` is MCP, which is JSON-RPC over one path. */
 export enum HttpMethod {
@@ -27,7 +8,7 @@ export enum HttpMethod {
   All = 'ALL',
 }
 
-/** Whether a key is needed. Three routes say `Open`, and they are the reason. */
+/** Whether a key is needed. */
 export enum Auth {
   Open = 'open',
   Key = 'key',
@@ -42,7 +23,7 @@ export enum EndpointGroup {
   Mcp = 'mcp',
 }
 
-/** A sample sits on stock, or is set into ink where it is somebody's config. */
+/** How a sample is styled: plain, or inked where it is config. */
 export enum SampleTone {
   Paper = 'paper',
   Ink = 'ink',
@@ -142,10 +123,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
   },
 
   // ── accounts ────────────────────────────────────────────────────────────
-  // There is no route that creates one. A deployment's accounts are decided by
-  // `INGOT_AUTH` at boot — sealed mode opens the one in `INGOT_ACCOUNT` and
-  // that is the whole set — so the credential you start with is the one the
-  // operator configured, not one this API hands out.
+  // No route creates an account: the set is fixed at boot by `INGOT_AUTH`.
   {
     id: 'account-detail',
     group: EndpointGroup.Accounts,

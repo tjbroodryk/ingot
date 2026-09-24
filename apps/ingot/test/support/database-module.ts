@@ -3,11 +3,8 @@ import { DATABASE, DATABASE_POOL, DATABASE_URL } from '../../src/database/databa
 import type { TestDatabase } from './database.js';
 
 /**
- * `DatabaseModule` bound to the suite's pool, and deliberately not closing it.
- *
- * The real one drains on shutdown, which is correct in a pod and wrong here —
- * one test file compiling a module would end the pool every other file is
- * still using.
+ * `DatabaseModule` bound to the suite's pool, without closing it: one test file
+ * compiling a module must not end the pool the others still use.
  */
 @Global()
 @Module({})

@@ -12,19 +12,11 @@ import {
 import { ApiKey, KEY_PREFIX } from '../../src/contexts/accounts/domain/index.js';
 
 /**
- * How a deployment says who may call it, and which configurations it is
- * refused.
+ * How a deployment says who may call it, and which configurations it is refused.
+ * No fallback: a wrong auth mode would let the wrong people read the memories.
  *
- * The same argument as `storage.test.ts` and `ai-settings.test.ts`, applied to
- * the one setting where a quiet fallback would be worst. A bucket that falls
- * back loses data; a model that falls back makes search lexical; an
- * authentication mode that fell back would let the wrong people read the
- * memories. So there is no fallback, and this is what refusal looks like.
- *
- * Pure throughout: settings are parsed from a reader, so the whole matrix is
- * covered without a boot, a database or a request. The one impure corner —
- * `<NAME>_FILE` — gets a real temporary file, because the thing worth
- * asserting about it is that it reads one.
+ * Pure: settings are parsed from a reader. The one impure corner, `<NAME>_FILE`,
+ * gets a real temporary file.
  */
 
 /** An environment, as `ConfigService.get` would present it. */
@@ -41,8 +33,6 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 describe('the mode selector', () => {
   it('refuses to guess when INGOT_AUTH is unset', () => {
     expect(() => authSettings(env({}))).toThrow(AuthMisconfigured);
-    // The message has to say what to do, because the person reading it is
-    // holding a service that will not start.
     expect(() => authSettings(env({}))).toThrow(/INGOT_AUTH is not set/);
     expect(() => authSettings(env({}))).toThrow(/sealed/);
   });
@@ -83,9 +73,8 @@ describe('sealed', () => {
   });
 
   /**
-   * The property the whole file exists for: the secret goes in and does not
-   * come out. Everything downstream of the parser holds a digest, so a settings
-   * object that leaked into a log or an error would leak nothing usable.
+   * The secret goes in and does not come out: everything downstream holds a
+   * digest, so a leaked settings object leaks nothing usable.
    */
   it('keeps no usable copy of the secret', () => {
     const settings = authSettings(
@@ -98,8 +87,7 @@ describe('sealed', () => {
 
   it('names every missing variable at once', () => {
     const read = env({ INGOT_AUTH: 'sealed' });
-    // One restart, not three: an operator filling in a template should learn
-    // the whole of what is left.
+    // All missing named at once, so one restart tells the whole of what's left.
     expect(() => authSettings(read)).toThrow(/INGOT_ACCOUNT, INGOT_API_KEY/);
     expect(() => authSettings(read)).toThrow(/Missing: INGOT_ACCOUNT, INGOT_API_KEY/);
   });
@@ -115,8 +103,7 @@ describe('sealed', () => {
     const read = env({
       INGOT_AUTH: 'sealed',
       INGOT_ACCOUNT: 'acme',
-      // Shaped like ours and long enough for `looksLikeOurs`, which is the
-      // request-path question. As a root credential it is a placeholder.
+      // Shaped like ours, but as a root credential it is a placeholder.
       INGOT_API_KEY: `${KEY_PREFIX}changeme`,
     });
     expect(() => authSettings(read)).toThrow(/will not accept a root credential shorter/);
@@ -124,9 +111,7 @@ describe('sealed', () => {
 
   it('refuses an account slug that would shadow this service’s own routes', () => {
     const read = env({ INGOT_AUTH: 'sealed', INGOT_ACCOUNT: 'accounts', INGOT_API_KEY: KEY });
-    // `/accounts/…` is key management. An account called `accounts` would sit
-    // in front of it, and finding that out at the seed would be a confusing
-    // insert error rather than a variable to fix.
+    // `/accounts/…` is key management; an account named `accounts` would shadow it.
     expect(() => authSettings(read)).toThrow(/INGOT_ACCOUNT is "accounts"/);
     expect(() => authSettings(read)).toThrow(/reserved/);
   });
@@ -145,8 +130,7 @@ describe('sealed', () => {
 describe('reading a secret from a file', () => {
   it('takes <NAME>_FILE when the variable itself is unset', () => {
     const path = join(scratch, 'key');
-    // With the trailing newline every editor and every `echo` leaves behind,
-    // because a key that only works without one is a key that never works.
+    // With the trailing newline an editor or `echo` leaves behind.
     writeFileSync(path, `${KEY}\n`);
 
     const settings = authSettings(
@@ -184,9 +168,8 @@ describe('reading a secret from a file', () => {
         INGOT_API_KEY_FILE: join(scratch, 'not-here'),
       }),
     );
-    // A missing mount that read as "no key configured" would produce the
-    // "INGOT_API_KEY is required" message, which sends the operator to fix
-    // the wrong thing.
+    // A missing file read as "no key configured" would send someone to fix the
+    // wrong thing.
     expect(() => authSettings(read)).toThrow(/INGOT_API_KEY_FILE points at/);
   });
 

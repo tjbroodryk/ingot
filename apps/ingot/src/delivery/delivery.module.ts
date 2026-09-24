@@ -10,17 +10,10 @@ import { RoutingTransport } from './routing-transport.js';
 import { WebhookTransport } from './webhook-transport.js';
 
 /**
- * How this deployment delivers a receipt, and a line at boot saying so.
- *
- * Global for the reason `AiModule` is: two contexts need it and they are not
- * the same one. `records/` sends the deliveries, and `ingots/` needs the
- * settings to refuse a strategy this deployment cannot honour at the moment
- * somebody configures it — rather than accepting it and failing every delivery
- * afterwards, in a worker, to nobody who can see the answer.
- *
- * Unlike `AiModule`, a missing transport is not a refusal to boot. There is no
- * silent-wrong-answer here to protect against: a deployment with no broker
- * simply cannot be configured for one, and it is told at the call that tries.
+ * How receipts are delivered, logged at boot. Global because `records/` sends
+ * deliveries and `ingots/` needs the settings to refuse an unavailable strategy
+ * at configure time. A missing transport is not fatal: it's refused at the call
+ * that tries.
  */
 @Global()
 @Module({
@@ -34,9 +27,7 @@ import { WebhookTransport } from './webhook-transport.js';
         return settings;
       },
     },
-    // The real thing, bound once. A port rather than a module import so that
-    // `RmqTransport`'s bookkeeping — one declaration per queue per connection,
-    // dropped when the connection is — can be asserted without a broker.
+    // The real connect, bound once; a port rather than a module import.
     { provide: AMQP_CONNECT, useValue: amqp.connect as AmqpConnect },
     WebhookTransport,
     RmqTransport,

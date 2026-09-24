@@ -17,14 +17,7 @@ export class CreateIngot extends Command<IngotSummary> {
   }
 }
 
-/**
- * Casting an ingot creates nothing but a row.
- *
- * No tables, no bucket prefix, no Parquet. A memory's shape is decided by what
- * is put into it, and the first `/add` naming a table is what brings that table
- * into existence — so an ingot that is never written to costs one row and
- * nothing else.
- */
+/** Creates the ingot row only; tables come into being on first write. */
 @CommandHandler(CreateIngot)
 export class CreateIngotHandler implements ICommandHandler<CreateIngot> {
   constructor(

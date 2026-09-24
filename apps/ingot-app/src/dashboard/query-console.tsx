@@ -4,16 +4,7 @@ import { FileUpload } from './file-upload';
 import { type Credentials, IngotError, fetchInfo, listMemories, runQuery } from './ingot-api';
 import { ResultGrid } from './result-grid';
 
-/**
- * Pick a memory, write one SELECT, look at what comes back.
- *
- * The console does not parse the SQL and does not try to help beyond listing
- * the tables. Everything that decides whether a statement runs — one statement,
- * SELECT only, no `ATTACH` — is decided in the sandbox in `apps/ingot`, and a
- * second opinion in the browser would be a rule that disagrees with the real
- * one the first time either changes. What the box does is send it and show the
- * answer, error included, in the service's own words.
- */
+/** Pick a memory, write one SELECT, look at what comes back. Validation is the service's; the box just sends and shows the answer. */
 export function QueryConsole({
   credentials,
   onCredentialsRejected,
@@ -33,12 +24,7 @@ export function QueryConsole({
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * One place decides what a failure means.
-   *
-   * A 401 or a 403 is not an error to show — it is the session being over, and
-   * the only useful thing to do with it is reopen the gate.
-   */
+  /** One place decides what a failure means. A 401/403 ends the session and reopens the gate. */
   const report = useCallback(
     (cause: unknown): void => {
       if (cause instanceof IngotError && cause.isCredentialProblem) {
@@ -51,10 +37,7 @@ export function QueryConsole({
     [onCredentialsRejected],
   );
 
-  // Re-read on `landed` as well, for the table and row counts in the picker:
-  // a document that landed is rows this list is now wrong about, and a picker
-  // saying "0 tables" about the memory you just filled is the kind of small
-  // lie that makes somebody doubt the upload rather than the label.
+  // Re-read on `landed` too: the picker's table and row counts change when an upload lands.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on `landed`, which is the point.
   useEffect(() => {
     let live = true;
@@ -67,17 +50,13 @@ export function QueryConsole({
       })
       .catch(report);
 
-    // A reply that lands after the component is gone — or after a sign-out —
-    // must not write into state that belongs to the next session.
+    // Don't write state after unmount or sign-out.
     return () => {
       live = false;
     };
   }, [credentials, landed, report]);
 
-  // `landed` is a trigger and not a value this reads — an upload finishing is
-  // the schema having changed, and re-reading it is the only way to find out
-  // how. The `live` guard is what keeps the reply it starts from landing on a
-  // memory the user has since switched away from.
+  // `landed` is a trigger, not a value read here: re-read the schema when an upload changes it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-read on `landed`, which is the point.
   useEffect(() => {
     if (!selected) return;
@@ -94,8 +73,7 @@ export function QueryConsole({
     };
   }, [credentials, selected, landed, report]);
 
-  // Both are passed to `FileUpload`, which polls on a timer keyed on them. A
-  // new function identity per render would restart that timer per render.
+  // Stable identities: `FileUpload` keys a poll timer on them.
   const onLanded = useCallback(() => setLanded((count) => count + 1), []);
   const onQuery = useCallback((statement: string) => setSql(statement), []);
 
@@ -124,10 +102,7 @@ export function QueryConsole({
             className="input"
             value={selected ?? ''}
             onChange={(event) => {
-              // Cleared here rather than in the effect that reads it: another
-              // memory's tables are wrong to show, but the same memory's are
-              // only stale — and blanking them on every re-read would make the
-              // strip flicker each time an upload lands.
+              // Clear here, not in the effect: blanking on every re-read would flicker the strip.
               setInfo(null);
               setSelected(event.target.value || null);
             }}
@@ -173,8 +148,7 @@ export function QueryConsole({
           value={sql}
           onChange={(event) => setSql(event.target.value)}
           onKeyDown={(event) => {
-            // The convention every SQL console has. Enter alone is a newline,
-            // because a statement worth running is usually more than one line.
+            // Cmd/Ctrl+Enter runs; Enter alone is a newline.
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
               event.preventDefault();
               void run();
@@ -238,13 +212,7 @@ function Status({
   );
 }
 
-/**
- * What there is to query.
- *
- * A table name is a button rather than a label: the first thing anybody does
- * with a console is `SELECT * FROM something LIMIT 100`, and typing a name
- * exactly right is the only part of that with a wrong answer.
- */
+/** What there is to query. A table name is a button that writes a `SELECT * … LIMIT 100`. */
 function Schema({
   info,
   onPick,

@@ -26,7 +26,7 @@ export function toKeyWire(key: AccountKeyRecord): AccountKey {
   };
 }
 
-/** The one shape carrying a usable secret. Nothing else may produce it. */
+/** The one wire shape carrying a usable secret. */
 export function toMintedKey(key: AccountKeyRecord, secret: string): MintedKey {
   return { ...toKeyWire(key), secret };
 }

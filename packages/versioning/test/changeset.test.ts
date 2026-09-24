@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { Changeset, MalformedChangeset, UnknownVersion, type Release } from '../src/index.js';
 
-/**
- * The engine, against changes written for the test.
- *
- * Both services ship a changeset with a single baseline release and nothing to
- * transform, which is the right thing for a service with no external callers
- * yet — and it means the shipped transforms are all identity. So the machinery
- * is proved here instead, with fixture releases that do real work in both
- * directions. Otherwise the first time anyone found out whether the chain
- * composes correctly would be the first time it mattered.
- */
+/** The engine, against fixture releases that transform in both directions. */
 
 /** v1 → v2 renames `rows` to `each`; v2 → v3 nests a count. */
 const RELEASES: readonly Release[] = [
@@ -103,8 +94,7 @@ describe('the shape of a changeset', () => {
 describe('serving the newest version', () => {
   it('transforms nothing, and does not even copy', () => {
     const body = { table: 'files', each: '$.files[*]' };
-    // Identity by reference: the overwhelmingly common request should cost
-    // nothing at all, and asserting the reference is how that stays true.
+    // Identity by reference: the current version must not copy.
     expect(changeset.forward('AddBody', body, '2026-03-01')).toBe(body);
     expect(changeset.backward('AddBody', body, '2026-03-01')).toBe(body);
     expect(changeset.isCurrent('2026-03-01')).toBe(true);
@@ -148,8 +138,7 @@ describe('a response to an old caller', () => {
   });
 
   it('undoes two changes to one shape in the reverse of the order they were applied', () => {
-    // Both AddBody changes are on the way down; applying them in declaration
-    // order would undo the wrong one first and leave `rows` unset.
+    // Both AddBody changes are on the way down; declaration order would undo the wrong one first.
     const current = { table: 'files', each: '$.a[*]', keepRaw: true };
     expect(changeset.backward('AddBody', current, '2026-01-01')).toEqual({
       table: 'files',
@@ -161,9 +150,7 @@ describe('a response to an old caller', () => {
 
 describe('the round trip', () => {
   it('returns a caller exactly the shape they sent', () => {
-    // The property that matters most: whatever a caller writes, migrating it up
-    // and rendering it back down is the identity. A pair of transforms that
-    // does not satisfy this is a version that silently rewrites requests.
+    // Up then back down is the identity, for every version.
     for (const version of changeset.versions) {
       const original = { table: 'files', rows: '$.files[*]', raw: true };
       const asWritten =
@@ -194,9 +181,7 @@ describe('a changeset that is wrong', () => {
   });
 
   it('refuses releases listed out of order', () => {
-    // Lexicographic order is chronological order for this format, and the
-    // chains are built by comparing — a list out of order serves wrong shapes
-    // rather than failing, so it has to fail here.
+    // Out of order would serve wrong shapes rather than fail, so it must fail here.
     expect(
       bad([
         ok,
@@ -211,8 +196,7 @@ describe('a changeset that is wrong', () => {
   });
 
   it('refuses a baseline that claims to change something', () => {
-    // Nothing is older, so its transforms could never run — which means
-    // somebody has described a change against the wrong release.
+    // Nothing is older, so its transforms could never run.
     expect(
       bad([
         {

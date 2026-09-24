@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
-// The landing page's layout, used rather than restated, the way `/why` uses
-// it: this page is the same shape of document — a hero and ruled bands.
+// The landing page's layout, reused: same shape of document.
 import '../landing/landing.css';
 import './benchmarks.css';
 import { Prose } from '../docs/prose';
@@ -35,20 +34,7 @@ export const benchmarksMetadata: Metadata = {
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 
-/**
- * What an agent gets back out, measured.
- *
- * Everything numeric on this page comes from `results.json`, which
- * `packages/bench` writes from a real run. There is no path by which a figure
- * here can be typed by hand, which is the only reason a page like this is
- * worth publishing at all — a benchmark whose numbers cannot be traced to a
- * seed, a model and a date is an advertisement.
- *
- * Until a run has been published the page says so and shows the method
- * instead. That is deliberate: an empty state is honest, and placeholder
- * numbers on a page about measurement would be the worst thing this site could
- * ship.
- */
+/** What an agent gets back out, measured. Numbers come from `results.json`; the empty state shows the method when no run is published. */
 export function BenchmarksPage(): ReactNode {
   const { run, categories, adapters } = BENCHMARK;
 
@@ -67,13 +53,6 @@ export function BenchmarksPage(): ReactNode {
         <section className="hero">
           <div className="hero-badge label">
             <span className="badge">The measurement</span>
-            {/*
-              The workload is linked from the hero because it is the first
-              thing that decides whether the table below applies to anybody's
-              own problem. A reader whose corpus is prose documents should find
-              out that this one is tool-call JSON before they read a number,
-              not three sections after it.
-            */}
             <a href="#corpus">What it is asked about</a>
             <a href="#method">How this is scored</a>
           </div>
@@ -164,12 +143,7 @@ export function BenchmarksPage(): ReactNode {
         <section className="landblock" id="method">
           <div className="landhead">
             <span className="label label-sm kicker">[ What is compared ]</span>
-            {/*
-              "Columns" rather than "memories", because two of them are not
-              memories: `raw-context` answers from the prompt and is a
-              reference point. The heading counting the columns and the section
-              listing that many cells is the agreement that matters.
-            */}
+            {/* "Columns" not "memories": `raw-context` answers from the prompt and is a reference point. */}
             <h2 className="landtitle">
               {countWord(ADAPTERS.length)} columns,
               <br />
@@ -210,13 +184,7 @@ export function BenchmarksPage(): ReactNode {
           <div className="steps">
             {LIMITS.map((limit) => (
               <div className="step" key={limit.title}>
-                {/*
-                  `.step-num` rather than a heading, so these read as the
-                  method section's cells do. That class sets the treatment —
-                  mono, letterspaced, accent — and not the casing, which is
-                  why the adapter names are upper-cased at their call site and
-                  a sentence like this one is not.
-                */}
+                {/* `.step-num`, not a heading, so these read as the method section's cells. */}
                 <div className="step-num">{limit.title}</div>
                 <p>{limit.body}</p>
               </div>
@@ -289,8 +257,7 @@ function Provenance(): ReactNode {
     ['tool-call budget', String(run.maxToolCalls)],
     ['ingot column mapping', mappingWriter(run.mapping)],
     ['questions', String(run.questions)],
-    // Kept when the run stamp went, because how old a benchmark is changes
-    // what it is worth — a table with no date is a table nobody can age.
+    // Only when the run stamped a date.
     ...(BENCHMARK.generatedAt
       ? ([['published', BENCHMARK.generatedAt.slice(0, 10)]] as [string, string][])
       : []),
@@ -315,28 +282,12 @@ function Provenance(): ReactNode {
   );
 }
 
-/**
- * The workload, shown rather than characterised.
- *
- * Every figure and every sample here comes out of `results.json` the same way
- * the accuracies do — `packages/bench` rebuilds the corpus from the run's seed
- * at publish time, so what a card shows is the payload that adapter actually
- * ingested, down to the bytes. A hand-written "roughly five hundred records of
- * engineering data" would be a description of the fixture; this is the fixture.
- *
- * The sample matters more than the counts. "Tool results" is an abstraction a
- * reader has to take on trust, and one record of real JSON with a nested array
- * of file paths in it settles what kind of thing is being remembered in less
- * time than a paragraph does.
- */
+/** The workload, shown rather than characterised: figures and samples come from `results.json`. */
 function CorpusShape(): ReactNode {
   const { corpus, run } = BENCHMARK;
   const count = (value: number): string => value.toLocaleString('en-GB');
 
-  // Described by the catalogue, in the order the agent met them. With no
-  // published run there are no numbers to attach, and the section falls back
-  // to saying what the harness will collect — the same rule the adapter
-  // blurbs follow.
+  // Catalogue order; with no run, fall back to the blurbs with no numbers attached.
   const entries = corpus
     ? corpus.sources.map((source) => ({
         source,
@@ -344,10 +295,7 @@ function CorpusShape(): ReactNode {
       }))
     : SOURCE_BLURBS.map((blurb) => ({ source: null, blurb }));
 
-  // What the whole thing weighs in the window, measured rather than estimated:
-  // `raw-context` puts the corpus in the prompt, so its input-token count is
-  // the corpus in tokens plus a question. A characters-to-tokens ratio would
-  // be this page guessing at the one number it can simply read.
+  // `raw-context` puts the whole corpus in the prompt, so its token count is the corpus in tokens.
   const rawContext = BENCHMARK.adapters.find((adapter) => adapter.name === 'raw-context');
 
   return (
@@ -377,11 +325,7 @@ function CorpusShape(): ReactNode {
         </div>
       ) : null}
 
-      {/*
-        Between the totals and the samples, because it is the fact that makes
-        the samples mean something: six payloads that describe themselves and
-        nothing else, joined only by values that happen to match.
-      */}
+      {/* The joins: payloads connected only by values that happen to match. */}
       <div className="bench-joins">
         <div className="bench-rule label label-sm">
           <span>What joins them</span>
@@ -480,23 +424,13 @@ function Tiles(): ReactNode {
   );
 }
 
-/**
- * Overall accuracy as a ranked bar list.
- *
- * A bar you can compare by length beats a column of percentages you have to
- * compare by reading, and ranking makes the order the reading order. The
- * control keeps its own group: `raw-context` placed fourth in a race it was
- * not running is the wrong reading, and a flush list invites exactly that.
- */
+/** Overall accuracy as a ranked bar list, controls kept in their own group. */
 function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
   const byScore = (a: PublishedAdapter, b: PublishedAdapter): number => b.accuracy - a.accuracy;
   const memories = adapters.filter((a) => !CONTROL_NAMES.has(a.name)).sort(byScore);
   const controls = adapters.filter((a) => CONTROL_NAMES.has(a.name)).sort(byScore);
 
-  // Context bars are scaled against the heaviest adapter in the run, controls
-  // included: the point of putting the two side by side is that `raw-context`
-  // reading the whole corpus is the thing the retrieval columns are cheaper
-  // than, and a scale that excluded it would hide that.
+  // Context bars scaled against the heaviest adapter, controls included.
   const peak = Math.max(...adapters.map((adapter) => adapter.contextTokens), 1);
 
   const row = (adapter: PublishedAdapter, muted: boolean): ReactNode => (
@@ -524,13 +458,7 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
 
   return (
     <div className="bench-ranked">
-      {/*
-        Accuracy and cost on one row, because the interesting reading of this
-        benchmark is the pair. An adapter that answers well by pulling eighty
-        thousand tokens through the model has not solved the problem the same
-        way as one that answers well on four thousand, and two separate tables
-        make a reader hold one in their head while looking at the other.
-      */}
+      {/* Accuracy and cost on one row: the pair is the interesting reading. */}
       <div className="bench-rank bench-rank-head label label-sm">
         <span>Overall accuracy</span>
         <span />
@@ -551,19 +479,7 @@ function RankedAccuracy({ adapters }: { adapters: readonly PublishedAdapter[] })
   );
 }
 
-/**
- * A column header that carries its own definition.
- *
- * The categories are what the matrix means — "absence 0%" says nothing until
- * you know absence is the class whose answer is defined by what is missing —
- * and that belongs next to the number rather than in a section further down
- * the page, which a reader has already scrolled past by the time they need it.
- *
- * CSS-only, because this site is a static export and a tooltip is not worth
- * shipping a runtime for. `tabIndex` and `aria-describedby` are what keep it
- * reachable without a mouse: the icon takes focus, and the description is
- * announced rather than merely drawn.
- */
+/** A column header that carries its own definition, as a CSS-only tooltip. */
 function CategoryHead({ category, end }: { category: string; end: boolean }): ReactNode {
   const blurb = CATEGORIES.find((entry) => entry.name === category)?.blurb;
   if (!blurb) return <>{category}</>;
@@ -572,11 +488,7 @@ function CategoryHead({ category, end }: { category: string; end: boolean }): Re
   return (
     <span className="bench-th">
       {category}
-      {/*
-        A button rather than a span with `tabindex`: this is a focusable
-        affordance, and the element that already means that gets keyboard
-        behaviour and the right role without being told.
-      */}
+      {/* A button, so it is focusable with the right role by default. */}
       <button type="button" className="bench-info" aria-describedby={id}>
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -592,21 +504,7 @@ function CategoryHead({ category, end }: { category: string; end: boolean }): Re
   );
 }
 
-/**
- * Per-category accuracy as a heat matrix.
- *
- * A real table, because it is tabular data and a screen reader should get row
- * and column headers — but spaced and filled so the eye reads it as a grid of
- * blocks rather than a wall of numerals. The number is centred and set large
- * because at this size the *fill* is the first read and the digits are the
- * confirmation.
- *
- * Intensity is one hue getting darker, never a red-to-green ramp: it encodes
- * the value, which is a fact, where a good/bad palette would encode a verdict
- * these error bars cannot support. Zero is drawn as an outline rather than the
- * palest fill, so "none of them" cannot be mistaken for "a few", and `—` — a
- * question never asked — stays visually distinct from both.
- */
+/** Per-category accuracy as a heat matrix: one hue darkening with the value, zero as an outline, `—` for a question never asked. */
 function HeatMatrix({
   categories,
   adapters,
@@ -635,8 +533,7 @@ function HeatMatrix({
           </td>
         );
       }
-      // The flip point is where the fill stops being light enough to carry
-      // dark text. Below it the cell is pale and the ink stays dark.
+      // Above this the fill is dark enough to need light text.
       const dark = value >= 0.55;
       return (
         <td
@@ -667,9 +564,7 @@ function HeatMatrix({
               <th scope="col" key={category}>
                 <CategoryHead
                   category={category}
-                  // The last two open leftward. The scroll container clips at
-                  // its own edge, and a tooltip centred on the final column
-                  // would open into that clip.
+                  // Last two open leftward, clear of the scroll container's clip.
                   end={index >= categories.length - 2}
                 />
               </th>
@@ -688,11 +583,7 @@ function HeatMatrix({
         </tbody>
         {controls.length > 0 ? (
           <tbody className="bench-matrix-ctl">
-            {/*
-              A spacer row rather than a border on the tbody: under
-              `border-collapse: separate` only cells paint borders, so a rule
-              on the group would simply not appear.
-            */}
+            {/* A spacer row, not a tbody border: with `border-collapse: separate` only cells paint borders. */}
             <tr className="bench-matrix-gap">
               <td colSpan={categories.length + 1} />
             </tr>
@@ -709,19 +600,7 @@ function HeatMatrix({
   );
 }
 
-/**
- * Runs that never happened, named beside the numbers they dragged down.
- *
- * A provider throwing is scored as a wrong answer — a memory that could not be
- * asked did not answer — and that is the right call for the accuracy column.
- * It is the wrong thing to leave unsaid, because "this adapter did badly" and
- * "a fifth of this adapter's runs died on a rate limit" are different readings
- * of the same figure, and only the first one is about retrieval.
- *
- * Rendered as a warning rather than a table column: it is almost always zero
- * for every row, and a column of noughts would earn its width about once a
- * year while making the table harder to read the rest of the time.
- */
+/** Runs that never happened (provider threw), named beside the numbers they dragged down. A warning rather than a column, since it is almost always zero. */
 function Failures({ adapters }: { adapters: readonly PublishedAdapter[] }): ReactNode {
   const hit = adapters.filter((adapter) => adapter.failures > 0);
   if (hit.length === 0) return null;

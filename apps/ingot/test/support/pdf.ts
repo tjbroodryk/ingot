@@ -1,32 +1,21 @@
 import { zlibSync } from 'fflate';
 
 /**
- * Building the PDFs the parser tests read.
+ * Builds the PDFs the parser tests read.
  *
- * Written out rather than checked in, for the reason the Office fixtures are: a
- * binary in the repository is opaque, so a reviewer cannot tell whether a
- * failing assertion is the parser's fault or the fixture's. Here it also keeps
- * the suite honest about *what* is being asserted — the text below is visible
- * in the same file as the expectation about it.
- *
- * These are real PDFs, structurally: a catalogue, a page tree, and one
- * uncompressed content stream per page drawing text with `Tj`. `pdfjs` reads
- * them through exactly the code path it reads a Word export through. What they
- * are not is *representative* — a real producer emits compressed streams,
- * subsetted fonts and a text layer whose runs arrive in drawing order rather
- * than reading order. That gap is covered by having run this parser against
- * PDFs from real software; it is not something a fixture can close.
+ * Written out rather than checked in, so a reviewer can see what they contain.
+ * Real PDFs structurally — a catalogue, a page tree, one uncompressed content
+ * stream per page drawing text with `Tj` — read through the same `pdfjs` path a
+ * Word export takes.
  */
 
 /** One page, as lines of text drawn down the page. */
 export type Page = readonly string[];
 
 /**
- * A PDF with one content stream per page.
- *
- * The cross-reference table is the fiddly part and the reason this is a builder
- * rather than a template: every object's byte offset has to be recorded, so the
- * file has to be assembled before the table describing it can be written.
+ * A PDF with one content stream per page. The cross-reference table records
+ * every object's byte offset, so the file is assembled before the table is
+ * written — hence a builder rather than a template.
  */
 export function pdf(pages: readonly Page[], options: { title?: string } = {}): Buffer {
   const objects: string[] = [];
@@ -48,8 +37,7 @@ export function pdf(pages: readonly Page[], options: { title?: string } = {}): B
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
       `/Resources << /Font << /F1 3 0 R >> >> /Contents ${streamId} 0 R >>`;
 
-    // `Td` moves down the page between lines, which is what makes `pdfjs`
-    // report `hasEOL` and therefore what puts the newlines back.
+    // `Td` moves down the page between lines, which makes `pdfjs` report `hasEOL`.
     const drawn = lines
       .map((line, index) => `${index === 0 ? '' : 'T* '}(${escape(line)}) Tj`)
       .join('\n');
@@ -73,10 +61,8 @@ export function notReallyAPdf(): Buffer {
 
 /**
  * Lays the objects out and writes the cross-reference table over the result.
- *
- * `xref` is a table of byte offsets, so it can only be written once every
- * object has been placed — which is why this is a second pass rather than part
- * of building them.
+ * `xref` is a table of byte offsets, so it is a second pass once every object
+ * is placed.
  */
 function assemble(objects: readonly string[], infoId: number | null): Buffer {
   let file = '%PDF-1.7\n';
@@ -96,8 +82,7 @@ function assemble(objects: readonly string[], infoId: number | null): Buffer {
   file += `xref\n0 ${count}\n0000000000 65535 f \n`;
   for (let id = 1; id < count; id++) {
     const at = offsets[id];
-    // A free entry for a slot nothing was written into, which keeps the table's
-    // row count honest against the `/Size` below.
+    // A free entry for an unwritten slot, keeping the row count honest against `/Size`.
     file += at === undefined ? '0000000000 65535 f \n' : `${pad(at)} 00000 n \n`;
   }
 
@@ -117,10 +102,7 @@ function escape(text: string): string {
 
 /**
  * A page that is a photograph rather than text: one image, drawn to fill it.
- *
- * What a scanner, a photocopier and "print to PDF from a screenshot" all
- * produce, and the shape the OCR path exists for. `pdfjs` finds no text on one
- * of these, which is the whole point.
+ * `pdfjs` finds no text on one of these, which is what the OCR path is for.
  */
 export interface Scan {
   readonly width: number;
@@ -130,27 +112,15 @@ export interface Scan {
 /** One sheet: lines of text, or a scanned image. */
 export type Sheet = Page | Scan;
 
-/**
- * A PDF with no text layer at all — every page a scan.
- *
- * Structurally the inverse of `pdf` above: a content stream that paints an
- * image XObject rather than running `Tj`.
- */
+/** A PDF with no text layer — every page a scan (an image XObject, no `Tj`). */
 export function scannedPdf(pages: number, size: Scan = { width: 8, height: 8 }): Buffer {
   return mixedPdf(Array.from({ length: pages }, () => size));
 }
 
 /**
- * Text pages and scanned pages in one document.
- *
- * The case the OCR condition is written for and the reason it is per page
- * rather than per document: a scan stapled into the middle of a text export
- * should cost one page to read, not eleven, and only its chunks should come
- * back marked.
- *
- * The pixels are a flat colour per page, deflated the way a real producer
- * would. Nothing reads them — the engine in these tests is a stub — and what
- * is being asserted is which pages reach one at all.
+ * Text pages and scanned pages in one document — the case the per-page OCR
+ * condition is for. Pixels are a flat colour per page; nothing reads them, the
+ * test asserts which pages reach the engine.
  */
 export function mixedPdf(sheets: readonly Sheet[]): Buffer {
   const objects: string[] = [];
@@ -174,8 +144,7 @@ export function mixedPdf(sheets: readonly Sheet[]): Buffer {
         '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
         `/Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${streamId} 0 R >>`;
 
-      // Scale the unit square up to the page and paint the image over it,
-      // which is exactly what a scanner writes.
+      // Scale the unit square to the page and paint the image over it.
       const stream = 'q 612 0 0 792 0 0 cm /Im0 Do Q';
       objects[streamId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
 

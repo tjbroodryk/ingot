@@ -10,15 +10,8 @@ import { FilesController } from './interface/files.controller.js';
 /**
  * `/file`, and the three commands one document passes through.
  *
- * The queue, the parser and the worker are **not** here — they are in
- * `FileStoreModule`, which is global, for the reason that module gives: `/file`
- * wakes `BackgroundWork` and `BackgroundWork` drains `FileWorker`, so one of
- * the two directions has to reach across without an import. This is the half
- * that has a controller and can therefore import freely.
- *
- * `RecordsModule` is imported for `BackgroundWork` alone, so that an upload can
- * wake the parse it just queued rather than leaving it for the next tick. That
- * import is one-way and stays one-way: nothing in `records/` imports this.
+ * The queue, parser and worker live in the global `FileStoreModule`.
+ * `RecordsModule` is imported for `BackgroundWork` alone, one-way.
  */
 @Module({
   imports: [IngotsModule, RecordsModule],

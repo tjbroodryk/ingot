@@ -8,14 +8,8 @@ import type { MediaType } from '../../domain/media-type.js';
 import { fileQueue } from './schema.js';
 
 /**
- * What the claiming statement returns.
- *
- * Hand-written SQL rather than the query builder, for the reason `claimReceipt`
- * is: this is one `UPDATE … RETURNING` over a `SELECT … FOR UPDATE SKIP
- * LOCKED`, which claims and leases in a single statement, and it is the one
- * thing here that must never become select-then-update. Drizzle's `execute`
- * wants a plain row type, so the port's interface is restated with an index
- * signature.
+ * What the claiming statement returns. Drizzle's `execute` wants a plain row
+ * type, so the port's interface is restated with an index signature.
  */
 type FileRow = PendingFile & Record<string, unknown>;
 
@@ -37,24 +31,15 @@ export class PgFileQueue implements FileQueue {
     overlapTokens: number | null;
     queuedAt: Date;
   }): Promise<void> {
-    // The id is ours and minted per upload, so the primary key already says
-    // "at most once". `onConflictDoNothing` is for a retried request that
-    // reuses one, not for a collision — which cannot happen.
+    // The id is minted per upload; `onConflictDoNothing` handles a retried request.
     await this.uow.queryable.insert(fileQueue).values(input).onConflictDoNothing();
   }
 
   /**
-   * The oldest document nobody else holds, leased and counted.
+   * The oldest document nobody else holds, leased and counted, in one statement.
    *
-   * One statement, and it has to be. The transaction ends the moment this
-   * returns — the object is fetched and parsed afterwards, with the connection
-   * given back — so a select followed by an update would leave a window in
-   * which a second replica claims the same document and parses it as well.
-   * `FOR UPDATE SKIP LOCKED` holds the row for the instant the statement runs;
-   * `claimed_at` holds it for the minutes after.
-   *
-   * The `+ 1` is what makes `attempts` trustworthy against an input that kills
-   * the worker reading it, which is a thing only this queue has to survive.
+   * A select-then-update would let another worker claim the same document. The
+   * `+ 1` makes `attempts` trustworthy even against an input that kills the worker.
    */
   async claim(maxAttempts: number, now: Date): Promise<PendingFile | null> {
     const expiry = new Date(now.getTime() - CLAIM_LEASE_MS);
@@ -83,13 +68,7 @@ export class PgFileQueue implements FileQueue {
     await this.uow.queryable.delete(fileQueue).where(eq(fileQueue.fileId, fileId));
   }
 
-  /**
-   * The attempt was already charged by the claim, so this explains and lets go.
-   *
-   * Clearing the lease matters as much as keeping the reason: a summariser that
-   * timed out a second ago is worth asking again on the next tick, not in five
-   * minutes when the lease would have lapsed on its own.
-   */
+  /** The attempt was charged by the claim; this keeps the reason and clears the lease. */
   async fail(fileId: string, reason: string): Promise<void> {
     await this.uow.queryable
       .update(fileQueue)

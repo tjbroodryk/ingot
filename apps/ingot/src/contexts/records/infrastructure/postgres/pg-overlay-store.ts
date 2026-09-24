@@ -22,13 +22,9 @@ import {
 const INSERT_CHUNK = 500;
 
 /**
- * What the two claiming statements return.
- *
- * Both are hand-written SQL rather than a query builder, because both are one
- * `UPDATE … RETURNING` over a `SELECT … FOR UPDATE SKIP LOCKED` — the shape
- * that claims and leases in a single statement, and the one thing that must
- * not become select-then-update. Drizzle's `execute` needs a plain row type,
- * so the port's interfaces are restated here with an index signature.
+ * What the two claiming statements return. Hand-written SQL (one `UPDATE …
+ * RETURNING` over `SELECT … FOR UPDATE SKIP LOCKED`), which must not become
+ * select-then-update; `execute` needs a plain row type, hence the index signature.
  */
 type EmbeddingRow = PendingEmbedding & Record<string, unknown>;
 type ReceiptRow = PendingReceipt & Record<string, unknown>;
@@ -66,8 +62,8 @@ export class PgOverlayStore implements OverlayStore {
 
     if (input.embeddable.length === 0) return 0;
 
-    // Only rows that actually carry text are queued. A null in an embeddable
-    // column is a row with nothing to embed, not a row whose vector is late.
+    // Only rows carrying text are queued; a null in an embeddable column has
+    // nothing to embed, not a late vector.
     const queued = input.rows.flatMap((payload) =>
       input.embeddable
         .map((column) => ({ column, text: payload[column] }))
@@ -146,20 +142,9 @@ export class PgOverlayStore implements OverlayStore {
   }
 
   /**
-   * Drops what a roll-up consumed — and only what it consumed.
-   *
-   * Bounded by the watermark the compaction read at, never a bare delete: rows
-   * written while the Parquet was being produced have a higher sequence and
-   * are not in the new file, so deleting them here would lose them silently.
-   *
-   * Spent tombstones go too. Once compaction has written a base file that
-   * excludes a forgotten row and its overlay copy is drained, the row is gone
-   * from both tiers and its tombstone is filtering nothing — keeping it would
-   * make the set grow without bound, which is the thing resolving deletes to
-   * ids instead of storing predicates was supposed to avoid.
-   *
-   * A tombstone for a row still sitting *above* the watermark has to stay: it
-   * was not in the file this compaction wrote, so nothing has excluded it yet.
+   * Drops what a roll-up consumed, and only that. Bounded by the compaction's
+   * watermark, never a bare delete: rows above it are not in the new file. Spent
+   * tombstones go too; one for a row still above the watermark stays.
    */
   async drain(tableId: string, throughSeq: bigint | null): Promise<void> {
     const consumed =
@@ -220,24 +205,18 @@ export class PgOverlayStore implements OverlayStore {
       .groupBy(overlayRow.tableId);
     for (const table of tables) await this.purgeTable(table.tableId);
     await this.uow.queryable.delete(overlayRow).where(eq(overlayRow.ingotId, ingotId));
-    // Keyed on the ingot rather than the table, and swept here rather than in
-    // `purgeTable`: a queued receipt names the *source* table, so a memory
-    // destroyed before its sweeper ran would otherwise leave work behind that
-    // resolves to a table that no longer exists.
+    // Keyed on the ingot and swept here, not in `purgeTable`: a queued receipt
+    // names the source table, so a memory destroyed before its sweep would leave
+    // work resolving to a table that no longer exists.
     await this.uow.queryable
       .delete(overlayReceiptQueue)
       .where(eq(overlayReceiptQueue.ingotId, ingotId));
   }
 
   /**
-   * Tables worth rewriting Parquet for.
-   *
-   * Two reasons qualify, and the second is easy to miss: a table with a deep
-   * overlay has rows to fold in, and a table with *any* tombstone has rows to
-   * leave out. A delete writes no overlay rows at all, so a table that is only
-   * ever deleted from would never be swept — its tombstones would accumulate
-   * and the forgotten rows would stay in the base file indefinitely, filtered
-   * out on every single query forever.
+   * Tables worth rewriting Parquet for: a deep overlay has rows to fold in, and
+   * any tombstone has rows to leave out. A delete writes no overlay rows, so a
+   * table only ever deleted from qualifies on tombstones alone.
    */
   async tablesWorthCompacting(
     minimumRows: number,
@@ -286,13 +265,9 @@ export class PgOverlayStore implements OverlayStore {
   }
 
   /**
-   * Leases up to `limit` texts, oldest first.
-   *
-   * One statement, because two — select then update — is a race that hands the
-   * same texts to two workers between them. The inner `SELECT … FOR UPDATE
-   * SKIP LOCKED` holds the rows only for the instant this statement runs;
-   * `claimed_at` is what holds them afterwards, while the model is being
-   * asked and this transaction is long since committed.
+   * Leases up to `limit` texts, oldest first. One statement: select-then-update
+   * would hand the same texts to two workers. `FOR UPDATE SKIP LOCKED` holds the
+   * rows for the statement; `claimed_at` holds them while the model is asked.
    */
   async claimPending(limit: number, now: Date): Promise<readonly PendingEmbedding[]> {
     const expiry = new Date(now.getTime() - CLAIM_LEASE_MS);
@@ -367,9 +342,8 @@ export class PgOverlayStore implements OverlayStore {
           },
         });
 
-      // Leaving the queue is what marks a row done. It happens after the
-      // vector lands, in the same transaction, so a crash between the two
-      // leaves the row queued and it is simply embedded again.
+      // Leaving the queue marks a row done; same transaction as the vector, so
+      // a crash between the two just re-embeds it.
       for (const entry of chunk) {
         await this.uow.queryable
           .delete(overlayEmbedQueue)
@@ -416,9 +390,8 @@ export class PgOverlayStore implements OverlayStore {
     rows: number;
     queuedAt: Date;
   }): Promise<void> {
-    // One `/add` is one batch, so the primary key already says "at most once".
-    // `onConflictDoNothing` is for the retry that re-sends an identical write
-    // rather than for a collision, which cannot happen.
+    // One `/add` is one batch; `onConflictDoNothing` is for the identical-write
+    // retry, not a collision.
     await this.uow.queryable
       .insert(overlayReceiptQueue)
       .values({
@@ -435,18 +408,10 @@ export class PgOverlayStore implements OverlayStore {
   }
 
   /**
-   * The oldest receipt nobody else holds, leased and counted.
-   *
-   * One statement, and it has to be. The transaction ends the moment this
-   * returns — the model is asked afterwards, with the connection given back —
-   * so a select followed by an update would be a window in which a second
-   * worker claims the same row. `FOR UPDATE SKIP LOCKED` holds it for the
-   * instant the statement runs; `claimed_at` holds it for the minutes after.
-   *
-   * The `+ 1` is why `attempts` is trustworthy. A worker killed by the very
-   * body it is describing never reaches `failReceipt`, so a counter written
-   * there would never move and that body would be retried for ever. Charging
-   * at the door makes every claim cost one, whatever becomes of the worker.
+   * The oldest receipt nobody else holds, leased and counted. One statement, so
+   * select-then-update cannot let a second worker take the same row. The `+ 1`
+   * counts the attempt here, since a worker killed mid-write never reaches
+   * `failReceipt`.
    */
   async claimReceipt(maxAttempts: number, now: Date): Promise<PendingReceipt | null> {
     const expiry = new Date(now.getTime() - CLAIM_LEASE_MS);
@@ -475,13 +440,7 @@ export class PgOverlayStore implements OverlayStore {
       .where(eq(overlayReceiptQueue.batch, batch));
   }
 
-  /**
-   * The attempt was already counted by the claim, so this explains and lets go.
-   *
-   * Clearing the lease matters as much as keeping the reason: a model that
-   * failed a second ago is worth asking again on the next tick, not in five
-   * minutes when the lease would have lapsed on its own.
-   */
+  /** The claim already counted the attempt, so this only records the reason and clears the lease. */
   async failReceipt(batch: string, reason: string): Promise<void> {
     await this.uow.queryable
       .update(overlayReceiptQueue)

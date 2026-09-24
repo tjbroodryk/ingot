@@ -28,31 +28,9 @@ import { INGOT_VERSIONS, VERSION_HEADER } from './versioning/changeset.js';
 /**
  * The whole service.
  *
- * Import order is deliberate rather than alphabetical:
- *
- * - `ObservabilityModule` first, so its request middleware is the outermost
- *   thing a request passes through and a 500 in a guard is still measured.
- * - The kernel next — shared, database, storage/engine, the models, overlay —
- *   because everything after it assumes those are bound.
- * - `AccountsModule` **before** `IngotsModule`, and this one is load bearing.
- *   Express matches routes in registration order, and `/:account/:ingot` is as
- *   greedy as a pattern gets: registered first, it would swallow
- *   `/accounts/acme/keys` and route key management into the memory API.
- *   `AccountSlug` refuses to mint an account named `accounts` as the second
- *   half of that defence, and `route-collision.test.ts` asserts both.
- * - `SweepersModule` last, since it only makes sense once the commands it
- *   dispatches exist.
- *
- * `VersioningModule` sits with the kernel because its interceptor is global:
- * every HTTP route is version-negotiated, including the ones with nothing to
- * transform, so that "which version am I being served" has a straight answer
- * everywhere.
- *
- * `forRoot` takes the authentication settings rather than reading them from
- * `ConfigService`, because a module's `imports` are evaluated before the
- * container exists and the mode decides what is in them. `main.ts` parses them
- * first, which is also what makes a misconfiguration fatal before the port is
- * bound rather than on the first request that needed a credential.
+ * Import order is load-bearing: `AccountsModule` before `IngotsModule`, since
+ * Express matches routes in registration order and `/:account/:ingot` is greedy
+ * enough to swallow account routes registered after it.
  */
 @Module({})
 export class AppModule {
@@ -63,34 +41,26 @@ export class AppModule {
         ConfigModule.forRoot({ isGlobal: true }),
         ObservabilityModule,
         // Before the contexts, so its interceptor wraps every route they register.
-        // The contract a caller sees is negotiated per request by a header; only
-        // the newest shape is implemented anywhere in this service.
         VersioningModule.forRoot({ changeset: INGOT_VERSIONS, header: VERSION_HEADER }),
         SharedModule.forRoot(),
         DatabaseModule,
         EngineModule,
         AiModule,
-        // With the kernel rather than with `records/`, for the reason `AiModule`
-        // is: two contexts need it. `records/` sends the deliveries, and
-        // `ingots/` needs the settings to refuse a transport this deployment
-        // cannot honour at the moment somebody configures it.
+        // With the kernel because two contexts need it: `records/` sends
+        // deliveries, `ingots/` reads the settings.
         DeliveryModule,
         OverlayModule,
-        // With the kernel and global, for the reason `OverlayModule` is: `/file`
-        // wakes `BackgroundWork` and `BackgroundWork` drains the file worker, so
-        // one of those two directions has to reach across without an import.
+        // Global because `/file` and `BackgroundWork` reach across each other
+        // without an import.
         FileStoreModule,
         HealthModule,
 
         AccountsModule,
-        // After the context it authenticates against and before everything
-        // that is authenticated. It imports `AccountsModule` itself, so this
-        // position is for reading rather than for resolution.
+        // After `AccountsModule` (which it imports) and before everything authenticated.
         AuthModule.forRoot(auth),
         IngotsModule,
         RecordsModule,
-        // After `RecordsModule`, which it imports for `BackgroundWork` so that
-        // an upload can wake the parse it just queued.
+        // After `RecordsModule`, imported for `BackgroundWork` so an upload can wake its parse.
         FilesModule,
         QueryModule,
         McpModule,
@@ -99,10 +69,8 @@ export class AppModule {
       ],
       providers: [
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
-        // Order is the contract: authentication establishes who is calling, then
-        // authorization decides against it. The second guard refuses any route
-        // that declared neither, which is what makes forgetting the decorator a
-        // route that does not work rather than one that works for everybody.
+        // Order matters: authenticate first, then authorize. The second guard
+        // refuses any route that declared neither.
         { provide: APP_GUARD, useClass: AuthenticationGuard },
         { provide: APP_GUARD, useClass: AccountScopeGuard },
       ],

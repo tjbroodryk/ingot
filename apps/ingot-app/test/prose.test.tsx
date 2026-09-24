@@ -4,14 +4,9 @@ import { NOT_NEEDED, OPTIONAL, REQUIRED } from '../src/deployment/dependencies';
 import { Prose } from '../src/docs/prose';
 
 /**
- * The two notations the content files are allowed to use.
- *
- * Every page on this site writes its copy as plain strings and leans on
- * `Prose` to turn the markup in them into elements. A notation the component
- * does not know about does not fail — it renders as the characters somebody
- * typed, which is how `**` ended up on the deployment page — so the assertion
- * worth having is the one that reads the content files back and checks that
- * nothing in them survives to the markup as punctuation.
+ * The two notations content files may use. An unknown notation renders as the
+ * characters typed rather than failing, so the files are read back and checked
+ * for punctuation that survived to the markup.
  */
 
 describe('prose', () => {

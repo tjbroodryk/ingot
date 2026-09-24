@@ -3,13 +3,7 @@ import { NavGroup } from '../chrome/nav-group';
 import { DASHBOARD_HREF } from '../site/mode';
 import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
-/**
- * The sidebar, derived from the same list the page renders.
- *
- * Not a second copy: an endpoint added to `ENDPOINTS` appears here, and one
- * removed leaves no dead anchor behind. That is the whole reason the reference
- * is data rather than markup.
- */
+/** The sidebar, derived from the same `ENDPOINTS` list the page renders. */
 export function DocsNav(): ReactNode {
   return (
     <aside className="docnav">
@@ -38,12 +32,7 @@ export function DocsNav(): ReactNode {
         </NavGroup>
       ))}
 
-      {/*
-        The console is a route a landing build does not have, so the group that
-        links it is not rendered there — and the route count, which is the only
-        other thing in it, moves up to keep the sidebar from ending on a rule
-        with nothing under it.
-      */}
+      {/* No console group in a landing build; the route count moves up so the sidebar does not end on a bare rule. */}
       {DASHBOARD_HREF ? (
         <NavGroup label="Console">
           <a className="navlink" href={DASHBOARD_HREF}>

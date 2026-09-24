@@ -3,25 +3,11 @@ import { join, resolve } from 'node:path';
 import pg from 'pg';
 
 /**
- * Bring a database up to schema, from outside the service.
+ * Bring a database up to schema from outside the service.
  *
- * `docker/migrate.sh` does this for a laptop by running `psql` inside the
- * Postgres container, which is available exactly once: when Postgres is
- * something you started yourself. A deployment's database is somebody else's —
- * a managed instance, reachable over the network and with no shell to exec
- * into — so the migration has to be something the image itself can run.
- *
- *   kubectl run … --image=ingot --command -- bun dist/database/migrate.js
- *
- * Every migration is written to be idempotent (`CREATE TABLE IF NOT EXISTS`,
- * `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT`), so this applies all of
- * them every time rather than keeping a ledger of which have run. That is the
- * property that makes it safe as a Kubernetes `Job` that may be retried, and
- * safe to run against a database that is already current.
- *
- * Each file goes in its own transaction: a migration that fails leaves the
- * ones before it applied and says which one stopped, rather than rolling back
- * an hour of work on a large table.
+ * Applies every migration each run — they are idempotent — rather than keeping
+ * a ledger. Each file runs in its own transaction, so a failure leaves the
+ * earlier ones applied and names the one that stopped.
  */
 async function migrate(): Promise<void> {
   const url = process.env.DATABASE_URL;
@@ -29,8 +15,7 @@ async function migrate(): Promise<void> {
     throw new Error('DATABASE_URL is not set — there is nothing to migrate');
   }
 
-  // `dist/database/` → the `drizzle/` beside `dist/`, which is where the
-  // image puts them. Overridable because a test and a Job disagree about cwd.
+  // `dist/database/` → the `drizzle/` beside `dist/`. Overridable via env.
   const directory = resolve(
     process.env.INGOT_MIGRATIONS_DIR ?? join(__dirname, '..', '..', 'drizzle'),
   );

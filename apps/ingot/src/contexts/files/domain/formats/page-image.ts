@@ -4,20 +4,9 @@ import type { PageImage } from '../../../../ai/ocr.port.js';
 /**
  * A scanned page, lifted back out of the PDF as a PNG.
  *
- * **No renderer, and that is the whole trick.** Rasterising a PDF page means
- * `pdfjs` drawing to a canvas, and a canvas in Node is `node-canvas` or
- * `@napi-rs/canvas` — a native module, a compiler in the image, and a
- * platform-specific build for a service whose only reason to want one is the
- * minority of documents that are scans. But a scan does not need drawing:
- * every page of one *is* a single image already, and this lifts that image out
- * and wraps it in a PNG header. `pdfjs` decodes it (it is the one that knows
- * about DCTDecode, FlateDecode and their predictors), and `fflate` — already
- * here for the office-zip handler — deflates it again.
- *
- * The limit that comes with the trick: a page that is *drawn* rather than
- * photographed has no image to lift, and one that is several images has no
- * single one. Both come back null, and both are pages OCR was never the answer
- * for — drawn text is text, and it has a text layer.
+ * No renderer: every page of a scan is a single embedded image, so this lifts
+ * it out and wraps it in a PNG header. A drawn page or a multi-image page has no
+ * single image to lift and comes back null.
  */
 
 /** pdfjs's own names for what came out of a decode. */
@@ -29,15 +18,7 @@ const RGBA_32BPP = 3;
 const PNG_COLOUR = { [GRAYSCALE_1BPP]: 0, [RGB_24BPP]: 2, [RGBA_32BPP]: 6 } as const;
 const CHANNELS = { [GRAYSCALE_1BPP]: 1, [RGB_24BPP]: 3, [RGBA_32BPP]: 4 } as const;
 
-/**
- * The widest page worth handing to an engine.
- *
- * A 600-dpi A4 scan is around 5000×7000, which is four times the pixels a
- * vision model will look at after its own downscale and four times the bytes
- * over the wire for nothing. It is also 140MB of decoded RGB in this process,
- * per page — which is the number that matters, since the parse is holding the
- * document's bytes as well.
- */
+/** The largest page worth handing to an engine. */
 const MAX_PIXELS = 40_000_000;
 
 /** As much of a decoded `pdfjs` image as this file touches. */
@@ -56,15 +37,7 @@ interface PdfPage {
   cleanup(): void;
 }
 
-/**
- * The page's image, or null when it does not have exactly one.
- *
- * `paintImageXObject` is the operator that draws a stored image; a scanned
- * page is one of those and nothing else. Two or more means a composite this
- * cannot flatten without a renderer, and zero means a page whose content is
- * drawn — in both cases the honest answer is "there is no photograph here" and
- * the page stays blank.
- */
+/** The page's single image, or null when it does not have exactly one. */
 export async function pageImage(
   page: PdfPage,
   number: number,
@@ -86,12 +59,8 @@ export async function pageImage(
 }
 
 /**
- * The decoded image, which `pdfjs` publishes asynchronously.
- *
- * `objs.get` takes a callback because the image may still be being decoded on
- * the worker when the operator list resolves. It also throws for a name that
- * was never published, which is what a page whose image failed to decode looks
- * like from here — a page to skip, not a document to fail.
+ * The decoded image, which `pdfjs` publishes asynchronously via a callback.
+ * A name that was never published (a failed decode) comes back null.
  */
 function resolve(page: PdfPage, name: string): Promise<DecodedImage | null> {
   return new Promise((done) => {
@@ -114,16 +83,7 @@ function isImage(value: unknown): value is DecodedImage {
   );
 }
 
-/**
- * A PNG around raw pixels, in the one shape this needs.
- *
- * Written here rather than taken from a library because it is forty lines and
- * the alternative is a dependency that also does resizing, colour management
- * and a hundred formats — carried in every image of a service that needs to
- * put a header on a buffer. No interlacing, no palette, one IDAT: the
- * compression is `fflate`'s, and everything else is a length, a type and a
- * CRC.
- */
+/** A PNG around raw pixels: no interlacing, no palette, one IDAT. */
 export function encode(image: DecodedImage): Uint8Array | null {
   const kind = image.kind;
   if (kind !== GRAYSCALE_1BPP && kind !== RGB_24BPP && kind !== RGBA_32BPP) return null;
@@ -152,8 +112,7 @@ export function encode(image: DecodedImage): Uint8Array | null {
   return concat([
     SIGNATURE,
     chunk('IHDR', header),
-    // Level 6: a scan compresses to a tenth either way, and level 9 spends
-    // several times the CPU inside a parse deadline to find the last percent.
+    // Level 6: a scan compresses about the same at 9 for much more CPU.
     chunk('IDAT', zlibSync(raw, { level: 6 })),
     chunk('IEND', new Uint8Array(0)),
   ]);
@@ -174,12 +133,7 @@ function chunk(type: string, body: Uint8Array): Uint8Array {
   return out;
 }
 
-/**
- * CRC-32, because `fflate` does not export one.
- *
- * It has the routine internally for gzip's trailer and keeps it private, and a
- * dependency for a table and a loop would be silly.
- */
+/** CRC-32, because `fflate` does not export one. */
 const CRC_TABLE = Array.from({ length: 256 }, (_unused, at) => {
   let value = at;
   for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;

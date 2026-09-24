@@ -8,13 +8,7 @@ import { pdfHandler } from './pdf.js';
 import { pptxHandler } from './pptx.js';
 import { textHandler } from './text.js';
 
-/**
- * Every format this service reads. One entry, one file behind it.
- *
- * Keyed on the enum rather than a list so the exhaustiveness is the compiler's:
- * a media type without a handler does not build. Adding `.docx` is one file and
- * one line here.
- */
+/** Every format this service reads, keyed on the enum so a missing handler does not build. */
 export const FORMATS: Record<MediaType, FormatHandler> = {
   [MediaType.Text]: textHandler,
   [MediaType.Markdown]: markdownHandler,
@@ -29,16 +23,12 @@ export function handlerFor(mediaType: MediaType): FormatHandler {
   return FORMATS[mediaType];
 }
 
-/** Every format, for the line at boot and for the refusal at `/file`. */
+/** Every supported format. */
 export function supportedTypes(): readonly MediaType[] {
   return Object.keys(FORMATS) as MediaType[];
 }
 
-/**
- * Walked rather than kept as a second table, so an extension stays a property of
- * its format. A collision is caught at startup by `assertConsistent` rather than
- * resolved here by whichever entry came first.
- */
+/** The format claiming an extension, or null. Walked, not a second table. */
 export function typeForExtension(extension: string): MediaType | null {
   const wanted = extension.toLowerCase();
 
@@ -54,11 +44,8 @@ export function knownExtensions(): readonly string[] {
 }
 
 /**
- * The two mistakes the type system cannot see: a handler filed under a key that
- * is not its own `mediaType`, and two formats claiming one extension. The first
- * parses documents as the wrong thing, the second resolves by enumeration order.
- *
- * Called at boot, so either is a service that refuses to start.
+ * Refuses to boot on the two mistakes the type system cannot see: a handler
+ * filed under the wrong key, and two formats claiming one extension.
  */
 export function assertConsistent(): void {
   const claimed = new Map<string, MediaType>();
@@ -84,7 +71,7 @@ export function assertConsistent(): void {
   }
 }
 
-/** What this build reads, as one line for the log at boot. */
+/** The supported formats as one line, for the boot log. */
 export function describeFormats(): string {
   return Object.values(FORMATS)
     .map((handler) => `${handler.mediaType} (.${handler.extensions.join(', .')})`)

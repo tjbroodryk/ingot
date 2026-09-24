@@ -7,29 +7,9 @@ import { openDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
 /**
- * The model is asked with no transaction open, and this is what proves it.
- *
- * It is the reason writing a receipt is three commands rather than one.
- * `Dispatcher.send` opens a Postgres transaction around every command, so a
- * single `SummariseReceipt` would hold one of ten pooled connections for the
- * length of an LLM call. Four concurrent receipts and the pool is nearly gone —
- * and it presents as the service failing to answer requests, which sends
- * whoever is on call to look at Postgres rather than at a summary.
- *
- * Nothing about that is visible from inside the process: the fast stand-in
- * returns before anybody could notice, and the code reads the same either way.
- * So it is asserted from **outside**, on a second connection, which is the one
- * vantage point that can tell the difference — an uncommitted claim is
- * invisible to everybody else, so seeing `claimed_at` set while the model is
- * mid-call means the transaction genuinely closed first.
- *
- * The second test is what gives the first one teeth. It runs the same worker
- * inside an ambient transaction, which is exactly what dispatching it as a
- * command would do, and watches the assertion invert. Without it this file
- * would pass just as happily against a `SELECT 1`.
- *
- * Its own file because `makeWorld` truncates: a second world built inside
- * another's run takes the first one's account with it.
+ * The summariser is asked with no transaction open, so the claim commits and
+ * the connection is released before the model call. Asserted from a second
+ * connection, which alone can see whether the claim has committed.
  */
 describe('writing a receipt', () => {
   let world: World;
@@ -91,12 +71,9 @@ describe('writing a receipt', () => {
 
     expect(observed).toEqual([
       {
-        // Visible to a connection that is not ours, so the claim committed.
+        // Visible to another connection, so the claim committed.
         claimed: true,
-        // Counted by the claim rather than by the failure handler. A worker
-        // killed by the very body it is describing never reaches a failure
-        // handler, so a counter written there would sit at zero for ever —
-        // and that body would be retried for ever with it.
+        // Counted at claim, not in the failure handler.
         attempts: 1,
       },
     ]);
@@ -105,19 +82,16 @@ describe('writing a receipt', () => {
   it('would not have, if it were dispatched as one command', async () => {
     await queueOne('smothered');
 
-    // `PgUnitOfWork.run` joins an open scope rather than nesting, so running
-    // the worker inside one is precisely what a single `SummariseReceipt`
-    // command would be: all three steps in the caller's transaction, the model
-    // asked while it is open. This is the shape the split exists to prevent.
+    // `PgUnitOfWork.run` joins an open scope rather than nesting, so running the
+    // worker inside one asks the model with the transaction still open.
     const uow = world.app.get(PgUnitOfWork, { strict: false });
     const worker = world.app.get(ReceiptWorker, { strict: false });
     await uow.run(() => worker.next());
 
     expect(observed).toEqual([
       {
-        // Nothing outside the transaction can see the claim, which is the same
-        // thing as saying the connection is still held. If this ever reads
-        // `true`, the test above has stopped proving anything.
+        // The claim is invisible outside the transaction, so the connection is
+        // still held.
         claimed: false,
         attempts: 0,
       },

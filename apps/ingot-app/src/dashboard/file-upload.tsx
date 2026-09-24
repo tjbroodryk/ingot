@@ -2,39 +2,13 @@ import type { FileBody, FileResult } from '@ingot/shared/ingot-v1';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Credentials, IngotError, runQuery, uploadFile } from './ingot-api';
 
-/**
- * Put a document in, and watch it become rows.
- *
- * `/file` answers the moment the bytes are stored — `pending`, and a SELECT
- * that will report on it later. That response on its own is not something a
- * person can act on, so this panel does what a caller would otherwise do by
- * hand: it runs that SELECT on a timer until the document reaches a terminal
- * status, and shows what it reached. Parsing a deck is seconds, so the alternative
- * is a page that says "pending" forever and a person re-running a query to find
- * out whether their upload is slow or dead.
- *
- * Uploading is deliberately *in* the console rather than on a page of its own:
- * the thing you want immediately after an upload is a query over it, and the
- * chunks button below writes one.
- *
- * The console mounts this under `key={ingotId}`, so picking another memory
- * builds a new one rather than leaving the last memory's upload on screen
- * above a schema that no longer has it.
- */
+/** Put a document in, and watch it become rows. Polls the SELECT `/file` hands back until the document reaches a terminal status. */
 
 /** How often the pending document is asked about, and for how long. */
 const POLL_MS = 1_500;
 const POLL_LIMIT_MS = 120_000;
 
-/**
- * What the document settled as, read out of `FileResult.query`.
- *
- * The columns are that SELECT's, and the values arrive as a DuckDB row — so
- * everything is checked rather than cast. `status` is compared against string
- * literals and not `FileStatus`, because that enum is a *value* in a CommonJS
- * package: importing it would put `@ingot/shared` in the bundle, which is the
- * one thing the type-only import at the top of `ingot-api` avoids.
- */
+/** What the document settled as, read out of `FileResult.query`. `status` is compared against string literals, not the `FileStatus` enum. */
 interface Settled {
   readonly status: 'ready' | 'failed';
   readonly chunks: number;
@@ -66,9 +40,7 @@ export function FileUpload({
   /** Watching stopped before the document landed. It is still coming. */
   const [gaveUp, setGaveUp] = useState(false);
 
-  // Clearing the input element itself, which React does not own: `value` on a
-  // file input is not settable to anything but the empty string, so the
-  // element is reset through the ref after a successful send.
+  // A file input's `value` isn't settable, so the element is reset through the ref.
   const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -92,12 +64,8 @@ export function FileUpload({
       } catch (cause) {
         if (!live) return;
 
-        // A 422 here is `ingot_files` not existing yet, which is what a memory
-        // whose first document is still parsing looks like — the table is
-        // created by the write this is waiting for. So it is a "not yet" and
-        // not a failure, and the only one of those: anything else is real, and
-        // watching through it would leave a panel that says "parsing" about
-        // something nothing is reporting on.
+        // A 422 here is `ingot_files` not existing yet — the write this waits on
+        // creates it. A "not yet", not a failure; anything else is real.
         if (!(cause instanceof IngotError) || cause.status !== 422) {
           onError(cause);
           return;
@@ -204,7 +172,7 @@ export function FileUpload({
   );
 }
 
-/** The promissory note, and then what it turned into. */
+/** The accepted receipt, and then what it settled into. */
 function Accepted({
   accepted,
   settled,
@@ -260,13 +228,7 @@ function Accepted({
   );
 }
 
-/**
- * The options textarea, as a `FileBody`.
- *
- * Parsed here as well as at the service, because a typo in JSON typed into a
- * box is worth saying before an upload rather than after one — the bytes are
- * the expensive half, and a 422 for a stray comma would have carried them.
- */
+/** The options textarea, as a `FileBody`. Parsed here too, so a JSON typo is caught before the upload. */
 function parseOptions(raw: string): FileBody {
   if (raw.trim().length === 0) return {};
 

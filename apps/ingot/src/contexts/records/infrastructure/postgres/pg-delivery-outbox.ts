@@ -10,24 +10,16 @@ import { CLAIM_LEASE_MS } from '../../application/ports/overlay-store.port.js';
 import { receiptDeliveryQueue } from './schema.js';
 
 /**
- * What the claiming statement returns.
- *
- * Hand-written SQL rather than the query builder, for the reason the other two
- * claims are: this is one `UPDATE … RETURNING` over a `SELECT … FOR UPDATE SKIP
- * LOCKED`, the shape that claims and leases in a single statement, and the one
- * thing that must not become select-then-update. Drizzle's `execute` needs a
- * plain row type, so the port's interface is restated with an index signature.
+ * What the claiming statement returns. Hand-written SQL (one `UPDATE …
+ * RETURNING` over `SELECT … FOR UPDATE SKIP LOCKED`), which must not become
+ * select-then-update; `execute` needs a plain row type, hence the index signature.
  */
 type DeliveryRow = PendingDelivery & Record<string, unknown>;
 
 /**
- * The outbox, in Postgres, beside everything else this service owns.
- *
- * Postgres rather than a broker, even though one of the transports *is* a
- * broker. The property that matters is that the intention to deliver commits
- * with the receipt it announces, and only the database the receipt is written
- * to can offer that — a publish to RabbitMQ inside a Postgres transaction is
- * exactly the two-phase problem this table exists to avoid.
+ * The outbox, in Postgres. Postgres rather than a broker so the intention to
+ * deliver commits with the receipt it announces; a publish inside the
+ * transaction would be the two-phase problem this table avoids.
  */
 @Injectable()
 export class PgDeliveryOutbox implements DeliveryOutbox {
@@ -40,9 +32,7 @@ export class PgDeliveryOutbox implements DeliveryOutbox {
     payload: DeliveredReceipt;
     queuedAt: Date;
   }): Promise<void> {
-    // `onConflictDoNothing` because one receipt is one delivery: a batch
-    // already announced is one already queued, and announcing it twice must
-    // not send it twice.
+    // One receipt is one delivery: re-announcing must not queue it twice.
     await this.uow.queryable
       .insert(receiptDeliveryQueue)
       .values({
@@ -56,16 +46,9 @@ export class PgDeliveryOutbox implements DeliveryOutbox {
   }
 
   /**
-   * The oldest delivery nobody else holds, leased and counted.
-   *
-   * One statement, and it has to be. The transaction ends the moment this
-   * returns — the endpoint is called afterwards, with the connection given
-   * back — so a select followed by an update would be a window in which a
-   * second worker takes the same row and a receiver is told twice.
-   *
-   * The `+ 1` is why `attempts` is trustworthy. A worker killed by the very
-   * delivery it is making never reaches `fail`, so a counter written there
-   * would never move and that row would be retried for ever.
+   * The oldest delivery nobody else holds, leased and counted. One statement, so
+   * select-then-update cannot let a second worker take the same row. The `+ 1`
+   * counts the attempt here, since a worker killed mid-delivery never reaches `fail`.
    */
   async claim(maxAttempts: number, now: Date): Promise<PendingDelivery | null> {
     const expiry = new Date(now.getTime() - CLAIM_LEASE_MS);

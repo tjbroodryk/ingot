@@ -7,40 +7,12 @@ import { DELIVERY_SETTINGS, type DeliverySettings } from './delivery-settings.js
 import { DeliveryRefused, type DeliveryTransport } from './delivery-transport.port.js';
 
 /**
- * One message per receipt, onto a queue on the deployment's broker.
- *
- * ## Why a confirm channel
- *
- * An ordinary AMQP publish is fire-and-forget: `publish` returns true when the
- * message was written to a socket, which says nothing about whether the broker
- * took it. Marking the outbox row done on that basis would be the same silent
- * loss the outbox exists to prevent, moved one hop along. A confirm channel
- * makes the broker acknowledge, and `waitForConfirms` is what turns that back
- * into something a caller can await.
- *
- * ## Why the connection is lazy and shared
- *
- * A connection per delivery would be a TCP handshake and an AMQP handshake per
- * receipt, which is most of the cost of sending one. So the model is opened on
- * the first publish and kept — and it is opened on the *first publish* rather
- * than at boot, so a deployment that has configured a broker but is not yet
- * delivering anything does not hold a connection open, and a broker that is
- * down does not stop the service starting.
- *
- * `recovery: true` is amqplib's own reconnect, which handles the ordinary case
- * of a broker restarting underneath us. It is not the whole answer: anything it
- * cannot recover from throws out of `deliver`, the worker counts the attempt,
- * and the row waits in the queue for the next sweep. The channel is dropped on
- * any failure so the next attempt builds a fresh one rather than reusing a
- * channel the broker may already have closed.
- *
- * ## Why the queue is asserted
- *
- * Durable, and asserted on every publish — cheap when it already exists, and
- * the difference between "the queue was not declared yet" and a message routed
- * into nothing. Publishing to the default exchange with a routing key naming a
- * queue that does not exist is silently discarded by AMQP, which is exactly the
- * failure this whole design refuses to have.
+ * One message per receipt onto a queue on the configured broker. A confirm
+ * channel, so the broker acknowledges before the outbox row is marked done. The
+ * connection is lazy (first publish) and shared; `recovery: true` is amqplib's
+ * reconnect, and what it can't recover from throws for the queue to retry. The
+ * queue is asserted durable on every publish, since the default exchange silently
+ * discards a message to a missing queue.
  */
 @Injectable()
 export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
@@ -53,22 +25,10 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
   private connecting: Promise<amqp.ConfirmChannel> | null = null;
 
   /**
-   * Queues already declared on the connection currently open.
-   *
-   * `assertQueue` is idempotent and cheap, but it is still a round trip to the
-   * broker — and it was one *per message*, so a memory under load paid two
-   * round trips to deliver one receipt and every replica paid them separately.
-   * Declaring is a fact about the connection, not about the message, so it is
-   * remembered for as long as that connection is.
-   *
-   * **Cleared whenever the connection is, and that is the whole of the
-   * invalidation.** A cache that outlived a connection would be the one failure
-   * this assert exists to prevent, arrived at by a different route: publishing
-   * to the default exchange with a routing key naming a queue that is not there
-   * is silently discarded by AMQP, so a broker replaced underneath us — a fresh
-   * instance, an empty volume — would swallow every delivery while reporting
-   * success. So it is dropped on `discard`, on shutdown, and on amqplib's own
-   * `connect` event, which is the reconnection we are not otherwise told about.
+   * Queues already declared on the current connection; `assertQueue` is a round
+   * trip, so it's remembered per connection. Cleared whenever the connection is:
+   * a broker replaced underneath us would otherwise swallow deliveries to queues
+   * it no longer has.
    */
   private readonly declared = new Set<string>();
 
@@ -82,15 +42,12 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
       throw new DeliveryRefused('rmq', `cannot deliver a "${target.t}" target`);
     }
     if (this.settings.brokerUrl === null) {
-      // Reachable only for a memory configured while a broker was set and
-      // delivered after it was unset. Refused rather than dropped: the row
-      // stays in the queue, and the gauge says somebody has taken the broker
-      // away from memories that are still pointed at it.
+      // Reachable only if a broker was configured, then unset. Refused, not dropped, so the row stays queued.
       throw new DeliveryRefused('rmq', 'no broker is configured (INGOT_RABBITMQ_URL is unset)');
     }
 
-    // `host` is a code constant, never the broker URL — that would be an
-    // unbounded label and, with credentials in it, a secret in the metrics.
+    // `host` is a code constant, never the broker URL: that would be an unbounded
+    // label and leak credentials into metrics.
     await upstream('rabbitmq', 'publish', async (span) => {
       span.set({
         'delivery.batch': payload.batch,
@@ -102,9 +59,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
       try {
         if (!this.declared.has(target.queue)) {
           await channel.assertQueue(target.queue, { durable: true });
-          // Remembered only once the broker has agreed. Recording it before
-          // would mean a failed declaration is never retried on this
-          // connection, and every later publish routes into nothing.
+          // Remember only after the broker agrees; recording early would never retry a failed declaration.
           this.remember(target.queue);
         }
         channel.publish(
@@ -113,21 +68,17 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
           Buffer.from(JSON.stringify(payload)),
           {
             contentType: 'application/json',
-            // Written to disk by the broker, so a restart between the confirm
-            // and the consumer does not lose what we were just told landed.
+            // Written to disk by the broker, so a restart before the consumer doesn't lose it.
             persistent: true,
             type: payload.event,
-            // What a consumer deduplicates on. At-least-once is the contract, so
-            // the receipt's batch has to be on the envelope as well as in it.
+            // What a consumer deduplicates on; at-least-once means the batch is on the envelope too.
             messageId: payload.batch,
             appId: this.settings.userAgent,
           },
         );
         await channel.waitForConfirms();
       } catch (error) {
-        // The channel is unusable after most AMQP errors, and a closed one
-        // fails every later publish with the same message. Drop it and let the
-        // next attempt build a fresh one.
+        // The channel is unusable after most AMQP errors; drop it so the next attempt builds a fresh one.
         this.discard();
         throw new DeliveryRefused('rmq', message(error));
       }
@@ -137,8 +88,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
   /** The confirm channel, opening one if this is the first delivery. */
   private async open(): Promise<amqp.ConfirmChannel> {
     if (this.channel) return this.channel;
-    // A burst of deliveries must not each start a connection: the first one to
-    // arrive owns the attempt and the rest await it.
+    // First arrival owns the connect; the rest await it.
     this.connecting ??= this.connect().finally(() => {
       this.connecting = null;
     });
@@ -150,16 +100,12 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
     try {
       const model = await this.connector(url, { recovery: true });
       model.on('error', (error) => this.logger.warn(`Broker connection: ${message(error)}`));
-      // amqplib reconnects on its own, and does not tell the channel. A broker
-      // that came back is one that may have come back empty, so what we
-      // believe it has declared goes with the connection that told us.
+      // amqplib reconnects silently; a returned broker may be empty, so drop what we think it declared.
       model.on('connect', () => {
         this.declared.clear();
         this.logger.log('Reconnected to the broker');
       });
-      // Not an error and not a reason to drop anything: amqplib is already
-      // reconnecting, and a delivery in flight will fail on its own and be
-      // retried from the queue.
+      // Not a reason to drop anything: amqplib is reconnecting, and an in-flight delivery fails and is retried.
       model.on('disconnect', (error) => this.logger.warn(`Broker away: ${message(error)}`));
 
       const channel = await model.createConfirmChannel();
@@ -178,9 +124,7 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
     this.channel = null;
     this.model = null;
     this.declared.clear();
-    // Detached, and failures swallowed: this is a connection already known to
-    // be broken, and awaiting its close would make a failed delivery slower
-    // for no gain.
+    // Detached, failures swallowed: the connection is already broken, and awaiting close would only slow a failed delivery.
     void model?.close().catch(() => undefined);
   }
 
@@ -191,10 +135,8 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
   }
 
   /**
-   * `onModuleDestroy`, so the broker is let go before the pool is — the same
-   * ordering `Scheduler` relies on, and for the same reason: a delivery still
-   * in flight during a shutdown should fail on its own connection rather than
-   * on a database that has already gone.
+   * `onModuleDestroy`, so the broker is let go before the pool: an in-flight
+   * delivery fails on its own connection, not a closed database.
    */
   async onModuleDestroy(): Promise<void> {
     const model = this.model;
@@ -206,15 +148,9 @@ export class RmqTransport implements DeliveryTransport, OnModuleDestroy {
 }
 
 /**
- * How many declared queues are remembered before the cache starts again.
- *
- * A bound rather than an LRU, and the crudeness is deliberate. Queue names come
- * from callers — one per memory that asked for `rmq` — so this is unbounded
- * input, and something has to cap it. What an LRU would buy is avoiding a cold
- * start every `MAX_DECLARED` distinct queues; what a cold start costs is one
- * extra round trip per queue, which is what this whole cache was saving in the
- * first place. A deployment with more than a thousand distinct delivery queues
- * pays that occasionally, and gets a Set that cannot grow instead.
+ * How many declared queues are remembered before the cache resets. A crude bound,
+ * not an LRU: queue names are unbounded caller input, and a reset costs one extra
+ * round trip per queue.
  */
 export const MAX_DECLARED = 1024;
 

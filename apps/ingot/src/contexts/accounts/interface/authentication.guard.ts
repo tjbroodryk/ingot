@@ -7,23 +7,9 @@ import { ACCOUNT_BINDING, type AccountBinding } from './account.decorator.js';
 import { attachPrincipal } from './principal-resolution.js';
 
 /**
- * Authentication: establishes who is calling, and nothing else.
- *
- * Runs before `AccountScopeGuard`, which decides what they may reach. Keeping
- * the two apart is the same split `@forge/api` makes between `AccessTokenGuard`
- * and `ScopeGuard`, and it matters here for the same reason: "your key is not
- * valid" and "your key is not valid *for this account*" are different answers
- * and want different status codes.
- *
- * It resolves the `AUTHENTICATOR` port rather than one implementation, and
- * that is the extent of what it knows: whether this deployment accepts a
- * configured root key, a minted one, or something else entirely is decided by
- * `INGOT_AUTH` at boot and is not a fact any route has to carry. Adding a mode
- * changes `src/auth/`, and nothing here.
- *
- * A route with no binding at all is left alone here and refused by the next
- * guard. Deciding that in one place means there is one message to read when it
- * happens, and one test to hold it up.
+ * Authentication: establishes who is calling, via the `AUTHENTICATOR` port.
+ * Runs before `AccountScopeGuard`, which decides what they may reach. A route
+ * with no binding is left for the next guard to refuse.
  */
 @Injectable()
 export class AuthenticationGuard implements CanActivate {

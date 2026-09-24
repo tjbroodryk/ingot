@@ -26,15 +26,7 @@ interface AccountProps {
   keys: AccountKeyRecord[];
 }
 
-/**
- * A tenant, and the keys that speak for it.
- *
- * Keys live inside the account rather than as their own aggregate because the
- * invariant worth protecting is "this key belongs to exactly one account, and
- * revoking it is atomic with the account it belongs to". An account holds a
- * handful of keys, not thousands, so loading them together costs nothing — and
- * the authentication path needs both anyway.
- */
+/** A tenant and the keys that authenticate as it. */
 export class Account extends AggregateRoot<AccountId> {
   private props: AccountProps;
 
@@ -75,13 +67,7 @@ export class Account extends AggregateRoot<AccountId> {
     return this.props.keys;
   }
 
-  /**
-   * Mints a key and returns the secret, which is the only time it exists.
-   *
-   * Capped, because an account with unbounded keys is an account whose
-   * credentials cannot be audited — and because every authenticated request
-   * walks this list.
-   */
+  /** Mints a key and returns the secret — the only time it exists. Capped at 25 live keys. */
   mint(input: { label?: string; now: Date }): ApiKey {
     const live = this.props.keys.filter((key) => key.revokedAt === null);
     if (live.length >= 25) {
@@ -112,10 +98,9 @@ export class Account extends AggregateRoot<AccountId> {
     if (!key) {
       throw new ActionNotPermitted(`Key "${keyId.value}" does not belong to this account`);
     }
-    if (key.revokedAt !== null) return; // Already gone; saying so twice is not an error.
+    if (key.revokedAt !== null) return; // Already revoked; idempotent.
 
-    // Revoking the last live key would lock the account out of its own data,
-    // and there is no password reset on a machine-to-machine service.
+    // Refuse to revoke the last live key; it would lock the account out.
     const live = this.props.keys.filter((candidate) => candidate.revokedAt === null);
     if (live.length === 1) {
       throw new InvariantViolation(
@@ -128,12 +113,7 @@ export class Account extends AggregateRoot<AccountId> {
     );
   }
 
-  /**
-   * The key matching a presented secret, or null.
-   *
-   * Revoked keys are walked too, and rejected — skipping them early would make
-   * "revoked" measurably faster to probe than "never existed".
-   */
+  /** The key matching a presented secret, or null. Revoked keys are walked, not skipped early. */
   authenticate(secret: string): AccountKeyRecord | null {
     for (const key of this.props.keys) {
       if (ApiKey.matches(secret, key.digest) && key.revokedAt === null) return key;

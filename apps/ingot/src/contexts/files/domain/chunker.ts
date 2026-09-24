@@ -12,10 +12,7 @@ export interface Chunk {
   readonly section: string | null;
   readonly kind: ChunkKind;
   readonly tokens: number;
-  /**
-   * What machine-read this chunk's text, or null where the document carried
-   * it. Taken from the blocks, which is where a handler put it.
-   */
+  /** What machine-read this chunk's text, or null where the document carried it. */
   readonly ocr: string | null;
 }
 
@@ -30,34 +27,20 @@ const KINDS: Record<BlockKind, ChunkKind> = {
 /**
  * Characters per token, for the packing arithmetic only.
  *
- * Packing asks "does this block still fit" thousands of times per document, and
- * tokenising to answer each one would be the most expensive thing in the parse
- * by an order of magnitude — for a decision that is allowed to be a few percent
- * out, since the budget is itself a preference. So packing estimates and every
- * chunk that comes out is counted exactly, once, for the `tokens` column a
- * caller budgets against. Four is the long-run ratio for English prose in
- * `o200k_base`; code and tables run denser, which makes this conservative in
- * the direction that matters.
+ * Packing estimates rather than tokenising thousands of times; every emitted
+ * chunk is then counted exactly for its `tokens` column. Four is the long-run
+ * ratio for English prose in `o200k_base`.
  */
 const CHARS_PER_TOKEN = 4;
 
 /**
- * Splits a parsed document into rows for `ingot_file_chunks`.
+ * Splits a parsed document into rows for `ingot_file_chunks`, over a strategy:
  *
- * One algorithm over a strategy, in three passes that each do one thing:
- *
- * 1. **Group.** Consecutive blocks are gathered while the strategy says they
- *    belong together — same page, same heading, or simply "keep going".
- * 2. **Pack.** Each group is filled up to the budget, and a block too large to
- *    fit alone is broken down on the strongest separator it has left:
- *    paragraph, then sentence, then a hard cut.
- * 3. **Overlap.** Where the strategy allows it, each chunk after the first
- *    repeats the tail of its predecessor — never across a group, because a
- *    group boundary is one the document drew.
- *
- * Nothing here knows what a PDF is. That is the point: the format knowledge is
- * on the handler — its `chunking` strategy, and the blocks its `parse` produced
- * — and this is the part that would otherwise have been written once per format.
+ * 1. Group consecutive blocks the strategy says belong together.
+ * 2. Pack each group up to the budget, breaking a too-large block on its
+ *    strongest separator: paragraph, then sentence, then a hard cut.
+ * 3. Overlap: where allowed, repeat each chunk's predecessor's tail — never
+ *    across a group boundary.
  */
 export function chunk(input: {
   blocks: readonly Block[];
@@ -75,8 +58,7 @@ export function chunk(input: {
     const bodies = packed(group, budget, strategy);
 
     bodies.forEach((body, at) => {
-      // The tail of the previous chunk, and only within this group. Across one,
-      // the document itself said these are different things.
+      // The tail of the previous chunk, within this group only.
       const carried = at > 0 && overlap > 0 ? tail(bodies[at - 1] as string, overlap) : '';
       const head = strategy.carryHeadings ? headingLine(group) : '';
       const text = [head, carried, body].filter((part) => part.length > 0).join('\n\n');
@@ -87,14 +69,9 @@ export function chunk(input: {
         page: group[0]?.page ?? null,
         section: sectionOf(group),
         kind: KINDS[group[0]?.kind ?? BlockKind.Prose],
-        // Counted exactly, once, on what is actually stored — including the
-        // heading line and the carried tail, since a caller budgeting context
-        // is going to be handed all of it.
+        // Counted exactly on the stored text, including heading and carried tail.
         tokens: encode(text).length,
-        // From the group rather than from one block, since a chunk can span
-        // several. A group is a page under `Boundary.Page`, which is the only
-        // boundary an OCR'd document is ever chunked on, so in practice every
-        // block in it was read the same way.
+        // From the group, since a chunk can span several blocks.
         ocr: group.find((block) => block.ocr !== undefined)?.ocr ?? null,
       });
     });
@@ -104,12 +81,10 @@ export function chunk(input: {
 }
 
 /**
- * Runs of blocks that belong in the same chunk or chunks.
+ * Runs of blocks that belong in the same chunk(s).
  *
- * `hard` overrides the strategy in every case, because it is the parser saying
- * "this is a unit" about something only the parser could know — a slide, a
- * table lifted whole, a fenced code block. A budget-driven strategy has no
- * structural boundaries of its own and still honours those.
+ * `hard` overrides the strategy: it is the parser marking a unit — a slide, a
+ * table, a fenced code block — that must not be merged across.
  */
 function groupsOf(blocks: readonly Block[], strategy: ChunkingStrategy): Block[][] {
   const groups: Block[][] = [];
@@ -144,10 +119,8 @@ function breaks(previous: Block, next: Block, strategy: ChunkingStrategy): boole
 /**
  * A group's text, filled up to the budget.
  *
- * Blocks are added whole while they fit, because a paragraph break inside a
- * section is a boundary somebody wrote and the cheapest good split is the one
- * already there. Only a block that will not fit *on its own* is broken into,
- * and then on the strongest separator it has left.
+ * Blocks are added whole while they fit; only a block too large on its own is
+ * broken, on the strongest separator it has left.
  */
 function packed(group: readonly Block[], budget: number, strategy: ChunkingStrategy): string[] {
   const bodies: string[] = [];
@@ -166,27 +139,16 @@ function packed(group: readonly Block[], budget: number, strategy: ChunkingStrat
   }
   flush();
 
-  /*
-   * A group that produced nothing still gets one empty-handed answer rather
-   * than none — but only for a page, where the *absence* is a fact.
-   *
-   * A blank page in a scanned PDF is a real thing to want to know about: it is
-   * how somebody discovers that page 40 came out empty because the OCR failed
-   * on it, rather than because nothing was printed there. A blank paragraph run
-   * in a Word document is not a fact about anything, and a chunk of it would be
-   * an embedding of whitespace sitting in every ranking.
-   */
+  // A page that produced nothing still gets one empty chunk: a blank scanned
+  // page is a fact worth recording. A blank paragraph run is not.
   if (bodies.length === 0 && strategy.boundary === Boundary.Page) return [''];
   return bodies;
 }
 
 /**
- * One oversized block, cut down on the strongest separator it still has.
- *
- * Paragraphs first, then sentences, then — for the block that is one
- * unpunctuated wall, which is what a bad PDF text layer produces — a hard cut
- * at the budget. Each level is tried in full before the next, so a document
- * that has paragraphs is never cut mid-sentence.
+ * One oversized block, cut on the strongest separator it still has: paragraphs,
+ * then sentences, then a hard cut at the budget. Each level is tried in full
+ * first, so a document with paragraphs is never cut mid-sentence.
  */
 function broken(text: string, budget: number): string[] {
   for (const separator of [/\n\s*\n/, /(?<=[.!?])\s+/]) {
@@ -203,13 +165,7 @@ function broken(text: string, budget: number): string[] {
   return pieces;
 }
 
-/**
- * The last `size` characters, from a word boundary.
- *
- * From a boundary rather than exactly `size`, because an overlap that starts
- * mid-word contributes a token the embedder has never seen — the repetition is
- * there to carry meaning across a cut, and half a word carries none.
- */
+/** The last `size` characters, trimmed to a word boundary. */
 function tail(text: string, size: number): string {
   if (text.length <= size) return text;
 
@@ -228,15 +184,7 @@ function sectionOf(group: readonly Block[]): string | null {
   return path.length > 0 ? path : null;
 }
 
-/**
- * The heading path, prepended to what gets embedded.
- *
- * The single highest-value line in this file for retrieval quality, and it is
- * three words of code. A chunk's body is usually the *answer* and the heading
- * is usually the *question's vocabulary* — "termination", "notice period",
- * "indemnity" — and they are in different blocks. Embedding the body alone
- * throws away the half a searcher is going to type.
- */
+/** The heading path, prepended to the embedded text. */
 function headingLine(group: readonly Block[]): string {
   const path = group[0] ? sectionPath(group[0]) : '';
   return path.length > 0 ? path : '';

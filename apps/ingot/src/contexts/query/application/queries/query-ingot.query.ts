@@ -37,17 +37,9 @@ export class QueryIngot extends Query<QueryResult> {
 }
 
 /**
- * The read path, in all three of its modes.
- *
- * `sql` alone runs as written. `text` alone embeds the question and ranks one
- * table by similarity. Both together is the interesting one: the embedding is
- * bound as `$q` and the caller's own SQL can use it, so a hybrid search — a
- * WHERE clause on real columns, ordered by meaning — is one round trip rather
- * than a similarity search followed by a filter in the client.
- *
- * A query is emphatically not a command even though it arrives as a POST: it
- * changes nothing, so it gets no transaction. The POST is because SQL does not
- * belong in a URL.
+ * The read path in three modes: `sql` runs as written, `text` ranks one table by
+ * similarity, both binds the embedding as `$q` for hybrid search. No transaction;
+ * POST only because SQL does not belong in a URL.
  */
 @QueryHandler(QueryIngot)
 export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
@@ -78,17 +70,8 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
 
     const rowCap = Math.min(body.limit ?? DEFAULT_ROW_CAP, MAX_ROW_CAP);
 
-    /*
-     * A question is only comparable to the vectors it is ranked against.
-     *
-     * This memory recorded the model that wrote its embeddings, and if the
-     * process is now configured for a different one, the honest answer is to
-     * refuse. Ranking anyway would produce a number for every row — cosine
-     * similarity between two unrelated vector spaces is perfectly well
-     * defined and completely meaningless — so the failure would be an
-     * ordinary-looking result set that is simply wrong, with nothing to
-     * indicate it. The alternative to an error here is a silent one later.
-     */
+    // Refuse if the process's embedder differs from the one that wrote this
+    // memory's vectors — ranking across models is meaningless.
     if (wantsText) {
       ingot.assertEmbeddingMatches({
         model: this.embedder.model,
@@ -110,9 +93,7 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
       sql = rankingSql(target, pickColumn(target, body), rowCap);
     }
 
-    // Every table is offered; the engine narrows to the ones the statement
-    // actually names. That decision belongs inside the session, where the
-    // connection that can read the statement lives — see `narrow()` there.
+    // Offer every table; the engine narrows to the ones the statement names.
     const available = await this.sessions.all(tables);
 
     const outcome = await observe('ingot.query', { 'ingot.mode': mode(wantsSql, wantsText) }, () =>
@@ -138,13 +119,7 @@ function mode(sql: boolean, text: boolean): string {
   return sql ? 'sql' : 'semantic';
 }
 
-/**
- * Which table a plaintext question ranks.
- *
- * Named explicitly when there is more than one, because guessing would mean
- * silently searching the wrong memory — and the caller has `/info`, which
- * tells them exactly what there is to choose from.
- */
+/** Which table a plaintext question ranks; must be named when more than one is searchable. */
 function pickTable(tables: readonly IngotTable[], body: QueryBody): IngotTable {
   if (body.table) {
     const named = tables.find((table) => table.name.value === body.table?.toLowerCase());
@@ -196,36 +171,13 @@ function pickColumn(table: IngotTable, body: QueryBody): string {
 }
 
 /**
- * The SQL a plaintext question becomes.
- *
- * Rows with no vector are excluded rather than ranked last: a null similarity
- * sorts unpredictably, and a row that has not been embedded yet is not a bad
- * match — it is an unknown one, and returning it as a weak result would be a
- * claim we cannot support.
- *
- * `EXCLUDE` rather than a bare `*`, so the search asks for the columns the
- * caller was promised and nothing else. The engine withholds embeddings from
- * every result anyway, but a statement that selects a column it will not be
- * given is one somebody has to explain later — and the projection here is the
- * one place a plaintext search can simply be written correctly. Every embedded
- * column goes, not only the one being ranked: the others are the same secret.
- *
- * `_raw` goes with them, for a different reason. It is not a secret — a caller
- * asked for it and may read it back — but it is the whole blob a row was
- * projected *from*, so a result carrying it hands back every returned column a
- * second time inside it. On a table whose columns are the interesting parts of
- * a tool result, that is three copies per row and a plaintext search costing
- * more to read than the work it was meant to save.
- *
- * Withheld from the projection rather than from the result, which is the
- * difference that matters: `SELECT _raw FROM t` still answers. This function
- * writes the SQL for a caller who did not write any, and volunteering the
- * largest column in the table is not what they asked for.
+ * The SQL a plaintext question becomes: ranks by cosine similarity, excludes
+ * rows with no vector, and withholds every embedding column and `_raw` from the
+ * projection (they can still be selected explicitly).
  */
 function rankingSql(table: IngotTable, column: string, limit: number): string {
   const vector = ident(vectorColumnName(column));
-  // Only when the table has one: DuckDB refuses an `EXCLUDE` naming a column
-  // that is not there, and `_raw` exists only for a write that asked for it.
+  // Only if present: DuckDB refuses an `EXCLUDE` naming a column that is not there.
   const hasRaw = table.columns.some((spec) => spec.name.value === RAW);
   const withheld = [
     ...table.embeddedColumns.map((embedded) => ident(vectorColumnName(embedded.name.value))),

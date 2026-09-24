@@ -4,22 +4,8 @@ import { StorageDriver } from '../../src/storage/drivers.js';
 import { S3ObjectStore } from '../../src/storage/s3-object-store.js';
 
 /**
- * The half of a bucket DuckDB does not do, against a real one.
- *
- * MinIO, which `docker compose up` runs, speaks the protocol AWS, R2 and Ceph
- * speak. That is enough to hold up the part of the base tier with no other
- * coverage: heads, deletes, and the listing loop behind `removePrefix`.
- *
- * `removePrefix` is why this file exists. It is what runs when an ingot or a
- * table is destroyed, and a bug in it is not a failure — it is a *success*
- * that leaves most of a deleted memory sitting in somebody's bucket. The
- * listing is paginated, so the loop is driven here over several pages against
- * a server that is allowed to disagree with what we assumed about it.
- *
- * Google is not here, and cannot be: that driver reaches its bucket through
- * the Google client library and reads through DuckDB over https, neither of
- * which speaks this protocol. The claims underneath it are about DuckDB, and
- * `scripts/spike-duckdb.ts` is where those are run.
+ * `S3ObjectStore` against a real bucket: stat, remove, and the paginated
+ * listing loop behind `removePrefix`.
  */
 const ENDPOINT = process.env.INGOT_TEST_S3_ENDPOINT ?? 'http://localhost:9000';
 const BUCKET = process.env.INGOT_TEST_S3_BUCKET ?? 'ingot';
@@ -33,8 +19,8 @@ const client = new S3Client({
   credentials: { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY },
 });
 
-// Two keys per listing, so five objects is three pages and the loop has to be
-// right about where the next one starts rather than merely terminating.
+// Page size two, so five objects spans three pages and exercises the loop's
+// continuation, not just its termination.
 const store = new S3ObjectStore(
   {
     driver: StorageDriver.S3,
@@ -85,8 +71,7 @@ describe('the S3 base tier, against a real bucket', () => {
     const [key] = await seed(prefix, 1);
 
     expect(await store.stat(key as string)).toEqual({ bytes: `bytes for ${key}`.length });
-    // Absence is `null` rather than a throw: `stat` is what a manifest gets
-    // reconciled against, and a missing object is an answer.
+    // Absence is `null`, not a throw.
     expect(await store.stat(`${prefix}/never-written.parquet`)).toBeNull();
 
     await store.removePrefix(prefix);
@@ -116,8 +101,8 @@ describe('the S3 base tier, against a real bucket', () => {
   });
 
   it('leaves a sibling prefix that merely shares a name alone', async () => {
-    // `removePrefix('a/b')` must not take `a/bc`. The trailing slash is what
-    // makes that true, and an ingot id is a prefix of another one by luck.
+    // `removePrefix('a/b')` must not take `a/bc`; the trailing slash is what
+    // makes that true.
     const prefix = scope();
     const [kept] = await seed(`${prefix}-sibling`, 1);
     await seed(prefix, 2);
@@ -129,9 +114,7 @@ describe('the S3 base tier, against a real bucket', () => {
   });
 
   it('hands DuckDB the object itself to write, with nothing to publish after', async () => {
-    // S3 is the one remote case DuckDB can write, so a roll-up here is a
-    // `COPY … TO 's3://…'` and `commit` has nothing to do. Google is the case
-    // that cannot, and stages through local disk instead.
+    // DuckDB writes S3 directly (`COPY … TO 's3://…'`), so `commit` has nothing to do.
     const pending = await store.beginWrite('acct/ing/tables/t/gen-1/part-0.parquet');
 
     expect(pending.target).toBe(`s3://${BUCKET}/acct/ing/tables/t/gen-1/part-0.parquet`);
