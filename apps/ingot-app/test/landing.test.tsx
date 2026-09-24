@@ -4,6 +4,8 @@ import { LandingPage } from '../src/landing/landing-page';
 import {
   AI_SDK_SEEN,
   AI_SDK_TOOL,
+  FIT_FOR,
+  FIT_NOT,
   HARNESS,
   LEDE,
   MCP_CONFIG,
@@ -85,7 +87,20 @@ describe('the landing page', () => {
   it('renders every section it is given without throwing', () => {
     for (const step of STEPS) expect(markup).toContain(step.title);
     for (const way of WAYS_IN) expect(markup).toContain(way.title);
-    for (const thing of SPEAKS) expect(markup).toContain(thing);
+    for (const thing of SPEAKS) expect(markup).toContain(thing.label);
+    // React escapes the apostrophes, and a few of these lines have one.
+    for (const line of [...FIT_FOR, ...FIT_NOT]) {
+      expect(markup).toContain(line.replaceAll("'", '&#x27;'));
+    }
+  });
+
+  it("says who it's for between what it is and what it's not", () => {
+    const what = markup.indexOf('id="what"');
+    const who = markup.indexOf('id="who"');
+
+    expect(what).toBeGreaterThan(-1);
+    expect(who).toBeGreaterThan(what);
+    expect(markup.indexOf('id="not"')).toBeGreaterThan(who);
   });
 
   /**

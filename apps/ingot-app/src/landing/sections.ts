@@ -84,20 +84,35 @@ export const WAYS_IN: readonly Argument[] = [
     id: 'tool-results',
     kicker: 'Recall',
     title: 'Somewhere to put a tool result',
-    body: 'Ingot is a drop-in memory for an agent loop. Tool results can clog up your context window. We can give you a dedicated place to store and retrieve them efficiently.',
+    body: 'Ingot is a drop-in memory for an agent loop. Tool results can clog up your context window. Ingot gives you a dedicated place to store and retrieve them efficiently.',
   },
   {
     id: 'size',
     kicker: 'Size',
     title: 'The result that would not have fit',
-    body: 'Some tools can return huge payloads that can overwhelm your context window. When casting them to the ingot, the model only sees a concise receipt, keeping your context window manageable.',
+    body: 'Some tools return payloads big enough to overwhelm your context window. Cast them to an ingot and the model only sees a concise receipt, so the context window stays manageable.',
   },
   {
     id: 'precision',
     kicker: 'Precision',
     title: 'SQL gives exact answers',
-    body: 'Naive RAG can give you imprecise results, because it relies on approximate similarity searches. SQL, on the other hand, gives exact answers, ensuring that the model retrieves the correct data every time.',
+    body: 'Naive RAG can give imprecise results, because it relies on approximate similarity search. SQL gives exact answers, so the model retrieves the correct data every time.',
   },
+];
+
+/** The two lists under "Who it's for": where Ingot pays off, and where it does not. */
+export const FIT_FOR: readonly string[] = [
+  'Your agent calls tools that return JSON lists: CRM contacts, CI runs, tickets, issues, orders.',
+  "It needs exact answers from what it stored: how many, which was first, what's missing.",
+  'Answers span more than one tool, joined on an id, a name or a path.',
+  'Tool results are too big for the context window.',
+  'You care about cost: fewer tokens per answer, and a smaller, cheaper model that can still get it right.',
+  'You want agent memory you can drop in, not a retrieval stack to assemble and run.',
+];
+
+export const FIT_NOT: readonly string[] = [
+  'Its memory is mostly conversation or notes with no fields to query.',
+  "You only use Claude Code, or another agent you didn't build. You can use Ingot with these, but it's not where you'd get the most value from it.",
 ];
 
 /**
@@ -112,11 +127,14 @@ export const WAYS_IN: readonly Argument[] = [
 export const LEDE =
   'Models are good at writing SQL. Why rely on similarity searches, when you can let it ask for exactly what it needs?';
 
-/** The row under the hero. What the thing already speaks, rather than logos. */
-export const SPEAKS: readonly string[] = [
-  'SQL Queries',
-  'Similarity Searches',
-  'Document Chunking',
+/**
+ * The row under the hero. What the thing already speaks, rather than logos.
+ * `id` is the section on `/features` each one links to.
+ */
+export const SPEAKS: readonly { readonly label: string; readonly id: string }[] = [
+  { label: 'SQL Queries', id: 'sql' },
+  { label: 'Similarity Searches', id: 'similarity' },
+  { label: 'Document Chunking', id: 'documents' },
 ];
 
 /**

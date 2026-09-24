@@ -5,11 +5,20 @@ import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { proofCards, TABLES } from '../benchmarks/benchmarks';
 import { SampleLang } from '../docs/reference';
-import { BENCHMARKS_HREF, DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
+import {
+  BENCHMARKS_HREF,
+  DEPLOYMENT_HREF,
+  DOCS_HREF,
+  FEATURES_HREF,
+  REPO_URL,
+  WHY_HREF,
+} from '../site/mode';
 import './landing.css';
 import {
   AI_SDK_SEEN,
   AI_SDK_TOOL,
+  FIT_FOR,
+  FIT_NOT,
   HARNESS,
   HARNESS_RETURN,
   LEDE,
@@ -88,6 +97,8 @@ export function LandingPage(): ReactNode {
             <a href={RUN_HREF}>There is no hosted Ingot yet — you run it</a>
           </div>
 
+          <span className="label kicker kicker-n">What it is</span>
+
           <h1 className="hero-title">
             Memory your
             <br />
@@ -108,39 +119,24 @@ export function LandingPage(): ReactNode {
 
           <div className="label label-sm speaks-label">Features</div>
           <div className="speaks">
-            {SPEAKS.map((thing) => (
-              <span key={thing}>{thing}</span>
-            ))}
+            {SPEAKS.map((thing) =>
+              FEATURES_HREF ? (
+                <a key={thing.id} href={`${FEATURES_HREF}#${thing.id}`}>
+                  {thing.label}
+                </a>
+              ) : (
+                <span key={thing.id}>{thing.label}</span>
+              ),
+            )}
           </div>
         </section>
 
         {/*
-          What the thing is, before any of the API below it.
-
-          The hero says it in one sentence and a sentence is not enough: a
-          reader arriving here has to be told that this is where an agent loop
-          puts its tool results, or they read the terminal underneath as a
-          database's samples rather than as an ingot's. The `/why` link sits in
-          the head rather than in a fourth cell because the argument is not a
-          feature — and it is guarded, because the route is `null` in a build
-          that does not have that page.
+          The rest of "What it is", headless: the hero is its head. A reader has
+          to be told this is where an agent loop puts its tool results before
+          the samples below, or they read them as a database's.
         */}
         <section className="landblock" id="what">
-          <div className="landhead">
-            <span className="label kicker kicker-n">What it is</span>
-            <h2 className="landtitle">
-              Queryable
-              <br />
-              <span className="mark">memory</span>
-            </h2>
-            <p className="hero-lede">Think of it as a small database for your conversation or agent.</p>
-            {WHY_HREF ? (
-              <a className="target-more landhead-more" href={WHY_HREF}>
-                The argument, in full →
-              </a>
-            ) : null}
-          </div>
-
           <div className="features">
             {WAYS_IN.map((way) => (
               <div className="feature" key={way.id}>
@@ -164,7 +160,7 @@ export function LandingPage(): ReactNode {
         */}
         <section className="split split-heads" id="benchmark">
           <div className="split-copy">
-            <span className="label kicker kicker-n">Benchmark</span>
+            <span className="label kicker">[ Benchmark ]</span>
             <h3>
               Structured beats
               <br />
@@ -217,7 +213,7 @@ export function LandingPage(): ReactNode {
           </div>
 
           <div className="split-copy">
-            <span className="label kicker kicker-n">Two calls</span>
+            <span className="label kicker">[ Two calls ]</span>
             <h3>
               Write it once,
               <br />
@@ -239,6 +235,54 @@ export function LandingPage(): ReactNode {
                 <CodeBlock code={REMEMBER} />
                 <CodeBlock code={RECALL} />
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landblock" id="who">
+          <div className="landhead">
+            <span className="label kicker kicker-n">Who it&rsquo;s for</span>
+            <h2 className="landtitle">
+              Built for agents that <span className="mark">call tools</span>
+            </h2>
+            <p>
+              For teams building their own agent harness for production apps, where the tools
+              return real records and the answers have to be right.
+            </p>
+          </div>
+
+          <div className="fit">
+            <div className="fit-col">
+              <div className="fit-head label label-sm">
+                <span className="fit-name">For you if</span>
+                <span className="fit-badge">Good fit</span>
+              </div>
+              <ul className="fit-list">
+                {FIT_FOR.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="fit-col fit-col-not">
+              <div className="fit-head label label-sm">
+                <span className="fit-name">Probably not if</span>
+                <span className="fit-badge">Use a vector store</span>
+              </div>
+              <ul className="fit-list">
+                {FIT_NOT.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <p className="fit-note">
+                Ingot still does similarity search, so a mix of both is fine.
+                {FEATURES_HREF ? (
+                  <>
+                    {' '}
+                    <a href={`${FEATURES_HREF}#combining`}>See how they combine</a>.
+                  </>
+                ) : null}
+              </p>
             </div>
           </div>
         </section>
