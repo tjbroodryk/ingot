@@ -754,6 +754,7 @@ function Scoring(): ReactNode {
           </div>
         ))}
       </dl>
+      <p className='bench-caption'>This does not test how good models are at taking actions, i.e. sending data somewhere or performing tasks correctly. It only evaluates their ability to provide correct answers based on their recalled knowledge. </p>
     </div>
   );
 }
