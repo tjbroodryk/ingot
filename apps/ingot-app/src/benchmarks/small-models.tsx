@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { adapterLabel, countWord, type MatchupCell, type PublishedMatchup } from './benchmarks';
+import { adapterLabel, type MatchupCell, type PublishedMatchup } from './benchmarks';
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 const count = (value: number): string => value.toLocaleString('en-GB');
@@ -168,70 +168,8 @@ export function SmallModels({ matchup }: { matchup: PublishedMatchup }): ReactNo
         </p>
       </aside>
 
-      <div className="bench-sm-grid-wrap">
-        <div className="bench-rule label label-sm">
-          <span>The full comparison</span>
-          <span className="bench-rule-line" aria-hidden="true" />
-        </div>
-        <p className="bench-sm-grid-lede">{gridLede(matchup)}</p>
-        <Grid matchup={matchup} />
-      </div>
-
       <p className="bench-caption">{caption(matchup)}</p>
     </div>
-  );
-}
-
-/** Every model against every memory, with the pairings not yet run left visibly empty. */
-function Grid({ matchup }: { matchup: PublishedMatchup }): ReactNode {
-  return (
-    <table className="bench-sm-grid">
-      <thead>
-        <tr>
-          <td />
-          {matchup.adapters.map((adapter) => (
-            <th
-              scope="col"
-              className={`label${isOurs(adapter) ? ' bench-sm-grid-ours' : ''}`}
-              key={adapter}
-            >
-              {adapterLabel(adapter)}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {matchup.models.map((model) => (
-          <tr key={model}>
-            <th scope="row" className="label">
-              {model}
-            </th>
-            {matchup.adapters.map((adapter) => {
-              const cell = matchup.cells.find((one) => one.model === model && one.adapter === adapter);
-              if (!cell) {
-                return (
-                  <td className="bench-sm-cell bench-sm-cell-empty" key={adapter}>
-                    <span className="label">Not run</span>
-                    <strong>—</strong>
-                  </td>
-                );
-              }
-              return (
-                <td
-                  className={`bench-sm-cell${isOurs(adapter) ? ' bench-sm-cell-ours' : ''}`}
-                  key={adapter}
-                >
-                  <span className="label">Done</span>
-                  <strong>
-                    {percent(cell.accuracy)} · {cell.toolCalls.toFixed(1)} calls
-                  </strong>
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 
@@ -240,13 +178,6 @@ function roundUp(max: number): number {
   if (max <= 0) return 1;
   const power = 10 ** Math.floor(Math.log10(max));
   return [1, 1.5, 2, 2.5, 5, 10].map((m) => m * power).find((step) => step >= max) ?? max;
-}
-
-function gridLede(matchup: PublishedMatchup): string {
-  const missing = matchup.models.length * matchup.adapters.length - matchup.cells.length;
-  const lede = 'Every pairing separates the memory from the model.';
-  if (missing === 0) return lede;
-  return `${lede} ${countWord(missing)} ${missing === 1 ? 'is' : 'are'} still to run.`;
 }
 
 function caption(matchup: PublishedMatchup): string {
