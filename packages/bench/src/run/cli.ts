@@ -4,7 +4,6 @@ import type { LanguageModel } from 'ai';
 import { buildModel, reasoningOptions, type Provider } from '../agent/model.js';
 import { agentMapping } from '../adapters/agent-mapping.js';
 import { RawContextAdapter } from '../adapters/controls.js';
-import { HyperspellAdapter } from '../adapters/hyperspell.js';
 import { IngotAdapter } from '../adapters/ingot.js';
 import { IngotRestAdapter } from '../adapters/ingot-rest.js';
 import { authoredMapping, type MappingSource } from '../adapters/ingot-mapping.js';
@@ -71,7 +70,6 @@ const ADAPTERS = [
   'vector-fetch',
   'pinecone',
   'turbopuffer',
-  'hyperspell',
   'raw-context',
 ] as const;
 type AdapterName = (typeof ADAPTERS)[number];
@@ -521,7 +519,6 @@ Environment:
   INGOT_URL              (http://localhost:3002)
   INGOT_ACCOUNT          (dev)
   INGOT_API_KEY          The key the server was started with.
-  HYPERSPELL_API_KEY     Only needed for --adapters hyperspell.
   PINECONE_API_KEY       Only for --adapters pinecone. The index named by
   PINECONE_INDEX         PINECONE_INDEX (ingot-bench) is created if missing,
   PINECONE_CLOUD         serverless, at the width BENCH_EMBEDDER produces.
@@ -591,14 +588,6 @@ async function build(
         },
         embedderFromEnv(env),
       );
-    case 'hyperspell':
-      return new HyperspellAdapter({
-        apiKey: required('HYPERSPELL_API_KEY', env.HYPERSPELL_API_KEY),
-        baseUrl: env.HYPERSPELL_URL,
-        runId,
-        ...(env.HYPERSPELL_SOURCES ? { sources: env.HYPERSPELL_SOURCES.split(',') } : {}),
-        ...(env.HYPERSPELL_AS_USER ? { asUser: env.HYPERSPELL_AS_USER } : {}),
-      });
     case 'raw-context':
       return new RawContextAdapter();
   }
@@ -813,7 +802,7 @@ async function main(options: Options): Promise<StoredRun | null> {
 
   for (const name of options.adapters) {
     // An adapter that cannot be built or cannot ingest costs its own column
-    // and nothing else. A Hyperspell key that has expired, or an Ingot server
+    // and nothing else. A Pinecone key that has expired, or an Ingot server
     // that went away, should not take the five columns behind it with it —
     // the report says which adapter is missing and why, and the rest of the
     // table is still a table.

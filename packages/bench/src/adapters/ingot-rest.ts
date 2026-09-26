@@ -12,7 +12,7 @@ import { schema, type AdapterTool, type MemoryAdapter } from './types.js';
  *
  * The confound is not the transport. It is who wrote the words. Over MCP,
  * Ingot's tool names, descriptions and schema summary come from the server,
- * tuned by the people shipping it; `vector` and `hyperspell` get descriptions
+ * tuned by the people shipping it; `vector` and `pinecone` get descriptions
  * hand-written in this repository. So some unknown share of an Ingot win could
  * be that the product ships better prompt copy, and no column in the table can
  * tell you how big that share is.

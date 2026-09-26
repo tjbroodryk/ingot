@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { RawContextAdapter } from '../src/adapters/controls.js';
-import { HyperspellAdapter } from '../src/adapters/hyperspell.js';
 import { IngotRestAdapter, renderSchema } from '../src/adapters/ingot-rest.js';
 import { PineconeAdapter } from '../src/adapters/pinecone.js';
 import {
@@ -20,8 +19,8 @@ import { buildQuestions } from '../src/questions/questions.js';
 import { HashEmbedder } from '../src/embed/embedder.js';
 
 /**
- * The adapters that need neither a network nor a key. The Ingot and Hyperspell
- * adapters are exercised by running the benchmark against them, because a mock
+ * The adapters that need neither a network nor a key. The Ingot adapters are
+ * exercised by running the benchmark against them, because a mock
  * of a retrieval system would assert that the mock retrieves.
  */
 const world = buildWorld({ seed: 2 });
@@ -125,7 +124,6 @@ describe('the top-k baselines', () => {
       { apiKey: 'k', region: 'aws-us-east-1', runId: 'test' },
       new HashEmbedder(),
     ),
-    new HyperspellAdapter({ apiKey: 'k', runId: 'test' }),
   ];
 
   test('are one row each, named for the store they rank in', () => {
@@ -133,7 +131,6 @@ describe('the top-k baselines', () => {
       'vector',
       'pinecone',
       'turbopuffer',
-      'hyperspell',
     ]);
   });
 

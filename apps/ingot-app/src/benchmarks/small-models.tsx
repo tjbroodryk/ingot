@@ -191,6 +191,6 @@ function caption(matchup: PublishedMatchup): string {
   return (
     `${asked.charAt(0).toUpperCase()}${asked.slice(1)} only, ${runs} attempts per cell, ` +
     `${run.maxToolCalls}-call budget, seed ${run.seed}. At n = ${runs} the ± is ${spread} ` +
-    'points: a direction, not a proof.'
+    'points: less of a proof, and more of a guide.'
   );
 }

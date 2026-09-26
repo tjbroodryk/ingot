@@ -6,7 +6,7 @@ What an agent can get back out, and what it costs to get it.
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,raw-context
-bun run bench --adapters ingot,control-same-store-top-k,vector,hyperspell,raw-context
+bun run bench --adapters ingot,control-same-store-top-k,vector,raw-context
 bun run bench --adapters ingot,ingot-rest        # the same store, two interfaces
 bun run bench --adapters vector,pinecone,turbopuffer   # the same vectors, three indexes
 ```
@@ -35,7 +35,7 @@ There is a second way to win that has nothing to do with the data model.
 
 Over MCP, Ingot's tool names, descriptions and schema summary are written by
 the server — by the people shipping the product, who have every reason to write
-them well. `vector`, `pinecone`, `turbopuffer` and `hyperspell` get one
+them well. `vector`, `pinecone` and `turbopuffer` get one
 description hand-written in this repository, shared between them. So some share
 of any Ingot win is that it ships better prompt copy,
 and no single column can tell you how big that share is.
@@ -52,7 +52,7 @@ Neither column is the honest one alone:
 - **`ingot-mcp`** is what an agent connecting to Ingot today actually gets. The
   product claim.
 - **`ingot-rest`** is typed rows and SQL with the packaging removed, symmetric
-  with `vector` and `hyperspell`. The substrate claim.
+  with `vector` and `pinecone`. The substrate claim.
 
 The gap between them is the result: how much of the advantage is the data model
 and how much is the surface it is reached through. Report both, or report
@@ -80,8 +80,8 @@ are columns too:
 All three are handed the **identical vectors** — the same embedding model, the
 same record-level chunking, the same text — and reached through the **identical
 `search` tool**, written once in `src/adapters/semantic-search.ts` and imported
-by all of them along with `hyperspell`. A test asserts that they are
-byte-identical, because four hand-written copies of a tool description are four
+by all of them. A test asserts that they are
+byte-identical, because three hand-written copies of a tool description are three
 chances for one column to quietly acquire better prompt copy than the others
 and have it show up in the accuracy column wearing retrieval's clothes.
 
@@ -211,8 +211,8 @@ Everything below is a rule the harness enforces, not an aspiration.
 - **`k` up to 50.** The vector adapters may return fifty records per call, so
   what they cannot do is a property of top-k retrieval rather than of a
   stingy default.
-- **One search surface, shared by every top-k row.** `vector`, `pinecone`,
-  `turbopuffer` and `hyperspell` import the same system note and the same tool
+- **One search surface, shared by every top-k row.** `vector`, `pinecone` and
+  `turbopuffer` import the same system note and the same tool
   from `src/adapters/semantic-search.ts`, and a test asserts they are
   identical. Only where the vectors live and how they are ranked differs. See
   [is the vector baseline a strawman?](#is-the-vector-baseline-a-strawman)
@@ -222,10 +222,7 @@ Everything below is a rule the harness enforces, not an aspiration.
 - **Each run gets its own namespace.** Pinecone and turbopuffer are written to
   a namespace named for the run, so a shared account cannot leak one run's
   corpus into another's results — and because that namespace holds this run's
-  vectors and nothing else, it is dropped on the way out. Hyperspell's store is
-  account-wide with no such boundary, so that adapter filters instead of
-  deleting; issuing bulk deletes against somebody's account is the worse
-  failure mode.
+  vectors and nothing else, it is dropped on the way out.
 - **Ingot's schema summary is passed through.** The MCP server hands it over at
   connect time and it costs no tool call. Withholding it to make the columns
   look more alike would benchmark a version of Ingot nobody ships.
@@ -238,9 +235,6 @@ Everything below is a rule the harness enforces, not an aspiration.
 - **Keyword search is switched on.** `configure_table` enables BM25 on the
   prose tables during ingest, because leaving a documented feature off would
   measure a crippled configuration.
-- **Hyperspell answers with retrieval, not with its own model.** `answer:
-  false` on every query. Otherwise the row measures Hyperspell's synthesis and
-  the agent under test is no longer the same agent across columns.
 - **One provider per run.** `--provider` is a property of a whole report, never
   of a column. Foundry and the first-party API differ in which features are GA,
   so a table whose columns came from both would be comparing platforms while
@@ -314,7 +308,7 @@ part of `bun run test` at the repository root, and spends real money.
 ```
 --seed N               World seed. The corpus and every gold answer follow from it.
 --adapters a,b,c       ingot, control-same-store-top-k, ingot-rest, control-same-store-top-k-rest,
-                       vector, pinecone, turbopuffer, hyperspell, raw-context
+                       vector, pinecone, turbopuffer, raw-context
                        With --from, selects which of a finished run's columns
                        the report shows. The rows on disk are untouched.
 --repeats N            Runs per question. (3)
@@ -352,7 +346,6 @@ part of `bun run test` at the repository root, and spends real money.
 | `INGOT_URL` | `http://localhost:3002` |
 | `INGOT_ACCOUNT` | `dev` |
 | `INGOT_API_KEY` | The key the server was started with |
-| `HYPERSPELL_API_KEY` | Only for `--adapters hyperspell` |
 | `PINECONE_API_KEY` | Only for `--adapters pinecone` |
 | `PINECONE_INDEX`, `PINECONE_CLOUD`, `PINECONE_REGION` | `ingot-bench`, `aws`, `us-east-1`. The index is created, serverless, at whatever width `BENCH_EMBEDDER` produces, and an existing one of the wrong width or metric is refused rather than silently used |
 | `TURBOPUFFER_API_KEY` | Only for `--adapters turbopuffer` |
@@ -693,6 +686,3 @@ vectors that rank badly for reasons nobody can see.
   context window. That is deliberate — it is what makes `raw-context` a usable
   ceiling — but conclusions about a corpus a thousand times larger are not
   supported by it.
-- **Anything about Hyperspell's other features.** The adapter uses
-  `/memories/add` and `/memories/query` as its documentation describes them.
-  Integrations, live querying and server-side synthesis are all out of scope.

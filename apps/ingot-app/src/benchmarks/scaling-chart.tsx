@@ -24,7 +24,6 @@ const Y1 = 14;
 const DASHES: Readonly<Record<string, string>> = {
   'ingot-rest': '',
   'ingot-mcp': '6 4',
-  hyperspell: '',
   turbopuffer: '2 3',
   vector: '8 3 2 3',
   pinecone: '1 3',

@@ -209,7 +209,7 @@ export class TurbopufferAdapter implements MemoryAdapter {
 
   /**
    * One request, waiting out a rate limit rather than failing the column —
-   * the same choice `hyperspell` and `pinecone` make, for the same reason.
+   * the same choice `pinecone` makes, for the same reason.
    */
   private async request<T>(path: string, method: string, body: unknown, attempt = 0): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {

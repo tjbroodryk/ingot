@@ -237,28 +237,6 @@
           }
         },
         {
-          "name": "hyperspell",
-          "runs": 99,
-          "accuracy": 0.7878787878787878,
-          "stderr": 0.04108697395995793,
-          "f1": 0.8090050835148873,
-          "evidenceRecall": 0.9306666666666666,
-          "evidencePrecision": 0.03136703047967988,
-          "toolCalls": 8.070707070707071,
-          "contextTokens": 47807,
-          "runMs": 87327,
-          "callMs": 1149,
-          "failures": 0,
-          "byCategory": {
-            "aggregate": 0.5555555555555556,
-            "absence": 0.8888888888888888,
-            "ordering": 0.3333333333333333,
-            "join": 0.9444444444444444,
-            "semantic": 1,
-            "multi-hop": 0.5555555555555556
-          }
-        },
-        {
           "name": "raw-context",
           "runs": 99,
           "accuracy": 0.898989898989899,

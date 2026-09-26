@@ -438,7 +438,7 @@ function caption(adapter: PublishedAdapter, categories: readonly string[]): stri
 
 export const BENCHMARKS_DESCRIPTION =
   'What an agent gets back out of a memory, and what it costs to get it — Ingot ' +
-  'against vector search local and hosted, a hosted memory, and its own embedding ' +
+  'against vector search local and hosted, and against its own embedding ' +
   'path with SQL taken away.';
 
 /**
@@ -521,10 +521,6 @@ const ADAPTER_BLURBS: readonly { readonly name: string; readonly blurb: string }
     name: 'turbopuffer',
     blurb:
       'The same vectors again, in a hosted index built on object storage. Its full-text index is off: switching it on would make this row a hybrid search while the other two stay dense-only.',
-  },
-  {
-    name: 'hyperspell',
-    blurb: 'A hosted memory, configured as its own documentation says to configure it.',
   },
   {
     name: 'raw-context',

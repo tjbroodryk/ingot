@@ -92,9 +92,9 @@ export interface PineconeOptions {
  *   top-k retrieval and not of an implementation chosen to lose.
  *
  * Runs are isolated by namespace — one per `runId` — which is also why this
- * adapter deletes on the way out where `hyperspell` does not: a namespace
- * named for this run was created by this run and holds nothing else, so
- * dropping it is not a bulk delete against somebody's account.
+ * adapter deletes on the way out: a namespace named for this run was created
+ * by this run and holds nothing else, so dropping it is not a bulk delete
+ * against somebody's account.
  */
 export class PineconeAdapter implements MemoryAdapter {
   readonly name = 'pinecone';
@@ -146,8 +146,8 @@ export class PineconeAdapter implements MemoryAdapter {
    * The record as Pinecone holds it.
    *
    * The text goes in the metadata rather than being looked up locally after
-   * the query, so what the model reads is what the store handed back — the
-   * same round trip `hyperspell` is scored on. The size check is here because
+   * the query, so what the model reads is what the store handed back. The
+   * size check is here because
    * Pinecone rejects the whole batch over its 40KB ceiling, and a corpus that
    * grew past it should say so rather than fail with a 400 nobody can read.
    */
@@ -227,9 +227,8 @@ export class PineconeAdapter implements MemoryAdapter {
    * Writes are visible when they are visible.
    *
    * Pinecone is eventually consistent, so querying straight after the last
-   * upsert would benchmark a half-built index — the same failure `hyperspell`
-   * guards against, and the same fix: ask the store what it holds and wait
-   * until it admits to all of it, rather than guessing at a sleep.
+   * upsert would benchmark a half-built index. Ask the store what it holds and
+   * wait until it admits to all of it, rather than guessing at a sleep.
    */
   private async waitForIndexing(): Promise<void> {
     const wanted = this.records.length;
@@ -282,7 +281,7 @@ export class PineconeAdapter implements MemoryAdapter {
   /**
    * The run's namespace, dropped.
    *
-   * Unlike Hyperspell's account-wide store, a namespace is named for this run
+   * A namespace is named for this run
    * and holds only this run's vectors, so removing it is not a bulk delete
    * against anything shared. It is best-effort on purpose: a serverless index
    * that will not drop a namespace is not a reason to fail a run whose rows
@@ -332,8 +331,7 @@ export class PineconeAdapter implements MemoryAdapter {
   /**
    * One request, waiting out a rate limit rather than failing the column.
    *
-   * The same choice `hyperspell` makes and for the same reason: a 429 is the
-   * service working as documented, and a benchmark that reported "pinecone:
+   * A 429 is the service working as documented, and a benchmark that reported "pinecone:
    * skipped" because it was asked to slow down would be publishing a fact
    * about the harness.
    */
