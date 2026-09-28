@@ -62,7 +62,7 @@ describe('sealed mode', () => {
     });
 
     /**
-     * The property that makes the chart's two replicas safe. `save` is
+     * The property that makes more than one replica safe. `save` is
      * attempted again against a slug that now exists, and the unique index
      * turns the loser of that race into a no-op rather than a crashloop.
      */

@@ -29,11 +29,15 @@ The dashboard needs only its own port — its nginx forwards /api to
 {{- end }}
 {{- end }}
 
-There is nothing to sign up to and no account yet. Make one, and keep what it
-gives you — the key is shown once:
+There is nothing to sign up to. The one account, `{{ .Values.config.auth.account }}`, was
+created at boot, and its key is `INGOT_API_KEY` in the Secret
+`{{ include "ingot.secretName" . }}`:
 
-  curl -X POST http{{ if .Values.ingress.enabled }}s://{{ .Values.ingress.host }}{{ else }}://localhost:3002{{ end }}/api/v1/accounts \
-    -H 'content-type: application/json' -d '{"slug":"acme","name":"Acme"}'
+  KEY=$(kubectl -n {{ .Release.Namespace }} get secret {{ include "ingot.secretName" . }} \
+    -o jsonpath='{.data.INGOT_API_KEY}' | base64 -d)
+  curl -X POST http{{ if .Values.ingress.enabled }}s://{{ .Values.ingress.host }}{{ else }}://localhost:3002{{ end }}/api/v1/{{ .Values.config.auth.account }}/cast \
+    -H "authorization: Bearer $KEY" \
+    -H 'content-type: application/json' -d '{"name":"first ingot"}'
 
 
 {{- if eq .Values.config.storage "filesystem" }}

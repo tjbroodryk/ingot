@@ -13,7 +13,8 @@ import {
 /**
  * Query latency on rolled-up tables, to compare with the Parquet cache off and
  * on. Fills tables past the sweeper's threshold, polls `/pending` until each is
- * rolled up (up to five minutes), then reports the first queries apart from the
+ * rolled up (the sweep runs every five minutes; `WAIT` gives up after 660s by
+ * default), then reports the first queries apart from the
  * rest, since the first read of a file downloads it.
  */
 const TABLES = Number(__ENV.TABLES || 3);

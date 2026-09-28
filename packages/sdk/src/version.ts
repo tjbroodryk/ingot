@@ -10,4 +10,5 @@
  */
 export const INGOT_API_VERSION = '2026-09-17';
 
-export const SDK_VERSION = '0.2.0';
+/** Must match `version` in package.json; `client.test.ts` fails when it does not. */
+export const SDK_VERSION = '0.3.1';

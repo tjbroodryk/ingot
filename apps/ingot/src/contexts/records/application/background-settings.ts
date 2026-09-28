@@ -33,10 +33,10 @@ export const MAX_CONCURRENCY = 64;
  *
  * **These are per replica, and that is the number to think in.** Neither the
  * wake path nor a queue sweep takes an advisory lock, so what a provider
- * actually sees is this times the replica count, and the chart's autoscaler moves that number
- * on CPU. Two per pod at ten pods is twenty concurrent calls at whatever
+ * actually sees is this times the replica count, and an autoscaler moves that
+ * number. Two per pod at ten pods is twenty concurrent calls at whatever
  * `INGOT_EMBEDDER` names, arriving precisely when load is highest. Set these
- * against a quota divided by `maxReplicas`, not against one pod.
+ * against a quota divided by the most replicas you run, not against one pod.
  *
  * A pure schema over the environment, like `ai-settings.ts` and
  * `delivery-settings.ts`, so the whole matrix is asserted in a unit test rather

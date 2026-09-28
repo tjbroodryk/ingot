@@ -6,7 +6,7 @@ a key to, and running a query against it.
 
 ```bash
 bun run dev     # http://localhost:5174 — dashboard mode
-bun run build   # a directory of files in ./out
+bun run build   # a directory of files in ./out, then the text files and OG images
 
 NEXT_PUBLIC_INGOT_MODE=landing bun run dev     # the other one
 ```
@@ -19,10 +19,10 @@ not going to be one — see below.
 One codebase, two sites, and they have **different routes** rather than the
 same routes with something hidden:
 
-| Mode                   | `/`              | `/docs`   | `/why`        | `/deployment`  | `/dashboard` |
-| ---------------------- | ---------------- | --------- | ------------- | -------------- | ------------ |
-| `dashboard` *(default)* | The reference    | —         | —             | —              | The workbench |
-| `landing`              | The landing page | Reference | Why it is this shape | How to run one | —     |
+| Mode                   | `/`              | `/docs`   | `/why`        | `/benchmarks` | `/features` | `/deployment`  | `/dashboard` |
+| ---------------------- | ---------------- | --------- | ------------- | ------------- | ----------- | -------------- | ------------ |
+| `dashboard` *(default)* | The reference    | —         | —             | —             | —           | —              | The workbench |
+| `landing`              | The landing page | Reference | Why it is this shape | What an agent gets back, measured | The search modes | How to run one | —     |
 
 `NEXT_PUBLIC_INGOT_MODE` picks one, and a static export has no server to pick
 later, so the two sites are two builds — the same way the API's address already
@@ -44,8 +44,9 @@ Which mode goes where:
 - **`landing`** is the public page in front of the project, published to GitHub
   Pages by [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml).
   Ingot is self-hosted only, so it has no sign-up: everywhere the design sold a
-  hosted service, the page points at the repository and says so, at the top, in
-  the hero and in the band that replaces the sign-up CTA.
+  hosted service, the page says so and points at the repository or at
+  `/deployment` instead, at the top, in the hero and in the band that replaces
+  the sign-up CTA.
 - **`dashboard`** is what ships in the image, beside a running service.
 
 ## What is on it
@@ -55,6 +56,8 @@ Which mode goes where:
 | `/`           | The landing page, in a landing build. The reference otherwise.        |
 | `/docs`       | The HTTP reference. Landing builds only — it is `/` in the other.     |
 | `/why`        | The argument: why a query engine and not a vector store. Landing only. |
+| `/benchmarks` | What an agent gets back out, measured, from `src/benchmarks/*.json`. Landing only. |
+| `/features`   | What the store can be asked, one search mode at a time. Landing only. |
 | `/deployment` | The three ways to run one, then what all three talk to. Landing only. |
 | `/dashboard`  | Paste a key; then ingots and their schema, one SELECT and its grid, and this tab's uploads and queries. |
 
@@ -219,14 +222,21 @@ at container start by `api-proxy.sh`, so where the API is stays a run-time
 setting even though the page cannot read one.
 
 `NEXT_PUBLIC_SITE_URL` is the address in `sitemap.xml`, in `robots.txt`'s
-`Sitemap:` line, in the links `llms.txt` hands a model, and in every canonical
-tag — the handful of places a relative URL is either discarded or wrong. The
-landing site's is in the tree, in `src/site/mode.ts`, because the public page
-has one address and it is a fact about the project. A dashboard build gets
-none: it is served from whatever address its operator chose, so those files are
-left out rather than pointed at this project's domain. Set the variable to
-override both, which is what a fork or a preview deploy at its own address
-wants.
+`Sitemap:` line, in the links `llms.txt` hands a model, in every canonical
+tag, and in the Open Graph and Twitter preview tags — the handful of places a
+relative URL is either discarded or wrong. The landing site's is in the tree,
+in `src/site/mode.ts`, because the public page has one address and it is a fact
+about the project. A dashboard build gets none: it is served from whatever
+address its operator chose, so it has no sitemap, no `Sitemap:` line, no
+canonical or preview tags, and root-relative links in `llms.txt`, rather than
+anything pointed at this project's domain. Set the variable to override both,
+which is what a fork or a preview deploy at its own address wants.
+
+Those text files are written after `next build` by `scripts/emit-text.ts`, from
+`src/text/text-files.ts`: each page as markdown (`why.md`, `docs.md`, …),
+`llms.txt`, `llms-full.txt`, `robots.txt` and, with a site URL, `sitemap.xml`.
+`scripts/emit-og.tsx` renders the preview images from `src/site/og/cards.ts`
+into `out/og/`, in a landing build only. Neither runs under `next dev`.
 
 `NEXT_PUBLIC_BASE_PATH` exists for GitHub Pages, which serves a project site
 from `/<repo>/`. Next prepends it to its own asset URLs; a site at the root of

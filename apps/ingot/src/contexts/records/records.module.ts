@@ -111,9 +111,9 @@ export class RecordsModule {}
  * is willing to use at once.
  *
  * Worth saying out loud, and worth saying *per replica*: the number that
- * reaches a provider is this times however many pods are running, and the
- * autoscaler moves that on CPU. An operator reading one pod's log should not
- * have to work that out from the chart.
+ * reaches a provider is this times however many replicas are running. An
+ * operator reading one replica's log should not have to work that out from
+ * the deployment config.
  */
 function announce(bounds: Record<BackgroundKind, number>): void {
   const said = Object.entries(bounds)

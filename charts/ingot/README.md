@@ -7,17 +7,19 @@ kubectl create namespace ingot
 
 kubectl -n ingot create secret generic ingot-secrets \
   --from-literal=DATABASE_URL='postgres://…' \
+  --from-literal=INGOT_API_KEY="ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')" \
   --from-literal=INGOT_S3_ACCESS_KEY_ID='…' \
   --from-literal=INGOT_S3_SECRET_ACCESS_KEY='…'
 
 helm install ingot oci://ghcr.io/tjbroodryk/ingot/charts/ingot --version 1.2.3 \
-  -n ingot --set config.s3.bucket=my-ingot-bucket
+  -n ingot --set config.auth.account=acme --set config.s3.bucket=my-ingot-bucket
 ```
 
 Or from a clone, which needs no registry and is the same chart:
 
 ```bash
-helm install ingot ./charts/ingot -n ingot --set config.s3.bucket=my-ingot-bucket
+helm install ingot ./charts/ingot -n ingot \
+  --set config.auth.account=acme --set config.s3.bucket=my-ingot-bucket
 ```
 
 The two are not quite interchangeable, and the difference is the images they
@@ -41,26 +43,29 @@ search repo` does not.
 helm show values oci://ghcr.io/tjbroodryk/ingot/charts/ingot --version 1.2.3
 ```
 
-The Secret comes first because the chart refuses to render without one. That is
-the same rule the service applies to itself — `DATABASE_URL` and
-`INGOT_STORAGE` refuse to boot half-configured rather than quietly writing the
-base tier to a container's writable layer — moved forward to `helm install`
-instead of the third CrashLoopBackOff.
+The Secret comes first because the pods read it by name —
+`secrets.existingSecret` defaults to `ingot-secrets` — and the service refuses
+to boot without `DATABASE_URL` and `INGOT_API_KEY` in it. The chart cannot see
+inside a Secret it did not make, so a missing one shows up as the migration
+hook's pod stuck in `CreateContainerConfigError`, not as a render failure.
 
 ## What it will not guess
 
 `templates/_helpers.tpl` holds an `ingot.validate` block, and everything it
 refuses is something with no default that is right anywhere:
 
-- a Secret, or the values to make one;
+- a Secret, or the values to make one — `secrets.databaseUrl` and
+  `secrets.apiKey` both, when `secrets.create` is on;
+- `config.auth.account`, the slug that is the first segment of every route;
 - a bucket, when `config.storage` is `s3` or `gcs`;
 - a volume, when it is `filesystem` — the Parquet is the data, not a cache, and
   an emptyDir is a place an eviction takes it from;
 - more than one replica on a ReadWriteOnce volume;
 - a host, when the Ingress is on.
 
-Each failure says what to set and why. Nothing else in `values.yaml` is
-required.
+It also refuses an `app.apiUrl` with a path, and any `config.auth.mode` but
+`sealed`. Each failure says what to set and why. The one other required value
+is `config.gcp.project`, and only when a model selector is `gcp`.
 
 ## Where the dashboard finds the API
 
@@ -109,6 +114,8 @@ The migration hook re-runs on every upgrade, ahead of the new pods.
 | `config.tracing.enabled` | off, said out loud — the service's own default is on and pointed at a localhost that is not there inside a pod |
 | `server.resources` | the memory limit is a multiple of `config.query.memoryLimit`, not equal to it |
 | `server.autoscaling` | safe because roll-up takes an advisory lock and the queues lease their rows. CPU by default; `metrics` adds background load or lag via a metrics adapter |
+| `config.background.*` | drains per queue, **per replica** — what a provider sees is this times the pod count |
+| `config.query.parquetCache` | off. A budget turns it on and needs a ReadWriteMany volume every server pod shares |
 | `app.apiUrl` | where the site forwards `/api/`. Empty is this release's server |
 | `ingress.*` | off. One host, `/api` to the server and the rest to the site |
 | `serviceMonitor.*` | off. It is a CRD, and assuming it fails the install on a cluster without monitoring |
@@ -118,8 +125,8 @@ The migration hook re-runs on every upgrade, ahead of the new pods.
 ## Rendering it without a cluster
 
 ```bash
-helm lint charts/ingot --set secrets.existingSecret=x --set config.s3.bucket=y
-helm template ingot charts/ingot --set secrets.existingSecret=x --set config.s3.bucket=y
+helm lint charts/ingot --set secrets.existingSecret=x --set config.s3.bucket=y --set config.auth.account=z
+helm template ingot charts/ingot --set secrets.existingSecret=x --set config.s3.bucket=y --set config.auth.account=z
 ```
 
 ## What is not here

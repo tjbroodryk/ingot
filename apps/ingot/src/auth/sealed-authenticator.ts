@@ -54,8 +54,7 @@ export class SealedAuthenticator implements Authenticator, OnApplicationBootstra
   /**
    * The account exists, whichever replica gets here first.
    *
-   * The chart defaults to two replicas and scales past that, so this runs
-   * concurrently by design. It is safe because `account.slug` is unique: the
+   * Every replica runs this at boot, so it runs concurrently by design. It is safe because `account.slug` is unique: the
    * losers of the race get a `ConflictingState` out of the repository and take
    * the account the winner wrote.
    *
@@ -71,7 +70,7 @@ export class SealedAuthenticator implements Authenticator, OnApplicationBootstra
       throw new Error(
         `Could not open the account "${this.settings.slug}" this deployment is sealed to. ` +
           'If this is a fresh database, its schema is not applied yet — ' +
-          `run \`bun run db:migrate\` (or the chart's migration Job). Cause: ${String(error)}`,
+          `run \`bun run db:migrate\`. Cause: ${String(error)}`,
       );
     }
   }

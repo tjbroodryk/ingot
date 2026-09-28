@@ -9,8 +9,12 @@ import {
   forSite,
   publishableMatchup,
   publishableScaling,
+  README_END,
+  README_START,
+  readmeBenchmark,
   transcriptsPathFor,
   transcriptTable,
+  withReadmeBenchmark,
   withTable,
   withTranscripts,
 } from '../src/run/publish.js';
@@ -482,4 +486,37 @@ test('puts the transcript sidecar in the app’s public directory', () => {
   expect(transcriptsPathFor('apps/ingot-app/src/benchmarks/results.json')).toBe(
     'apps/ingot-app/public/benchmark-transcripts.json',
   );
+});
+
+describe('the README block', () => {
+  const published = withTable(
+    NO_RESULTS,
+    publishable(
+      HEADER,
+      [row({}), row({ adapter: 'vector', correct: false, finalInputTokens: 40000 })],
+      CATEGORIES,
+    ),
+  );
+
+  test('lists the best column first', () => {
+    const block = readmeBenchmark(published) ?? '';
+    expect(block.indexOf('`ingot`')).toBeLessThan(block.indexOf('`vector`'));
+    expect(block).toContain('| `vector` | 0% ±0%   | 40,000         |');
+  });
+
+  test('replaces only what is between the markers', () => {
+    const readme = `before\n${README_START}\nstale\n${README_END}\nafter\n`;
+    const written = withReadmeBenchmark(readme, readmeBenchmark(published) ?? '');
+    expect(written.startsWith('before\n<!-- bench:start -->')).toBe(true);
+    expect(written.endsWith('<!-- bench:end -->\nafter\n')).toBe(true);
+    expect(written).not.toContain('stale');
+  });
+
+  test('refuses a README without the markers', () => {
+    expect(() => withReadmeBenchmark('no block here', 'x')).toThrow();
+  });
+
+  test('has nothing to write before anything is published', () => {
+    expect(readmeBenchmark(NO_RESULTS)).toBeNull();
+  });
 });

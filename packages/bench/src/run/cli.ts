@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { LanguageModel } from 'ai';
 import { buildModel, reasoningOptions, type Provider } from '../agent/model.js';
 import { agentMapping } from '../adapters/agent-mapping.js';
@@ -32,8 +33,10 @@ import {
   forSite,
   publishableMatchup,
   publishableScaling,
+  readmeBenchmark,
   transcriptsPathFor,
   transcriptTable,
+  withReadmeBenchmark,
   withTable,
   withTranscripts,
   type PublishedBenchmark,
@@ -1127,7 +1130,19 @@ async function emit(
     );
 
     await publishTranscripts(publish, table.label, rows);
+    await publishReadme(merged);
   }
+}
+
+const README = fileURLToPath(new URL('../../../../README.md', import.meta.url));
+
+/** Rewrites the results table in the root README from what was just published. */
+async function publishReadme(published: PublishedBenchmark): Promise<void> {
+  const block = readmeBenchmark(published);
+  if (block === null) return;
+  const readme = await readFile(README, 'utf8');
+  await writeFile(README, withReadmeBenchmark(readme, block));
+  console.log(`readme: ${README} — ${published.tables[0]?.label}`);
 }
 
 /**

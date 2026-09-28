@@ -94,8 +94,19 @@ is exactly the window; the request half cannot be done in `map()` and the
 response half cannot be done anywhere else.
 
 Serving the newest version — the overwhelming majority of requests — costs a
-map lookup and nothing else: no shape resolution, no copy, no `map` on the
-response stream.
+string comparison and nothing else: no shape resolution, no copy, no `map` on
+the response stream.
+
+## The header
+
+No header, or an empty one, is the newest version; nothing is pinned per
+account. A version the changeset does not have is a 400 that lists the ones it
+does, never a quiet fallback. The served version is echoed in the same header
+on every response, defaulted or not.
+
+A handler that genuinely needs to know takes `@ServedVersion()`. Reaching for
+it usually means the change wants to be a transform. `changeset.changelog()` is
+the releases newest first, for a `GET /versions`.
 
 ## Saying which shapes cross a route
 

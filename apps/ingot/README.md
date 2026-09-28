@@ -3,7 +3,7 @@
 An agent memory server. Post tool results at it, get them back as SQL.
 
 ```bash
-bun run extensions  # once per machine: fetches DuckDB's fts into ~/.duckdb
+bun run extensions  # once per machine: fetches DuckDB's fts and httpfs into ~/.duckdb
 bun run dev         # http://localhost:3002/api/v1
 bun run test        # needs `bun run db:up` from the repo root
 ```
@@ -58,6 +58,8 @@ would be guessing who may read the ingots in it. Sealed mode — the
 self-hosting answer, and currently the only one — opens the single account
 named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 `INGOT_API_KEY`. Rotating that key is a change to the secret and a restart.
+`INGOT_API_KEY_FILE` reads it from a mounted file instead, and every variable
+the service reads takes the same `_FILE` form.
 
 | Route                                        |                                                                          |
 | -------------------------------------------- | ------------------------------------------------------------------------ |
@@ -78,6 +80,7 @@ named in `INGOT_ACCOUNT` when it starts, and honours the root key in
 | `DELETE /:account/:ingot/tables/:table`      | Drop a table.                                                            |
 | `DELETE /:account/:ingot`                    | Destroy the ingot.                                                       |
 | `ALL /:account/:ingot/mcp`                   | MCP, scoped to this ingot.                                               |
+| `ALL /:account/mcp`                          | MCP for the account: cast, clone, list and delete ingots.                |
 
 Minted keys are stored as a SHA-256 digest and nothing else, and are returned
 once, in the response that created them; there is no way to read one back. The
@@ -241,9 +244,9 @@ format actually gives you, and fall back exactly one level at a time.**
 | format                | boundary                      |                                                                      |
 | --------------------- | ----------------------------- | -------------------------------------------------------------------- |
 | `.pptx`               | one slide, always             | A slide is an authored unit. Never split one, never merge two.       |
-| `.docx` `.md` `.html` | the heading hierarchy         | Explicit and reliable, and the path is carried into the text.        |
+| `.md` `.html`         | the heading hierarchy         | Explicit and reliable, and the path is carried into the text.        |
 | `.pdf`                | the page, then the paragraph  | Pages are real; headings are guessed from font runs and often wrong. |
-| `.csv` `.xlsx`        | not chunked as prose          | It already has rows. See below.                                      |
+| `.csv` `.tsv`         | not chunked as prose          | It already has rows. See below.                                      |
 | `.txt`                | paragraph → sentence → window | Nothing to exploit. The fallback, never the default.                 |
 
 A slide's title becomes its heading, so `carryHeadings` puts it at the top of
@@ -322,7 +325,7 @@ means a canvas, which in Node means `node-canvas` or `@napi-rs/canvas` — a
 compiler in the build and a platform-specific binary — for the minority of
 documents that are scans. But a scanned page _is_ an image already:
 `page-image.ts` lifts the single image XObject `pdfjs` has already decoded and
-wraps it in a PNG with `fflate`, which is here anyway for `.docx`. The cost of
+wraps it in a PNG with `fflate`, which is here anyway for `.pptx`. The cost of
 the trick is its edge: a page that is several images, or one whose content is
 drawn rather than photographed, has no single image to lift and stays blank —
 and drawn text has a text layer anyway.
@@ -522,8 +525,8 @@ Two things are worth writing down before anyone relies on this at volume:
 - **One request can now queue a hundred thousand embeddings.** The backlog used
   to be fed by tool results a few rows at a time. `INGOT_EMBEDDINGS_CONCURRENCY`
   times the replica count is currently the only thing between a document dump
-  and an unbounded bill, and the HPA scales on CPU — so a bulk upload adds pods
-  and multiplies the fan-out exactly when it is worst. A per-ingot in-flight
+  and an unbounded bill, and an autoscaler that adds pods under a bulk upload
+  multiplies the fan-out exactly when it is worst. A per-ingot in-flight
   bound is the obvious next thing.
 - **A chunks table is the first table here that will realistically hit the
   no-index ceiling.** Brute-force cosine stops being a good trade somewhere in
@@ -579,13 +582,13 @@ thing_, so that a receipt can hand back a query which still finds it. Upserting
 on the key is the obvious next step and is not built.
 
 An enum rather than a boolean, and the members escalate — `none`, `schema`,
-`summary` — each doing what the one before it does and more. They escalate in
-cost too, which is the reason for the ladder: `schema` costs a read, `summary`
-costs a model. Widening an enum is not a breaking change, so `summary` landed
+`full` — each doing what the one before it does and more. They escalate in
+cost too, which is the reason for the ladder: `schema` costs a read, `full`
+costs a model. Widening an enum is not a breaking change, so `full` landed
 without a new API version, where turning `receipt: true` into
 `receipt: "full"` would have needed one.
 
-## Receipts
+## Summaries
 
 `receipt: "full"` asks for the third rung: a model reads the tool result and
 writes a précis of it and **the search term somebody would use to find it
@@ -597,21 +600,23 @@ question_ beats matching it against a JSON blob.
 
 ```jsonc
 POST /:account/:ingot/add
-{ "table": "pr_files", "receipt": "summary", ... }
+{ "table": "pr_files", "receipt": "full", "externalId": "call_42", ... }
 ```
 
 ```jsonc
 {
   "rowsAdded": 42,
   "receipt": {
+    "externalId": "call_42",
+    "summary": null,
+    "searchTerm": null,
+    "totalResults": 42,
+    "status": "pending",
+    "model": "gpt-4.1-mini",
     "batch": "batch_1508c8…",
     "query": "SELECT * FROM \"pr_files\" WHERE \"_batch\" = 'batch_1508c8…'",
-    "summary": {
-      "status": "pending",
-      "table": "ingot_receipts",
-      "model": "gpt-4.1-mini",
-      "query": "SELECT \"summary\", \"search_term\", \"source_table\", \"row_count\" FROM \"ingot_receipts\" WHERE \"source_batch\" = 'batch_1508c8…'",
-    },
+    "receiptQuery": "SELECT \"external_id\", \"summary\", \"search_term\", \"source_table\", \"row_count\" FROM \"ingot_receipts\" WHERE \"source_batch\" = 'batch_1508c8…'",
+    // key, items, itemsTruncated and table, as for "schema"
   },
 }
 ```
@@ -621,7 +626,7 @@ away and a row is meant to be queryable the instant `/add` returns, so the
 receipt is queued and a sweeper writes it — usually within a minute. What comes
 back is a promissory note, which is the same promise the rest of a receipt
 makes: here is how to find this later. `status` is always `pending` here;
-running the query is what tells you it arrived.
+running `receiptQuery` is what tells you it arrived.
 
 A receipt lands in `ingot_receipts`, **an ordinary table in your ingot**, and that is
 the whole design rather than an implementation detail. Being ordinary is what
@@ -633,6 +638,7 @@ refuses it and no caller's mapping can write there.
 | column         |                                                                    |
 | -------------- | ------------------------------------------------------------------ |
 | `source_batch` | the `/add` this describes. Its key, and what a receipt queries on. |
+| `external_id`  | the caller's `externalId` from that `/add`, or null.               |
 | `source_table` | where that write went.                                             |
 | `summary`      | what the result was. **Embedded.**                                 |
 | `search_term`  | the question a future caller would ask. **Embedded.**              |
@@ -733,9 +739,10 @@ caller cannot see.
 
 ### What arrives
 
-One POST per receipt, or one persistent message on the queue. `Ingot-Batch`,
-`Ingot-Event` and `Ingot-Attempt` are on the webhook's headers, and `messageId`
-on the AMQP envelope, so a receiver can deduplicate without parsing the body.
+One POST per delivery, or one persistent message on the queue. `Ingot-Delivery`,
+`Ingot-Event` and `Ingot-Attempt` are on the webhook's headers (plus
+`Ingot-Batch` for `receipt.ready`), and the delivery id is the `messageId` on
+the AMQP envelope, so a receiver can deduplicate without parsing the body.
 
 The queue is declared with `assertQueue`, because publishing to the default
 exchange with a routing key naming a queue that does not exist is _silently
@@ -937,6 +944,17 @@ A query is bounded by a row cap, a byte cap, a memory limit, and a timeout the
 service enforces itself by interrupting the connection — DuckDB has no
 statement-timeout setting.
 
+| variable                    | default   |                                                                          |
+| --------------------------- | --------- | ------------------------------------------------------------------------ |
+| `INGOT_QUERY_MEMORY_LIMIT`  | `1GB`     | Per session. Past it, a query spills to disk, in `INGOT_TEMP_DIR`.      |
+| `INGOT_QUERY_THREADS`       | `2`       | DuckDB threads per session.                                              |
+| `INGOT_MAX_TABLE_ROWS`      | `2000000` | The most rows one query may materialise from a table.                    |
+| `INGOT_QUERY_WARM_SESSIONS` | `2`       | Sessions prepared ahead of the query that takes one. `0` opens on demand. |
+
+A warm session is still single-use: taken, locked down, used, closed, and taking
+one starts opening its replacement. What it saves is the setup, which is most of
+what a small query costs.
+
 ## Expiry
 
 An ingot scoped to one piece of work should not outlive it. Say how long at
@@ -969,9 +987,9 @@ small and visible for several ticks, re-reads and re-checks each one
 immediately before deleting, and logs a line per ingot — deleting somebody's
 data is not a thing to do quietly.
 
-There is no way to extend a retention yet. An ingot you want to keep should be
-created without one; changing your mind means creating another and writing to
-it. That is the obvious next thing to build.
+To change your mind, `POST /:account/:ingot/config` with `{ "retainFor": "14d" }`
+restarts the clock from now, and `{ "retainFor": null }` keeps the ingot
+indefinitely.
 
 ## Forgetting
 
@@ -1024,11 +1042,15 @@ and destroying the source leaves the clone whole.
 ## MCP
 
 Mounted at `/api/v1/:account/:ingot/mcp`, streamable HTTP, the same bearer key.
-Tools: `describe`, `remember`, `query`, `recall`, `forget`, `drop_table`.
+Tools: `describe`, `remember`, `query`, `recall`, `pending`, `forget`,
+`configure_table`, `configure_delivery`, `drop_table`.
+
+`/api/v1/:account/mcp` is the account-wide endpoint, for a client that has not
+been handed an ingot yet: `cast_ingot`, `clone_ingot`, `list_ingots`,
+`delete_ingot`.
 
 **It is another interface over the same `Dispatcher`, never a second
-implementation** — the rule webhooks get in `CLAUDE.md`, applied to the other
-direction. `test/application/mcp-parity.test.ts` asserts the two surfaces still
+implementation.** `test/application/mcp-parity.test.ts` asserts the two surfaces still
 cover the same operations, with an explicit table for anything deliberately
 one-sided.
 
@@ -1147,7 +1169,7 @@ Two bounds, and it is worth being precise about which does what, because for a
 while one of them was doing the other's job by accident.
 
 **`PASSES` bounds one drain** — 8 batches of 128 for embedding, 4 receipts, 32
-deliveries. It is a _yield point_, not a rate limit: it stops one drain holding
+deliveries, 2 documents. It is a _yield point_, not a rate limit: it stops one drain holding
 a slot indefinitely against a large backlog. A drain that stops on it says so
 (`Drained.more`), and both callers restart immediately — `BackgroundWork` books
 another, and a sweeper keeps going within its own tick, up to the moment the
@@ -1157,17 +1179,16 @@ a minute: 1,024 rows, or **four receipts**, however fast the model answered and
 however many replicas were running. A single `/add` fanning out into five
 thousand embeddable rows is one wake, so it got one drain and then waited.
 
-**`CONCURRENCY` bounds how many drains of a kind run at once** — 2, 2 and 6.
+**`CONCURRENCY` bounds how many drains of a kind run at once** — 2, 2, 6 and 2.
 This one _is_ a rate limit, and deliberately: it is the only thing standing
 between a burst of writes and an unbounded burst of calls at whatever
 `INGOT_EMBEDDER` names.
 
 **It is per replica, and that is the number that matters in a cluster.** Neither
 the wake path nor a queue sweep takes an advisory lock, so what your provider
-sees is `CONCURRENCY × replicas`. At the chart's `maxReplicas: 10` that is
-twenty concurrent embed drains and sixty concurrent deliveries, and since the
-HPA scales on CPU, a write burst adds pods and multiplies the fan-out exactly
-when load is highest. Pick the number against your provider's quota divided by
+sees is `CONCURRENCY × replicas`. At ten replicas that is twenty concurrent
+embed drains and sixty concurrent deliveries, and an autoscaler that adds pods
+under a write burst multiplies the fan-out exactly when load is highest. Pick the number against your provider's quota divided by
 the replica ceiling, not against one pod. `ingot_embeddings_pending` is what
 says you got it wrong — read with `max()`, never `sum()`, for the reason
 `observability/README.md` gives.
@@ -1181,11 +1202,11 @@ repository.
 | `INGOT_EMBEDDINGS_CONCURRENCY` | `2`     | Concurrent embed drains, per replica.                                                 |
 | `INGOT_RECEIPTS_CONCURRENCY`   | `2`     | Concurrent summariser calls, per replica.                                             |
 | `INGOT_DELIVERIES_CONCURRENCY` | `6`     | Concurrent deliveries, per replica. Higher because each goes to a different receiver. |
+| `INGOT_FILES_CONCURRENCY`      | `2`     | Concurrent document parses, per replica. Bounded by heap, not by a provider.          |
 
 Each is refused at boot below 1 or above 64 — the cap being a typo guard rather
 than a limit worth having, since the real bound is a quota this service cannot
-see. The chart exposes all three under `config.background`, and one line at boot
-says what a pod is running with.
+see. One line at boot says what a pod is running with.
 
 So the ceiling is now the model, not the timer:
 
@@ -1310,6 +1331,30 @@ GCS roll-up copies Parquet before uploading it, and `tmp`, where DuckDB spills
 a query that outgrows its memory limit. The second is the one that bites under
 a `readOnlyRootFilesystem`, at whatever size starts spilling.
 
+### Caching Parquet on disk
+
+Off by default. Give it a budget and a query reads a rolled-up table from a
+local copy instead of the bucket:
+
+| variable                         | default                   |                                                          |
+| -------------------------------- | ------------------------- | -------------------------------------------------------- |
+| `INGOT_PARQUET_CACHE_BYTES`      | `0` (off)                 | The budget. Bytes, or `512Mi`, `2Gi`.                    |
+| `INGOT_PARQUET_CACHE_DIR`        | `$TMPDIR/ingot-parquet-cache` | Where the copies live.                               |
+| `INGOT_PARQUET_CACHE_MAX_AGE_MS` | `86400000` (a day)        | A copy older than this is evicted. A minute to a week.   |
+
+The directory can be one volume shared by every replica: which files are there,
+and when each was last read, is kept in Postgres (`parquet_cache_file`), so a
+replica never empties it on start and eviction runs on one replica at a time,
+inside the roll-up sweeper's lock. Over budget, the least recently read go
+first, down to 90% of it. A file is left alone for five minutes after its last
+read, since reads on other replicas reach the index late. A cache that
+fails — a full disk, a volume that stops answering — falls back to the bucket
+rather than failing the query.
+
+A replaced generation stays in the bucket for `INGOT_GENERATION_GRACE_MS` (an
+hour) after a roll-up, for queries, clones and `/parquet` downloads that
+resolved it first. Past that, `/parquet` for it is a 410.
+
 ### Where the Parquet goes
 
 The one decision nobody can make on your behalf, so it is named rather than
@@ -1371,13 +1416,16 @@ src/
     ingots/       the manifest: what tables exist and what shape they are
     records/      the write path: mapping, coercion, overlay, tombstones, roll-up
     query/        the read path: SQL, plaintext, hybrid
-  engine/         DuckDB behind a port; the session recipe lives here
+    files/        /file: format handlers, chunking, the parse queue
+  engine/         DuckDB behind a port; the session recipe and the Parquet cache
   storage/        ObjectStore port; filesystem, S3 and GCS adapters
-  ai/             Embedder and Summariser ports; local, OpenAI and Vertex
+  ai/             Embedder, Summariser and OCR ports; local, OpenAI and Vertex
+  delivery/       webhook and RabbitMQ transports for delivered receipts
   mcp/            another interface over the same commands
-  sweepers/       roll-up, embedding backlog, receipt queue, expiry — and the
-                  timer and advisory lock that run them
-  shared/  observability/  database/  health/
+  sweepers/       roll-up, embedding backlog, receipt queue, deliveries,
+                  documents, expiry — and the timer and advisory lock that run them
+  versioning/     the changeset of published API versions
+  auth/  config/  http/  shared/  observability/  database/  health/
 ```
 
 Four layers per context, dependencies pointing inward, ports as
@@ -1441,21 +1489,6 @@ the whole retention window. Per-tenant detail goes on the span, where
   The token estimate a write reports is taken in 1 KiB windows over at most the
   first 256 KiB, because tokenising a long run with no separator in it — base64,
   a hash, a minified blob — is quadratic, and took minutes whole.
-- **No webhook when a receipt lands.** `ReceiptNotifier` is called on every one
-  and the only adapter logs. What is missing is a place for a caller to say
-  where to deliver.
 - **`@duckdb/node-api` is pinned exactly.** It is a native N-API addon; the
   `-r.N` suffix makes range matching a guessing game. `scripts/spike-duckdb.ts`
   runs the assumptions under both Bun and Node and should be re-run on upgrade.
-- **Observability is copied from `@forge/api`, not shared.** The rules are
-  identical and the code is duplicated. A third service is the moment to extract
-  `packages/observability` — with a real reason rather than a guess about one.
-- **No durable execution, deliberately.** `src/restate/` was copied from
-  `@forge/api` too, and it was removed rather than kept: the only thing using it
-  here was four cron chains, and no work item ever lived in it — the queues are
-  Postgres tables claimed with `FOR UPDATE SKIP LOCKED` under a lease. What it
-  contributed was a timer that survived a restart, a retry, and one chain across
-  replicas, which is `src/sweepers/scheduler.ts` and an advisory lock. The
-  moment that stops being enough is inbound webhooks, where a journalled retry
-  of somebody else's delivery is worth a broker; `git log` has the integration
-  to bring back.

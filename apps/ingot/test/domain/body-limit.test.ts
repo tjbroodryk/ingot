@@ -11,7 +11,7 @@ describe('the JSON body limit', () => {
     expect(maxBodyBytes('  ')).toBe(DEFAULT_MAX_BODY);
   });
 
-  it('reads bytes, including the float spelling Helm renders them in', () => {
+  it('reads bytes, including the float spelling YAML templating renders them in', () => {
     expect(maxBodyBytes('1048576')).toBe(1_048_576);
     expect(maxBodyBytes('3.3554432e+07')).toBe(33_554_432);
   });

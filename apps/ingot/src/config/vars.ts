@@ -34,8 +34,8 @@ export function textOr(fallback: string) {
 /**
  * A whole number within bounds, or `fallback` when unset.
  *
- * `Number` rather than `parseInt`: Helm renders large integers as `3.3e+07`,
- * and `parseInt` reads that as 3.
+ * `Number` rather than `parseInt`: YAML templating tools can render large
+ * integers as `3.3e+07`, and `parseInt` reads that as 3.
  */
 export function whole(options: {
   readonly fallback: number;

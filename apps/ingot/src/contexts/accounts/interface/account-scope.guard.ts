@@ -66,10 +66,9 @@ export class AccountScopeGuard implements CanActivate {
     }
 
     if (slug !== principal.account.slug.value) {
-      // Deliberately the same answer whether the other account exists or not.
-      throw new ActionNotPermitted(
-        `This key belongs to "${principal.account.slug.value}" and cannot reach "${slug}"`,
-      );
+      // Deliberately the same answer whether the other account exists or not, and
+      // without naming the key's own account: a leaked key shouldn't say where it works.
+      throw new ActionNotPermitted(`This key cannot reach "${slug}"`);
     }
     return true;
   }

@@ -1,14 +1,16 @@
 # Ingot's defaults, and what they refuse to guess.
 #
-# Three things have no default that is right anywhere, and the chart fails to
-# render rather than install something that will crashloop: the database URL,
-# the bucket, and — if you turn it on — the Ingress host. That mirrors the
-# service's own behaviour, where `DATABASE_URL` and `INGOT_STORAGE` refuse to
-# boot half-configured instead of quietly writing the base tier to a
+# Some things have no default that is right anywhere, and the chart fails to
+# render rather than install something that will crashloop: the account, the
+# bucket, and — if you turn it on — the Ingress host. The database URL and API
+# key live in a Secret, which the service refuses to boot without. That mirrors
+# the service's own behaviour, where `DATABASE_URL` and `INGOT_STORAGE` refuse
+# to boot half-configured instead of quietly writing the base tier to a
 # container's writable layer.
 #
 #   helm install ingot ./charts/ingot -n ingot --create-namespace \
 #     --set secrets.existingSecret=ingot-secrets \
+#     --set config.auth.account=acme \
 #     --set config.s3.bucket=my-ingot-bucket
 
 nameOverride: ''

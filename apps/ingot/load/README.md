@@ -6,15 +6,21 @@
 docker compose up -d --wait                     # from the repo root
 cd apps/ingot && cp .env.example .env && bun run dev
 
+export INGOT_ACCOUNT=dev INGOT_API_KEY=ing_sk_…   # the pair from .env
 bun run load:write     # the write path, ramping to 100 req/s
 bun run load:read      # the read path, ramping to 50 concurrent
 bun run load:mixed     # what an agent actually does
 bun run load:depth     # query latency as the overlay grows
+bun run load:tables    # multi-table.js
+bun run load:swept     # swept.js
 ```
 
-Point them elsewhere with `INGOT_URL=https://…`. `K6_VERBOSE=1` prints the body
-of anything that fails, which is the first thing you want when a threshold goes
-red.
+The scripts do not sign anyone up: they run as the account the target was
+started with, so `INGOT_ACCOUNT` and `INGOT_API_KEY` must match its
+environment, and k6 fails in `setup()` without them. They default to
+`http://127.0.0.1:3002`; point them elsewhere with `INGOT_URL=https://…`.
+`K6_VERBOSE=1` prints the body of anything that fails, which is the first thing
+you want when a threshold goes red.
 
 ## Against a cluster
 
@@ -29,9 +35,16 @@ bun run load:k8s mixed --vus 5 --duration 30s   # start small
 bun run load:k8s write -e RATE=20 -e K6_VERBOSE=1
 ```
 
-It targets whatever `kubectl` is pointed at, and asks first. `NAMESPACE`,
-`RELEASE` and `SECRET` default to `ingot`, `ingot` and `ingot-secrets`. A
-sealed deployment has one account, so the load lands in the real one.
+It takes `write`, `read`, `mixed`, `depth`, `tables` or `swept`. It targets
+whatever `kubectl` is pointed at, and asks first (`LOAD_YES=1` skips that).
+`NAMESPACE`, `RELEASE` and `SECRET` default to `ingot`, `ingot` and
+`ingot-secrets`. A sealed deployment has one account, so the load lands in the
+real one.
+
+The scripts come from the git tag matching the deployed image, not from your
+checkout, because they follow the API of the version they are aimed at.
+`SCRIPTS_REF` picks another ref, and `SCRIPTS_REF=worktree` runs the files on
+disk.
 
 ## What each one is for
 
@@ -40,10 +53,10 @@ object store on this path: apply a mapping, coerce, insert JSONB. If it is slow,
 one of those three is why. Arrival-rate rather than VUs, so offered load is
 fixed and queueing shows up as latency instead of quietly throttling itself.
 
-**`read.js`** — the path worth worrying about. Every query builds a _fresh
+**`read.js`** — the path worth worrying about. Every query uses a _fresh
 DuckDB instance_ — not a connection; the sandbox settings are instance-wide —
-configures it, materialises the ingot's tables from Parquet and the overlay,
-locks it down, and throws it away. That is a lot of work per request and it is
+configured ahead of time by a small warm pool, then materialises the ingot's
+tables from Parquet and the overlay, locks it down, and throws it away. That is a lot of work per request and it is
 deliberate: it is what makes running a caller's own SQL safe. This says what it
 costs and where it stops being linear.
 
@@ -55,9 +68,9 @@ threshold should actually be. **Run it with the roll-up sweeper held off**, or
 the compaction happens underneath the measurement and flattens the very curve it
 is trying to show.
 
-The sweepers are timers inside the service now, each taking a Postgres advisory
-lock before it runs, so the way to hold one off is to take its lock first and
-keep the session open:
+The sweepers are timers inside the service now. Roll-up takes a Postgres
+advisory lock before it runs (the queue sweeps do not), so the way to hold it
+off is to take its lock first and keep the session open:
 
 ```bash
 psql "$DATABASE_URL" -c 'SELECT pg_advisory_lock(342916608, -616380041)' -c 'SELECT pg_sleep(3600)'
@@ -77,9 +90,9 @@ sweeper's 1000, so nothing needs holding off. `TABLES`, `FILES`, `REPEAT` and
 `EMBED=1` tune it.
 
 **`swept.js`** — the opposite case: tables filled past 1000 rows, waited on
-until the sweeper rolls them up (polling `/pending`, up to five minutes), then
-queried. Every read comes from Parquet, so this is the one that shows the
-Parquet cache — run it with `config.query.parquetCache.bytes` at 0, then set.
+until the sweeper rolls them up (polling `/pending`, up to `WAIT=660` seconds),
+then queried. Every read comes from Parquet, so this is the one that shows the
+Parquet cache — run it with `INGOT_PARQUET_CACHE_BYTES` unset or 0, then set.
 It prints the first few queries apart from the rest, since the first read of a
 file downloads it.
 
@@ -87,7 +100,7 @@ file downloads it.
 with an occasional semantic recall. The other scripts isolate each path; this
 one runs them together, because the interesting failure is contention between
 them. Writes hold a Postgres connection, reads hold a DuckDB instance and a
-chunk of memory, and the pool is sized at ten.
+chunk of memory, and the pool is sized at ten (`DATABASE_POOL_MAX`).
 
 ## Reading the results
 
@@ -101,14 +114,10 @@ latency does.
 
 ## A note on data
 
-Each script signs up its own account, slugged `load-<script>-<clock>`, so runs
-do not collide and the data is easy to find afterwards:
-
-```sql
-DELETE FROM overlay_row WHERE ingot_id IN (
-  SELECT id FROM ingot WHERE account_id IN (SELECT id FROM account WHERE slug LIKE 'load-%'));
-DELETE FROM account WHERE slug LIKE 'load-%';
-```
+Each run casts a fresh ingot in the configured account, named after its script
+(`k6 write load`, `k6 mixed load`, `k6 overlay depth`, …), so runs do not
+collide and the data is easy to find afterwards. `DELETE
+/api/v1/:account/:ingot` removes one along with its data.
 
 Point them at the development database, not `ingot_test` — the suite truncates
 that between assertions.

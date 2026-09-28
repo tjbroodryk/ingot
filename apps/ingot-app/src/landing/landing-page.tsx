@@ -550,13 +550,9 @@ export function LandingPage(): ReactNode {
 
         <section className="cta">
           <span className="label kicker kicker-n">Self-hosted, for now</span>
-          <h2>Bring it up. Your account is in your config.</h2>
+          <h2>Open Source with Self-hosting available.</h2>
           <p>
-            There is no hosted Ingot yet, and we would rather say that at the top than let you find
-            out three scrolls down. It is a NestJS service, a Postgres and a bucket. However you
-            choose to run those three, there is nothing to sign up for: set{' '}
-            <code>INGOT_ACCOUNT</code> and <code>INGOT_API_KEY</code>, and that key is your first
-            bearer token.
+            Host it yourself! Check out the deployment guide in the documentation <a href={DEPLOYMENT_HREF!}>here</a>.
           </p>
 
           <div className="cta-actions">

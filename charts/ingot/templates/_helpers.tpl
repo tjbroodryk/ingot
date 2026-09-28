@@ -132,7 +132,7 @@ The claim the Parquet cache mounts: the one named, or the chart's own.
 {{- define "ingot.validate" -}}
 
 {{- if not (or .Values.secrets.create .Values.secrets.existingSecret) }}
-{{- fail "\n\nNo secret to read.\n\nDATABASE_URL is the one setting with no default. Either point the chart at a\nSecret you made:\n\n  kubectl -n <ns> create secret generic ingot-secrets \\\n    --from-literal=DATABASE_URL='postgres://…'\n  helm … --set secrets.existingSecret=ingot-secrets\n\nor let the chart make one with --set secrets.create=true and the values under\n`secrets:`.\n" }}
+{{- fail "\n\nNo secret to read.\n\nDATABASE_URL and INGOT_API_KEY have no default. Either point the chart at a\nSecret you made:\n\n  kubectl -n <ns> create secret generic ingot-secrets \\\n    --from-literal=DATABASE_URL='postgres://…' \\\n    --from-literal=INGOT_API_KEY=\"ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')\"\n  helm … --set secrets.existingSecret=ingot-secrets\n\nor let the chart make one with --set secrets.create=true and the values under\n`secrets:`.\n" }}
 {{- end }}
 
 {{- if and .Values.secrets.create (not .Values.secrets.databaseUrl) }}

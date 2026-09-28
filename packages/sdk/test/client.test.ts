@@ -6,6 +6,7 @@ import {
   GoneError,
   INGOT_API_VERSION,
   IngotFoundry,
+  SDK_VERSION,
   TimeoutError,
   UnavailableError,
   ValidationError,
@@ -41,6 +42,11 @@ describe('IngotFoundry', () => {
       expect(requests[0]?.headers.authorization).toBe('Bearer ing_sk_test');
       expect(requests[0]?.headers['ingot-version']).toBe(INGOT_API_VERSION);
     }
+  });
+
+  it('reports the version package.json publishes', async () => {
+    const { version } = await Bun.file(new URL('../package.json', import.meta.url)).json();
+    expect(SDK_VERSION).toBe(version);
   });
 
   it('reads its connection from the environment', async () => {

@@ -1,67 +1,182 @@
+<div align="center">
+
+<img src="apps/ingot-app/src/app/icon.svg" alt="Ingot" width="96" height="96" />
+
 # Ingot
 
-An agent memory server, and the site in front of it. Post tool results at it,
-get them back as SQL.
+**Open-source memory for agents. Turn tool results or documents into strucutred memories.**
+
+[Docs](https://ingotdb.dev/docs/) · [Why](https://ingotdb.dev/why/) ·
+[Benchmarks](https://ingotdb.dev/benchmarks/) ·
+[SDK](packages/sdk/README.md) · [Example agent](packages/examples/README.md)
+
+[![test](https://github.com/tjbroodryk/ingot/actions/workflows/test.yml/badge.svg)](https://github.com/tjbroodryk/ingot/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/tag/tjbroodryk/ingot?label=release&sort=semver)](https://github.com/tjbroodryk/ingot/tags)
+[![npm](https://img.shields.io/npm/v/@ingotdb/sdk?label=%40ingotdb%2Fsdk)](https://www.npmjs.com/package/@ingotdb/sdk)
+[![license](https://img.shields.io/github/license/tjbroodryk/ingot)](LICENSE)
+[![stars](https://img.shields.io/github/stars/tjbroodryk/ingot?style=social)](https://github.com/tjbroodryk/ingot)
+
+**Your agent's memory lives in your Postgres and your bucket as Parquet files.**<br />
+Every row can be read with SQL, searched via text, browsed in the dashboard, or opened with any tool that reads Parquet.
+
+**No model calls by default.**<br />
+Storing and querying runs without an API key. Embeddings, summaries and OCR are opt-in.
+
+**A drop-in solution for tool result storage and document ingestion.**<br />
+Each document type is chunked on its own boundaries: PDFs by page, slides by slide,<br />
+Markdown and HTML by heading, CSVs into typed rows. <br/>
+With Ingot you can query tool results and documents in one pass.
+
+</div>
+<hr/>
+
+Before Ingot, an agent loop had two mainstream options: keep every tool result
+in context and let the bill grow with each turn, or push them through RAG and
+accept that top-k retrieval is lossy. 
+
+Ingot keeps the results queryable instead,
+so a multi-turn agent stays accurate without carrying everything in the prompt.
+It aims to replace the store-and-search half of a typical RAG stack, and to get
+more accurate answers while doing it.
+
+## Quick start
+
+Start a local server (needs [Bun](https://bun.sh) and Docker):
 
 ```bash
+git clone https://github.com/tjbroodryk/ingot && cd ingot
 bun install
-cp apps/ingot/.env.example apps/ingot/.env   # everything in it is a working default
-bun run db:up          # Postgres and MinIO, on the ports those defaults expect
-bun run dev            # API on :3002, site on :5174
-bun run test           # 438 tests, needs db:up
+cp apps/ingot/.env.example apps/ingot/.env
+bun run db:up && bun run dev          # API on :3002, dashboard on :5174
 ```
 
-The copy is not optional, and three things in that file have no default at all:
-`DATABASE_URL`, the base tier, and `INGOT_AUTH` — the database, where Parquet
-goes, and who may call the service. Ingot refuses to start without any of them
-rather than inventing an answer. Everything else is written out so the shape of
-the configuration is readable in one place.
+Then store a tool result and query it back with
+[`@ingotdb/sdk`](packages/sdk/README.md):
 
-The one to look at before deploying anywhere is `INGOT_API_KEY`. A checkout
-gets a real generated key so `bun run dev` works, but it is a key in a public
-repository — generate your own for anything else:
+```ts
+import { IngotFoundry, col, table } from '@ingotdb/sdk';
 
-```bash
-echo "ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
+const foundry = new IngotFoundry({
+  url: 'http://localhost:3002',
+  account: 'dev',
+  apiKey: process.env.INGOT_API_KEY, // from apps/ingot/.env
+});
+const ingot = await foundry.ingots.cast({ name: 'support', externalId: 'support' });
+
+// How a tool's JSON becomes rows. `.embed()` makes a column searchable by meaning.
+const tickets = table('tickets')
+  .rows('$.items[*]')
+  .columns({
+    id: col.varchar('$.id'),
+    title: col.varchar('$.title').embed(),
+    status: col.varchar('$.status'),
+    opened: col.timestamp('$.opened_at'),
+  })
+  .key('id');
+
+// Whatever the tool returned, as-is.
+await ingot.add(tickets, await searchTickets({ query: 'billing' }));
+
+// Queryable as soon as add returns.
+await ingot.query('SELECT status, count(*) AS n FROM tickets GROUP BY 1');
+
+// `text` is embedded and bound as $q. Embeddings are filled in shortly after the write.
+await ingot.query({
+  sql: `SELECT id, title FROM tickets
+        WHERE status = 'open' AND opened > now() - INTERVAL 7 DAY
+        ORDER BY array_cosine_similarity(title_vec, $q) DESC LIMIT 5`,
+  text: 'customer was charged twice',
+});
 ```
 
-Agents produce tool results all day and throw them away. What survives is
-whatever the model happened to keep in context — a summary of a summary,
-unqueryable, gone at the end of the turn. An **ingot** is where they go instead: a block
-of refined material that tool calls are poured into and that cools into
-something queryable.
+To hand the same store to an agent, `ingot.mcp()` returns ready-made tools, or
+point any MCP client at the ingot's `/mcp` endpoint.
+[`packages/examples`](packages/examples/README.md) is a complete agent built on
+the Vercel AI SDK.
 
-## The repository
+## Benchmark
 
+An agent answers the same questions about a synthetic engineering org (tickets,
+PRs, CI runs, owners) through each memory. The questions include counts,
+orderings, joins across tool results and plain semantic lookups.
+
+<!-- bench:start -->
+<!-- Written by `bun run bench --publish`. Edits here are overwritten. -->
+
+| Memory                     | Accuracy | Context tokens | Tool calls |
+| -------------------------- | -------- | -------------- | ---------- |
+| `ingot-mcp`                | 97% ±2%  | 6,319          | 3.3        |
+| `ingot-rest`               | 96% ±2%  | 3,815          | 2.8        |
+| `raw-context`              | 90% ±3%  | 33,594         | 0.0        |
+| `turbopuffer`              | 70% ±5%  | 39,327         | 7.4        |
+| `vector`                   | 69% ±5%  | 46,732         | 8.0        |
+| `pinecone`                 | 60% ±5%  | 39,274         | 7.4        |
+| `control-same-store-top-k` | 40% ±5%  | 37,042         | 7.6        |
+
+gpt-5-mini, 33 questions × 3 runs, seed 1, over 19 tool results (501 records). Run `2026-09-22T09-28-30-440Z-seed1`.
+<!-- bench:end -->
+
+`ingot-mcp` and `ingot-rest` are Ingot through its MCP and REST tools.
+`control-same-store-top-k` is the same rows and vectors reached only through
+top-k. `raw-context` puts the whole corpus in the prompt. The table is
+rewritten by `bun run bench --publish`; the methodology, per-category results
+and how to rerun it are in [`packages/bench`](packages/bench/README.md).
+
+Throughput and latency under load are measured separately, with the k6 scripts
+in [`apps/ingot/load`](apps/ingot/load/README.md).
+
+## Why not standard RAG
+
+Ingot doesn't sit inside a RAG stack. It replaces the part that stores and
+finds, and leaves writing the answer to the model.
+
+Everything a retrieval pipeline does before the model call is already here.
+`/file` chunks per format. `"embed": true` queues a column and a sweeper works
+it. `array_cosine_similarity` ranks by meaning, DuckDB's `fts` ranks by term,
+and one SELECT can do both. `/mcp` is how an agent reaches all of it. So there
+is no vector store standing beside this one — Pinecone and turbopuffer are
+columns in `packages/bench`, over identical vectors, rather than things Ingot
+is wired to.
+
+What changes is the interface. A vector store offers `top_k(embedding)`; this
+offers a hybrid of SQL and text search, with similarity and fuzzy rankings inside it.
+
+```sql
+SELECT f.filename, c.page, c.text
+FROM ingot_file_chunks c
+  JOIN ingot_files f USING (file_id)
+  JOIN contracts   k USING (file_id)   -- typed rows out of the same PDFs
+WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
+ORDER BY array_cosine_similarity(c.text_vec, $q) DESC LIMIT 10
 ```
-apps/ingot            @ingot/server   NestJS. The API, the engine, the sweepers.
-apps/ingot-app        @ingot/app      Next.js, statically exported. Landing, docs, dashboard.
-packages/shared       @ingot/shared   The v1 wire contract. Types only, no runtime.
-packages/versioning   @ingot/versioning  Wire versioning for Nest — changesets and an interceptor.
-packages/sdk          @ingotdb/sdk    The TypeScript client. Published; bundles the v1 contract.
-packages/bench        @ingot/bench    The retrieval benchmark. Not built; run by hand.
-packages/examples     @ingot/examples A minimal AI SDK agent over an ingot. `bun run example -- <question>`.
 
-charts/ingot                          The Helm chart. Not a workspace, and not built.
-```
+Top-k can't express that. Nor can it answer "how many times did this check
+fail last month", because there is no chunk that question is similar to.
+`packages/bench` measures whether that is worth the schema it costs, and
+`control-same-store-top-k` is the column that could prove it isn't: the same
+rows and the same vectors, reached only through top-k.
 
-Turborepo over Bun workspaces. `packages/*` are consumed through their `dist`,
-so `^build` in `turbo.json` is what orders any of this; nothing needs running by
-hand.
+What goes in is different too. A RAG corpus is documents. Here the main way in
+is `/add`, which takes an agent's own tool results and projects them into typed
+columns; documents arrive through `/file` and land in the same tables.
 
-Each app has its own README and it is the longer answer:
-[the server](apps/ingot/README.md), [the site](apps/ingot-app/README.md).
+Four things a mature retrieval stack has that this does not:
 
-`packages/bench` measures what an agent gets back out of an ingot, and what it
-costs — Ingot against a local vector baseline, against Pinecone and
-turbopuffer, and against its own embedding path with SQL taken away. It
-needs API keys and spends money, so it is deliberately not part of
-`bun run test`:
-[the methodology](packages/bench/README.md).
+- **No generation.** Rows come back; the agent writes the answer.
+- **No reranker and no query rewriting.** Hybrid means the SQL you wrote ranks
+  on BM25 and cosine together, not that something fused them on your behalf.
+- **No ANN index.** Brute-force cosine, which stops being a good trade
+  somewhere in the low millions of rows per table.
+- **A schema up front**, for `/add`. A vector store asks for none, and that is
+  a real cost the benchmark does not put a number on.
 
-## The shape
+"RAG" usually means two things at once: store documents so a model can find
+them, and put the top k chunks in the prompt. Ingot does the first. The
+benchmark exists to argue with the second.
 
-An LSM tree, and everything else follows from it.
+## How it works
+
+At its core, its just an LSM tree.
 
 ```
         /add ──────────────►  overlay        (Postgres, queryable instantly)
@@ -76,10 +191,9 @@ An LSM tree, and everything else follows from it.
                   a query unions both
 ```
 
-`/file` is the second way in and it joins the first one immediately: a document
-is parsed into chunks and, if you asked, into typed rows — and both go through
-the same overlay, the same embedding queue and the same roll-up as a tool
-result. There is no document store. `ingot_files` and `ingot_file_chunks` are
+A document sent to `/file` is parsed into chunks and, if you asked, into typed
+rows, and from there it takes exactly the path a tool result takes. There is no
+separate document store. `ingot_files` and `ingot_file_chunks` are
 ordinary tables in your ingot, which is what lets one SQL statement filter on a
 number pulled out of a PDF and rank on the meaning of the paragraph beside it.
 A page with no text layer — a scan, a photocopy — can be read by an engine
@@ -88,142 +202,51 @@ says which engine read it, so `WHERE ocr IS NULL` is still the text the
 document itself contained.
 
 Writes land in Postgres and are queryable the instant they are accepted. A
-sweeper folds them into Parquet on a schedule, and the same question gets the
-same answer either side of that — which is the only thing that makes two tiers
-worth having, and `test/application/rollup-equivalence.test.ts` is what holds
-it up. DuckDB is the engine and never the store: a fresh in-memory instance per
-query, built from the manifest, hardened, used once, thrown away.
-
-## Against RAG
-
-The question this gets asked is whether it belongs inside a RAG stack or
-replaces one. It replaces the half that stores and finds, and does no part of
-the half that writes the answer.
-
-Everything a retrieval pipeline does before the model call is already here.
-`/file` chunks per format. `"embed": true` queues a column and a sweeper works
-it. `array_cosine_similarity` ranks by meaning, DuckDB's `fts` ranks by term,
-and one SELECT can do both. `/mcp` is how an agent reaches all of it. So there
-is no vector store standing beside this one — Pinecone and turbopuffer are
-columns in `packages/bench`, over identical vectors, rather than things Ingot
-is wired to.
-
-What changes is the interface. A vector store offers `top_k(embedding)`; this
-offers SQL, with similarity as one ranking function inside it — `$q` being the
-query embedding, which `/query` binds for you.
-
-```sql
-SELECT f.filename, c.page, c.text
-FROM ingot_file_chunks c
-  JOIN ingot_files f USING (file_id)
-  JOIN contracts   k USING (file_id)   -- typed rows out of the same PDFs
-WHERE k.notice_days < 30 AND f._ingested_at > '2026-01-01'
-ORDER BY array_cosine_similarity(c.text_vec, $q) DESC LIMIT 10
-```
-
-Top-k cannot express that, and it cannot count, aggregate or order by recency
-at all — "how many times did this check fail last month" has no
-nearest-neighbour formulation. Whether that is worth the schema it costs is the
-whole point of `packages/bench`, and `control-same-store-top-k` is the column
-that can say no: the same rows and the same vectors, reached only through
-top-k.
-
-The other difference is what goes in. A RAG corpus is documents. The first way
-in here is `/add` — an agent's own tool results, projected into typed columns —
-and documents are the second door into the same tables.
-
-Four things a mature retrieval stack has that this does not:
-
-- **No generation.** Rows come back; the agent writes the answer.
-- **No reranker and no query rewriting.** Hybrid means the SQL you wrote ranks
-  on BM25 and cosine together, not that something fused them on your behalf.
-- **No ANN index.** Brute-force cosine, which stops being a good trade
-  somewhere in the low millions of rows per table.
-- **A schema up front**, for `/add`. A vector store asks for none, and that is
-  a real cost the benchmark does not put a number on.
-
-"RAG" names two things that come apart: store documents so a model can find
-them, and put the top k chunks in the prompt. This is the first one. The second
-is what the benchmark exists to argue with.
-
-## Running it locally
-
-`bun run db:up` brings up everything the service talks to. The defaults in
-`apps/ingot/.env.example` already address it, so nothing needs configuring to
-start:
-
-|          |                                                                      |
-| -------- | -------------------------------------------------------------------- |
-| Postgres | `:5432` — `ingot` to develop against, `ingot_test` for the suite     |
-| MinIO    | `:9000` API, `:9001` console — the bucket the roll-up tests write to |
-
-`bun run obs:up` adds Jaeger (`:16686`) and Prometheus (`:9090`) when you want
-to watch a trace or a histogram; the suite needs neither.
-
-Migrations are mounted into the Postgres container and applied to both
-databases on a fresh volume. `bun run db:migrate` catches up an existing one —
-which is the case a `db:reset` would otherwise be needed for.
+sweeper folds them into Parquet on a schedule, and a query returns the same
+rows before and after the fold. Two tiers are only worth having if that holds;
+`test/application/rollup-equivalence.test.ts` checks it. DuckDB is the engine
+and never the store: each query gets a fresh in-memory instance, built from the
+manifest, locked down, used once and thrown away.
 
 ## Configuration
 
-`apps/ingot/.env.example` is the whole surface, written out with the defaults
-the code already uses. Two of them refuse to boot rather than guess:
+Every setting is in `apps/ingot/.env.example`, with defaults filled in and the
+rest left as empty placeholders. Ingot won't start without `DATABASE_URL`, a
+base tier to write Parquet to, and `INGOT_AUTH`; the example file fills all
+three for local use.
 
-- **`INGOT_STORAGE`** — `filesystem`, `s3` or `gcs`. Half-filled configuration
-  is refused, because the alternative is a deployment quietly writing its base
-  tier to a container's writable layer.
-- **`INGOT_EMBEDDER` / `INGOT_SUMMARISER`** — `local`, `openai` or `gcp`, chosen
-  separately because they are two purchases. Both default to deterministic
-  offline stand-ins, and each says at boot that it is one.
-
-## CI
-
-`.github/workflows/test.yml` runs on every pull request and every push to
-`main`, in two jobs so that a lint failure and a test failure are two answers
-rather than one: the suite against the compose Postgres and MinIO, and
-`build`, `typecheck` and `lint` beside it. It needs no key and no secret — the
-suite pins the embedder and the summariser to the offline stand-ins and the
-base tier to a temporary directory, so what runs in CI is what runs on a
-laptop.
-
-It starts its dependencies with `bun run db:up` rather than with `services:`
-blocks, because the compose file already knows two things a `services:` block
-would have to be told again — that `docker/initdb.sh` creates and migrates two
-databases rather than one, and that MinIO's bucket is made by a one-shot
-container that exits.
-
-## Images
-
-Two, both built from the repository root because both consume workspace
-packages and run `turbo prune` inside the build.
+It also ships a working `INGOT_API_KEY` so the quick start just works. That key
+is public; generate your own for anything else:
 
 ```bash
-docker build -f apps/ingot/Dockerfile     -t ingot-server:dev .
-docker build -f apps/ingot-app/Dockerfile -t ingot-app:dev .
-# or both:
-bun run docker:build
+echo "ing_sk_$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')"
 ```
 
-`.github/workflows/images.yml` pushes both to
-`ghcr.io/<owner>/<repo>/{server,app}` from `main` and from a `v*` tag. It does
-not build them on a pull request: four builds is ten minutes to prove that a
-Dockerfile still works, and most changes do not touch one. The Helm chart is a
-job in the same workflow — rendered on every event, published only from a tag
-and only once both images are pushed, because a chart names its images by its
-own `appVersion` and one that goes out first names a version that does not
-exist.
+The settings you are most likely to change:
 
-**The server** is Debian rather than Alpine, and that is not a preference:
-`@duckdb/node-api` is a glibc N-API addon that installs happily on musl and
-fails at the first `require`. It bakes DuckDB's `httpfs` and `fts` extensions
-into the image, because a pod that has to fetch one mid-query fails its first
-query on any network that does not allow the egress. It listens on `:3002`,
-serves metrics on `:9465`, runs as uid 1000, and wants one `emptyDir` mounted
-over `/var/lib/ingot` for staging and DuckDB's spill.
+- **`INGOT_STORAGE`**: `filesystem`, `s3` or `gcs`. Where the Parquet base
+  tier lives. A half-filled bucket config refuses to boot.
+- **`INGOT_EMBEDDER`**: `local`, `openai` or `gcp`.
+- **`INGOT_SUMMARISER`**: `local`, `openai` or `gcp`.
 
-**The site** is nginx over a directory of files. The dashboard calls its own
-origin, and nginx forwards `/api/` to `INGOT_API_URL`, read when the container
-starts — so one image serves any deployment:
+`local` for either is a deterministic offline stand-in, fine for development
+and tests but not meant for real retrieval. The server logs a warning at boot
+when it's using one.
+
+## Deploying
+
+Two images are published to `ghcr.io/tjbroodryk/ingot/{server,app}` from
+`main` and from each release tag.
+
+The server needs a Postgres and somewhere to put Parquet. Neither is optional,
+and `INGOT_STORAGE` refuses to boot half-configured rather than quietly writing
+the base tier to a container's writable layer. The server image listens on
+`:3002`, serves metrics on `:9465`, runs as uid 1000, and wants an `emptyDir`
+mounted over `/var/lib/ingot` for staging and DuckDB's spill.
+
+The site image is nginx serving the dashboard. It forwards `/api/` to
+`INGOT_API_URL`, read when the container starts, so one image works for any
+deployment:
 
 ```bash
 docker run -p 8080:8080 -e INGOT_API_URL=http://host.docker.internal:3002 \
@@ -232,43 +255,10 @@ docker run -p 8080:8080 -e INGOT_API_URL=http://host.docker.internal:3002 \
 
 Without it, `/api/` answers 502 and says which variable to set.
 
-The same argument decides _which site_ the image is. `@ingot/app` builds in one
-of two modes, and they have different routes rather than the same routes with
-something hidden — a landing build has no `/dashboard` at all, because
-`next build` never writes it:
-
-| `NEXT_PUBLIC_INGOT_MODE` | `/`              | `/docs`   | `/why`               | `/deployment`  | `/dashboard` |
-| ------------------------ | ---------------- | --------- | -------------------- | -------------- | ------------ |
-| `dashboard` _(default)_  | The reference    | —         | —                    | —              | The console  |
-| `landing`                | The landing page | Reference | Why it is this shape | How to run one | —            |
-
-The image is the dashboard build, for somebody running the service.
-
-## The landing page
-
-`.github/workflows/pages.yml` builds the landing mode and publishes it to
-[ingotdb.dev](https://ingotdb.dev) on every push to `main` that touches the
-site. It is the public page in front of the project and it says what is true of
-it — Ingot is self-hosted, there is nothing to sign up to, and the way to get
-it is to run it.
-
-The domain is in the tree, in `apps/ingot-app/src/site/mode.ts`, because a
-sitemap and a canonical tag have to name it and there is only one right answer.
-What is not in the tree is GitHub's half: the custom domain in Settings → Pages
-and the DNS records under it. A dashboard build claims no origin at all — it is
-served from wherever its operator put it.
-
-## Deploying
-
-The server needs a Postgres and somewhere to put Parquet. Neither is optional,
-and `INGOT_STORAGE` refuses to boot half-configured rather than quietly writing
-the base tier to a container's writable layer.
-
-Nothing has to be registered. The roll-up, the embedding backlog, the receipt
-queue, receipt delivery and expiry are timers inside the process, each taking a
-Postgres advisory lock so that one replica sweeps at a time however many are
-running — `apps/ingot/src/sweepers/scheduler.ts`. Scale the deployment freely;
-the lock is what keeps two pods from rolling the same table up into the same
+There is no separate worker or cron to set up. Background jobs run as timers
+inside the server process, and each takes a Postgres advisory lock so only one
+replica runs it at a time (`apps/ingot/src/sweepers/scheduler.ts`). Scale
+replicas freely; the lock stops two pods rolling the same table into the same
 generation.
 
 A broker is optional and is only ever an _output_: set `INGOT_RABBITMQ_URL` and
@@ -284,10 +274,9 @@ same artefact as the service it migrates for.
 The site is a directory of files and can sit behind any CDN. It can never be
 the reason the API is down.
 
-## On Kubernetes
+### On Kubernetes
 
-`charts/ingot` is the whole of it — the server, the site, and a migration that
-runs before either. Published beside the images, from a `v*` tag:
+`charts/ingot` is the Helm chart used to deploy the required components.
 
 ```bash
 kubectl -n ingot create secret generic ingot-secrets \
@@ -299,11 +288,11 @@ helm install ingot oci://ghcr.io/<owner>/<repo>/charts/ingot --version <x.y.z> \
   -n ingot --set config.s3.bucket=my-ingot-bucket
 ```
 
-The Secret first, because the chart refuses to render without one. That is the
-same rule the service applies to itself moved forward to `helm install` — a
-missing database or a half-filled `INGOT_STORAGE` is a template error naming
-the value, rather than the third CrashLoopBackOff. It will not guess at a
-bucket, at a volume for a `filesystem` base tier, or at an Ingress host either.
+Create the Secret first; the chart won't render without it. The chart checks
+what the server would check at boot, so a missing database or a half-filled
+`INGOT_STORAGE` fails `helm install` with the value's name instead of showing
+up as the third CrashLoopBackOff. It won't guess a bucket or an Ingress host
+for you either.
 
 The migration is a `pre-install,pre-upgrade` hook running
 `bun dist/database/migrate.js` out of the server image, so the schema is
@@ -317,3 +306,33 @@ chart carries the images it was built against and there is one version to bump.
 
 [The chart's README](charts/ingot/README.md) is the longer answer, and
 `values.yaml` is commented throughout.
+
+## Repository layout
+
+```
+ingot/
+├── apps/
+│   ├── ingot/          @ingot/server: the memory server (REST, /mcp, roll-up sweeper)
+│   │   └── load/       k6 load tests
+│   └── ingot-app/      @ingot/app: landing site, docs and dashboard (static Next.js)
+├── packages/
+│   ├── sdk/            @ingotdb/sdk: the published TypeScript client
+│   ├── shared/         @ingot/shared: wire contract shared by the server and app
+│   ├── versioning/     @ingot/versioning: date-based API versioning for the server
+│   ├── examples/       example agents built on the SDK
+│   └── bench/          the accuracy benchmark behind the table above
+├── charts/ingot/       Helm chart
+└── docker/             local Postgres init, migrations and Prometheus config
+```
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the repository layout, running the
+test suite, CI, building the images, and running the benchmark and load tests.
+
+## License
+
+[MIT](LICENSE)
+
+## TODOs
+- Seperate landing page site from dashboard app

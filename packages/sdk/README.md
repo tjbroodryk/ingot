@@ -61,8 +61,9 @@ const document = await ingot.waitForDocument(upload); // status: 'ready' | 'fail
 ```
 
 `foundry.ingot(id)` makes a handle without a request. `ingots.list()`, `ingots.delete(id)`,
-`ingot.info()`, `ingot.destroy()`, `ingot.configureTable()` and `ingot.dropTable()` do what
-they say.
+`ingot.info()`, `ingot.destroy()`, `ingot.forget({ table, where })`, `ingot.configureTable()` and
+`ingot.dropTable()` do what they say. `foundry.account()` is the cheapest check that a key works,
+and `foundry.keys.mint()` / `foundry.keys.revoke(keyId)` manage the account's keys.
 
 ```ts
 // Tables, rows and embeddings as of now, under a new id. Neither sees the other's writes after.
@@ -184,6 +185,8 @@ There are no vector columns: embeddings never leave the server, so similarity se
 An ingot can push events to a webhook or queue:
 
 ```ts
+import { DeliveryEvent, DeliveryKind } from '@ingotdb/sdk';
+
 await ingot.configure({
   delivery: {
     t: DeliveryKind.Webhook,

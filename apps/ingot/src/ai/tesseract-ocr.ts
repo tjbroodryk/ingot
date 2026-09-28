@@ -120,7 +120,7 @@ export class TesseractOcr implements Ocr {
        * working directory. There is nothing to gain from that here — the data
        * came off local disk a line above — and two things to lose: a stray
        * 4MB file appearing next to whatever the service was started in, and,
-       * under the `readOnlyRootFilesystem` the chart asks for, a write that
+       * under a read-only root filesystem, a write that
        * throws on the first scanned page anybody uploads.
        */
       cacheMethod: 'none',

@@ -6,8 +6,8 @@ What an agent can get back out, and what it costs to get it.
 cd packages/bench
 bun run bench --dry-run              # the corpus and the questions, spending nothing
 bun run bench --adapters vector,raw-context
-bun run bench --adapters ingot,control-same-store-top-k,vector,raw-context
-bun run bench --adapters ingot,ingot-rest        # the same store, two interfaces
+bun run bench --adapters ingot-mcp,control-same-store-top-k,vector,raw-context
+bun run bench --adapters ingot-mcp,ingot-rest    # the same store, two interfaces
 bun run bench --adapters vector,pinecone,turbopuffer   # the same vectors, three indexes
 ```
 
@@ -94,6 +94,12 @@ top-k rows cannot do is a property of top-k retrieval rather than of a baseline
 chosen to be weak. A *large* gap in either direction is a bug in an adapter,
 not a finding.
 
+`vector-fetch` is the usual reply to "top-k misses rows": let the agent read
+the source. It is `vector`'s search, with each hit naming the tool result it
+came from, plus `list_sources` and `fetch_sources` to read stored tool results
+whole, ten per call. It is its own column so that rows already bought under
+`vector` still mean what they meant.
+
 Two configuration choices are worth stating, because both could be argued the
 other way and both were made against these columns' interest:
 
@@ -179,7 +185,7 @@ no content word with it: "the database ran out of spare handles for new work".
 A test asserts that no paraphrase ever appears in the corpus, because if one
 leaked, BM25 would answer the category and it would stop measuring meaning.
 
-`multi-hop` is thin — one or two questions per seed. Templates whose answer
+`multi-hop` is thin — one to three questions per seed. Templates whose answer
 would be ambiguous under a tie are skipped rather than scored against one of
 several right answers, and multi-hop ties are common. Treat that column as
 directional until there are more templates behind it.
@@ -306,16 +312,21 @@ covered by `bun test` and cost nothing. The runner is `bun run bench`, is not
 part of `bun run test` at the repository root, and spends real money.
 
 ```
---seed N               World seed. The corpus and every gold answer follow from it.
---adapters a,b,c       ingot, control-same-store-top-k, ingot-rest, control-same-store-top-k-rest,
-                       vector, pinecone, turbopuffer, raw-context
+--seed N               World seed. The corpus and every gold answer follow from it. (1)
+--adapters a,b,c       ingot-mcp, control-same-store-top-k, ingot-rest,
+                       control-same-store-top-k-rest, vector, vector-fetch,
+                       pinecone, turbopuffer, raw-context
+                       (ingot-mcp,control-same-store-top-k,vector,raw-context)
+                       Old names such as `ingot` still work and say what they
+                       are called now.
                        With --from, selects which of a finished run's columns
                        the report shows. The rows on disk are untouched.
 --repeats N            Runs per question. (3)
 --per-template N       Questions generated per template. (3)
 --max-tool-calls N     Retrieval budget per question, identical for every adapter. (12)
 --concurrency N        Agent runs in flight at once, within one adapter. (1)
---model ID             Model id, or on Azure the DEPLOYMENT name. (gpt-5-mini)
+--model ID             Model id, or on Azure the DEPLOYMENT name.
+                       (gpt-5-mini on foundry-gpt, claude-opus-5 otherwise)
 --provider NAME        anthropic | foundry-claude | foundry-gpt. (foundry-gpt)
 --effort LEVEL         low | medium | high | xhigh | max  (high)
                        Adaptive thinking on Claude, reasoningEffort on GPT.
@@ -324,16 +335,23 @@ part of `bun run test` at the repository root, and spends real money.
                        corpus as well as the scores — every source, its page
                        size, and one record verbatim — rebuilt from the seed,
                        so the page can say what the numbers were measured over.
+                       See "What a publish writes" below.
 --from A.jsonl,B.jsonl Report on finished runs instead of buying new ones.
                        More than one splices their columns into one table.
 --rescore              With --from: run the scorer again over the transcripts.
---mapping MODE         authored | agent
+--against B.jsonl      With --from A.jsonl: report what one changed setting
+                       cost each column. See below.
+--questions-not-in F   Ask only the questions F has not already answered.
+--mapping MODE         authored | agent  (authored)
+--logs N               Add N log lines as one unpaginated tool result. (0)
 --scale 1,2,4,8,16     One run per scale, over a growing memory. See below.
 --series               With --from: each file is one point of a --scale series.
+--matchup              With --from: each file is one model's run. See below.
 --categories a,b       Restrict to these question categories.
 --out DIR              Where the JSONL and the report are written. (results)
 --allow-hash-embedder  Permit a run with the offline stand-in embedder.
 --dry-run              Print the corpus and questions, spend nothing.
+--help                 Print the flags and the environment.
 ```
 
 | Environment | |
@@ -341,8 +359,9 @@ part of `bun run test` at the repository root, and spends real money.
 | `AZURE_FOUNDRY_RESOURCE`, `AZURE_FOUNDRY_KEY` | Either `--provider foundry-*`; or `AZURE_FOUNDRY_BASE_URL` |
 | `BENCH_AGENT_MODEL` | The deployment to use for `foundry-gpt`. Ignored for other providers |
 | `ANTHROPIC_API_KEY` | Only with `--provider anthropic` |
-| `BENCH_EMBEDDER` | `hash` or `openai` — must match the server's `INGOT_EMBEDDER` |
+| `BENCH_EMBEDDER` | `hash` (the default) or `openai` — must match the server's `INGOT_EMBEDDER` |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | When `BENCH_EMBEDDER=openai`. Azure's v1 endpoint works here |
+| `BENCH_EMBEDDING_MODEL`, `BENCH_EMBEDDING_DIMENSIONS` | `text-embedding-3-small`, `1536` — the same defaults as the server's |
 | `INGOT_URL` | `http://localhost:3002` |
 | `INGOT_ACCOUNT` | `dev` |
 | `INGOT_API_KEY` | The key the server was started with |
@@ -350,6 +369,7 @@ part of `bun run test` at the repository root, and spends real money.
 | `PINECONE_INDEX`, `PINECONE_CLOUD`, `PINECONE_REGION` | `ingot-bench`, `aws`, `us-east-1`. The index is created, serverless, at whatever width `BENCH_EMBEDDER` produces, and an existing one of the wrong width or metric is refused rather than silently used |
 | `TURBOPUFFER_API_KEY` | Only for `--adapters turbopuffer` |
 | `TURBOPUFFER_REGION` | `aws-us-east-1` — it is part of the hostname, and a namespace lives in one region. The default matches Pinecone's so the `ms` column is not reporting geography |
+| `TURBOPUFFER_URL` | Overrides the region-derived base URL |
 
 The Ingot adapters need a running server (`bun run db:up && bun run dev`).
 `ingot-mcp` and `control-same-store-top-k` reach it over MCP, because the tool names, the
@@ -419,6 +439,25 @@ bun run bench --from "results/<ordinary>.jsonl,$(ls results/*-x{4,8,16}.jsonl | 
   --publish ../../apps/ingot-app/src/benchmarks/scaling.json
 ```
 
+Files at the same scale merge into one point, so categories bought in separate
+sweeps add up.
+
+### Models × memories
+
+`--matchup` reads finished runs, one per model, and reports a grid: every
+model against every adapter, over the same questions.
+
+```bash
+bun run bench --from results/SMALL.jsonl,results/LARGE.jsonl --matchup \
+  --publish ../../apps/ingot-app/src/benchmarks/matchup.json
+```
+
+Only the model (and the provider) may differ between the runs, and each has to
+have asked the same questions. Files from the same model merge into one row
+first. Like the series, the matchup is written whole to its own file, needs at
+least two models to publish, and refuses to overwrite `results.json` or
+`scaling.json`.
+
 ### Adding a column without re-buying the table
 
 A new adapter arrives and the nine columns beside it have not changed. Buying
@@ -436,7 +475,7 @@ is not, so the merge refuses rather than concatenates:
 
 - **Every setting that could move a number has to match** — seed, per-template,
   repeats, tool-call budget, model, provider, effort, thinking, mapping,
-  embedder, logs. A mismatch names the field and both values and stops.
+  embedder, logs, scale. A mismatch names the field and both values and stops.
   `concurrency` is exempt: it moves only the latencies, and a published
   warning records it when the runs disagree.
 - **No column may answer the same question in two files.** Which of the two a
@@ -516,7 +555,8 @@ Two guards make it safe:
 
 - **The question-defining settings have to match.** Question ids are positional
   — `q-026` is whatever the twenty-sixth question happened to be — so they only
-  name the same question when `--seed`, `--per-template` and `--logs` agree.
+  name the same question when `--seed`, `--per-template`, `--logs` and
+  `--scale` agree.
   They are checked before anything is bought, because the failure otherwise is
   silent rather than loud.
 - **The top-up says what it is.** The partial run carries a warning that it
@@ -531,9 +571,9 @@ changed meaning make both this and `--rescore` wrong rather than refused.
 
 ### How long it takes, and what to do about it
 
-A full run is 25 questions × 3 repeats × 10 adapters — around 730 agent runs.
+A full run is 33 questions × 3 repeats × 9 adapters — around 890 agent runs.
 Measured over real transcripts, one run averages 30 seconds, so serial that is
-about six hours.
+about seven and a half hours.
 
 Almost none of it is retrieval:
 
@@ -551,7 +591,7 @@ So `--concurrency N` runs N questions in flight within an adapter, and the
 speed-up is close to linear:
 
 ```bash
-bun run bench --concurrency 8    # ~6 hours becomes ~45 minutes
+bun run bench --concurrency 8    # ~7.5 hours becomes ~1 hour
 ```
 
 It defaults to 1, because it costs two things worth deciding on rather than
@@ -615,6 +655,20 @@ under an older set of adapters still has those rows in it, and re-scoring will
 score them as they stand. Use `--adapters` with `--from` to report on a subset
 of the columns a file holds — how the `oracle` column was retired from the
 published table without touching the transcript that bought it.
+
+### What a publish writes
+
+`--publish FILE` on an ordinary run, or on `--from`, writes three files:
+
+| | |
+| --- | --- |
+| `FILE` | The site's summary, e.g. `apps/ingot-app/src/benchmarks/results.json`. The run is added as a table; a table already there under the same label is replaced and every other one kept. |
+| `public/benchmark-transcripts.json` | The transcripts, two directories above `FILE` — `apps/ingot-app/public/` for the path above — merged on the same label. The page fetches this file rather than importing it. |
+| `README.md` at the repository root | The results table between `<!-- bench:start -->` and `<!-- bench:end -->`, rebuilt from the first table in the summary, best column first. A README without the markers is an error, raised after the other two files are written. |
+
+The README block is rewritten on every publish, so change it in
+`readmeBenchmark` (`src/run/publish.ts`) rather than by hand. `--scale`,
+`--series` and `--matchup` write only their own file.
 
 ## Running it on Azure
 

@@ -20,7 +20,8 @@ export enum SiteMode {
    * no account to sign into and no console to sign into it with: `/` is the
    * landing page, `/docs` is the reference, `/why` is the argument for the
    * shape of the thing, `/deployment` is how to run one and what it costs you
-   * in infrastructure, and that is the whole site.
+   * in infrastructure, `/features` is what it does and `/benchmarks` is how it
+   * measures up. `routesFor` is the full list.
    */
   Landing = 'landing',
   /**

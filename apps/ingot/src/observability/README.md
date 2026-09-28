@@ -28,22 +28,26 @@ Everything else in this directory exists to keep that property true.
 Nothing needs opting in for the spine. Every one of these is instrumented at
 the single place all of its traffic passes through:
 
-| what             | where it is instrumented        | metric                                                                    |
-| ---------------- | ------------------------------- | ------------------------------------------------------------------------- |
-| HTTP requests    | `http/telemetry.middleware.ts`  | `ingot_http_request_duration_seconds`, `…_in_flight`                      |
-| Commands         | `shared/application/dispatcher` | `ingot_command_duration_seconds`                                          |
-| Queries          | `shared/application/dispatcher` | `ingot_query_duration_seconds`                                            |
-| Writes           | `records/…/add-records.command` | `ingot_rows_ingested_total`, `ingot_overlay_rows`                         |
-| DuckDB sessions  | `engine/duckdb-engine.ts`       | `ingot_query_session_duration_seconds`, `…_rows_returned`                 |
-| Refused SQL      | `engine/duckdb-engine.ts`       | `ingot_sql_refused_total`                                                 |
-| Roll-up          | `sweepers`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`         |
-| Embeddings       | `sweepers`, `ai/`               | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`            |
-| Receipts         | `records/…/receipt-worker.ts`   | `ingot_receipts_pending`, `…_abandoned`, `ingot_receipt_duration_seconds` |
-| Background load  | `records/…/background-*`        | `ingot_background_*`                                                      |
-| Transactions     | `pg-unit-of-work`               | `ingot_transaction_duration_seconds`                                      |
-| Connection pool  | `infrastructure-collectors`     | `ingot_db_pool_connections`                                               |
-| Model calls      | `ai/`                           | `ingot_upstream_request_duration_seconds`                                 |
-| The Node process | `metrics/registry.ts`           | `ingot_process_*`, `ingot_nodejs_*`                                       |
+| what             | where it is instrumented                               | metric                                                                       |
+| ---------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| HTTP requests    | `http/telemetry.middleware.ts`                         | `ingot_http_request_duration_seconds`, `…_in_flight`                         |
+| Commands         | `shared/application/dispatcher`                        | `ingot_command_duration_seconds`                                             |
+| Queries          | `shared/application/dispatcher`                        | `ingot_query_duration_seconds`                                               |
+| Writes           | `records/…/add-records.command`                        | `ingot_rows_ingested_total`                                                  |
+| Overlay depth    | `records/…/overlay-collectors`                         | `ingot_overlay_rows`                                                         |
+| DuckDB sessions  | `query/…/query-ingot.query`, `engine/duckdb-engine.ts` | `ingot_query_session_duration_seconds`, `…_rows_returned`                    |
+| Refused SQL      | `engine/duckdb-engine.ts`                              | `ingot_sql_refused_total`                                                    |
+| Parquet cache    | `engine/parquet-cache.ts`                              | `ingot_parquet_cache_requests_total`, `…_bytes`, `…_evictions_total`         |
+| Roll-up          | `records/…/compact-table.command`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`            |
+| Embeddings       | `records/…/embed-worker`, `overlay-collectors`         | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`               |
+| Receipts         | `records/…/receipt-worker`, `overlay-collectors`       | `ingot_receipts_pending`, `…_abandoned`, `ingot_receipt_duration_seconds`    |
+| Deliveries       | `records/…/delivery-worker`, `delivery-collectors`     | `ingot_deliveries_pending`, `…_abandoned`, `ingot_delivery_duration_seconds` |
+| Files            | `files/…/file-worker`, `file-collectors`               | `ingot_files_*`, `ingot_file_duration_seconds`, `ingot_chunks_written_total` |
+| Background load  | `records/…/background-collectors`                      | `ingot_background_*`                                                         |
+| Transactions     | `pg-unit-of-work`                                      | `ingot_transaction_duration_seconds`                                         |
+| Connection pool  | `infrastructure-collectors`                            | `ingot_db_pool_connections`                                                  |
+| Model calls      | `ai/`                                                  | `ingot_upstream_request_duration_seconds`                                    |
+| The Node process | `metrics/registry.ts`                                  | `ingot_process_*`, `ingot_nodejs_*`                                          |
 
 `metrics/catalogue.ts` is the list, and `test/observability/metric-catalogue.test.ts`
 is what keeps this table from being the second answer to the same question.
@@ -52,10 +56,11 @@ is what keeps this table from being the second answer to the same question.
 
 `ingot_overlay_rows`, `ingot_embeddings_pending`, `ingot_receipts_pending`,
 `ingot_receipts_abandoned`, `ingot_deliveries_pending`,
-`ingot_deliveries_abandoned` and `ingot_background_oldest_pending_seconds` are
+`ingot_deliveries_abandoned`, `ingot_files_pending`, `ingot_files_abandoned`,
+`ingot_background_oldest_pending_seconds` and `ingot_parquet_cache_bytes` are
 read out of **Postgres** at scrape time. Every
 replica answers with the same number, because it is the depth of a queue they
-all share.
+all share — or, for the cache, the size of a volume they all mount.
 
 So `sum()` over one of these is wrong by exactly the replica count, and wrong in
 the direction that hurts — a backlog that looks ten times worse than it is, on a
@@ -117,7 +122,7 @@ async rollUp(table: IngotTable): Promise<Generation> {
 ```
 
 Blocks nest into spans with no plumbing — an `observe` inside an `observe` is a
-child span, and inside a command handler it is a child of `command.Analyse`,
+child span, and inside a command handler it is a child of `command.AddRecords`,
 which is a child of the HTTP request.
 
 `observeSync` is the same for work that awaits nothing. It is a separate
@@ -192,10 +197,11 @@ Everything is on by default, pointed at localhost. See `.env.example`.
 ```
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   # Jaeger, Tempo, a collector
 TRACE_SAMPLE_RATIO=1                                # parent-based
-METRICS_PORT=9464                                   # its own listener
+METRICS_PORT=9464                                   # its own listener; .env.example uses 9465
 ```
 
-Anything but an explicit `false` leaves a flag on. The asymmetry is deliberate:
+`TRACING_ENABLED` and `METRICS_ENABLED` are the flags, and anything but `false`
+or `0` leaves one on. The asymmetry is deliberate:
 the version of a typo that silently disables observability is the one nobody
 notices until they need it.
 
@@ -226,20 +232,21 @@ Exemplars only exist in that format — prom-client refuses to construct an
 exemplar-enabled metric against a plain registry. Prometheus picks its parser
 from the response `Content-Type`, so serving it unconditionally is safe for a
 scraper that did not ask; it just ignores what it cannot read. _Storing_
-exemplars needs `--enable-feature=exemplar-storage`, which `docker/prometheus.yml`
-already passes.
+exemplars needs `--enable-feature=exemplar-storage`, which the `prometheus`
+service in `docker-compose.yml` already passes.
 
 ## Known gap: background work is its own trace
 
 This gap used to be a cross-process one — the work was invoked back by Restate,
 arriving on a listener that `telemetry.middleware.ts` never saw, so the
 `traceparent` of the request that queued it was gone by definition. That is no
-longer the shape of it: `/add` wakes `EmbedWorker` and `ReceiptWorker` in this
-process, from `uow.afterCommit`.
+longer the shape of it: `/add` wakes the embedding, receipt and delivery
+workers in this process, from `uow.afterCommit`, and `/file` wakes the file
+worker.
 
 What remains is smaller and has two halves.
 
-A **woken drain** is deliberately detached — `BackgroundWork.wake` returns
+A **woken drain** is deliberately detached — `BackgroundWork.wake*` returns
 immediately and nobody awaits it, because the caller's response has already
 gone. So its spans hang off a request span that may well have ended, which is
 not a parent relationship worth drawing. A span link from the drain to the write
@@ -261,18 +268,17 @@ whether or not that were true.
 
 - `metric-catalogue.test.ts` — the naming and cardinality rules, mechanically:
   every metric carries the `ingot_` prefix, every histogram ends
-  `_seconds`, every counter `_total`, and no label is one an account or an
+  `_seconds` unless it is listed in `NOT_SECONDS` (row counts), every counter
+  `_total`, and no label is one an account or an
   ingot id could make unbounded. It is the whole of the coverage here, and the
   reason the table above can be trusted.
 
 Two things worth knowing if you extend it. Legacy decorators apply bottom-up,
 so an `@Observed` above `@Get()` replaces a function Nest has already stamped a
-route onto — `observed.decorator.ts` copies the metadata across, and without
-that it compiles, boots, and 404s. And the HTTP middleware's route label is a
-template rather than a path, which is a property of where it sits in Nest's
+route onto — `instrumentMethod` in `observe.ts` copies the metadata across, and
+without that it compiles, boots, and 404s. And the HTTP middleware's route label
+is a template rather than a path, which is a property of where it sits in Nest's
 pipeline: anything asserting on it has to go through a real server.
-
-- `spine.test.ts` — that a command nobody annotated is measured anyway.
 
 Use `resetMetrics()` between tests. A suite asserting on a counter otherwise
 reads a number the previous test contributed to, and a test that passes alone

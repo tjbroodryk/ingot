@@ -852,3 +852,52 @@ export function withTranscripts(
 export function transcriptsPathFor(publishPath: string): string {
   return join(dirname(publishPath), '..', '..', 'public', 'benchmark-transcripts.json');
 }
+
+export const README_START = '<!-- bench:start -->';
+export const README_END = '<!-- bench:end -->';
+
+/** The root README's results table: the first published table, best column first. */
+export function readmeBenchmark(published: PublishedBenchmark): string | null {
+  const table = published.tables[0];
+  if (!table) return null;
+  const { run, corpus } = table;
+  const percent = (value: number): string => `${(value * 100).toFixed(0)}%`;
+  const rows = [...table.adapters]
+    .sort((a, b) => b.accuracy - a.accuracy)
+    .map((adapter) => [
+      `\`${adapter.name}\``,
+      `${percent(adapter.accuracy)} ±${percent(adapter.stderr)}`,
+      adapter.contextTokens.toLocaleString('en-GB'),
+      adapter.toolCalls.toFixed(1),
+    ]);
+  const header = ['Memory', 'Accuracy', 'Context tokens', 'Tool calls'];
+  // Padded the way Prettier pads a table, so a publish leaves format:check clean.
+  const widths = header.map((cell, i) =>
+    Math.max(cell.length, ...rows.map((row) => row[i]?.length ?? 0)),
+  );
+  const line = (cells: readonly string[]) =>
+    `| ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join(' | ')} |`;
+  return [
+    README_START,
+    '<!-- Written by `bun run bench --publish`. Edits here are overwritten. -->',
+    '',
+    line(header),
+    line(widths.map((width) => '-'.repeat(width))),
+    ...rows.map(line),
+    '',
+    `${run.model}, ${run.questions} questions × ${run.repeats} runs, seed ${run.seed}, over ` +
+      `${corpus.results} tool results (${corpus.records.toLocaleString('en-GB')} records). ` +
+      `Run \`${run.runId}\`.`,
+    README_END,
+  ].join('\n');
+}
+
+/** `readme` with the text between the bench markers replaced by `block`. */
+export function withReadmeBenchmark(readme: string, block: string): string {
+  const start = readme.indexOf(README_START);
+  const end = readme.indexOf(README_END, start);
+  if (start === -1 || end === -1) {
+    throw new Error(`README has no ${README_START} … ${README_END} block to write into.`);
+  }
+  return readme.slice(0, start) + block + readme.slice(end + README_END.length);
+}
