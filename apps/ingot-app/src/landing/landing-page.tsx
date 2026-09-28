@@ -3,7 +3,7 @@ import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { ELSEWHERE, RUN_TARGETS } from '../deployment/targets';
 import { RunTargetRow } from '../deployment/run-target';
-import { CodeBlock } from '../docs/code-block';
+import { CodeBlock, JsonBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
 import { SampleTone } from '../docs/reference';
 import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL, WHY_HREF } from '../site/mode';
@@ -81,8 +81,8 @@ export function LandingPage(): ReactNode {
               <span className="panel-rule" />
             </div>
             <div className="panel-split">
-              <CodeBlock code={REMEMBER} />
-              <CodeBlock code={RECALL} />
+              <JsonBlock code={REMEMBER} />
+              <JsonBlock code={RECALL} />
             </div>
           </div>
         </section>
@@ -209,7 +209,7 @@ export function LandingPage(): ReactNode {
               </div>
               <div className="panel-split">
                 <CodeBlock code={AI_SDK_TOOL} />
-                <CodeBlock code={AI_SDK_SEEN} />
+                <JsonBlock code={AI_SDK_SEEN} />
               </div>
             </div>
           </div>
@@ -230,7 +230,7 @@ export function LandingPage(): ReactNode {
         {/* Figure first, to keep the splits alternating down the page. */}
         <section className="split" id="receipts">
           <div className="split-figure">
-            <CodeBlock code={RECEIPTS} />
+            <JsonBlock code={RECEIPTS} />
           </div>
           <div className="split-copy">
             <span className="label label-sm kicker">[ Receipts &amp; embeddings ]</span>
@@ -296,13 +296,13 @@ export function LandingPage(): ReactNode {
             ) : null}
           </div>
           <div className="split-figure">
-            <CodeBlock code={RETRIEVAL} />
+            <JsonBlock code={RETRIEVAL} />
           </div>
         </section>
 
         <section className="split" id="mcp">
           <div className="split-figure">
-            <CodeBlock code={MCP_CONFIG} tone={SampleTone.Ink} />
+            <JsonBlock code={MCP_CONFIG} tone={SampleTone.Ink} />
           </div>
           <div className="split-copy">
             <span className="label label-sm kicker">[ MCP native ]</span>
