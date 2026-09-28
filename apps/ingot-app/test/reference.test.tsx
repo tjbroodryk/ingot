@@ -66,6 +66,28 @@ describe('the reference', () => {
   });
 });
 
+/**
+ * The endpoint samples are pseudo-JSON, hand-formatted. The one thing a reader
+ * should never see is a value with its closing braces piled onto the same line
+ * — a line offends only when it closes more than it opened, so a balanced inline
+ * object like `{ "t": "none" }` is fine and a bare `}` on its own line is fine.
+ * The landing samples are held to the same rule in `landing.test.tsx`.
+ */
+describe('the endpoint samples', () => {
+  it('close their objects on their own lines', () => {
+    for (const endpoint of ENDPOINTS) {
+      const piled = (endpoint.sample ?? '').split('\n').filter((line) => {
+        const opened = (line.match(/[{[]/g) ?? []).length;
+        const closed = (line.match(/[}\]]/g) ?? []).length;
+
+        return closed > opened && !/^[\s}\],]*$/.test(line);
+      });
+
+      expect({ [endpoint.id]: piled }).toEqual({ [endpoint.id]: [] });
+    }
+  });
+});
+
 describe('the page', () => {
   /** No hosted-looking address, across the sample strings and the closing band. */
   it('names no address nobody can reach', () => {
