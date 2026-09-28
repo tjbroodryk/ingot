@@ -1,11 +1,10 @@
 {{- if .Values.server.autoscaling.enabled }}
 # Scaling the API is safe in a way that is worth being explicit about.
 #
-# Every background job is a timer inside the process, and each takes a Postgres
-# advisory lock before it does anything. Ten replicas are ten servers and one
-# sweeper — so this is sizing the request path and nothing else, and a scale-up
-# during a busy hour cannot produce two pods folding the same overlay into the
-# same generation.
+# Roll-up and expiry take a Postgres advisory lock, so a scale-up during a busy
+# hour cannot produce two pods folding the same overlay into the same
+# generation. The queue sweepers lease their rows and run on every replica, so
+# pods added here drain the background queues too.
 #
 # Requires metrics-server. Without it the HPA reports `<unknown>/70%` and holds
 # at minReplicas, which is at least the safe direction to fail in.
@@ -33,6 +32,9 @@ spec:
           # the length of a session, so memory utilisation reflects what the
           # engine was allowed to reserve rather than how much work is arriving.
           averageUtilization: {{ .Values.server.autoscaling.targetCPUUtilizationPercentage }}
+    {{- with .Values.server.autoscaling.metrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   behavior:
     scaleUp:
       # The default is a five-minute window that smooths away exactly the spike
