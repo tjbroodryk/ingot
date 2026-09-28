@@ -196,29 +196,14 @@ function render(node: Node, column: number, indent: number): string {
   const oneLine = `${open}${gap}${members(node, column + 2, indent).join(', ')}${gap}${close}`;
   if (!oneLine.includes('\n') && column + oneLine.length <= WIDTH) return oneLine;
 
-  // Hanging: the first member beside the brace, the rest lined up under it, so
-  // a nested object reads as one column of keys. Two things rule it out.
-  //
-  // An array of rows never hangs — it would start every row a dozen columns in
-  // from the key that named them, and the rows are the part worth reading. Nor
-  // does a group whose own members have had to break, which is the sign that
-  // this column is already too deep to hang anything from.
-  //
-  // A group at the head of a line hangs regardless, because block is only ever
-  // narrower for a value that starts partway along one.
-  const rows = node.kind === 'array' && node.items.some((item) => item.kind !== 'leaf');
-  const hangAt = column + 2;
-  const hanging = members(node, hangAt, hangAt);
-  if (indent >= column || (!rows && fits(hanging, hangAt, close))) {
-    return `${open} ${hanging.join(`,\n${' '.repeat(hangAt)}`)} ${close}`;
-  }
-
-  // Block: the brace alone, members measured from the line rather than from
-  // the brace. The closing pair hugs the last member, so a run of them ends a
-  // sample as `} }` rather than as a staircase.
+  // Block: the brace alone, each member on its own line from the line's own
+  // indent, and the closing brace under the open. Every closer lands on a line
+  // of its own, so a nest reads as a staircase of keys rather than as a pile of
+  // braces trailing the last value.
   const blockAt = indent + 2;
   const pad = ' '.repeat(blockAt);
-  return `${open}\n${pad}${members(node, blockAt, blockAt).join(`,\n${pad}`)} ${close}`;
+  const closePad = ' '.repeat(indent);
+  return `${open}\n${pad}${members(node, blockAt, blockAt).join(`,\n${pad}`)}\n${closePad}${close}`;
 }
 
 function members(node: Node, column: number, indent: number): string[] {
@@ -240,15 +225,6 @@ function renderEntry(entry: Entry, column: number, indent: number): string {
     return `${entry.key}:\n${pad}${reflow(entry.value.text, indent + 2)}`;
   }
   return beside;
-}
-
-/** Whether every member is one line and stays inside `WIDTH` at `column`. */
-function fits(rendered: readonly string[], column: number, close: string): boolean {
-  return rendered.every((member, index) => {
-    if (member.includes('\n')) return false;
-    const punctuation = index === rendered.length - 1 ? close.length + 1 : 1;
-    return column + member.length + punctuation <= WIDTH;
-  });
 }
 
 /**
