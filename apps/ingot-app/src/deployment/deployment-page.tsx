@@ -1,11 +1,11 @@
-import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { NavGroup } from '../chrome/nav-group';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
-import { DOCS_HREF, REPO_URL } from '../site/mode';
+import { DEPLOYMENT_HREF, DOCS_HREF, REPO_URL } from '../site/mode';
+import { pageMetadata } from '../site/seo';
 import {
   BRING_IT_UP_LEDE,
   DEPLOYMENT_DESCRIPTION,
@@ -19,10 +19,11 @@ import {
 import { RunTargetRow } from './run-target';
 import { RUN_TARGETS } from './targets';
 
-export const deploymentMetadata: Metadata = {
+export const deploymentMetadata = pageMetadata({
   title: 'Deployment',
   description: DEPLOYMENT_DESCRIPTION,
-};
+  path: DEPLOYMENT_HREF,
+});
 
 /**
  * The deployment page: how to run Ingot, then the two dependencies every way

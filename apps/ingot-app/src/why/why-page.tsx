@@ -1,10 +1,10 @@
-import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
 import { CodeBlock } from '../docs/code-block';
 import { Prose } from '../docs/prose';
-import { DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF, REPO_URL } from '../site/mode';
+import { DEPLOYMENT_HREF, DOCS_HREF, HOME_HREF, REPO_URL, WHY_HREF } from '../site/mode';
+import { pageMetadata } from '../site/seo';
 // The landing page's layout, reused: same shape of document.
 import '../landing/landing.css';
 import './why.css';
@@ -26,11 +26,12 @@ import {
   WHY_LEDE,
 } from './why';
 
-export const whyMetadata: Metadata = {
+export const whyMetadata = pageMetadata({
   // The nav's word, not the headline: a tab truncates the long title to nothing useful.
   title: 'Why Ingot',
   description: WHY_DESCRIPTION,
-};
+  path: WHY_HREF,
+});
 
 /** Why this exists at all — the one page on the site that argues rather than describes. A server component rendered at build time. */
 export function WhyPage(): ReactNode {

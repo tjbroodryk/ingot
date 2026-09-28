@@ -1,8 +1,8 @@
-import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
+import { BENCHMARKS_HREF, DOCS_HREF, REPO_URL, sourceHref, WHY_HREF } from '../site/mode';
+import { pageMetadata } from '../site/seo';
 // The landing page's layout, reused: same shape of document.
 import '../landing/landing.css';
 import './benchmarks.css';
@@ -27,10 +27,11 @@ import {
   type PublishedAdapter,
 } from './benchmarks';
 
-export const benchmarksMetadata: Metadata = {
+export const benchmarksMetadata = pageMetadata({
   title: 'Benchmarks',
   description: BENCHMARKS_DESCRIPTION,
-};
+  path: BENCHMARKS_HREF,
+});
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 

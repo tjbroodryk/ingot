@@ -76,24 +76,38 @@ function robotsTxt(mode: SiteMode): string {
   )}\n`;
 }
 
+/**
+ * When each route's content last changed, keyed by route (the same string
+ * {@link routesFor} returns). A real per-page date — see {@link sitemapXml}'s
+ * `lastmod`. Missing entries emit no `lastmod` at all.
+ */
+export type LastModified = Readonly<Record<string, string>>;
+
 /** The HTML routes as a sitemap. Written only where {@link SITE_URL} is set (every `<loc>` must be absolute). */
-function sitemapXml(mode: SiteMode): string {
+function sitemapXml(mode: SiteMode, lastmod: LastModified = {}): string {
   const routes = routesFor(mode);
-  const pages = [routes.home, routes.why, routes.docs, routes.deployment].filter(
+  const pages = [routes.home, routes.why, routes.docs, routes.deployment, routes.benchmarks].filter(
     (route): route is string => route !== null,
   );
+
+  // No build-time date: `lastmod` is the section's last commit or nothing, so it
+  // never claims a page changed when only the build ran. See `scripts/emit-text.ts`.
+  const url = (route: string): string => {
+    const at = lastmod[route];
+    const loc = `<loc>${absolute(route)}</loc>`;
+    return at ? `  <url>${loc}<lastmod>${at}</lastmod></url>` : `  <url>${loc}</url>`;
+  };
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    // No `lastmod`: a build-time date would falsely claim every page changed.
-    ...[...new Set(pages)].map((route) => `  <url><loc>${absolute(route)}</loc></url>`),
+    ...[...new Set(pages)].map(url),
     '</urlset>',
   ].join('\n');
 }
 
 /** Everything this build writes beside its HTML. The sitemap is not always present; see `sitemapXml`. */
-export function textFiles(mode: SiteMode = MODE): readonly TextFile[] {
+export function textFiles(mode: SiteMode = MODE, lastmod: LastModified = {}): readonly TextFile[] {
   const pages = articles(mode === SiteMode.Landing);
 
   return [
@@ -101,6 +115,6 @@ export function textFiles(mode: SiteMode = MODE): readonly TextFile[] {
     { path: FULL, body: llmsFullTxt(pages) },
     { path: 'llms.txt', body: llmsTxt(pages) },
     { path: 'robots.txt', body: robotsTxt(mode) },
-    ...(SITE_URL ? [{ path: SITEMAP, body: `${sitemapXml(mode)}\n` }] : []),
+    ...(SITE_URL ? [{ path: SITEMAP, body: `${sitemapXml(mode, lastmod)}\n` }] : []),
   ];
 }

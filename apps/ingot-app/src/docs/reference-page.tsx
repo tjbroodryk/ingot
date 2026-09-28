@@ -1,8 +1,8 @@
-import type { Metadata } from 'next';
 import { Fragment } from 'react';
 import { SiteFooter } from '../chrome/site-footer';
 import { SiteHeader, SiteSection } from '../chrome/site-header';
-import { DASHBOARD_HREF, IS_LANDING, REPO_URL } from '../site/mode';
+import { DASHBOARD_HREF, DOCS_HREF, IS_LANDING, REPO_URL } from '../site/mode';
+import { pageMetadata } from '../site/seo';
 import { CodeBlock } from './code-block';
 import { DocsNav } from './docs-nav';
 import { EndpointRow } from './endpoint-row';
@@ -17,10 +17,11 @@ import {
 import { Prose } from './prose';
 import { ENDPOINTS, GROUPS, GROUP_ORDER, endpointsIn } from './reference';
 
-export const referenceMetadata: Metadata = {
+export const referenceMetadata = pageMetadata({
   title: REFERENCE_TITLE,
   description: REFERENCE_DESCRIPTION,
-};
+  path: DOCS_HREF,
+});
 
 /** The reference. A component, not a page: the front page of a dashboard build and `/docs` of a landing one. Rendered at build time. */
 export function ReferencePage() {

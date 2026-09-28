@@ -45,7 +45,12 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      # Full history, not a shallow clone: `scripts/emit-text.ts` dates each
+      # sitemap entry from the last commit to touch that section, and a depth-1
+      # checkout only knows the tip.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Deliberately without `static_site_generator: next`. That option exists
       # to write a `basePath` into the Next config for you, and this repo's
