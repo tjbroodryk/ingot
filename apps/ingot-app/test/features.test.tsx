@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { formatWire } from '../src/docs/format-wire';
 import { HttpMethod, ENDPOINTS } from '../src/docs/reference';
 import { COMBINED, FEATURES, FEATURES_LEDE } from '../src/features/features';
 import { FeaturesPage } from '../src/features/features-page';
@@ -72,6 +73,8 @@ describe('the features route', () => {
 describe('the features page as markdown', () => {
   it('carries every sample the page does', () => {
     const text = FEATURES_ARTICLE.render();
-    for (const sample of [...FEATURES, COMBINED]) expect(text).toContain(sample.request);
+    // Markdown and HTML both lay the sample out through `formatWire`, so the
+    // markdown carries the formatted request, not the raw string in the source.
+    for (const sample of [...FEATURES, COMBINED]) expect(text).toContain(formatWire(sample.request));
   });
 });
