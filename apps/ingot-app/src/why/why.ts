@@ -57,7 +57,7 @@ JOIN services s ON s.id = 'svc:' || i.service
 JOIN oncall r   ON r.team = s.owner
  AND i.started_at BETWEEN r.starts_at AND r.ends_at
 WHERE i.id = 'INC-01'`,
-      note: 'Each step follows a value from one table to the next. The answer is **payments, mensah**, or no rows at all. Never a wrong owner.',
+      note: 'Each step follows a value from one table to the next. The answer is **payments, mensah**, or no rows at all.',
     },
   },
   after:
