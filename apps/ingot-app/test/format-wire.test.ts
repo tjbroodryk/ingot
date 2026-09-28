@@ -9,7 +9,7 @@ import { COMBINED, FEATURES } from '../src/features/features';
  * still says the same thing afterwards.
  */
 
-/** The width in `format-wire.ts`, plus the closing punctuation it hugs. */
+/** The width in `format-wire.ts`, plus the comma or closing punctuation a line can carry. */
 const LIMIT = 71;
 
 /** Every JSON-bearing sample the site renders, by the name it is written under. */
@@ -38,10 +38,10 @@ function tokens(text: string): string[] {
 }
 
 describe('formatting a document', () => {
-  it('hangs the members of an object under its first key', () => {
+  it('breaks a wide object one key to a line, closing brace on its own', () => {
     const wide = '{ "alpha": "one", "bravo": "two", "charlie": "three", "delta": "four" }';
     expect(formatWire(wide)).toBe(
-      '{ "alpha": "one",\n  "bravo": "two",\n  "charlie": "three",\n  "delta": "four" }',
+      '{\n  "alpha": "one",\n  "bravo": "two",\n  "charlie": "three",\n  "delta": "four"\n}',
     );
   });
 
@@ -52,7 +52,7 @@ describe('formatting a document', () => {
   it('gives an array of objects a line each, from the left', () => {
     const rows = '{ "rows": [{ "id": "a" }, { "id": "b" }, { "id": "c" }, { "id": "dddddddd" }] }';
     expect(formatWire(rows)).toBe(
-      '{ "rows": [\n    { "id": "a" },\n    { "id": "b" },\n    { "id": "c" },\n    { "id": "dddddddd" } ] }',
+      '{\n  "rows": [\n    { "id": "a" },\n    { "id": "b" },\n    { "id": "c" },\n    { "id": "dddddddd" }\n  ]\n}',
     );
   });
 
@@ -64,7 +64,7 @@ describe('formatting a document', () => {
 
   it('moves a multi-line string with the key it belongs to', () => {
     expect(formatWire('{ "x": 1,\n  "sql": "SELECT a\n   FROM b" }')).toBe(
-      '{ "x": 1,\n  "sql": "SELECT a\n          FROM b" }',
+      '{\n  "x": 1,\n  "sql": "SELECT a\n          FROM b"\n}',
     );
   });
 
