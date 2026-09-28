@@ -8,7 +8,7 @@
     at 62% for the second. The muted rule is written as an opacity rather than
     the colour it resolves to, because a fourth hex would be a fourth answer to
     a question the tokens have already answered. Square corners because
-    `--radius` is 0 everywhere on the site and a rounded icon would be the one
+    the radius token is 0 everywhere on the site and a rounded icon would be the one
     thing that is not.
 
     Drawn on a 64 unit grid so every vertex is a whole number — the artwork

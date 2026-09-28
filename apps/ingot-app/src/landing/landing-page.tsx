@@ -552,7 +552,7 @@ export function LandingPage(): ReactNode {
           <span className="label kicker kicker-n">Self-hosted, for now</span>
           <h2>Open Source with Self-hosting available.</h2>
           <p>
-            Host it yourself! Check out the deployment guide in the documentation <a href={DEPLOYMENT_HREF!}>here</a>.
+            Host it yourself! Check out the <a href={RUN_HREF}>deployment guide</a> in the documentation.
           </p>
 
           <div className="cta-actions">
