@@ -333,6 +333,3 @@ test suite, CI, building the images, and running the benchmark and load tests.
 ## License
 
 [MIT](LICENSE)
-
-## TODOs
-- Seperate landing page site from dashboard app
