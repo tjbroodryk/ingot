@@ -14,6 +14,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { oldestAge } from '../../../../shared/infrastructure/postgres/oldest-age.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 import {
@@ -530,6 +531,13 @@ export class PgOverlayStore implements OverlayStore {
     return row?.n ?? 0;
   }
 
+  async oldestPendingSeconds(): Promise<number> {
+    const [row] = await this.uow.queryable
+      .select({ age: oldestAge(overlayEmbedQueue.queuedAt) })
+      .from(overlayEmbedQueue);
+    return row?.age ?? 0;
+  }
+
   async totalRows(): Promise<number> {
     const [row] = await this.uow.queryable.select({ n: count() }).from(overlayRow);
     return row?.n ?? 0;
@@ -626,6 +634,14 @@ export class PgOverlayStore implements OverlayStore {
       .from(overlayReceiptQueue)
       .where(lt(overlayReceiptQueue.attempts, maxAttempts));
     return row?.n ?? 0;
+  }
+
+  async oldestReceiptSeconds(maxAttempts: number): Promise<number> {
+    const [row] = await this.uow.queryable
+      .select({ age: oldestAge(overlayReceiptQueue.queuedAt) })
+      .from(overlayReceiptQueue)
+      .where(lt(overlayReceiptQueue.attempts, maxAttempts));
+    return row?.age ?? 0;
   }
 
   async receiptsAbandoned(maxAttempts: number): Promise<number> {

@@ -60,10 +60,10 @@ server:
       memory: 3Gi
       ephemeral-storage: 6Gi
 
-  # Scaling the API is safe in a way worth being explicit about: every
-  # background job is a timer inside the process that takes a Postgres advisory
-  # lock before it sweeps, so ten replicas are ten servers and one sweeper.
-  # This sizes the request path and has nothing to say about the roll-up.
+  # Scaling the API is safe in a way worth being explicit about: roll-up and
+  # expiry take a Postgres advisory lock, so ten replicas are still one
+  # compaction. The queue sweepers lease their rows and run on every replica,
+  # so more pods do drain embeddings, receipts, deliveries and files faster.
   #
   # Needs metrics-server. Without it the HPA reads `<unknown>/70%` and holds at
   # `minReplicas`, which is at least the safe direction to fail in.
@@ -75,6 +75,27 @@ server:
     # length of a session, so memory utilisation reflects what the engine was
     # allowed to reserve rather than how much work is arriving.
     targetCPUUtilizationPercentage: 70
+    # Extra HPA metrics, appended after CPU as-is. The HPA scales to whichever
+    # asks for the most pods. Needs prometheus-adapter (or similar) serving the
+    # series; the adapter rule is yours. For example, on how full each pod's
+    # embedding drains are:
+    #
+    #   - type: Pods
+    #     pods:
+    #       metric:
+    #         name: ingot_background_embeddings_utilisation
+    #       target:
+    #         type: AverageValue
+    #         averageValue: "800m"
+    #
+    # with the adapter computing, per pod,
+    #   ingot_background_drains_in_flight{queue="embeddings"}
+    #     / ingot_background_drain_limit{queue="embeddings"}
+    #
+    # Or on lag, as an External metric over
+    #   max(ingot_background_oldest_pending_seconds{queue="receipts"})
+    # which every replica reports alike — never sum() it.
+    metrics: []
 
   podDisruptionBudget:
     enabled: true
@@ -294,10 +315,10 @@ config:
   # ── background concurrency ───────────────────────────────────────────────
   # How many drains of each queue run at once, **per replica**.
   #
-  # That last word is the whole reason these are here rather than baked in. The
-  # wake path takes no advisory lock — only a sweep does — so what a provider
-  # actually sees is this times the number of pods, and `autoscaling` above
-  # moves that number on CPU. At the defaults below and `maxReplicas: 10` your
+  # That last word is the whole reason these are here rather than baked in.
+  # Neither the wake path nor a queue sweep takes an advisory lock, so what a
+  # provider actually sees is this times the number of pods, and `autoscaling`
+  # above moves that number. At the defaults below and `maxReplicas: 10` your
   # embedder sees twenty concurrent batches and your receivers sixty concurrent
   # deliveries, arriving precisely when load is highest.
   #

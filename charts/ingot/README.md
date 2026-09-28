@@ -108,7 +108,7 @@ The migration hook re-runs on every upgrade, ahead of the new pods.
 | `config.storage` | `s3`, `gcs` or `filesystem`, and what each then needs |
 | `config.tracing.enabled` | off, said out loud — the service's own default is on and pointed at a localhost that is not there inside a pod |
 | `server.resources` | the memory limit is a multiple of `config.query.memoryLimit`, not equal to it |
-| `server.autoscaling` | safe because the sweepers take advisory locks; ten replicas are ten servers and one sweeper |
+| `server.autoscaling` | safe because roll-up takes an advisory lock and the queues lease their rows. CPU by default; `metrics` adds background load or lag via a metrics adapter |
 | `app.apiUrl` | where the site forwards `/api/`. Empty is this release's server |
 | `ingress.*` | off. One host, `/api` to the server and the rest to the site |
 | `serviceMonitor.*` | off. It is a CRD, and assuming it fails the install on a cluster without monitoring |

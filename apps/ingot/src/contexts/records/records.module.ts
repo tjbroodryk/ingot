@@ -28,6 +28,7 @@ import { EmbedWorker } from './application/embed-worker.js';
 import { DELIVERY_TRIGGER } from './application/ports/delivery-trigger.port.js';
 import { RECEIPT_NOTIFIER } from './application/ports/receipt-notifier.port.js';
 import { ReceiptBuilder } from './application/receipt-builder.js';
+import { BackgroundCollectors } from './infrastructure/background-collectors.js';
 import { OutboxReceiptNotifier } from './infrastructure/outbox-receipt-notifier.js';
 import { RecordsController } from './interface/records.controller.js';
 
@@ -68,6 +69,7 @@ import { RecordsController } from './interface/records.controller.js';
     // `BackgroundWork` itself, because importing that from a command the
     // receipt worker dispatches would close an import cycle — the port says so.
     { provide: DELIVERY_TRIGGER, useExisting: BackgroundWork },
+    BackgroundCollectors,
     DeleteRecordsHandler,
     CompactTableHandler,
     ReapGenerationsHandler,

@@ -1162,8 +1162,8 @@ This one _is_ a rate limit, and deliberately: it is the only thing standing
 between a burst of writes and an unbounded burst of calls at whatever
 `INGOT_EMBEDDER` names.
 
-**It is per replica, and that is the number that matters in a cluster.** The
-wake path takes no advisory lock — only the sweep does — so what your provider
+**It is per replica, and that is the number that matters in a cluster.** Neither
+the wake path nor a queue sweep takes an advisory lock, so what your provider
 sees is `CONCURRENCY × replicas`. At the chart's `maxReplicas: 10` that is
 twenty concurrent embed drains and sixty concurrent deliveries, and since the
 HPA scales on CPU, a write burst adds pods and multiplies the fan-out exactly
@@ -1195,9 +1195,37 @@ receipts   ≈ CONCURRENCY / L         receipts/sec per replica
 ```
 
 `L` is one call's latency, which `ingot_embedding_duration_seconds` and
-`ingot_receipt_duration_seconds` already measure. The wake path takes no
-advisory lock, so it multiplies by replicas; the sweep path does, so a backlog
-with no incoming writes is drained by one replica at a time.
+`ingot_receipt_duration_seconds` already measure. Both paths multiply by
+replicas: the claim leases its rows, so the queue sweeps run on every pod and
+only roll-up and expiry take the advisory lock. A backlog with no incoming
+writes drains at one sweep drain per pod, plus whatever wakes arrive.
+
+### Scaling on background work
+
+Three gauges, each labelled `queue` (`embeddings`, `receipts`, `deliveries`,
+`files`), are there to scale pods on:
+
+| metric                                    | kind            | what it says                                               |
+| ----------------------------------------- | --------------- | ---------------------------------------------------------- |
+| `ingot_background_drains_in_flight`       | per pod         | drains running now, woken or swept                         |
+| `ingot_background_drain_limit`            | per pod         | `CONCURRENCY` for that queue                               |
+| `ingot_background_oldest_pending_seconds` | deployment-wide | age of the oldest winnable item, 0 when empty — `max()` it |
+
+In flight over limit is one pod's saturation, and averages across pods the way
+CPU does:
+
+```promql
+avg(
+  sum by (pod) (ingot_background_drains_in_flight{queue="embeddings"})
+  / sum by (pod) (ingot_background_drain_limit{queue="embeddings"})
+)
+```
+
+A sweep drain runs outside the limit, so a pod can read one over. The oldest
+pending age is the lag a caller feels, and a better trigger than a count: ten
+thousand rows can embed faster than fifty receipts summarise. Scaling on it
+raises `CONCURRENCY × replicas` too, so size the ceiling against the provider
+quota as above.
 
 The Postgres pool is not the constraint and that is the whole point of the
 split: a drain holds a connection for the few milliseconds of claim and save out
