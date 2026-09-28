@@ -661,8 +661,17 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
    * wants the filesystem or the network again. `lock_configuration` is what
    * stops the caller's own SQL turning external access back on — and Phase 0
    * confirmed it refuses to be released, too.
+   *
+   * The store's secret goes first. It is redacted, but `duckdb_secrets()`
+   * still shows the rest of it, S3's `key_id` included, to the caller's SQL.
    */
   private async lockDown(connection: DuckDBConnection): Promise<void> {
+    const secrets = (
+      await connection.runAndReadAll('SELECT name FROM duckdb_secrets()')
+    ).getRowObjectsJson();
+    for (const { name } of secrets) {
+      await connection.run(`DROP SECRET ${ident(String(name))}`);
+    }
     await connection.run('SET enable_external_access = false');
     await connection.run('SET lock_configuration = true');
   }
