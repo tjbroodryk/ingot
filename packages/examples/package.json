@@ -1,0 +1,21 @@
+{
+  "name": "@ingot/examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "example": "bun src/github-agent.ts",
+    "clean": "rm -rf .turbo *.tsbuildinfo",
+    "lint": "biome lint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.49",
+    "@ingotdb/sdk": "workspace:*",
+    "ai": "^7.0.93"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
