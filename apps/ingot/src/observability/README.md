@@ -39,6 +39,7 @@ the single place all of its traffic passes through:
 | Roll-up          | `sweepers`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`         |
 | Embeddings       | `sweepers`, `ai/`               | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`            |
 | Receipts         | `records/…/receipt-worker.ts`   | `ingot_receipts_pending`, `…_abandoned`, `ingot_receipt_duration_seconds` |
+| Background load  | `records/…/background-*`        | `ingot_background_*`                                                      |
 | Transactions     | `pg-unit-of-work`               | `ingot_transaction_duration_seconds`                                      |
 | Connection pool  | `infrastructure-collectors`     | `ingot_db_pool_connections`                                               |
 | Model calls      | `ai/`                           | `ingot_upstream_request_duration_seconds`                                 |
@@ -50,8 +51,9 @@ is what keeps this table from being the second answer to the same question.
 ### Two kinds of gauge, and one of them must not be summed
 
 `ingot_overlay_rows`, `ingot_embeddings_pending`, `ingot_receipts_pending`,
-`ingot_receipts_abandoned`, `ingot_deliveries_pending` and
-`ingot_deliveries_abandoned` are read out of **Postgres** at scrape time. Every
+`ingot_receipts_abandoned`, `ingot_deliveries_pending`,
+`ingot_deliveries_abandoned` and `ingot_background_oldest_pending_seconds` are
+read out of **Postgres** at scrape time. Every
 replica answers with the same number, because it is the depth of a queue they
 all share.
 
@@ -60,7 +62,8 @@ the direction that hurts — a backlog that looks ten times worse than it is, on
 panel nobody has reason to distrust. **Use `max()`**; `avg()` gives the same
 answer.
 
-`ingot_http_requests_in_flight` and `ingot_db_pool_connections` are this
+`ingot_http_requests_in_flight`, `ingot_db_pool_connections`,
+`ingot_background_drains_in_flight` and `ingot_background_drain_limit` are this
 process's own, and `sum()` across replicas is exactly right for them.
 
 Nothing can stop somebody writing `sum()`, so the catalogue does the next best

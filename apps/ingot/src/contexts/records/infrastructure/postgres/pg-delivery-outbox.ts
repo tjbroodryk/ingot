@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { count, eq, gte, lt, sql } from 'drizzle-orm';
 import type { Delivered, DeliveredReceipt, DeliveryStrategy } from '@ingot/shared/ingot-v1';
 import { newIdValue } from '../../../../shared/domain/index.js';
+import { oldestAge } from '../../../../shared/infrastructure/postgres/oldest-age.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type {
   DeliveryOutbox,
@@ -147,6 +148,14 @@ export class PgDeliveryOutbox implements DeliveryOutbox {
       .from(receiptDeliveryQueue)
       .where(lt(receiptDeliveryQueue.attempts, maxAttempts));
     return row?.n ?? 0;
+  }
+
+  async oldestPendingSeconds(maxAttempts: number): Promise<number> {
+    const [row] = await this.uow.queryable
+      .select({ age: oldestAge(receiptDeliveryQueue.queuedAt) })
+      .from(receiptDeliveryQueue)
+      .where(lt(receiptDeliveryQueue.attempts, maxAttempts));
+    return row?.age ?? 0;
   }
 
   async abandoned(maxAttempts: number): Promise<number> {

@@ -128,6 +128,9 @@ export interface FileQueue {
   /** The same, for one ingot. A clone waits for these rather than copying them. */
   pendingFor(ingotId: string, maxAttempts: number): Promise<number>;
 
+  /** Seconds the oldest winnable document has waited; 0 when none are. */
+  oldestPendingSeconds(maxAttempts: number): Promise<number>;
+
   /**
    * Queued and out of attempts. Not retried; kept so somebody can look.
    *

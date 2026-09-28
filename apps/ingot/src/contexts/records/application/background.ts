@@ -127,6 +127,11 @@ export class BackgroundWork {
   /** What was asked for while every slot was already taken. */
   private readonly again = new Set<BackgroundKind>();
 
+  /** Sweep drains running now, per kind. They take no wake slot. */
+  private readonly sweeping = new Map<BackgroundKind, number>();
+
+  private readonly drains: Record<BackgroundKind, () => Promise<Drained>>;
+
   constructor(
     private readonly embeddings: EmbedWorker,
     private readonly receipts: ReceiptWorker,
@@ -147,16 +152,23 @@ export class BackgroundWork {
      * mechanism without asserting on today's numbers.
      */
     @Inject(BACKGROUND_CONCURRENCY) private readonly limits: Record<BackgroundKind, number>,
-  ) {}
+  ) {
+    this.drains = {
+      [BackgroundKind.Embeddings]: () => this.embeddings.drain(),
+      [BackgroundKind.Receipts]: () => this.receipts.drain(),
+      [BackgroundKind.Deliveries]: () => this.deliveries.drain(),
+      [BackgroundKind.Files]: () => this.files.drain(),
+    };
+  }
 
   /** Embeds what was just queued, without making the caller wait for it. */
   wakeEmbeddings(): void {
-    this.wake(BackgroundKind.Embeddings, () => this.embeddings.drain());
+    this.wake(BackgroundKind.Embeddings);
   }
 
   /** Writes the receipts that were just promised. */
   wakeReceipts(): void {
-    this.wake(BackgroundKind.Receipts, () => this.receipts.drain());
+    this.wake(BackgroundKind.Receipts);
   }
 
   /**
@@ -167,12 +179,35 @@ export class BackgroundWork {
    * so waking delivery any earlier would be a drain over an empty queue.
    */
   wakeDeliveries(): void {
-    this.wake(BackgroundKind.Deliveries, () => this.deliveries.drain());
+    this.wake(BackgroundKind.Deliveries);
   }
 
   /** Reads the documents `/file` has just accepted. */
   wakeFiles(): void {
-    this.wake(BackgroundKind.Files, () => this.files.drain());
+    this.wake(BackgroundKind.Files);
+  }
+
+  /**
+   * One drain for a sweeper's tick. Outside the wake limit, as sweeps always
+   * were, but counted so `inFlight` sees it.
+   */
+  async sweep(key: BackgroundKind): Promise<Drained> {
+    this.sweeping.set(key, (this.sweeping.get(key) ?? 0) + 1);
+    try {
+      return await this.drains[key]();
+    } finally {
+      this.sweeping.set(key, (this.sweeping.get(key) ?? 1) - 1);
+    }
+  }
+
+  /** Drains of this kind running in this process now, woken or swept. */
+  inFlight(key: BackgroundKind): number {
+    return (this.running.get(key)?.size ?? 0) + (this.sweeping.get(key) ?? 0);
+  }
+
+  /** How many woken drains of this kind may run at once. */
+  limit(key: BackgroundKind): number {
+    return this.limits[key];
   }
 
   /**
@@ -197,7 +232,8 @@ export class BackgroundWork {
    * One flag rather than a count, because a drain works until the queue is
    * empty or its bound is spent: what is owed is *a* pass, not one per wake.
    */
-  private wake(key: BackgroundKind, drain: () => Promise<Drained>): void {
+  private wake(key: BackgroundKind): void {
+    const drain = this.drains[key];
     let inFlight = this.running.get(key);
     if (!inFlight) {
       inFlight = new Set();
@@ -236,7 +272,7 @@ export class BackgroundWork {
         // Assigned by the time this runs: promise callbacks are a microtask
         // away at the earliest, and the chain below is built synchronously.
         inFlight.delete(run);
-        if (this.again.delete(key)) this.wake(key, drain);
+        if (this.again.delete(key)) this.wake(key);
       });
 
     inFlight.add(run);

@@ -1,4 +1,4 @@
-import { FileWorker } from '../contexts/files/application/file-worker.js';
+import { BackgroundKind, BackgroundWork } from '../contexts/records/application/background.js';
 import { Cron, minutes } from './cron.js';
 import { drainWithin } from './drain-within.js';
 
@@ -29,13 +29,13 @@ const EVERY = minutes(1);
   description: 'Parses uploaded documents into chunks and extracted rows',
 })
 export class FilesSweeper {
-  constructor(private readonly worker: FileWorker) {}
+  constructor(private readonly background: BackgroundWork) {}
 
   async tick(): Promise<void> {
     // Not one drain: a worker bounds each drain so it yields, and a tick that
     // called it once would turn that yield point into a rate limit of two
     // documents a minute. `drainWithin` keeps going while the queue outlasts a
     // drain, and stops at the moment the next tick would have started.
-    await drainWithin(EVERY, () => this.worker.drain());
+    await drainWithin(EVERY, () => this.background.sweep(BackgroundKind.Files));
   }
 }

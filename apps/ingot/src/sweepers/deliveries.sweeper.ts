@@ -1,4 +1,4 @@
-import { DeliveryWorker } from '../contexts/records/application/delivery-worker.js';
+import { BackgroundKind, BackgroundWork } from '../contexts/records/application/background.js';
 import { Cron, minutes } from './cron.js';
 import { drainWithin } from './drain-within.js';
 
@@ -28,13 +28,13 @@ const EVERY = minutes(1);
   description: 'Delivers receipts to the targets their ingots nominated',
 })
 export class DeliveriesSweeper {
-  constructor(private readonly worker: DeliveryWorker) {}
+  constructor(private readonly background: BackgroundWork) {}
 
   async tick(): Promise<void> {
     // Not one drain: a worker bounds each drain so it yields, and a tick that
     // called it once turned that yield point into a rate limit of one drain a
     // minute. `drainWithin` keeps going while the queue outlasts a drain, and
     // stops at the moment the next tick would have started.
-    await drainWithin(EVERY, () => this.worker.drain());
+    await drainWithin(EVERY, () => this.background.sweep(BackgroundKind.Deliveries));
   }
 }

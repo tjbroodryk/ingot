@@ -113,6 +113,9 @@ export interface DeliveryOutbox {
   /** Queued and still winnable. The gauge that says delivery is behind. */
   pending(maxAttempts: number): Promise<number>;
 
+  /** Seconds the oldest winnable delivery has waited; 0 when none are. */
+  oldestPendingSeconds(maxAttempts: number): Promise<number>;
+
   /** Queued and out of attempts. Not retried; kept so somebody can look. */
   abandoned(maxAttempts: number): Promise<number>;
 

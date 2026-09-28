@@ -31,9 +31,9 @@ export const MAX_CONCURRENCY = 64;
 /**
  * How many drains of each kind this deployment allows at once.
  *
- * **These are per replica, and that is the number to think in.** The wake path
- * takes no advisory lock — only a sweep does — so what a provider actually sees
- * is this times the replica count, and the chart's autoscaler moves that number
+ * **These are per replica, and that is the number to think in.** Neither the
+ * wake path nor a queue sweep takes an advisory lock, so what a provider
+ * actually sees is this times the replica count, and the chart's autoscaler moves that number
  * on CPU. Two per pod at ten pods is twenty concurrent calls at whatever
  * `INGOT_EMBEDDER` names, arriving precisely when load is highest. Set these
  * against a quota divided by `maxReplicas`, not against one pod.

@@ -158,6 +158,31 @@ export const Metrics = {
     labels: [],
   }),
 
+  // ── background queues ────────────────────────────────────────────────────
+  /**
+   * This pod's share of the background work, for scaling on. In flight over
+   * limit is how saturated one pod is; a sweep drain runs outside the limit,
+   * so it can read one over.
+   */
+  BackgroundDrainsInFlight: defineGauge({
+    name: 'ingot_background_drains_in_flight',
+    help: 'Drains of a background queue running in this process, woken or swept.',
+    labels: ['queue'],
+  }),
+  BackgroundDrainLimit: defineGauge({
+    name: 'ingot_background_drain_limit',
+    help: 'How many woken drains of a background queue this process may run at once.',
+    labels: ['queue'],
+  }),
+  /** Lag rather than depth: ten thousand rows embed faster than fifty receipts. */
+  BackgroundOldestPending: defineGauge({
+    name: 'ingot_background_oldest_pending_seconds',
+    help:
+      'Age of the oldest item still waiting in a background queue, or 0 when it is empty. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: ['queue'],
+  }),
+
   // ── embedding ───────────────────────────────────────────────────────────
   EmbeddingsPending: defineGauge({
     name: 'ingot_embeddings_pending',
@@ -353,6 +378,7 @@ export const DEPLOYMENT_WIDE: readonly string[] = [
   // with the same number — the depth of a queue they all share.
   'ingot_files_pending',
   'ingot_files_abandoned',
+  'ingot_background_oldest_pending_seconds',
   // One volume every replica mounts, totalled in Postgres.
   'ingot_parquet_cache_bytes',
 ];
@@ -366,6 +392,8 @@ export const DEPLOYMENT_WIDE: readonly string[] = [
 export const PER_PROCESS: readonly string[] = [
   'ingot_http_requests_in_flight',
   'ingot_db_pool_connections',
+  'ingot_background_drains_in_flight',
+  'ingot_background_drain_limit',
 ];
 
 /** The pool states `DbPoolConnections` reports. */

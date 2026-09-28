@@ -281,6 +281,29 @@ describe('waking the background', () => {
   });
 
   /**
+   * `ingot_background_drains_in_flight` reads this, so it has to see both ways
+   * in. A sweep drain counts without taking a wake slot: sweeps ran outside the
+   * bound before they were counted, and counting them must not change that.
+   */
+  it('counts woken and swept drains in flight, and a sweep takes no wake slot', async () => {
+    const embed = pausable();
+    const background = workFrom(embed.worker);
+
+    const swept = background.sweep(BackgroundKind.Embeddings);
+    background.wakeEmbeddings();
+    background.wakeEmbeddings();
+
+    expect(embed.started()).toBe(3);
+    expect(background.inFlight(BackgroundKind.Embeddings)).toBe(3);
+    expect(background.limit(BackgroundKind.Embeddings)).toBe(LIMITS[BackgroundKind.Embeddings]);
+
+    embed.release();
+    await swept;
+    await background.settled();
+    expect(background.inFlight(BackgroundKind.Embeddings)).toBe(0);
+  });
+
+  /**
    * Nothing is waiting on a wake: the caller's rows are committed and their
    * response is gone. A throw here would be an unhandled rejection in a
    * detached promise — a way to take the process down over work the sweeper

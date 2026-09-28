@@ -185,6 +185,8 @@ export interface OverlayStore {
     column: string,
   ): Promise<readonly { rowId: string; vector: readonly number[] }[]>;
   pendingCount(): Promise<number>;
+  /** Seconds the oldest queued embedding has waited; 0 when none are. */
+  oldestPendingSeconds(): Promise<number>;
   totalRows(): Promise<number>;
 
   // ── receipts ───────────────────────────────────────────────────────────
@@ -233,6 +235,9 @@ export interface OverlayStore {
 
   /** Queued and still winnable. The gauge that says the summariser is behind. */
   receiptsPending(maxAttempts: number): Promise<number>;
+
+  /** Seconds the oldest winnable receipt has waited; 0 when none are. */
+  oldestReceiptSeconds(maxAttempts: number): Promise<number>;
 
   /** Queued and out of attempts. Not retried; kept so somebody can look. */
   receiptsAbandoned(maxAttempts: number): Promise<number>;
