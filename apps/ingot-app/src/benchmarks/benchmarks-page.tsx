@@ -187,7 +187,7 @@ export function BenchmarksPage(): ReactNode {
             <Band
               id="corpus"
               kicker="What it is asked about"
-              title="Tool results, not documents"
+              title="Structured Tool results"
               lede={CORPUS_LEDE}
             >
               <CorpusShape table={table} />
