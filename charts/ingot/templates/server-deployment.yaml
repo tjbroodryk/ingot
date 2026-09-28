@@ -1,11 +1,10 @@
 # @ingot/server — the API, the engine, and the sweepers.
 #
-# Scale this freely. The roll-up, the embedding backlog, the receipt queue and
-# expiry are timers inside the process rather than work handed to a broker, and
-# each takes a Postgres advisory lock before it sweeps — see
-# `src/sweepers/scheduler.ts`. That lock is the reason a second replica is a
-# second server and not a second compaction writing the same table into the
-# same generation.
+# Scale this freely. The sweepers are timers inside the process rather than work
+# handed to a broker. Roll-up and expiry take a Postgres advisory lock — see
+# `src/sweepers/scheduler.ts` — so a second replica is a second server and not a
+# second compaction writing the same table into the same generation. The queue
+# sweepers lease their rows instead, and run on every replica.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, count, eq, gte, lt, sql } from 'drizzle-orm';
 import type { FileExtraction } from '@ingot/shared/ingot-v1';
 import { CLAIM_LEASE_MS } from '../../../../shared/claim-lease.js';
+import { oldestAge } from '../../../../shared/infrastructure/postgres/oldest-age.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type { FileQueue, PendingFile } from '../../application/ports/file-queue.port.js';
 import type { MediaType } from '../../domain/media-type.js';
@@ -119,6 +120,14 @@ export class PgFileQueue implements FileQueue {
       .from(fileQueue)
       .where(and(eq(fileQueue.ingotId, ingotId), lt(fileQueue.attempts, maxAttempts)));
     return row?.n ?? 0;
+  }
+
+  async oldestPendingSeconds(maxAttempts: number): Promise<number> {
+    const [row] = await this.uow.queryable
+      .select({ age: oldestAge(fileQueue.queuedAt) })
+      .from(fileQueue)
+      .where(lt(fileQueue.attempts, maxAttempts));
+    return row?.age ?? 0;
   }
 
   async abandoned(maxAttempts: number): Promise<number> {
