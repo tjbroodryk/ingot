@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { reindentJson } from './format-json';
 import { SampleTone } from './reference';
 
 /** A sample, lightly marked up: three token classes — comment, status line, JSON key. Matched by line, since these samples are not all JSON. */
@@ -36,6 +37,15 @@ export function CodeBlock({
       ))}
     </pre>
   );
+}
+
+/** A code block whose JSON is re-indented before it renders, so a sample can never ship with wonky nesting. Everything else — comments, HTTP lines, wrapped strings — passes through untouched. */
+export function JsonBlock(props: {
+  code: string;
+  tone?: SampleTone;
+  className?: string;
+}): ReactNode {
+  return <CodeBlock {...props} code={reindentJson(props.code)} />;
 }
 
 function renderLine(line: string): ReactNode {

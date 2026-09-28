@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { CodeBlock } from './code-block';
+import { JsonBlock } from './code-block';
 import { Prose } from './prose';
 import { Auth, type Endpoint, HttpMethod, SampleTone } from './reference';
 
@@ -45,7 +45,7 @@ export function EndpointRow({ endpoint }: { endpoint: Endpoint }): ReactNode {
       </div>
 
       {endpoint.sample ? (
-        <CodeBlock code={endpoint.sample} tone={endpoint.sampleTone ?? SampleTone.Paper} />
+        <JsonBlock code={endpoint.sample} tone={endpoint.sampleTone ?? SampleTone.Paper} />
       ) : null}
 
       {endpoint.asideChips ? <Chips labels={endpoint.asideChips} /> : null}

@@ -349,7 +349,8 @@ export const MCP_CONFIG = `# claude_desktop_config.json
 {
   "mcpServers": {
     "ingot": {
-      "url": "http://localhost:3002/api/v1/acme/ing_01H8Z…/mcp",
+      "url":
+        "http://localhost:3002/api/v1/acme/ing_01H8Z…/mcp",
       "headers": { "Authorization": "Bearer ing_sk_…" }
     }
   }
