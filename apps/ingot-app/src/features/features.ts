@@ -67,7 +67,7 @@ export const FEATURES: readonly Feature[] = [
     name: 'Similarity search',
     summary: 'Rank text columns by meaning, for questions phrased differently from the data.',
     title: 'Find it by what it means',
-    lede: 'Declare a column with `embed: true` on `/add` and Ingot embeds it after the write. Send `text` with a query and it is embedded too, bound as `$q`, so a question about running out of database connections finds the record that says the pool was exhausted.',
+    lede: 'Declare a column with `embed: true` on `/add` and Ingot embeds it after the write. Send `text` with a query and it is embedded too, bound as `$q`, so a question about running out of database connections finds the record that says the pool was exhausted. The SQL is optional: send `text` on its own and Ingot ranks the embedded column itself, returning the closest rows with a `score`. Pass `table` or `column` when there is more than one to choose from.',
     path: `${INGOT}/query`,
     request: `{ "text": "ran out of spare database connections",
   "sql": "SELECT id, summary,
