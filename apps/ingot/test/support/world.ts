@@ -51,6 +51,7 @@ import {
 } from '../../src/delivery/delivery-transport.port.js';
 import { SUMMARISER, type Summariser } from '../../src/ai/summariser.port.js';
 import { EngineModule } from '../../src/engine/engine.module.js';
+import { OBJECT_STORE, type ObjectStore } from '../../src/storage/object-store.port.js';
 import {
   BackgroundKind,
   BackgroundWork,
@@ -144,6 +145,8 @@ export interface WorldOverrides {
    * a refusal is handled — neither of which needs a socket.
    */
   readonly transport?: DeliveryTransport;
+  /** The base tier, given the world's data directory. */
+  readonly store?: (dataDir: string) => ObjectStore;
   /** Variables on top of `testEnv()`'s, e.g. turning the Parquet cache on. */
   readonly env?: EnvSource;
 }
@@ -211,6 +214,9 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   }
   if (overrides.transport) {
     building.overrideProvider(DELIVERY_TRANSPORT).useValue(overrides.transport);
+  }
+  if (overrides.store) {
+    building.overrideProvider(OBJECT_STORE).useValue(overrides.store(dataDir));
   }
 
   const app = await building.compile();
