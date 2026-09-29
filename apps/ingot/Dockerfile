@@ -111,6 +111,11 @@ COPY --from=build /repo/apps/ingot/dist ./apps/ingot/dist
 COPY --from=build /repo/apps/ingot/drizzle ./apps/ingot/drizzle
 COPY --from=extensions /opt/duckdb-extensions /opt/duckdb-extensions
 COPY --from=extensions /opt/tessdata /opt/tessdata
+# The CA bundle, for the same reason the extensions stage installs it: DuckDB
+# verifies against the system store, and this image has none. Without it every
+# read of a compacted table over https fails with "Problem with the SSL CA
+# cert". Just the file — /etc/ssl/certs is symlinks into a package not here.
+COPY --from=extensions /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENV NODE_ENV=production \
     PORT=3002 \
