@@ -11,6 +11,7 @@ import {
   type PendingOverlayRow,
   type PendingReceipt,
   type PendingEmbedding,
+  type RollUpBacklog,
   type Tombstone,
 } from '../../application/ports/overlay-store.port.js';
 import { ROLL_UP_SETTINGS, type RollUpSettings } from '../../application/roll-up-settings.js';
@@ -291,6 +292,21 @@ export class PgOverlayStore implements OverlayStore {
       ON CONFLICT (table_id) DO NOTHING
     `);
     return result.rowCount ?? 0;
+  }
+
+  async rollUpBacklog(): Promise<RollUpBacklog> {
+    // Against the database's clock, like `oldestAge`, so every pod agrees.
+    const [row] = await this.uow.queryable
+      .select({
+        scheduled: count(),
+        due: sql<number>`count(*) FILTER (WHERE ${rollUpDue.dueAt} <= now())`.mapWith(Number),
+        overdueSeconds: sql<number>`coalesce(
+          extract(epoch from now() - min(${rollUpDue.dueAt}) FILTER (WHERE ${rollUpDue.dueAt} <= now())),
+          0
+        )::float8`.mapWith(Number),
+      })
+      .from(rollUpDue);
+    return row ?? { scheduled: 0, due: 0, overdueSeconds: 0 };
   }
 
   /**

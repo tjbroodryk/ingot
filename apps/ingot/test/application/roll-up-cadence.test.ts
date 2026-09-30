@@ -10,6 +10,7 @@ import {
   type RollUpSettings,
 } from '../../src/contexts/records/application/roll-up-settings.js';
 import { ParquetCache } from '../../src/engine/parquet-cache.js';
+import { registry } from '../../src/observability/metrics/registry.js';
 import { Dispatcher } from '../../src/shared/application/index.js';
 import type { Clock } from '../../src/shared/domain/index.js';
 import { RollUpSweeper } from '../../src/sweepers/roll-up.sweeper.js';
@@ -69,6 +70,14 @@ async function scheduled(): Promise<number> {
   const { pool } = await openDatabase();
   const { rows } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM roll_up_due');
   return rows[0]?.n ?? 0;
+}
+
+/** One unlabelled series, as a scrape would read it. */
+async function gauge(name: string): Promise<number> {
+  const metric = registry().getSingleMetric(name);
+  if (!metric) throw new Error(`no metric ${name}`);
+  const { values } = await metric.get();
+  return values[0]?.value ?? 0;
 }
 
 const later = (ms: number) => new Date(Date.now() + ms);
@@ -132,6 +141,42 @@ describe('the roll-up schedule', () => {
 
     await sweeperAt(later(PAST_INTERVAL)).tick();
     expect((await notes(ingot)).pending).toBe(0);
+  });
+
+  it('reports what is scheduled, what is due, and how late', async () => {
+    const { pool } = await openDatabase();
+    await pool.query('DELETE FROM roll_up_due');
+    await ingotWith(2); // due in five minutes
+    await ingotWith(MIN_ROWS); // due now
+    await pool.query(
+      `UPDATE roll_up_due SET due_at = now() - interval '90 seconds'
+       WHERE due_at = (SELECT min(due_at) FROM roll_up_due)`,
+    );
+
+    expect(await gauge('ingot_roll_ups_scheduled')).toBe(2);
+    expect(await gauge('ingot_roll_ups_due')).toBe(1);
+    const overdue = await gauge('ingot_roll_up_overdue_seconds');
+    expect(overdue).toBeGreaterThanOrEqual(90);
+    expect(overdue).toBeLessThan(120);
+
+    await sweeperAt(new Date()).tick();
+    expect(await gauge('ingot_roll_ups_due')).toBe(0);
+    expect(await gauge('ingot_roll_up_overdue_seconds')).toBe(0);
+  });
+
+  it('counts the tables the backup pass had to schedule', async () => {
+    const before = await gauge('ingot_roll_ups_unscheduled_found_total');
+    await ingotWith(2);
+    const { pool } = await openDatabase();
+    await pool.query('DELETE FROM roll_up_due');
+    const { rows } = await pool.query<{ n: number }>(
+      'SELECT count(DISTINCT table_id)::int AS n FROM overlay_row',
+    );
+
+    await sweeperAt(new Date()).tick();
+
+    expect(rows[0]?.n).toBeGreaterThan(0);
+    expect(await gauge('ingot_roll_ups_unscheduled_found_total')).toBe(before + (rows[0]?.n ?? 0));
   });
 
   it('discards what a dropped table left in the overlay', async () => {
