@@ -1,8 +1,9 @@
 # @ingot/server — the API, the engine, and the sweepers.
 #
 # Scale this freely. The sweepers are timers inside the process rather than work
-# handed to a broker. Roll-up and expiry take a Postgres advisory lock — see
-# `src/sweepers/scheduler.ts` — so a second replica is a second server and not a
+# handed to a broker. Roll-up runs in `roll-up-deployment.yaml` when
+# `rollUp.enabled`, and here otherwise; either way it and expiry take a Postgres
+# advisory lock — see `src/sweepers/scheduler.ts` — so a second replica is not a
 # second compaction writing the same table into the same generation. The queue
 # sweepers lease their rows instead, and run on every replica.
 apiVersion: apps/v1
@@ -129,6 +130,12 @@ spec:
                 name: {{ include "ingot.fullname" . }}-config
             - secretRef:
                 name: {{ include "ingot.secretName" . }}
+          {{- if .Values.rollUp.enabled }}
+          env:
+            # The roll-up pod does this one.
+            - name: INGOT_SKIP_SWEEPERS
+              value: roll_up
+          {{- end }}
 
           # ── probes ─────────────────────────────────────────────────────
           # `/api/health` is version-neutral on purpose: a probe should not

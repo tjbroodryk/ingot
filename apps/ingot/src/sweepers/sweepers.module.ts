@@ -1,4 +1,6 @@
 import { Module, type Type } from '@nestjs/common';
+import type { Env } from '../config/env.js';
+import { ENV } from '../config/env.module.js';
 import { IngotsModule } from '../contexts/ingots/ingots.module.js';
 import { RecordsModule } from '../contexts/records/records.module.js';
 import { DeliveriesSweeper } from './deliveries.sweeper.js';
@@ -20,9 +22,10 @@ import { Scheduler, TICKERS, type Ticker } from './scheduler.js';
  * stored, queries answer — right up until the overlay is large enough that
  * every query is slow, and then stays that way.
  *
- * It is also the list `Scheduler` runs, so a sweeper that exists and is not in
- * here does not tick. There is no discovery step and nothing to register: this
- * is the registration.
+ * It is also the list `Scheduler` runs, less whatever `INGOT_SKIP_SWEEPERS`
+ * leaves to another process, so a sweeper that exists and is not in here does
+ * not tick. There is no discovery step and nothing to register: this is the
+ * registration.
  */
 export const SWEEPERS: Record<SweptKind, Type<Ticker>> = {
   [SweptKind.RollUp]: RollUpSweeper,
@@ -39,7 +42,11 @@ export const SWEEPERS: Record<SweptKind, Type<Ticker>> = {
     ...Object.values(SWEEPERS),
     ExclusiveWork,
     Scheduler,
-    { provide: TICKERS, useValue: Object.values(SWEEPERS) },
+    {
+      provide: TICKERS,
+      inject: [ENV],
+      useFactory: (env: Env) => env.sweepers.run.map((kind) => SWEEPERS[kind]),
+    },
   ],
 })
 export class SweepersModule {}

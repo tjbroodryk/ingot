@@ -39,6 +39,8 @@ the single place all of its traffic passes through:
 | Refused SQL      | `engine/duckdb-engine.ts`                              | `ingot_sql_refused_total`                                                    |
 | Parquet cache    | `engine/parquet-cache.ts`                              | `ingot_parquet_cache_requests_total`, `…_bytes`, `…_evictions_total`         |
 | Roll-up          | `records/…/compact-table.command`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`            |
+| Roll-up backlog  | `records/…/overlay-collectors`                         | `ingot_roll_ups_due`, `…_scheduled`, `ingot_roll_up_overdue_seconds`         |
+| Roll-up races    | `sweepers/roll-up.sweeper`                             | `ingot_roll_ups_unscheduled_found_total`                                     |
 | Embeddings       | `records/…/embed-worker`, `overlay-collectors`         | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`               |
 | Receipts         | `records/…/receipt-worker`, `overlay-collectors`       | `ingot_receipts_pending`, `…_abandoned`, `ingot_receipt_duration_seconds`    |
 | Deliveries       | `records/…/delivery-worker`, `delivery-collectors`     | `ingot_deliveries_pending`, `…_abandoned`, `ingot_delivery_duration_seconds` |
@@ -54,7 +56,8 @@ is what keeps this table from being the second answer to the same question.
 
 ### Two kinds of gauge, and one of them must not be summed
 
-`ingot_overlay_rows`, `ingot_embeddings_pending`, `ingot_receipts_pending`,
+`ingot_overlay_rows`, `ingot_roll_ups_due`, `ingot_roll_up_overdue_seconds`,
+`ingot_roll_ups_scheduled`, `ingot_embeddings_pending`, `ingot_receipts_pending`,
 `ingot_receipts_abandoned`, `ingot_deliveries_pending`,
 `ingot_deliveries_abandoned`, `ingot_files_pending`, `ingot_files_abandoned`,
 `ingot_background_oldest_pending_seconds` and `ingot_parquet_cache_bytes` are

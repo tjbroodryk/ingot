@@ -26,6 +26,24 @@ export class OverlayCollectors implements OnApplicationBootstrap {
       await this.safely('overlay depth', async () => gauge.set({}, await this.overlay.totalRows()));
     });
 
+    // Read once per gauge rather than shared: `roll_up_due` has a row per
+    // waiting table, so each read is a cheap count.
+    Metrics.RollUpsScheduled.collectWith(async (gauge) => {
+      await this.safely('scheduled roll-ups', async () =>
+        gauge.set({}, (await this.overlay.rollUpBacklog()).scheduled),
+      );
+    });
+    Metrics.RollUpsDue.collectWith(async (gauge) => {
+      await this.safely('due roll-ups', async () =>
+        gauge.set({}, (await this.overlay.rollUpBacklog()).due),
+      );
+    });
+    Metrics.RollUpOverdue.collectWith(async (gauge) => {
+      await this.safely('overdue roll-ups', async () =>
+        gauge.set({}, (await this.overlay.rollUpBacklog()).overdueSeconds),
+      );
+    });
+
     Metrics.EmbeddingsPending.collectWith(async (gauge) => {
       await this.safely('pending embeddings', async () =>
         gauge.set({}, await this.overlay.pendingCount()),

@@ -21,6 +21,7 @@
     "load:write": "k6 run load/write.js",
     "spike:duckdb": "bun scripts/spike-duckdb.ts",
     "start": "bun dist/main.js",
+    "start:roll-up": "bun dist/roll-up.js",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

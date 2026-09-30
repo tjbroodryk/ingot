@@ -11,6 +11,7 @@ import {
   type RollUpSettings,
 } from '../contexts/records/application/roll-up-settings.js';
 import { ParquetCache } from '../engine/parquet-cache.js';
+import { Metrics } from '../observability/index.js';
 import { CLOCK, type Clock } from '../shared/domain/index.js';
 import { Cron, minutes, seconds } from './cron.js';
 import { drainWithin } from './drain-within.js';
@@ -121,6 +122,7 @@ export class RollUpSweeper {
   private async housekeep(): Promise<void> {
     try {
       const found = await this.overlay.scheduleUnscheduled();
+      Metrics.RollUpsUnscheduledFound.inc({}, found);
       if (found > 0) {
         this.logger.warn(
           `${found} table(s) had overlay rows and no roll-up scheduled; scheduled them now.`,

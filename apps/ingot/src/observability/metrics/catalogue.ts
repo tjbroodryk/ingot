@@ -157,6 +157,35 @@ export const Metrics = {
     help: 'Rows moved out of the overlay and into the base tier.',
     labels: [],
   }),
+  /** Read from `roll_up_due` at scrape time. Near zero when roll-up keeps up. */
+  RollUpsDue: defineGauge({
+    name: 'ingot_roll_ups_due',
+    help:
+      'Tables whose roll-up is due now and has not run. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  /** The one to alert on: it climbs when the roll-up worker is down or behind. */
+  RollUpOverdue: defineGauge({
+    name: 'ingot_roll_up_overdue_seconds',
+    help:
+      'How long the most overdue table has been due a roll-up, or 0 when none is. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  RollUpsScheduled: defineGauge({
+    name: 'ingot_roll_ups_scheduled',
+    help:
+      'Tables with something in the overlay and a roll-up scheduled, due or not. ' +
+      'Deployment-wide: aggregate with max(), never sum().',
+    labels: [],
+  }),
+  /** Should stay at zero; each one is a write that raced a roll-up's reschedule. */
+  RollUpsUnscheduledFound: defineCounter({
+    name: 'ingot_roll_ups_unscheduled_found_total',
+    help: 'Tables the backup pass found with overlay rows and no roll-up scheduled.',
+    labels: [],
+  }),
 
   // ── background queues ────────────────────────────────────────────────────
   /**
@@ -369,6 +398,10 @@ export const Metrics = {
  */
 export const DEPLOYMENT_WIDE: readonly string[] = [
   'ingot_overlay_rows',
+  // Read out of `roll_up_due`, which every replica shares.
+  'ingot_roll_ups_due',
+  'ingot_roll_up_overdue_seconds',
+  'ingot_roll_ups_scheduled',
   'ingot_embeddings_pending',
   'ingot_receipts_pending',
   'ingot_receipts_abandoned',
