@@ -33,8 +33,14 @@ export class IngotAccess {
     @Inject(INGOT_TABLE_REPOSITORY) private readonly tables: IngotTableRepository,
   ) {}
 
+  /**
+   * `ingotId` is the path segment: an `ing_…` id, or the `externalId` the
+   * ingot was cast with. Callers go on with `ingot.id`, never the segment.
+   */
   async ingot(ingotId: string, accountId: string): Promise<Ingot> {
-    const ingot = await this.ingots.findById(IngotId.of(ingotId));
+    const ingot = IngotId.looksLikeOne(ingotId)
+      ? await this.ingots.findById(IngotId.of(ingotId))
+      : await this.ingots.findByExternalId(accountId, ingotId);
     if (!ingot?.belongsTo(accountId)) {
       throw new AggregateNotFound('Ingot', ingotId);
     }
@@ -42,8 +48,8 @@ export class IngotAccess {
   }
 
   async table(ingotId: string, accountId: string, name: string): Promise<IngotTable> {
-    await this.ingot(ingotId, accountId);
-    const table = await this.tables.findByName(ingotId, name.toLowerCase());
+    const ingot = await this.ingot(ingotId, accountId);
+    const table = await this.tables.findByName(ingot.id.value, name.toLowerCase());
     if (!table) throw new AggregateNotFound('Table', `${ingotId}/${name}`);
     return table;
   }

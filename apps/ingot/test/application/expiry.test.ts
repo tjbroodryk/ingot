@@ -241,4 +241,33 @@ describe('casting an ingot under a handle of your own', () => {
     // The old one still goes to the reaper, but no longer answers to the handle.
     expect((await world.info(stale.ingot.id)).externalId).toBeNull();
   });
+
+  it('answers to the handle wherever it answers to its id', async () => {
+    const cast = await withHandle('by handle', 'chat_addressed');
+
+    await world.add('chat_addressed', {
+      table: 'notes',
+      rows: '$[*]',
+      columns: { body: { from: '$.body', type: ColumnType.Varchar } },
+      result: [{ body: 'kept' }, { body: 'dropped' }],
+    });
+    expect(await world.forget('chat_addressed', 'notes', "body = 'dropped'")).toBe(1);
+
+    expect(await world.sql('chat_addressed', 'SELECT body FROM notes')).toEqual([{ body: 'kept' }]);
+    expect((await world.info('chat_addressed')).id).toBe(cast.ingot.id);
+    expect(await world.sql(cast.ingot.id, 'SELECT body FROM notes')).toEqual([{ body: 'kept' }]);
+  });
+
+  it('does not reach another account’s ingot through a handle', async () => {
+    const other = await world.dispatcher.send(new CreateAccount('handle-owner', 'Handle owner'));
+    await world.dispatcher.send(
+      new CastIngot(other.account.id, 'theirs', undefined, 'chat_theirs'),
+    );
+
+    await expect(world.info('chat_theirs')).rejects.toThrow(/does not exist/);
+  });
+
+  it('refuses a handle spelled like an ingot id', async () => {
+    await expect(withHandle('ambiguous', 'ing_mine')).rejects.toThrow(/starts with "ing_"/);
+  });
 });

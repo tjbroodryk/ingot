@@ -1,5 +1,10 @@
 import type { IngotConfig } from '@ingot/shared/ingot-v1';
-import { AggregateRoot, ConflictingState, Guard } from '../../../shared/domain/index.js';
+import {
+  AggregateRoot,
+  ConflictingState,
+  Guard,
+  InvariantViolation,
+} from '../../../shared/domain/index.js';
 import { Delivery } from './delivery.vo.js';
 import { IngotId } from './ingot-id.vo.js';
 import { Retention } from './retention.vo.js';
@@ -19,6 +24,21 @@ export interface EmbeddingSpace {
 
 /** Long enough for any id a caller already has; short enough to index. */
 const MAX_EXTERNAL_ID = 200;
+
+/**
+ * A handle stands in for the id in `/:account/:ingot/…`, so it may not look
+ * like one — `ing_…` in the path is always read as an id.
+ */
+function externalIdOf(raw: string): string {
+  const handle = Guard.maxLength(Guard.notBlank(raw, 'externalId'), MAX_EXTERNAL_ID, 'externalId');
+  if (IngotId.looksLikeOne(handle)) {
+    throw new InvariantViolation(
+      `externalId "${handle}" starts with "ing_", which is how ingot ids are spelled. ` +
+        'Use a handle that does not.',
+    );
+  }
+  return handle;
+}
 
 interface IngotProps {
   accountId: string;
@@ -66,14 +86,7 @@ export class Ingot extends AggregateRoot<IngotId> {
     return new Ingot(IngotId.generate(), {
       accountId: input.accountId,
       name: Guard.maxLength(Guard.notBlank(input.name, 'ingot.name'), 120, 'ingot.name'),
-      externalId:
-        input.externalId === undefined
-          ? null
-          : Guard.maxLength(
-              Guard.notBlank(input.externalId, 'externalId'),
-              MAX_EXTERNAL_ID,
-              'externalId',
-            ),
+      externalId: input.externalId === undefined ? null : externalIdOf(input.externalId),
       createdAt: input.now,
       expiresAt: retention ? retention.from(input.now) : null,
       // Not chosen at creation. An ingot that never embeds anything never
