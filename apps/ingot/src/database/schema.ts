@@ -17,5 +17,6 @@ export {
   overlayVector,
   receiptDeliveryQueue,
   retiredGeneration,
+  rollUpDue,
 } from '../contexts/records/infrastructure/postgres/schema.js';
 export { parquetCacheFile } from '../engine/postgres/schema.js';

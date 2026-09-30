@@ -404,6 +404,15 @@ config:
   # behind a proxy, need it to outlive their read. A minute to a week.
   generationGraceMs: 3600000
 
+  # When a table's overlay is rolled up into Parquet: `intervalMs` after its
+  # first write, or as soon as it holds `minRows` rows, whichever comes first.
+  # `concurrency` is how many tables a replica compacts at once; each may use up
+  # to `query.memoryLimit`, so raise it with `server.resources`.
+  rollUp:
+    minRows: 1000
+    intervalMs: 300000
+    concurrency: 4
+
   # ── the query engine ─────────────────────────────────────────────────────
   # The ceiling on what one caller's question can cost. See the note on
   # `server.resources` before raising `memoryLimit`.

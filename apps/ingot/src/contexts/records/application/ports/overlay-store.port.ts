@@ -17,14 +17,6 @@ export interface Tombstone {
   readonly at: Date;
 }
 
-/** A table with enough in its overlay to be worth rolling up. */
-export interface OverlayDepth {
-  readonly tableId: string;
-  readonly rows: number;
-  readonly tombstones: number;
-  readonly oldest: Date;
-}
-
 export interface PendingEmbedding {
   readonly tableId: string;
   readonly rowId: string;
@@ -149,7 +141,24 @@ export interface OverlayStore {
    */
   copyTable(input: { fromTableId: string; toTableId: string; toIngotId: string }): Promise<void>;
 
-  tablesWorthCompacting(minimumRows: number, limit: number): Promise<readonly OverlayDepth[]>;
+  /**
+   * Tables due a roll-up, longest overdue first. `append` and `forget` are what
+   * schedule them: `INGOT_ROLLUP_INTERVAL_MS` after the first write, or now
+   * once `INGOT_ROLLUP_MIN_ROWS` is reached.
+   */
+  dueForRollUp(now: Date, limit: number): Promise<readonly string[]>;
+
+  /** After a roll-up, from what the overlay still holds for the table. */
+  rescheduleRollUp(tableId: string, now: Date): Promise<void>;
+
+  /** After a roll-up that failed, so the next batch does not take it straight back. */
+  postponeRollUp(tableId: string, until: Date): Promise<void>;
+
+  /**
+   * Schedules every table with overlay rows or tombstones and no schedule —
+   * the write that raced a roll-up's reschedule. Returns how many it found.
+   */
+  scheduleUnscheduled(): Promise<number>;
 
   // ── vectors ───────────────────────────────────────────────────────────
   /**

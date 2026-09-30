@@ -42,7 +42,7 @@ export interface CronSpec {
  * A job that runs on a timer.
  *
  * ```ts
- * @Cron({ name: 'roll-up-ingots', everyMs: minutes(5), description: '…' })
+ * @Cron({ name: 'roll-up-ingots', everyMs: minutes(1), description: '…' })
  * export class RollUpSweeper {
  *   async tick(): Promise<void> { … }
  * }
@@ -81,3 +81,4 @@ export function readCronSpec(target: object): CronSpec | undefined {
 }
 
 export const minutes = (count: number): number => count * 60_000;
+export const seconds = (count: number): number => count * 1_000;

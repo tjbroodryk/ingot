@@ -1,6 +1,6 @@
 import { Inject, Logger } from '@nestjs/common';
 import { CommandHandler } from '@nestjs/cqrs';
-import { AggregateNotFound, CLOCK, type Clock } from '../../../../shared/domain/index.js';
+import { CLOCK, type Clock } from '../../../../shared/domain/index.js';
 import { Command, type ICommandHandler } from '../../../../shared/application/index.js';
 import { Metrics, Outcome, observe } from '../../../../observability/index.js';
 import {
@@ -32,7 +32,7 @@ export interface CompactionReport {
 /**
  * Rolls one table's overlay up into a new Parquet generation.
  *
- * Dispatched by the sweeper on a schedule and by nothing else — but a command
+ * Dispatched by the sweeper when `roll_up_due` says so — but a command
  * rather than a method on the sweeper, because "reconcile" should be the same
  * write path as everything else rather than a second implementation that can
  * disagree with it.
@@ -61,11 +61,14 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
   ) {}
 
   async execute(command: CompactTable): Promise<CompactionReport | null> {
+    // A table that is gone was due when it was dropped, or had tombstones its
+    // ingot's purge could not find. Nothing will read what it left behind.
     const table = await this.tables.findById(IngotTableId.of(command.tableId));
-    if (!table) throw new AggregateNotFound('Table', command.tableId);
-
-    const ingot = await this.ingots.findById(IngotId.of(table.ingotId));
-    if (!ingot) throw new AggregateNotFound('Ingot', table.ingotId);
+    const ingot = table && (await this.ingots.findById(IngotId.of(table.ingotId)));
+    if (!table || !ingot) {
+      await this.overlay.purgeTable(command.tableId);
+      return null;
+    }
 
     /*
      * The watermark, read once and used twice.
@@ -90,6 +93,7 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
     const tombstones = await this.overlay.countTombstones(table.id.value);
     if (watermark === null && tombstones === 0) {
       // Nothing moved. Sweeps over a quiet table write nothing and say nothing.
+      await this.overlay.rescheduleRollUp(table.id.value, this.clock.now());
       return null;
     }
 
@@ -155,6 +159,9 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
       watermark,
       view.overlayVectors.map((vector) => ({ rowId: vector.rowId, column: vector.column })),
     );
+    // In the drain's transaction, so rows that arrived during the roll-up are
+    // scheduled from their own age rather than left behind.
+    await this.overlay.rescheduleRollUp(table.id.value, this.clock.now());
 
     // With the manifest flip, so a receiver told to re-read finds the new
     // generation there. No wake: this runs on the sweeper, which drains

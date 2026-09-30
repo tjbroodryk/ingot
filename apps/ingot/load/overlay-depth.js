@@ -7,7 +7,7 @@ import { V1, addBody, createIngot, headers, ok, account as configuredAccount } f
  *
  * Ingot bets that reads stay acceptable while rows sit in the overlay, and that
  * a roll-up every five minutes is often enough. That bet has a number behind it
- * — `MIN_OVERLAY_ROWS = 1000` in the sweeper — and nothing so far has checked
+ * — `INGOT_ROLLUP_MIN_ROWS`, 1000 by default — and nothing so far has checked
  * whether it is the right one.
  *
  * So this does not measure throughput. It writes in steps, queries at each
