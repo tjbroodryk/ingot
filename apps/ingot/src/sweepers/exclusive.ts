@@ -39,7 +39,7 @@ const APPLICATION_NAME = 'ingot-sweepers';
  * This is the guarantee the Restate cron chain used to give and the only one
  * that was load bearing. Two replicas rolling the same table up would both
  * compute `generation + 1`, write to the same keys and both flip the manifest;
- * `CompactTable` has no guard of its own, and this is where it comes from.
+ * `TableRollUp` has no guard of its own, and this is where it comes from.
  *
  * A **session** lock rather than a transaction one, because a sweep is not a
  * transaction — it dispatches commands that open their own, and holding one

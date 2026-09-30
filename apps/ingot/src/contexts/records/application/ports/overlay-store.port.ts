@@ -43,6 +43,19 @@ export interface FoldedVector {
   readonly column: string;
 }
 
+/** A worker's hold on the tables it is rolling up. */
+export interface RollUpClaim {
+  readonly token: string;
+  readonly until: Date;
+}
+
+/** What one roll-up read from the overlay and wrote into Parquet. */
+export interface FoldedOverlay {
+  readonly rowIds: readonly string[];
+  readonly tombstones: readonly string[];
+  readonly vectors: readonly FoldedVector[];
+}
+
 /** One `/add` waiting to be described. Enough to prompt a model, and no more. */
 export interface PendingReceipt {
   /** The batch of the `/add` this describes. Its identity, here and in SQL. */
@@ -119,20 +132,19 @@ export interface OverlayStore {
 
   /**
    * Drops overlay rows consumed by a roll-up, and retires the tombstones that
-   * roll-up made redundant.
+   * roll-up applied.
    *
-   * `throughSeq` is null when a table was compacted purely to apply deletes —
-   * there were no rows to fold in, only rows to leave out. Nothing is drained
-   * in that case, but the tombstones are still spent.
+   * By what the roll-up read, never by a bound: a write or a delete that
+   * committed after it read is not in the file and stays. A table compacted
+   * purely to apply deletes folds no rows, only tombstones.
    *
-   * `folded` is the vectors the compaction read, which are exactly the ones it
-   * wrote. It has to be told rather than work it out from the rows it
-   * consumed: a row can be consumed before its vector exists, and a vector can
-   * exist for a row consumed generations ago. Nothing here ever touches the
-   * embedding queue — a queued text leaves it when its vector is written, or
-   * when the row is forgotten, and a roll-up is neither.
+   * `folded.vectors` has to be told rather than worked out from the rows: a
+   * row can be consumed before its vector exists, and a vector can exist for a
+   * row consumed generations ago. Nothing here ever touches the embedding
+   * queue — a queued text leaves it when its vector is written, or when the
+   * row is forgotten, and a roll-up is neither.
    */
-  drain(tableId: string, throughSeq: bigint | null, folded: readonly FoldedVector[]): Promise<void>;
+  drain(tableId: string, folded: FoldedOverlay): Promise<void>;
 
   /** Everything belonging to a table, for a drop. */
   purgeTable(tableId: string): Promise<void>;
@@ -149,17 +161,30 @@ export interface OverlayStore {
   copyTable(input: { fromTableId: string; toTableId: string; toIngotId: string }): Promise<void>;
 
   /**
-   * Tables due a roll-up, longest overdue first. `append` and `forget` are what
-   * schedule them: `INGOT_ROLLUP_INTERVAL_MS` after the first write, or now
-   * once `INGOT_ROLLUP_MIN_ROWS` is reached.
+   * Claims up to `limit` tables due a roll-up, longest overdue first, skipping
+   * any another worker holds. `append` and `forget` are what schedule them:
+   * `INGOT_ROLLUP_INTERVAL_MS` after the first write, or now once
+   * `INGOT_ROLLUP_MIN_ROWS` is reached.
    */
-  dueForRollUp(now: Date, limit: number): Promise<readonly string[]>;
+  claimRollUps(now: Date, limit: number, claim: RollUpClaim): Promise<readonly string[]>;
 
-  /** After a roll-up, from what the overlay still holds for the table. */
+  /** Extends the lease on those still held under `claim.token`; returns them. */
+  renewRollUpClaims(tableIds: readonly string[], claim: RollUpClaim): Promise<readonly string[]>;
+
+  /**
+   * Whether `token` still holds the table's claim, locking its schedule row
+   * for the rest of the transaction so the answer stays true until commit.
+   */
+  holdsRollUpClaim(tableId: string, token: string): Promise<boolean>;
+
+  /** After a roll-up, from what the overlay still holds for the table. Releases the claim. */
   rescheduleRollUp(tableId: string, now: Date): Promise<void>;
 
-  /** After a roll-up that failed, so the next batch does not take it straight back. */
-  postponeRollUp(tableId: string, until: Date): Promise<void>;
+  /**
+   * After a roll-up that failed, so the next batch does not take it straight
+   * back. Only while `token` still holds it; releases the claim.
+   */
+  postponeRollUp(tableId: string, until: Date, token: string): Promise<void>;
 
   /**
    * Schedules every table with overlay rows or tombstones and no schedule —

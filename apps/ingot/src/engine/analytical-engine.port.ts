@@ -70,11 +70,20 @@ export interface CompactionRequest {
   /** Where the new generation goes. Ours, never a caller's. */
   readonly baseTarget: string;
   readonly vectorTarget: string;
+  /**
+   * Called once the files are written and before any is published. Throwing
+   * discards them: the last point a roll-up can back out without writing to
+   * keys another worker may have published since.
+   */
+  readonly beforeCommit?: () => Promise<void>;
 }
 
 export interface CompactionOutcome {
   readonly rows: number;
   readonly vectors: number;
+  /** Sizes of what was written, when the store reported them; null otherwise. */
+  readonly baseBytes: number | null;
+  readonly vectorBytes: number | null;
 }
 
 /**

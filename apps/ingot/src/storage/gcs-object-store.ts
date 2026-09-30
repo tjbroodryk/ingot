@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,9 @@ import { upstream } from '../observability/index.js';
 import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
 import { quote } from './secret-sql.js';
 import { GCS_ENDPOINT, type GcsSettings } from './storage-settings.js';
+
+/** Google's own advice is resumable uploads above about this size. */
+const RESUMABLE_OVER_BYTES = 8 * 1024 * 1024;
 
 /**
  * The base tier in a Google Cloud Storage bucket, held by a service account.
@@ -98,11 +101,15 @@ export class GcsObjectStore implements ObjectStore {
       target: scratch,
       commit: async () => {
         try {
-          await upstream('gcs', 'upload', () =>
+          const { size } = await stat(scratch);
+          // A resumable upload opens a session first, which is a second round
+          // trip that only pays for itself on a file large enough to resume.
+          const [file] = await upstream('gcs', 'upload', () =>
             this.storage
               .bucket(this.settings.bucket)
-              .upload(scratch, { destination: key, resumable: true }),
+              .upload(scratch, { destination: key, resumable: size > RESUMABLE_OVER_BYTES }),
           );
+          return { bytes: Number(file.metadata.size ?? size) };
         } finally {
           // Whether or not it uploaded: the scratch copy is not the record of
           // anything, and a roll-up that leaves one behind on every failure

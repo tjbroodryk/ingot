@@ -5,13 +5,14 @@ import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 import {
   CLAIM_LEASE_MS,
-  type FoldedVector,
+  type FoldedOverlay,
   type OverlayRow,
   type OverlayStore,
   type PendingOverlayRow,
   type PendingReceipt,
   type PendingEmbedding,
   type RollUpBacklog,
+  type RollUpClaim,
   type Tombstone,
 } from '../../application/ports/overlay-store.port.js';
 import { ROLL_UP_SETTINGS, type RollUpSettings } from '../../application/roll-up-settings.js';
@@ -230,14 +231,48 @@ export class PgOverlayStore implements OverlayStore {
     `);
   }
 
-  async dueForRollUp(now: Date, limit: number): Promise<readonly string[]> {
-    const due = await this.uow.queryable
-      .select({ tableId: rollUpDue.tableId })
+  /**
+   * One statement, for the reason `claimPending` is one: select-then-update
+   * hands the same table to two workers between them. `SKIP LOCKED` holds the
+   * rows only for this statement; `claimed_until` holds them afterwards.
+   */
+  async claimRollUps(now: Date, limit: number, claim: RollUpClaim): Promise<readonly string[]> {
+    const result = await this.uow.queryable.execute<{ table_id: string }>(sql`
+      UPDATE roll_up_due d
+      SET claim = ${claim.token}, claimed_until = ${claim.until}
+      FROM (
+        SELECT table_id FROM roll_up_due
+        WHERE due_at <= ${now} AND (claimed_until IS NULL OR claimed_until < ${now})
+        ORDER BY due_at
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
+      ) due
+      WHERE d.table_id = due.table_id
+      RETURNING d.table_id
+    `);
+    return result.rows.map((row) => row.table_id);
+  }
+
+  async renewRollUpClaims(
+    tableIds: readonly string[],
+    claim: RollUpClaim,
+  ): Promise<readonly string[]> {
+    if (tableIds.length === 0) return [];
+    const renewed = await this.uow.queryable
+      .update(rollUpDue)
+      .set({ claimedUntil: claim.until })
+      .where(and(inArray(rollUpDue.tableId, [...tableIds]), eq(rollUpDue.claim, claim.token)))
+      .returning({ tableId: rollUpDue.tableId });
+    return renewed.map((row) => row.tableId);
+  }
+
+  async holdsRollUpClaim(tableId: string, token: string): Promise<boolean> {
+    const [row] = await this.uow.queryable
+      .select({ claim: rollUpDue.claim })
       .from(rollUpDue)
-      .where(lte(rollUpDue.dueAt, now))
-      .orderBy(asc(rollUpDue.dueAt))
-      .limit(limit);
-    return due.map((row) => row.tableId);
+      .where(eq(rollUpDue.tableId, tableId))
+      .for('update');
+    return row?.claim === token;
   }
 
   /**
@@ -268,14 +303,17 @@ export class PgOverlayStore implements OverlayStore {
     await this.uow.queryable
       .insert(rollUpDue)
       .values({ tableId, dueAt: due })
-      .onConflictDoUpdate({ target: rollUpDue.tableId, set: { dueAt: due } });
+      .onConflictDoUpdate({
+        target: rollUpDue.tableId,
+        set: { dueAt: due, claim: null, claimedUntil: null },
+      });
   }
 
-  async postponeRollUp(tableId: string, until: Date): Promise<void> {
+  async postponeRollUp(tableId: string, until: Date, token: string): Promise<void> {
     await this.uow.queryable
       .update(rollUpDue)
-      .set({ dueAt: until })
-      .where(eq(rollUpDue.tableId, tableId));
+      .set({ dueAt: until, claim: null, claimedUntil: null })
+      .where(and(eq(rollUpDue.tableId, tableId), eq(rollUpDue.claim, token)));
   }
 
   async scheduleUnscheduled(): Promise<number> {
@@ -312,9 +350,10 @@ export class PgOverlayStore implements OverlayStore {
   /**
    * Drops what a roll-up consumed — and only what it consumed.
    *
-   * Bounded by the watermark the compaction read at, never a bare delete: rows
-   * written while the Parquet was being produced have a higher sequence and
-   * are not in the new file, so deleting them here would lose them silently.
+   * By the rows it read, not by the watermark it read them to. A sequence is
+   * taken at insert and made visible at commit, so a write with a lower
+   * sequence than the watermark can commit after the roll-up read. It is not
+   * in the new file, and a delete bounded by the watermark would lose it.
    *
    * Spent tombstones go too. Once compaction has written a base file that
    * excludes a forgotten row and its overlay copy is drained, the row is gone
@@ -322,8 +361,10 @@ export class PgOverlayStore implements OverlayStore {
    * make the set grow without bound, which is the thing resolving deletes to
    * ids instead of storing predicates was supposed to avoid.
    *
-   * A tombstone for a row still sitting *above* the watermark has to stay: it
-   * was not in the file this compaction wrote, so nothing has excluded it yet.
+   * Only tombstones the roll-up read are spent: one written since was not
+   * applied to the file, and deleting it would bring its row back. A
+   * tombstone for a row still in the overlay stays too, since nothing has
+   * excluded that row yet.
    *
    * **The embedding queue is not swept here.** It used to be, for every row
    * this drain consumed, on the assumption that a consumed row is an embedded
@@ -334,23 +375,19 @@ export class PgOverlayStore implements OverlayStore {
    * happened. A queued text leaves when its vector is written, or when the row
    * is forgotten, and those are the only two.
    */
-  async drain(
-    tableId: string,
-    throughSeq: bigint | null,
-    folded: readonly FoldedVector[],
-  ): Promise<void> {
-    if (throughSeq !== null) {
+  async drain(tableId: string, folded: FoldedOverlay): Promise<void> {
+    for (const chunk of chunked(folded.rowIds, INSERT_CHUNK)) {
       await this.uow.queryable
         .delete(overlayRow)
-        .where(and(eq(overlayRow.tableId, tableId), lte(overlayRow.seq, throughSeq)));
+        .where(and(eq(overlayRow.tableId, tableId), inArray(overlayRow.rowId, chunk)));
     }
 
     /*
      * Which of the folded vectors are now safely in the file.
      *
      * All of them, except those belonging to a row the compaction did not
-     * materialise — which, once the rows at or below the watermark are gone,
-     * is exactly what is left in the overlay. A vector for one of those was
+     * materialise — which, once the folded rows are gone, is exactly what is
+     * left in the overlay. A vector for one of those was
      * read but never attached to anything, so it was never written, and
      * deleting it here would lose it with its queue entry already spent.
      *
@@ -367,7 +404,7 @@ export class PgOverlayStore implements OverlayStore {
       ).map((row) => row.rowId),
     );
 
-    const spent = folded.filter((vector) => !pending.has(vector.rowId));
+    const spent = folded.vectors.filter((vector) => !pending.has(vector.rowId));
     for (const chunk of chunked(spent, INSERT_CHUNK)) {
       await this.uow.queryable
         .delete(overlayVector)
@@ -386,19 +423,22 @@ export class PgOverlayStore implements OverlayStore {
         );
     }
 
-    await this.uow.queryable.delete(overlayTombstone).where(
-      and(
-        eq(overlayTombstone.tableId, tableId),
-        notExists(
-          this.uow.queryable
-            .select({ one: sql`1` })
-            .from(overlayRow)
-            .where(
-              and(eq(overlayRow.tableId, tableId), eq(overlayRow.rowId, overlayTombstone.rowId)),
-            ),
+    for (const chunk of chunked(folded.tombstones, INSERT_CHUNK)) {
+      await this.uow.queryable.delete(overlayTombstone).where(
+        and(
+          eq(overlayTombstone.tableId, tableId),
+          inArray(overlayTombstone.rowId, chunk),
+          notExists(
+            this.uow.queryable
+              .select({ one: sql`1` })
+              .from(overlayRow)
+              .where(
+                and(eq(overlayRow.tableId, tableId), eq(overlayRow.rowId, overlayTombstone.rowId)),
+              ),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   async purgeTable(tableId: string): Promise<void> {

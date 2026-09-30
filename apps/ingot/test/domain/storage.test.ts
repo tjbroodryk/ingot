@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -228,6 +228,32 @@ describe('the GCS tier', () => {
     // Discarding an unfinished write must not need the network, or a roll-up
     // that failed because the network is down cannot clean up after itself.
     await expect(pending.discard()).resolves.toBeUndefined();
+  });
+
+  it('uploads a small file in one request and reports its size from the upload', async () => {
+    const uploads: { destination: string; resumable: boolean }[] = [];
+    const fake = {
+      bucket: () => ({
+        upload: async (_path: string, options: { destination: string; resumable: boolean }) => {
+          uploads.push(options);
+          return [{ metadata: { size: '1234' } }];
+        },
+      }),
+    };
+    const settings = storageSettings(env({ ...GCS, INGOT_STAGING_DIR: scratch }));
+    if (settings.driver !== StorageDriver.Gcs) throw new Error('expected gcs settings');
+    const store = new GcsObjectStore(settings, fake as never);
+
+    const small = await store.beginWrite('acct/ing/tables/t/gen-1/small.parquet');
+    writeFileSync(small.target, Buffer.alloc(10));
+    const large = await store.beginWrite('acct/ing/tables/t/gen-1/large.parquet');
+    writeFileSync(large.target, Buffer.alloc(9 * 1024 * 1024));
+
+    expect(await small.commit()).toEqual({ bytes: 1234 });
+    await large.commit();
+    // A resumable session is a second round trip; it is only worth one for a
+    // file large enough to be resumed.
+    expect(uploads.map((upload) => upload.resumable)).toEqual([false, true]);
   });
 
   it('says which credential it looked for when there is none', async () => {

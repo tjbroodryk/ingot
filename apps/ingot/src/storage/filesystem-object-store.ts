@@ -1,9 +1,14 @@
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
-import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
+import {
+  type ByteRange,
+  type ObjectStore,
+  type PendingWrite,
+  partialKey,
+} from './object-store.port.js';
 
 /**
  * The base tier on local disk.
@@ -35,15 +40,18 @@ export class FilesystemObjectStore implements ObjectStore {
     // DuckDB's COPY … TO writes the file but will not create its directory.
     await mkdir(dirname(path), { recursive: true });
 
+    // Beside the object rather than at it, and renamed into place on `commit`:
+    // a roll-up that lost its claim then backs out without having touched a
+    // file another worker may already have published.
+    const partial = partialKey(path);
     return {
-      target: path,
-      // DuckDB wrote the object itself, in place. There is no second step,
-      // and a generation is only ever read once the manifest names it — so a
-      // file left behind by a write that failed is invisible rather than
-      // half-published, and `discard` removing it is tidiness, not safety.
-      commit: async () => {},
+      target: partial,
+      commit: async () => {
+        await rename(partial, path);
+        return { bytes: (await stat(path)).size };
+      },
       discard: async () => {
-        await rm(path, { force: true });
+        await rm(partial, { force: true });
       },
     };
   }

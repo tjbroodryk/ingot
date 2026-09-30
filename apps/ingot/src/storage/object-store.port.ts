@@ -123,14 +123,25 @@ export interface PendingWrite {
   /** What to put inside `COPY … TO`. A URI, or a local path. */
   readonly target: string;
 
-  /** Makes the object readable at `uri(key)`. */
-  commit(): Promise<void>;
+  /**
+   * Makes the object readable at `uri(key)`. Its size when the store learnt it
+   * doing so, which saves a `stat`; null when it did not.
+   */
+  commit(): Promise<{ bytes: number } | null>;
 
   /** Throws away a write that did not finish. Never throws itself. */
   discard(): Promise<void>;
 }
 
 export const OBJECT_STORE = Symbol('ObjectStore');
+
+/**
+ * Where an unfinished write goes: beside its object, under a name no other
+ * write shares, so backing one out never touches the object itself.
+ */
+export function partialKey(key: string): string {
+  return `${key}.${crypto.randomUUID()}.partial`;
+}
 
 /**
  * Where an ingot's data lives, in one place.
