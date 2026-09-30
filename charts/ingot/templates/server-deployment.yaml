@@ -2,10 +2,10 @@
 #
 # Scale this freely. The sweepers are timers inside the process rather than work
 # handed to a broker. Roll-up runs in `roll-up-deployment.yaml` when
-# `rollUp.enabled`, and here otherwise; either way it and expiry take a Postgres
-# advisory lock — see `src/sweepers/scheduler.ts` — so a second replica is not a
-# second compaction writing the same table into the same generation. The queue
-# sweepers lease their rows instead, and run on every replica.
+# `rollUp.enabled`, and here otherwise; either way it claims each table before
+# touching it, so a second replica is never a second compaction of the same
+# table. Expiry takes a Postgres advisory lock — see `src/sweepers/scheduler.ts`.
+# The queue sweepers lease their rows, and run on every replica.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

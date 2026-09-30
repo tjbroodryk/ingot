@@ -155,14 +155,18 @@ describe('the S3 base tier, against a real bucket', () => {
     await store.removePrefix(`${prefix}-clone`);
   });
 
-  it('hands DuckDB the object itself to write, with nothing to publish after', async () => {
+  it('hands DuckDB an object of its own to write, and copies it into place', async () => {
     // S3 is the one remote case DuckDB can write, so a roll-up here is a
-    // `COPY … TO 's3://…'` and `commit` has nothing to do. Google is the case
-    // that cannot, and stages through local disk instead.
+    // `COPY … TO 's3://…'`. It writes beside the object, so a roll-up that
+    // backs out never touches a key another worker may have published.
     const pending = await store.beginWrite('acct/ing/tables/t/gen-1/part-0.parquet');
 
-    expect(pending.target).toBe(`s3://${BUCKET}/acct/ing/tables/t/gen-1/part-0.parquet`);
-    // Nor does it learn the size: the caller asks with `stat`.
+    expect(pending.target).toStartWith(`s3://${BUCKET}/acct/ing/tables/t/gen-1/part-0.parquet.`);
+    expect(pending.target).toEndWith('.partial');
+    await store.put(pending.target.replace(`s3://${BUCKET}/`, ''), Buffer.from('parquet'));
+
+    // Copied into place on commit, which learns no size: the caller asks.
     await expect(pending.commit()).resolves.toBeNull();
+    expect(await store.stat('acct/ing/tables/t/gen-1/part-0.parquet')).toEqual({ bytes: 7 });
   });
 });

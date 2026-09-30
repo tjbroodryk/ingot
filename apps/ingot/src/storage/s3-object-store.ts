@@ -10,7 +10,12 @@ import {
 import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { upstream } from '../observability/index.js';
-import type { ByteRange, ObjectStore, PendingWrite } from './object-store.port.js';
+import {
+  type ByteRange,
+  type ObjectStore,
+  type PendingWrite,
+  partialKey,
+} from './object-store.port.js';
 import { quote, stripScheme } from './secret-sql.js';
 import type { S3Settings } from './storage-settings.js';
 
@@ -83,15 +88,20 @@ export class S3ObjectStore implements ObjectStore {
 
   async beginWrite(key: string): Promise<PendingWrite> {
     // DuckDB writes S3 objects itself, through the same secret `session`
-    // installed, so the target is the object and there is nothing to publish.
+    // installed — but to a key of its own, copied into place on `commit`. A
+    // roll-up that lost its claim then backs out without having touched a key
+    // another worker may already have published.
+    const partial = partialKey(key);
     return {
-      target: this.uri(key),
-      commit: async () => null,
+      target: this.uri(partial),
+      commit: async () => {
+        await this.copy(partial, key);
+        await this.remove([partial]).catch(() => {});
+        return null;
+      },
       // A `COPY … TO` that threw may still have completed a multipart upload.
-      // Nothing references it — a generation is read only once the manifest
-      // names it — but nothing would ever collect it either.
       discard: async () => {
-        await this.remove([key]).catch(() => {});
+        await this.remove([partial]).catch(() => {});
       },
     };
   }

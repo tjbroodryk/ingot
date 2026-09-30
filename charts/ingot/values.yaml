@@ -62,9 +62,9 @@ server:
       memory: 3Gi
       ephemeral-storage: 6Gi
 
-  # Scaling the API is safe in a way worth being explicit about: roll-up runs
-  # in its own pod (`rollUp`), or under an advisory lock when it does not, and
-  # expiry takes one too. The queue sweepers lease their rows and run on every replica,
+  # Scaling the API is safe in a way worth being explicit about: roll-up claims
+  # each table before it touches it, wherever it runs, and expiry takes an
+  # advisory lock. The queue sweepers lease their rows and run on every replica,
   # so more pods do drain embeddings, receipts, deliveries and files faster.
   #
   # Needs metrics-server. Without it the HPA reads `<unknown>/70%` and holds at
@@ -139,8 +139,9 @@ server:
 rollUp:
   enabled: true
 
-  # One does the work — the sweep takes an advisory lock. A second is a warm
-  # standby that takes over when the first goes away.
+  # Each replica claims its own due tables, so more replicas is more roll-ups
+  # at once: throughput is replicas × `config.rollUp.concurrency`. Mind the
+  # Postgres connections each one opens (`DATABASE_POOL_MAX`).
   replicaCount: 1
 
   # Sized for `config.rollUp.concurrency` compactions, each allowed up to

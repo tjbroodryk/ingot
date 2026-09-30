@@ -234,6 +234,9 @@ export const rollUpDue = pgTable(
   {
     tableId: text('table_id').primaryKey(),
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    /** See `drizzle/0016_roll_up_claims.sql`. */
+    claim: text('claim'),
+    claimedUntil: timestamp('claimed_until', { withTimezone: true }),
   },
   (table) => [index('roll_up_due_at').on(table.dueAt)],
 );

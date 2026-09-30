@@ -50,6 +50,8 @@ export class PublishRollUp extends Command<CompactionReport | null> {
   constructor(
     readonly tableId: string,
     readonly written: WrittenGeneration | null,
+    /** The sweep's claim on the table. Null for a roll-up asked for directly. */
+    readonly claim: string | null = null,
   ) {
     super();
   }
@@ -70,6 +72,15 @@ export class PublishRollUpHandler implements ICommandHandler<PublishRollUp> {
   ) {}
 
   async execute(command: PublishRollUp): Promise<CompactionReport | null> {
+    // First, and holding the schedule row until commit: a worker whose lease
+    // lapsed while it wrote has lost the table to another, and must change
+    // nothing about it.
+    if (command.claim && !(await this.overlay.holdsRollUpClaim(command.tableId, command.claim))) {
+      throw new ConflictingState(
+        `the roll-up of ${command.tableId} lost its claim to another worker; it is left to that one.`,
+      );
+    }
+
     // A table that is gone was due when it was dropped, or had tombstones its
     // ingot's purge could not find. Nothing will read what it left behind.
     const table = await this.tables.findById(IngotTableId.of(command.tableId));

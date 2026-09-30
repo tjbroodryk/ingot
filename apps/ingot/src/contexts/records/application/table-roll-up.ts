@@ -44,10 +44,12 @@ export class TableRollUp {
     private readonly sessions: SessionBuilder,
   ) {}
 
-  async run(tableId: string): Promise<CompactionReport | null> {
+  /** `claim` is the sweep's hold on the table; a roll-up asked for directly has none. */
+  async run(tableId: string, claim?: HeldClaim): Promise<CompactionReport | null> {
+    const token = claim?.token ?? null;
     const table = await this.tables.findById(IngotTableId.of(tableId));
     const ingot = table && (await this.ingots.findById(IngotId.of(table.ingotId)));
-    if (!table || !ingot) return this.dispatcher.send(new PublishRollUp(tableId, null));
+    if (!table || !ingot) return this.dispatcher.send(new PublishRollUp(tableId, null, token));
 
     /*
      * A roll-up has two reasons to run, and the second is easy to miss.
@@ -62,7 +64,7 @@ export class TableRollUp {
     const tombstones = await this.overlay.countTombstones(table.id.value);
     if (watermark === null && tombstones === 0) {
       // Nothing moved. Sweeps over a quiet table write nothing and say nothing.
-      return this.dispatcher.send(new PublishRollUp(tableId, null));
+      return this.dispatcher.send(new PublishRollUp(tableId, null, token));
     }
 
     const generation = table.generation + 1;
@@ -77,7 +79,14 @@ export class TableRollUp {
 
     const started = performance.now();
     const outcome = await observe('ingot.compact', { 'ingot.generation': generation }, () =>
-      this.engine.compact({ table: view, baseTarget, vectorTarget }),
+      this.engine.compact({
+        table: view,
+        baseTarget,
+        vectorTarget,
+        // The keys are the next generation's, so a worker whose claim lapsed
+        // must not upload to them: whoever took the table may have published.
+        beforeCommit: claim ? () => claim.confirm() : undefined,
+      }),
     ).catch((error: unknown) => {
       Metrics.CompactionDuration.observe(
         { outcome: Outcome.Error },
@@ -99,30 +108,41 @@ export class TableRollUp {
     ]);
 
     return this.dispatcher.send(
-      new PublishRollUp(tableId, {
-        generation,
-        base: { key: baseTarget, rows: outcome.rows, bytes: baseBytes },
-        vectors:
-          outcome.vectors > 0
-            ? { key: vectorTarget, rows: outcome.vectors, bytes: vectorBytes }
-            : null,
-        /*
-         * What the view held, not everything at or below the watermark. A
-         * write can take a lower sequence than the watermark and commit after
-         * the view was read; it is not in the file, so it must not be drained.
-         * Tombstones likewise: one written after the view was read has not
-         * been applied to the file yet. The vectors are how the drain tells an
-         * embedding the file holds from one that is still owed.
-         */
-        folded: {
-          rowIds: view.overlayRows.map((row) => String(row._row_id)),
-          tombstones: view.tombstones,
-          vectors: view.overlayVectors.map((vector) => ({
-            rowId: vector.rowId,
-            column: vector.column,
-          })),
+      new PublishRollUp(
+        tableId,
+        {
+          generation,
+          base: { key: baseTarget, rows: outcome.rows, bytes: baseBytes },
+          vectors:
+            outcome.vectors > 0
+              ? { key: vectorTarget, rows: outcome.vectors, bytes: vectorBytes }
+              : null,
+          /*
+           * What the view held, not everything at or below the watermark. A
+           * write can take a lower sequence than the watermark and commit after
+           * the view was read; it is not in the file, so it must not be drained.
+           * Tombstones likewise: one written after the view was read has not
+           * been applied to the file yet. The vectors are how the drain tells an
+           * embedding the file holds from one that is still owed.
+           */
+          folded: {
+            rowIds: view.overlayRows.map((row) => String(row._row_id)),
+            tombstones: view.tombstones,
+            vectors: view.overlayVectors.map((vector) => ({
+              rowId: vector.rowId,
+              column: vector.column,
+            })),
+          },
         },
-      }),
+        token,
+      ),
     );
   }
+}
+
+/** A sweep's hold on a table: the token that fences its publish, and a way to renew it. */
+export interface HeldClaim {
+  readonly token: string;
+  /** Renews the lease; throws when another worker holds the table now. */
+  confirm(): Promise<void>;
 }

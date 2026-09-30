@@ -21,8 +21,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # The new pod waits on the advisory lock until the old one lets it go,
-      # so the overlap costs nothing and there is never a gap.
+      # The new pod starts claiming tables before the old one stops, so there
+      # is never a gap; the claims keep the two off each other's tables.
       maxSurge: 1
       maxUnavailable: 0
   template:

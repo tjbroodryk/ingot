@@ -272,6 +272,8 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
             );
           }
 
+          await request.beforeCommit?.();
+
           // Both files are written before either is published, so the uploads
           // run side by side instead of one after the other.
           const [baseSize, vectorSize] = await Promise.all([

@@ -14,6 +14,8 @@ import { ParquetCache } from '../../src/engine/parquet-cache.js';
 import { registry } from '../../src/observability/metrics/registry.js';
 import { Dispatcher } from '../../src/shared/application/index.js';
 import type { Clock } from '../../src/shared/domain/index.js';
+import { DATABASE_URL } from '../../src/database/database.module.js';
+import { ExclusiveWork } from '../../src/sweepers/exclusive.js';
 import { RollUpSweeper } from '../../src/sweepers/roll-up.sweeper.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
@@ -23,6 +25,8 @@ import { type World, makeWorld } from '../support/world.js';
  * or as soon as its overlay reaches `INGOT_ROLLUP_MIN_ROWS`.
  */
 let world: World;
+// The world builds no sweepers, so the housekeeping lock is made here.
+let exclusive: ExclusiveWork;
 
 const MIN_ROWS = 5;
 const INTERVAL_MS = 300_000;
@@ -31,9 +35,11 @@ beforeAll(async () => {
   world = await makeWorld({
     env: { INGOT_ROLLUP_MIN_ROWS: String(MIN_ROWS), INGOT_ROLLUP_INTERVAL_MS: String(INTERVAL_MS) },
   });
+  exclusive = new ExclusiveWork(world.app.get<string>(DATABASE_URL, { strict: false }));
 });
 
 afterAll(async () => {
+  await exclusive?.onApplicationShutdown();
   await world?.close();
   await closeDatabase();
 });
@@ -47,6 +53,7 @@ function sweeperAt(instant: Date): RollUpSweeper {
     clock,
     world.app.get<RollUpSettings>(ROLL_UP_SETTINGS, { strict: false }),
     world.app.get(TableRollUp, { strict: false }),
+    exclusive,
   );
 }
 

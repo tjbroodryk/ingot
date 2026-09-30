@@ -77,11 +77,14 @@ describe('the sweepers', () => {
    *
    * `exclusive` defaults to true, so the risk this guards is not a sweep that
    * forgets to ask for the lock — it is one that sets `false` because a backlog
-   * looked slow, on work that is not in fact safe on two pods at once. Roll-up
-   * is the reason the lock exists: two replicas compacting one table both
-   * compute `generation + 1` and both flip the manifest. Expiry keeps it for a
-   * different reason, which is that `PER_TICK` bounds a deletion and per
-   * replica it would stop bounding anything.
+   * looked slow, on work that is not in fact safe on two pods at once. Expiry
+   * keeps it because `PER_TICK` bounds a deletion and per replica it would
+   * stop bounding anything.
+   *
+   * Roll-up used to be the reason the lock existed — two replicas compacting
+   * one table both compute `generation + 1` and both flip the manifest. It now
+   * claims each table in `roll_up_due` instead, and `roll-up-cadence.test.ts`
+   * is what holds that up; its housekeeping takes a lock of its own.
    */
   it('takes a lock for exactly the sweeps that need one', () => {
     const exclusive = Object.values(SWEEPERS)
@@ -90,7 +93,7 @@ describe('the sweepers', () => {
       .map((spec) => spec?.name)
       .sort();
 
-    expect(exclusive).toEqual(['reap-expired-ingots', 'roll-up-ingots']);
+    expect(exclusive).toEqual(['reap-expired-ingots']);
   });
 
   /**

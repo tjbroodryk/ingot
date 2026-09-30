@@ -136,6 +136,14 @@ export interface PendingWrite {
 export const OBJECT_STORE = Symbol('ObjectStore');
 
 /**
+ * Where an unfinished write goes: beside its object, under a name no other
+ * write shares, so backing one out never touches the object itself.
+ */
+export function partialKey(key: string): string {
+  return `${key}.${crypto.randomUUID()}.partial`;
+}
+
+/**
  * Where an ingot's data lives, in one place.
  *
  * Keys are built here rather than in the compaction handler so that the layout

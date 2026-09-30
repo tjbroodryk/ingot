@@ -43,6 +43,12 @@ export interface FoldedVector {
   readonly column: string;
 }
 
+/** A worker's hold on the tables it is rolling up. */
+export interface RollUpClaim {
+  readonly token: string;
+  readonly until: Date;
+}
+
 /** What one roll-up read from the overlay and wrote into Parquet. */
 export interface FoldedOverlay {
   readonly rowIds: readonly string[];
@@ -155,17 +161,30 @@ export interface OverlayStore {
   copyTable(input: { fromTableId: string; toTableId: string; toIngotId: string }): Promise<void>;
 
   /**
-   * Tables due a roll-up, longest overdue first. `append` and `forget` are what
-   * schedule them: `INGOT_ROLLUP_INTERVAL_MS` after the first write, or now
-   * once `INGOT_ROLLUP_MIN_ROWS` is reached.
+   * Claims up to `limit` tables due a roll-up, longest overdue first, skipping
+   * any another worker holds. `append` and `forget` are what schedule them:
+   * `INGOT_ROLLUP_INTERVAL_MS` after the first write, or now once
+   * `INGOT_ROLLUP_MIN_ROWS` is reached.
    */
-  dueForRollUp(now: Date, limit: number): Promise<readonly string[]>;
+  claimRollUps(now: Date, limit: number, claim: RollUpClaim): Promise<readonly string[]>;
 
-  /** After a roll-up, from what the overlay still holds for the table. */
+  /** Extends the lease on those still held under `claim.token`; returns them. */
+  renewRollUpClaims(tableIds: readonly string[], claim: RollUpClaim): Promise<readonly string[]>;
+
+  /**
+   * Whether `token` still holds the table's claim, locking its schedule row
+   * for the rest of the transaction so the answer stays true until commit.
+   */
+  holdsRollUpClaim(tableId: string, token: string): Promise<boolean>;
+
+  /** After a roll-up, from what the overlay still holds for the table. Releases the claim. */
   rescheduleRollUp(tableId: string, now: Date): Promise<void>;
 
-  /** After a roll-up that failed, so the next batch does not take it straight back. */
-  postponeRollUp(tableId: string, until: Date): Promise<void>;
+  /**
+   * After a roll-up that failed, so the next batch does not take it straight
+   * back. Only while `token` still holds it; releases the claim.
+   */
+  postponeRollUp(tableId: string, until: Date, token: string): Promise<void>;
 
   /**
    * Schedules every table with overlay rows or tombstones and no schedule —

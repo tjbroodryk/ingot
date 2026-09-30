@@ -12,6 +12,7 @@ import {
   type PendingReceipt,
   type PendingEmbedding,
   type RollUpBacklog,
+  type RollUpClaim,
   type Tombstone,
 } from '../../application/ports/overlay-store.port.js';
 import { ROLL_UP_SETTINGS, type RollUpSettings } from '../../application/roll-up-settings.js';
@@ -230,14 +231,48 @@ export class PgOverlayStore implements OverlayStore {
     `);
   }
 
-  async dueForRollUp(now: Date, limit: number): Promise<readonly string[]> {
-    const due = await this.uow.queryable
-      .select({ tableId: rollUpDue.tableId })
+  /**
+   * One statement, for the reason `claimPending` is one: select-then-update
+   * hands the same table to two workers between them. `SKIP LOCKED` holds the
+   * rows only for this statement; `claimed_until` holds them afterwards.
+   */
+  async claimRollUps(now: Date, limit: number, claim: RollUpClaim): Promise<readonly string[]> {
+    const result = await this.uow.queryable.execute<{ table_id: string }>(sql`
+      UPDATE roll_up_due d
+      SET claim = ${claim.token}, claimed_until = ${claim.until}
+      FROM (
+        SELECT table_id FROM roll_up_due
+        WHERE due_at <= ${now} AND (claimed_until IS NULL OR claimed_until < ${now})
+        ORDER BY due_at
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
+      ) due
+      WHERE d.table_id = due.table_id
+      RETURNING d.table_id
+    `);
+    return result.rows.map((row) => row.table_id);
+  }
+
+  async renewRollUpClaims(
+    tableIds: readonly string[],
+    claim: RollUpClaim,
+  ): Promise<readonly string[]> {
+    if (tableIds.length === 0) return [];
+    const renewed = await this.uow.queryable
+      .update(rollUpDue)
+      .set({ claimedUntil: claim.until })
+      .where(and(inArray(rollUpDue.tableId, [...tableIds]), eq(rollUpDue.claim, claim.token)))
+      .returning({ tableId: rollUpDue.tableId });
+    return renewed.map((row) => row.tableId);
+  }
+
+  async holdsRollUpClaim(tableId: string, token: string): Promise<boolean> {
+    const [row] = await this.uow.queryable
+      .select({ claim: rollUpDue.claim })
       .from(rollUpDue)
-      .where(lte(rollUpDue.dueAt, now))
-      .orderBy(asc(rollUpDue.dueAt))
-      .limit(limit);
-    return due.map((row) => row.tableId);
+      .where(eq(rollUpDue.tableId, tableId))
+      .for('update');
+    return row?.claim === token;
   }
 
   /**
@@ -268,14 +303,17 @@ export class PgOverlayStore implements OverlayStore {
     await this.uow.queryable
       .insert(rollUpDue)
       .values({ tableId, dueAt: due })
-      .onConflictDoUpdate({ target: rollUpDue.tableId, set: { dueAt: due } });
+      .onConflictDoUpdate({
+        target: rollUpDue.tableId,
+        set: { dueAt: due, claim: null, claimedUntil: null },
+      });
   }
 
-  async postponeRollUp(tableId: string, until: Date): Promise<void> {
+  async postponeRollUp(tableId: string, until: Date, token: string): Promise<void> {
     await this.uow.queryable
       .update(rollUpDue)
-      .set({ dueAt: until })
-      .where(eq(rollUpDue.tableId, tableId));
+      .set({ dueAt: until, claim: null, claimedUntil: null })
+      .where(and(eq(rollUpDue.tableId, tableId), eq(rollUpDue.claim, token)));
   }
 
   async scheduleUnscheduled(): Promise<number> {
