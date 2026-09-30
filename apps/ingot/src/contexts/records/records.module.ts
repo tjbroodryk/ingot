@@ -11,7 +11,8 @@ import { AddRecordsHandler } from './application/commands/add-records.command.js
 import { ClaimDeliveryHandler } from './application/commands/claim-delivery.command.js';
 import { ClaimReceiptHandler } from './application/commands/claim-receipt.command.js';
 import { ClaimEmbeddingsHandler } from './application/commands/claim-embeddings.command.js';
-import { CompactTableHandler } from './application/commands/compact-table.command.js';
+import { PublishRollUpHandler } from './application/commands/publish-roll-up.command.js';
+import { TableRollUp } from './application/table-roll-up.js';
 import { ReapGenerationsHandler } from './application/commands/reap-generations.command.js';
 import { CompleteDeliveryHandler } from './application/commands/complete-delivery.command.js';
 import { DeleteRecordsHandler } from './application/commands/delete-records.command.js';
@@ -71,7 +72,8 @@ import { RecordsController } from './interface/records.controller.js';
     { provide: DELIVERY_TRIGGER, useExisting: BackgroundWork },
     BackgroundCollectors,
     DeleteRecordsHandler,
-    CompactTableHandler,
+    PublishRollUpHandler,
+    TableRollUp,
     ReapGenerationsHandler,
     GetPendingOperationsHandler,
     GetBaseFileHandler,
@@ -102,7 +104,14 @@ import { RecordsController } from './interface/records.controller.js';
     // cannot be the same object.
     { provide: RECEIPT_NOTIFIER, useExisting: OutboxReceiptNotifier },
   ],
-  exports: [RECEIPT_NOTIFIER, ReceiptWorker, EmbedWorker, DeliveryWorker, BackgroundWork],
+  exports: [
+    RECEIPT_NOTIFIER,
+    ReceiptWorker,
+    EmbedWorker,
+    DeliveryWorker,
+    BackgroundWork,
+    TableRollUp,
+  ],
 })
 export class RecordsModule {}
 

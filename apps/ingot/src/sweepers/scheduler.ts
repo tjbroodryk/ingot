@@ -185,7 +185,7 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
    * It deliberately does not break in and release the lock. The work is still
    * running — abandoning a promise does not abandon what it was waiting on —
    * and handing the lock to a second pod while the first is still inside
-   * `CompactTable` is precisely the race the lock is there to prevent. Making
+   * `TableRollUp` is precisely the race the lock is there to prevent. Making
    * the wedge visible is worth doing; making it concurrent is not.
    */
   private warnWhileItOverruns(spec: CronSpec): ReturnType<typeof setInterval> {

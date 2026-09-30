@@ -43,6 +43,13 @@ export interface FoldedVector {
   readonly column: string;
 }
 
+/** What one roll-up read from the overlay and wrote into Parquet. */
+export interface FoldedOverlay {
+  readonly rowIds: readonly string[];
+  readonly tombstones: readonly string[];
+  readonly vectors: readonly FoldedVector[];
+}
+
 /** One `/add` waiting to be described. Enough to prompt a model, and no more. */
 export interface PendingReceipt {
   /** The batch of the `/add` this describes. Its identity, here and in SQL. */
@@ -119,20 +126,19 @@ export interface OverlayStore {
 
   /**
    * Drops overlay rows consumed by a roll-up, and retires the tombstones that
-   * roll-up made redundant.
+   * roll-up applied.
    *
-   * `throughSeq` is null when a table was compacted purely to apply deletes —
-   * there were no rows to fold in, only rows to leave out. Nothing is drained
-   * in that case, but the tombstones are still spent.
+   * By what the roll-up read, never by a bound: a write or a delete that
+   * committed after it read is not in the file and stays. A table compacted
+   * purely to apply deletes folds no rows, only tombstones.
    *
-   * `folded` is the vectors the compaction read, which are exactly the ones it
-   * wrote. It has to be told rather than work it out from the rows it
-   * consumed: a row can be consumed before its vector exists, and a vector can
-   * exist for a row consumed generations ago. Nothing here ever touches the
-   * embedding queue — a queued text leaves it when its vector is written, or
-   * when the row is forgotten, and a roll-up is neither.
+   * `folded.vectors` has to be told rather than worked out from the rows: a
+   * row can be consumed before its vector exists, and a vector can exist for a
+   * row consumed generations ago. Nothing here ever touches the embedding
+   * queue — a queued text leaves it when its vector is written, or when the
+   * row is forgotten, and a roll-up is neither.
    */
-  drain(tableId: string, throughSeq: bigint | null, folded: readonly FoldedVector[]): Promise<void>;
+  drain(tableId: string, folded: FoldedOverlay): Promise<void>;
 
   /** Everything belonging to a table, for a drop. */
   purgeTable(tableId: string): Promise<void>;

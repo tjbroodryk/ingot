@@ -3,7 +3,7 @@ import {
   OVERLAY_STORE,
   type OverlayStore,
 } from '../contexts/records/application/ports/overlay-store.port.js';
-import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
+import { TableRollUp } from '../contexts/records/application/table-roll-up.js';
 import type { Drained } from '../contexts/records/application/drained.js';
 import { ReapGenerations } from '../contexts/records/application/commands/reap-generations.command.js';
 import {
@@ -46,7 +46,7 @@ const HOUSEKEEPING_EVERY = minutes(5);
  * batches, compacts `INGOT_ROLLUP_CONCURRENCY` of each batch at a time, and
  * goes straight on to the next batch until nothing is due.
  *
- * Exclusive, and the lock is why. `CompactTable` has no mutual exclusion of
+ * Exclusive, and the lock is why. `TableRollUp` has no mutual exclusion of
  * its own: two replicas rolling the same table up would both compute
  * `generation + 1`, write to the same keys and both flip the manifest. Within
  * one replica a batch never holds the same table twice.
@@ -70,6 +70,7 @@ export class RollUpSweeper {
     private readonly cache: ParquetCache,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(ROLL_UP_SETTINGS) private readonly settings: RollUpSettings,
+    private readonly tableRollUp: TableRollUp,
   ) {}
 
   async tick(): Promise<void> {
@@ -102,7 +103,7 @@ export class RollUpSweeper {
 
   private async rollUp(tableId: string): Promise<boolean> {
     try {
-      await this.dispatcher.send(new CompactTable(tableId));
+      await this.tableRollUp.run(tableId);
       return true;
     } catch (error) {
       // Pushed back rather than left due, or the next batch would take it

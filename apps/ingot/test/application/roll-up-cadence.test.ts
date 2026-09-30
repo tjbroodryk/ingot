@@ -9,6 +9,7 @@ import {
   ROLL_UP_SETTINGS,
   type RollUpSettings,
 } from '../../src/contexts/records/application/roll-up-settings.js';
+import { TableRollUp } from '../../src/contexts/records/application/table-roll-up.js';
 import { ParquetCache } from '../../src/engine/parquet-cache.js';
 import { registry } from '../../src/observability/metrics/registry.js';
 import { Dispatcher } from '../../src/shared/application/index.js';
@@ -45,6 +46,7 @@ function sweeperAt(instant: Date): RollUpSweeper {
     world.app.get(ParquetCache, { strict: false }),
     clock,
     world.app.get<RollUpSettings>(ROLL_UP_SETTINGS, { strict: false }),
+    world.app.get(TableRollUp, { strict: false }),
   );
 }
 

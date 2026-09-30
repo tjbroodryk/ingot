@@ -32,7 +32,7 @@ import { IngotsModule } from '../../src/contexts/ingots/ingots.module.js';
 import { QueryModule } from '../../src/contexts/query/query.module.js';
 import { QueryIngot } from '../../src/contexts/query/application/queries/query-ingot.query.js';
 import { AddRecords } from '../../src/contexts/records/application/commands/add-records.command.js';
-import { CompactTable } from '../../src/contexts/records/application/commands/compact-table.command.js';
+import { TableRollUp } from '../../src/contexts/records/application/table-roll-up.js';
 import { DeleteRecords } from '../../src/contexts/records/application/commands/delete-records.command.js';
 import { DeliveryWorker } from '../../src/contexts/records/application/delivery-worker.js';
 import { ReceiptWorker } from '../../src/contexts/records/application/receipt-worker.js';
@@ -358,7 +358,7 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
       const tables = app.get<IngotTableRepository>(INGOT_TABLE_REPOSITORY, { strict: false });
       const found = await tables.findByName(ingotId, table);
       if (!found) throw new Error(`No table "${table}" to compact`);
-      await dispatcher.send(new CompactTable(found.id.value));
+      await app.get(TableRollUp, { strict: false }).run(found.id.value);
     },
 
     async close() {

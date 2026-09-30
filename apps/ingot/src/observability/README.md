@@ -38,7 +38,7 @@ the single place all of its traffic passes through:
 | DuckDB sessions  | `query/…/query-ingot.query`, `engine/duckdb-engine.ts` | `ingot_query_session_duration_seconds`, `…_rows_returned`                    |
 | Refused SQL      | `engine/duckdb-engine.ts`                              | `ingot_sql_refused_total`                                                    |
 | Parquet cache    | `engine/parquet-cache.ts`                              | `ingot_parquet_cache_requests_total`, `…_bytes`, `…_evictions_total`         |
-| Roll-up          | `records/…/compact-table.command`                      | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`            |
+| Roll-up          | `records/…/table-roll-up`                              | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`            |
 | Roll-up backlog  | `records/…/overlay-collectors`                         | `ingot_roll_ups_due`, `…_scheduled`, `ingot_roll_up_overdue_seconds`         |
 | Roll-up races    | `sweepers/roll-up.sweeper`                             | `ingot_roll_ups_unscheduled_found_total`                                     |
 | Embeddings       | `records/…/embed-worker`, `overlay-collectors`         | `ingot_embeddings_pending`, `ingot_embedding_duration_seconds`               |
