@@ -306,7 +306,9 @@ jobs:
           render "filesystem" --set config.storage=filesystem \
             --set config.filesystem.persistence.enabled=true \
             --set server.autoscaling.enabled=false --set server.replicaCount=1 \
-            --set secrets.existingSecret=ci
+            --set rollUp.enabled=false --set secrets.existingSecret=ci
+          render "roll-up in the server" --set config.s3.bucket=ci --set secrets.existingSecret=ci \
+            --set rollUp.enabled=false
           render "ingress + serviceMonitor + created secret" \
             --set config.s3.bucket=ci --set ingress.enabled=true --set ingress.host=ci.example.com \
             --set serviceMonitor.enabled=true \
@@ -340,6 +342,10 @@ jobs:
             --set secrets.create=true --set secrets.databaseUrl=postgres://ci
           refuses "s3 with no bucket" \
             --set config.auth.account=ci --set secrets.existingSecret=ci
+          refuses "a roll-up pod sharing a ReadWriteOnce base tier" \
+            --set config.auth.account=ci --set secrets.existingSecret=ci \
+            --set config.storage=filesystem --set config.filesystem.persistence.enabled=true \
+            --set server.autoscaling.enabled=false --set server.replicaCount=1
 
       - name: Log in to ghcr.io
         if: startsWith(github.ref, 'refs/tags/v')

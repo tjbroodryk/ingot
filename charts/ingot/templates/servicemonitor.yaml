@@ -31,4 +31,26 @@ spec:
       # That listener answers `/metrics` and 404s everything else, and it is on
       # a port the Ingress never routes to — so this scrape is the only thing
       # that ever reads it.
+{{- if .Values.rollUp.enabled }}
+---
+# The roll-up pod's compaction metrics, through `roll-up-service.yaml`.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ingot.fullname" . }}-roll-up
+  labels:
+    {{- include "ingot.rollUp.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ingot.rollUp.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+{{- end }}
 {{- end }}

@@ -46,6 +46,20 @@ app.kubernetes.io/component: api
 app.kubernetes.io/part-of: ingot
 {{- end }}
 
+{{- define "ingot.rollUp.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ingot.name" . }}-roll-up
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "ingot.rollUp.labels" -}}
+helm.sh/chart: {{ include "ingot.chart" . }}
+{{ include "ingot.rollUp.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: roll-up
+app.kubernetes.io/part-of: ingot
+{{- end }}
+
 {{- define "ingot.app.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "ingot.name" . }}-app
 app.kubernetes.io/instance: {{ .Release.Name }}
@@ -190,6 +204,9 @@ The claim the Parquet cache mounts: the one named, or the chart's own.
   {{- $many := or .Values.server.autoscaling.enabled (gt (int .Values.server.replicaCount) 1) }}
   {{- if and $rwo $many }}
   {{- fail "\n\nconfig.storage is filesystem on a ReadWriteOnce volume, with more than one\nserver replica asked for.\n\nOne pod can mount it. Set server.replicaCount=1 and\nserver.autoscaling.enabled=false, or give the volume a ReadWriteMany class — a\nGCS FUSE CSI volume or an S3 CSI driver is a perfectly good way to run this.\n" }}
+  {{- end }}
+  {{- if and $rwo .Values.rollUp.enabled }}
+  {{- fail "\n\nconfig.storage is filesystem on a ReadWriteOnce volume, with rollUp.enabled.\n\nThe roll-up pod writes Parquet to the same volume the server reads, and only one\npod can mount it. Set rollUp.enabled=false so the server rolls up itself, or give\nthe volume a ReadWriteMany class.\n" }}
   {{- end }}
 {{- end }}
 

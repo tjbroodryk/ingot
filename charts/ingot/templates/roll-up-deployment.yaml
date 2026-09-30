@@ -1,0 +1,155 @@
+{{- if .Values.rollUp.enabled }}
+# @ingot/server's roll-up worker: the same image, running `dist/roll-up.js`.
+#
+# It runs the roll-up sweep and nothing else, so it is sized for compaction
+# (`config.rollUp.concurrency` DuckDB sessions) while the server pods stay sized
+# for requests. No Service sends it traffic; it listens for its probes and for
+# `/metrics`. The pod spec mirrors `server-deployment.yaml`, whose comments
+# explain the security context and volumes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingot.fullname" . }}-roll-up
+  labels:
+    {{- include "ingot.rollUp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.rollUp.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "ingot.rollUp.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # The new pod waits on the advisory lock until the old one lets it go,
+      # so the overlap costs nothing and there is never a gap.
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ingot.rollUp.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.rollUp.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "ingot.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.rollUp.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.rollUp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rollUp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rollUp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (include "ingot.parquetCache.enabled" .) .Values.config.query.parquetCache.volume.chown }}
+      initContainers:
+        - name: parquet-cache-owner
+          image: {{ include "ingot.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ['sh', '-c', 'chown 1000:1000 "$0"', {{ .Values.config.query.parquetCache.dir | quote }}]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+              add: ['CHOWN']
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - name: parquet-cache
+              mountPath: {{ .Values.config.query.parquetCache.dir }}
+      {{- end }}
+      containers:
+        - name: roll-up
+          image: {{ include "ingot.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ['bun', 'dist/roll-up.js']
+          ports:
+            - name: http
+              containerPort: 3002
+            - name: metrics
+              containerPort: 9465
+          envFrom:
+            - configMapRef:
+                name: {{ include "ingot.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ingot.secretName" . }}
+
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+
+          resources:
+            {{- toYaml .Values.rollUp.resources | nindent 12 }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+
+          volumeMounts:
+            - name: scratch
+              mountPath: /var/lib/ingot
+            - name: tmp
+              mountPath: /tmp
+            {{- if eq .Values.config.storage "filesystem" }}
+            - name: data
+              mountPath: {{ .Values.config.filesystem.dataDir }}
+            {{- end }}
+            {{- if include "ingot.parquetCache.enabled" . }}
+            # The cache sweep runs here, with the roll-up.
+            - name: parquet-cache
+              mountPath: {{ .Values.config.query.parquetCache.dir }}
+            {{- end }}
+
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: {{ .Values.rollUp.scratch.sizeLimit }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- if eq .Values.config.storage "filesystem" }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ingot.fullname" . }}-data
+        {{- end }}
+        {{- if include "ingot.parquetCache.enabled" . }}
+        - name: parquet-cache
+          persistentVolumeClaim:
+            claimName: {{ include "ingot.parquetCache.claim" . }}
+        {{- end }}
+{{- end }}
