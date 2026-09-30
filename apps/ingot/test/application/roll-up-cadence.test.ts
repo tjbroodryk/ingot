@@ -139,14 +139,18 @@ describe('the roll-up schedule', () => {
     await pool.query(
       `INSERT INTO overlay_tombstone (table_id, row_id, at) VALUES ('tbl_gone', 'row_1', now())`,
     );
-    await pool.query(`INSERT INTO roll_up_due (table_id, due_at) VALUES ('tbl_gone', now())`);
+    // A minute back, since `now()` is the database's clock and the sweeper
+    // compares against ours.
+    await pool.query(
+      `INSERT INTO roll_up_due (table_id, due_at) VALUES ('tbl_gone', now() - interval '1 minute')`,
+    );
 
     await sweeperAt(new Date()).tick();
 
-    expect(await scheduled()).toBe(0);
-    const { rows } = await pool.query(
-      `SELECT 1 FROM overlay_tombstone WHERE table_id = 'tbl_gone'`,
+    const left = await pool.query(
+      `SELECT 1 FROM overlay_tombstone WHERE table_id = 'tbl_gone'
+       UNION ALL SELECT 1 FROM roll_up_due WHERE table_id = 'tbl_gone'`,
     );
-    expect(rows).toHaveLength(0);
+    expect(left.rows).toHaveLength(0);
   });
 });
