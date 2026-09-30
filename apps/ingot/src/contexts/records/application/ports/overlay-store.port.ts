@@ -17,6 +17,13 @@ export interface Tombstone {
   readonly at: Date;
 }
 
+export interface RollUpBacklog {
+  readonly scheduled: number;
+  readonly due: number;
+  /** Seconds the most overdue table has been due, 0 when none is. */
+  readonly overdueSeconds: number;
+}
+
 export interface PendingEmbedding {
   readonly tableId: string;
   readonly rowId: string;
@@ -159,6 +166,9 @@ export interface OverlayStore {
    * the write that raced a roll-up's reschedule. Returns how many it found.
    */
   scheduleUnscheduled(): Promise<number>;
+
+  /** For the gauges: scheduled tables, those due now, and the oldest's lag. */
+  rollUpBacklog(): Promise<RollUpBacklog>;
 
   // ── vectors ───────────────────────────────────────────────────────────
   /**
