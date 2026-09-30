@@ -218,7 +218,7 @@ export const ENDPOINTS: readonly Endpoint[] = [
     auth: Auth.Key,
     summary:
       'Cast a new ingot. Takes a `name`, an optional `retainFor`: a duration, because the question you are asking is "how long", and an optional `externalId` of your own.',
-    note: 'Expiry deletes the ingot and everything in it, and that is not reversible. Omit it and the ingot is kept until something deletes it. Keep the `id` it hands back: that is the `:ingot` segment on every route below — an ingot is addressed by id, never by name. With an `externalId` — a conversation id, a job id — cast is idempotent: asking again answers 200 with the ingot that handle already names, and changes nothing about it.',
+    note: 'Expiry deletes the ingot and everything in it, and that is not reversible. Omit it and the ingot is kept until something deletes it. The `id` it hands back is the `:ingot` segment on every route below — an ingot is addressed by id, never by name. With an `externalId` — a conversation id, a job id — cast is idempotent: asking again answers 200 with the ingot that handle already names, and changes nothing about it. The handle also works in place of the id, so `/:account/chat_8f2c/query` reaches the same ingot. A handle may not start with `ing_`.',
     chips: ['30m', '12h', '14d', '4w'],
     sample: `{ "name": "crm-notes",
   "retainFor": "14d",

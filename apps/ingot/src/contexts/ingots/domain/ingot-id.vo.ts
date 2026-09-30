@@ -13,6 +13,11 @@ export class IngotId extends Identifier {
   static generate(): IngotId {
     return IngotId.of(newIdValue('ing'));
   }
+
+  /** Whether `value` is spelled as an ingot id, as opposed to a caller's handle. */
+  static looksLikeOne(value: string): boolean {
+    return value.startsWith('ing_');
+  }
 }
 
 /**

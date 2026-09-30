@@ -66,6 +66,7 @@ the service reads takes the same `_FILE` form.
 | `GET /accounts/:account`                     | The account and the keys on it. Metadata only.                           |
 | `POST /accounts/:account/keys`               | Mint another. `DELETE …/keys/:keyId` revokes one.                        |
 | `POST /:account/cast`                        | Cast an ingot. `retainFor` sets a retention; `externalId` is idempotent. |
+| `/:account/:ingot/…`                         | `:ingot` is the `ing_…` id, or the `externalId` it was cast with.        |
 | `GET /:account/ingots`                       | List them.                                                               |
 | `POST /:account/:ingot/add`                  | Store a tool result.                                                     |
 | `POST /:account/:ingot/file`                 | Store a document. Multipart. Chunks and rows follow.                     |
