@@ -41,7 +41,7 @@ export class FilesystemObjectStore implements ObjectStore {
       // and a generation is only ever read once the manifest names it — so a
       // file left behind by a write that failed is invisible rather than
       // half-published, and `discard` removing it is tidiness, not safety.
-      commit: async () => {},
+      commit: async () => ({ bytes: (await stat(path)).size }),
       discard: async () => {
         await rm(path, { force: true });
       },

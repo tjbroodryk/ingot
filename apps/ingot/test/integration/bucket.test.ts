@@ -162,6 +162,7 @@ describe('the S3 base tier, against a real bucket', () => {
     const pending = await store.beginWrite('acct/ing/tables/t/gen-1/part-0.parquet');
 
     expect(pending.target).toBe(`s3://${BUCKET}/acct/ing/tables/t/gen-1/part-0.parquet`);
-    await expect(pending.commit()).resolves.toBeUndefined();
+    // Nor does it learn the size: the caller asks with `stat`.
+    await expect(pending.commit()).resolves.toBeNull();
   });
 });

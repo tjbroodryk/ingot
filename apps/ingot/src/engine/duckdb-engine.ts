@@ -15,7 +15,7 @@ import {
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { InvariantViolation } from '../shared/domain/index.js';
 import { Metrics, RefusalReason, observe } from '../observability/index.js';
-import { OBJECT_STORE, type ObjectStore } from '../storage/object-store.port.js';
+import { OBJECT_STORE, type ObjectStore, type PendingWrite } from '../storage/object-store.port.js';
 import type {
   AnalyticalEngine,
   CompactionOutcome,
@@ -55,6 +55,12 @@ interface Session {
   readonly instance: DuckDBInstance;
   readonly connection: DuckDBConnection;
   close(): void;
+}
+
+/** A roll-up file DuckDB has written and the store has not yet published. */
+interface Staged {
+  readonly key: string;
+  readonly pending: PendingWrite;
 }
 
 /** Building a session from cached files failed; the caller retries from the store. */
@@ -230,69 +236,93 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
         const projection =
           excluded.length > 0 ? `* EXCLUDE (${excluded.map(ident).join(', ')})` : '*';
 
-        const rows = await this.write(request.baseTarget, (into) =>
-          connection.run(
-            `COPY (SELECT ${projection} FROM ${table})` +
-              ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
-          ),
-        ).then(() => this.count(connection, `SELECT count(*) AS n FROM ${table}`));
-
-        let vectors = 0;
-        const embedded = request.table.embedded;
-        if (embedded.length > 0) {
-          // Vectors go to their own file keyed by `_row_id`, never as a column
-          // in the data. Re-embedding with a better model then rewrites one
-          // small object instead of every base file.
-          const projection = embedded
-            .map((entry) => `${ident(vectorColumnName(entry.column))} AS ${ident(entry.column)}`)
-            .join(', ');
-          const anyPresent = embedded
-            .map((entry) => `${ident(vectorColumnName(entry.column))} IS NOT NULL`)
-            .join(' OR ');
-
-          await this.write(request.vectorTarget, (into) =>
+        const staged: Staged[] = [];
+        try {
+          const base = await this.stage(staged, request.baseTarget, (into) =>
             connection.run(
-              `COPY (SELECT ${ident('_row_id')}, ${projection} FROM ${table} WHERE ${anyPresent})` +
+              `COPY (SELECT ${projection} FROM ${table})` +
                 ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
             ),
           );
-          vectors = await this.count(
-            connection,
-            `SELECT count(*) AS n FROM ${table} WHERE ${anyPresent}`,
-          );
-        }
+          const rows = await this.count(connection, `SELECT count(*) AS n FROM ${table}`);
 
-        return { rows, vectors };
+          let vectors = 0;
+          let vectorFile: Staged | null = null;
+          const embedded = request.table.embedded;
+          if (embedded.length > 0) {
+            // Vectors go to their own file keyed by `_row_id`, never as a column
+            // in the data. Re-embedding with a better model then rewrites one
+            // small object instead of every base file.
+            const projection = embedded
+              .map((entry) => `${ident(vectorColumnName(entry.column))} AS ${ident(entry.column)}`)
+              .join(', ');
+            const anyPresent = embedded
+              .map((entry) => `${ident(vectorColumnName(entry.column))} IS NOT NULL`)
+              .join(' OR ');
+
+            vectorFile = await this.stage(staged, request.vectorTarget, (into) =>
+              connection.run(
+                `COPY (SELECT ${ident('_row_id')}, ${projection} FROM ${table} WHERE ${anyPresent})` +
+                  ` TO ${literal(into)} (FORMAT PARQUET, COMPRESSION zstd)`,
+              ),
+            );
+            vectors = await this.count(
+              connection,
+              `SELECT count(*) AS n FROM ${table} WHERE ${anyPresent}`,
+            );
+          }
+
+          // Both files are written before either is published, so the uploads
+          // run side by side instead of one after the other.
+          const [baseSize, vectorSize] = await Promise.all([
+            base.pending.commit(),
+            vectorFile ? vectorFile.pending.commit() : Promise.resolve(null),
+          ]);
+          return {
+            rows,
+            vectors,
+            baseBytes: baseSize?.bytes ?? null,
+            vectorBytes: vectorSize?.bytes ?? null,
+          };
+        } catch (error) {
+          await this.discard(staged);
+          throw error;
+        }
       },
       { writes: true },
     );
   }
 
   /**
-   * One object, written by DuckDB and then published.
+   * One object, written by DuckDB and not yet published.
    *
-   * The two steps are separate because they are separate for at least one
-   * store: DuckDB can `COPY … TO` a local path and an `s3://` URI and nothing
-   * else, so a Google bucket is written by copying to a scratch file that the
-   * store uploads on `commit`. A store writing straight at the object commits
-   * by doing nothing.
-   *
-   * Whatever happens, a write that threw is discarded. Nothing would ever read
-   * a half-written generation — a generation is read only once the manifest
-   * names it, and the manifest is written after this returns — but nothing
-   * would ever collect it either, and on the staging path that is a local disk
-   * filling up one failed roll-up at a time.
+   * Two steps because they are separate for at least one store: DuckDB can
+   * `COPY … TO` a local path and an `s3://` URI and nothing else, so a Google
+   * bucket is written by copying to a scratch file that the store uploads on
+   * `commit`. A store writing straight at the object commits by doing nothing.
    */
-  private async write(key: string, copy: (into: string) => Promise<unknown>): Promise<void> {
-    const pending = await this.store.beginWrite(key);
-    try {
-      await copy(pending.target);
-      await pending.commit();
-    } catch (error) {
+  private async stage(
+    staged: Staged[],
+    key: string,
+    copy: (into: string) => Promise<unknown>,
+  ): Promise<Staged> {
+    const entry = { key, pending: await this.store.beginWrite(key) };
+    staged.push(entry);
+    await copy(entry.pending.target);
+    return entry;
+  }
+
+  /**
+   * Whatever happened, a write that threw is thrown away. Nothing would ever
+   * read a half-written generation — the manifest names it only after this
+   * returns — but nothing would collect it either, and on the staging path
+   * that is a local disk filling up one failed roll-up at a time.
+   */
+  private async discard(staged: readonly Staged[]): Promise<void> {
+    for (const { key, pending } of staged) {
       await pending.discard().catch((failure: unknown) => {
         this.logger.warn(`Could not clean up an unfinished write of ${key}: ${String(failure)}`);
       });
-      throw error;
     }
   }
 

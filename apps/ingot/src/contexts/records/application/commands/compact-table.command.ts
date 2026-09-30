@@ -124,9 +124,14 @@ export class CompactTableHandler implements ICommandHandler<CompactTable> {
       (performance.now() - started) / 1000,
     );
 
+    // Asked of the store only when the write did not already say.
     const [baseStat, vectorStat] = await Promise.all([
-      this.store.stat(baseTarget),
-      outcome.vectors > 0 ? this.store.stat(vectorTarget) : Promise.resolve(null),
+      outcome.baseBytes !== null ? { bytes: outcome.baseBytes } : this.store.stat(baseTarget),
+      outcome.vectors === 0
+        ? null
+        : outcome.vectorBytes !== null
+          ? { bytes: outcome.vectorBytes }
+          : this.store.stat(vectorTarget),
     ]);
 
     table.rolledUp({

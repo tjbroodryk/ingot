@@ -75,6 +75,9 @@ export interface CompactionRequest {
 export interface CompactionOutcome {
   readonly rows: number;
   readonly vectors: number;
+  /** Sizes of what was written, when the store reported them; null otherwise. */
+  readonly baseBytes: number | null;
+  readonly vectorBytes: number | null;
 }
 
 /**

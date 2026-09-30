@@ -86,7 +86,7 @@ export class S3ObjectStore implements ObjectStore {
     // installed, so the target is the object and there is nothing to publish.
     return {
       target: this.uri(key),
-      commit: async () => {},
+      commit: async () => null,
       // A `COPY … TO` that threw may still have completed a multipart upload.
       // Nothing references it — a generation is read only once the manifest
       // names it — but nothing would ever collect it either.
