@@ -228,4 +228,14 @@ export const retiredGeneration = pgTable(
   ],
 );
 
+/** When each table is next due a roll-up. See `drizzle/0015_roll_up_due.sql`. */
+export const rollUpDue = pgTable(
+  'roll_up_due',
+  {
+    tableId: text('table_id').primaryKey(),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [index('roll_up_due_at').on(table.dueAt)],
+);
+
 export type OverlayRowRecord = typeof overlayRow.$inferSelect;

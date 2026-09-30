@@ -183,7 +183,7 @@ At its core, its just an LSM tree.
                                  ▲
        /file ─► parse ───────────┘  │
                                     │
-                          roll-up sweeper    (every 5 minutes)
+                          roll-up sweeper    (at 1,000 rows or 5 minutes)
                                     ▼
        /query ◄── DuckDB ──►  base tier      (Parquet, in a bucket)
                     ▲               │

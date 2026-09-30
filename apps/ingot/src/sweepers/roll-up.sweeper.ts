@@ -4,107 +4,142 @@ import {
   type OverlayStore,
 } from '../contexts/records/application/ports/overlay-store.port.js';
 import { CompactTable } from '../contexts/records/application/commands/compact-table.command.js';
+import type { Drained } from '../contexts/records/application/drained.js';
 import { ReapGenerations } from '../contexts/records/application/commands/reap-generations.command.js';
+import {
+  ROLL_UP_SETTINGS,
+  type RollUpSettings,
+} from '../contexts/records/application/roll-up-settings.js';
 import { ParquetCache } from '../engine/parquet-cache.js';
-import { Cron, minutes } from './cron.js';
+import { CLOCK, type Clock } from '../shared/domain/index.js';
+import { Cron, minutes, seconds } from './cron.js';
+import { drainWithin } from './drain-within.js';
 import { Dispatcher } from '../shared/application/index.js';
 
-const EVERY = minutes(5);
+/** Near-constant: a table that falls due waits at most this long to be seen. */
+const EVERY = seconds(5);
 
 /**
- * How many tables one tick will roll up.
- *
- * A cap rather than everything, because a compaction rewrites a whole table
- * and a service with a thousand busy tables would spend a tick on the first
- * hundred either way. The bound is announced rather than silent, per
- * `CLAUDE.md` — a sweep that quietly did a tenth of the work reads exactly
- * like one that had nothing to do.
+ * How long one tick keeps taking batches while tables are still due. Under the
+ * scheduler's overrun warning, so a busy tick is not reported as a stuck one.
  */
-const PER_TICK = 25;
+const RUN_FOR = seconds(10);
+
+/** Tables taken per batch. `INGOT_ROLLUP_CONCURRENCY` of them compact at once. */
+const BATCH = 25;
+
+/** How long a table whose roll-up failed waits before it is tried again. */
+const RETRY_AFTER = minutes(1);
 
 /**
- * How deep an overlay has to get before it is worth rewriting Parquet.
- *
- * Too low and every tick rewrites a whole table to fold in three rows. Too
- * high and queries carry a large overlay through every session. This is the
- * knob that trades write amplification against read cost.
+ * How often the rest runs: deleting replaced generations, sweeping the Parquet
+ * cache, and scheduling any table a racing write left unscheduled.
  */
-const MIN_OVERLAY_ROWS = 1_000;
+const HOUSEKEEPING_EVERY = minutes(5);
 
 /**
- * Folds the overlay into the base tier.
+ * Rolls up the tables `roll_up_due` says are due.
  *
- * This is the sweeper that needs `Scheduler`'s advisory lock, and the reason it
- * exists. `CompactTable` has no mutual exclusion of its own: two replicas
- * rolling the same table up would both compute `generation + 1`, write to the
- * same keys and both flip the manifest. One replica at a time is what makes
- * that impossible, and it is the only guarantee here that a second pod could
- * break.
+ * A write schedules its table `INGOT_ROLLUP_INTERVAL_MS` ahead, or for now once
+ * the overlay reaches `INGOT_ROLLUP_MIN_ROWS`. This takes due tables in
+ * batches, compacts `INGOT_ROLLUP_CONCURRENCY` of each batch at a time, and
+ * goes straight on to the next batch until nothing is due.
  *
- * A tick that dies part-way is simply run again from the top on the next turn.
- * That costs a repeated listing and nothing else: a table whose manifest
- * already flipped has no watermark left to fold and `CompactTable` returns
- * `null` for it.
+ * Exclusive, and the lock is why. `CompactTable` has no mutual exclusion of
+ * its own: two replicas rolling the same table up would both compute
+ * `generation + 1`, write to the same keys and both flip the manifest. Within
+ * one replica a batch never holds the same table twice.
  *
- * It dispatches `CompactTable` rather than compacting inline, which is the
- * same rule the API's sweepers follow — one write path per fact, so a manual
- * compaction and a swept one cannot disagree.
+ * A tick that dies part-way loses nothing: a table's schedule is only rewritten
+ * by the compaction that consumed it, in the same transaction.
  */
 @Cron({
   name: 'roll-up-ingots',
   everyMs: EVERY,
-  // Said rather than defaulted, because this is the sweep the lock exists for
-  // and the note above is the reasoning.
   exclusive: true,
   description: 'Rolls overlay rows up into new Parquet generations',
 })
 export class RollUpSweeper {
   private readonly logger = new Logger(RollUpSweeper.name);
+  private housekeptAt = 0;
 
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
     private readonly cache: ParquetCache,
+    @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(ROLL_UP_SETTINGS) private readonly settings: RollUpSettings,
   ) {}
 
   async tick(): Promise<void> {
-    const candidates = await this.overlay.tablesWorthCompacting(MIN_OVERLAY_ROWS, PER_TICK + 1);
+    await drainWithin(RUN_FOR, () => this.batch());
 
-    if (candidates.length > PER_TICK) {
-      this.logger.log(
-        `${candidates.length} tables are over the roll-up threshold; this tick takes ` +
-          `${PER_TICK}. The rest go in the next one.`,
+    const now = this.clock.now().getTime();
+    if (now - this.housekeptAt >= HOUSEKEEPING_EVERY) {
+      this.housekeptAt = now;
+      await this.housekeep();
+    }
+  }
+
+  /** One batch of due tables, compacted `concurrency` at a time. */
+  async batch(): Promise<Drained> {
+    const due = await this.overlay.dueForRollUp(this.clock.now(), BATCH);
+    const queue = [...due];
+    let done = 0;
+
+    const worker = async (): Promise<void> => {
+      for (let tableId = queue.shift(); tableId; tableId = queue.shift()) {
+        if (await this.rollUp(tableId)) done += 1;
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(this.settings.concurrency, due.length) }, worker),
+    );
+
+    return { done, more: due.length === BATCH };
+  }
+
+  private async rollUp(tableId: string): Promise<boolean> {
+    try {
+      await this.dispatcher.send(new CompactTable(tableId));
+      return true;
+    } catch (error) {
+      // Pushed back rather than left due, or the next batch would take it
+      // straight back and a broken table would spin.
+      this.logger.error(
+        `Rolling up ${tableId} failed: ` +
+          `${error instanceof Error ? error.message : String(error)}. ` +
+          `Trying again in ${RETRY_AFTER / 60_000} minute(s).`,
+      );
+      await this.overlay
+        .postponeRollUp(tableId, new Date(this.clock.now().getTime() + RETRY_AFTER))
+        .catch(() => {});
+      return false;
+    }
+  }
+
+  private async housekeep(): Promise<void> {
+    try {
+      const found = await this.overlay.scheduleUnscheduled();
+      if (found > 0) {
+        this.logger.warn(
+          `${found} table(s) had overlay rows and no roll-up scheduled; scheduled them now.`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Scheduling unscheduled roll-ups failed: ` +
+          `${error instanceof Error ? error.message : String(error)}. The next pass tries again.`,
       );
     }
 
-    for (const candidate of candidates.slice(0, PER_TICK)) {
-      /*
-       * One table failing does not cost the rest of the tick.
-       *
-       * Restate used to give each its own journalled step, so a retry resumed
-       * at the one that failed. Without a journal the equivalent is to keep
-       * going and let the next tick find whatever did not compact — which is
-       * the better shape anyway: a single unhealthy table used to stall every
-       * table behind it in the same pass.
-       */
-      try {
-        await this.dispatcher.send(new CompactTable(candidate.tableId));
-      } catch (error) {
-        this.logger.error(
-          `Rolling up ${candidate.tableId} failed: ` +
-            `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
-        );
-      }
-    }
-
-    // Here rather than a sweep of its own: it deletes what a roll-up retired,
-    // and wants the same one-replica-at-a-time lock.
+    // Under this lock because it deletes what a roll-up retired.
     try {
       await this.dispatcher.send(new ReapGenerations());
     } catch (error) {
       this.logger.error(
         `Reaping replaced generations failed: ` +
-          `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+          `${error instanceof Error ? error.message : String(error)}. The next pass tries again.`,
       );
     }
 
@@ -115,7 +150,7 @@ export class RollUpSweeper {
     } catch (error) {
       this.logger.error(
         `Sweeping the Parquet cache failed: ` +
-          `${error instanceof Error ? error.message : String(error)}. The next tick tries again.`,
+          `${error instanceof Error ? error.message : String(error)}. The next pass tries again.`,
       );
     }
   }

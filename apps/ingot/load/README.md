@@ -61,12 +61,12 @@ deliberate: it is what makes running a caller's own SQL safe. This says what it
 costs and where it stops being linear.
 
 **`overlay-depth.js`** — the measurement the two-tier design rests on. Ingot
-bets that reads stay acceptable while rows sit in the overlay, and the sweeper's
-`MIN_OVERLAY_ROWS` is a number attached to that bet. This writes in steps and
-queries at each one, so what comes out is the curve that says where the
-threshold should actually be. **Run it with the roll-up sweeper held off**, or
-the compaction happens underneath the measurement and flattens the very curve it
-is trying to show.
+bets that reads stay acceptable while rows sit in the overlay, and
+`INGOT_ROLLUP_MIN_ROWS` is a number attached to that bet. This writes in steps
+and queries at each one, so what comes out is the curve that says where the
+threshold should actually be. **Run it with the roll-up sweeper held off** —
+both variables set high — or the compaction happens underneath the measurement
+and flattens the very curve it is trying to show.
 
 The sweepers are timers inside the service now. Roll-up takes a Postgres
 advisory lock before it runs (the queue sweeps do not), so the way to hold it

@@ -135,6 +135,11 @@ data:
   # ── replaced Parquet ────────────────────────────────────────────────────
   INGOT_GENERATION_GRACE_MS: {{ .Values.config.generationGraceMs | quote }}
 
+  # ── roll-up ─────────────────────────────────────────────────────────────
+  INGOT_ROLLUP_MIN_ROWS: {{ .Values.config.rollUp.minRows | quote }}
+  INGOT_ROLLUP_INTERVAL_MS: {{ .Values.config.rollUp.intervalMs | quote }}
+  INGOT_ROLLUP_CONCURRENCY: {{ .Values.config.rollUp.concurrency | quote }}
+
   # ── the query engine ────────────────────────────────────────────────────
   INGOT_QUERY_MEMORY_LIMIT: {{ .Values.config.query.memoryLimit | quote }}
   INGOT_QUERY_THREADS: {{ .Values.config.query.threads | quote }}

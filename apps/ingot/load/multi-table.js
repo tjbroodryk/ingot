@@ -18,10 +18,10 @@ import {
  * at a time, keeping `t0` fixed, and prints the curve — which should now be
  * flat.
  *
- * Each table stops at ROWS, which defaults to under the roll-up sweeper's
- * `MIN_OVERLAY_ROWS` (1000), so nothing is compacted underneath the
- * measurement and there is no advisory lock to hold. Above 1000 the sweeper
- * may fold a table within five minutes and the curve flattens.
+ * Each table stops at ROWS, which defaults to under `INGOT_ROLLUP_MIN_ROWS`
+ * (1000), so nothing is compacted underneath the measurement for the first
+ * `INGOT_ROLLUP_INTERVAL_MS` (five minutes). A longer run, or one above 1000
+ * rows, needs both raised on the server or the curve flattens.
  */
 const TABLES = Number(__ENV.TABLES || 10);
 const ROWS = Number(__ENV.ROWS || 900);

@@ -1,26 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import {
-  and,
-  asc,
-  count,
-  eq,
-  gt,
-  gte,
-  inArray,
-  lt,
-  lte,
-  min,
-  notExists,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, asc, count, eq, gt, gte, inArray, lt, lte, notExists, or, sql } from 'drizzle-orm';
 import { oldestAge } from '../../../../shared/infrastructure/postgres/oldest-age.js';
 import { PgUnitOfWork } from '../../../../shared/infrastructure/postgres/pg-unit-of-work.js';
 import type { MappedRow } from '../../domain/row-mapping.vo.js';
 import {
   CLAIM_LEASE_MS,
   type FoldedVector,
-  type OverlayDepth,
   type OverlayRow,
   type OverlayStore,
   type PendingOverlayRow,
@@ -28,12 +13,14 @@ import {
   type PendingEmbedding,
   type Tombstone,
 } from '../../application/ports/overlay-store.port.js';
+import { ROLL_UP_SETTINGS, type RollUpSettings } from '../../application/roll-up-settings.js';
 import {
   overlayReceiptQueue,
   overlayEmbedQueue,
   overlayRow,
   overlayTombstone,
   overlayVector,
+  rollUpDue,
 } from './schema.js';
 
 /** Postgres caps a statement's parameters at 65535; stay well inside it. */
@@ -59,7 +46,10 @@ function chunked<T>(values: readonly T[], size: number): T[][] {
 
 @Injectable()
 export class PgOverlayStore implements OverlayStore {
-  constructor(private readonly uow: PgUnitOfWork) {}
+  constructor(
+    private readonly uow: PgUnitOfWork,
+    @Inject(ROLL_UP_SETTINGS) private readonly rollUp: RollUpSettings,
+  ) {}
 
   async append(input: {
     ingotId: string;
@@ -81,6 +71,7 @@ export class PgOverlayStore implements OverlayStore {
         })),
       );
     }
+    await this.scheduleRollUp(input.tableId, now, overlayRow);
 
     if (input.embeddable.length === 0) return 0;
 
@@ -209,6 +200,97 @@ export class PgOverlayStore implements OverlayStore {
         .delete(overlayVector)
         .where(and(eq(overlayVector.tableId, tableId), inArray(overlayVector.rowId, chunk)));
     }
+    await this.scheduleRollUp(tableId, at, overlayTombstone);
+  }
+
+  /**
+   * Starts the table's roll-up clock if it is not already running, and brings
+   * it forward to now once `target` holds `minRows` for the table.
+   *
+   * Neither statement locks a schedule row that does not need changing, so
+   * concurrent writes to one table do not queue behind each other here.
+   */
+  private async scheduleRollUp(
+    tableId: string,
+    now: Date,
+    target: typeof overlayRow | typeof overlayTombstone,
+  ): Promise<void> {
+    const due = new Date(now.getTime() + this.rollUp.intervalMs);
+    await this.uow.queryable
+      .insert(rollUpDue)
+      .values({ tableId, dueAt: due })
+      .onConflictDoNothing();
+
+    await this.uow.queryable.execute(sql`
+      UPDATE roll_up_due SET due_at = ${now}
+      WHERE table_id = ${tableId}
+        AND due_at > ${now}
+        AND (SELECT count(*) FROM ${target} WHERE table_id = ${tableId}) >= ${this.rollUp.minRows}
+    `);
+  }
+
+  async dueForRollUp(now: Date, limit: number): Promise<readonly string[]> {
+    const due = await this.uow.queryable
+      .select({ tableId: rollUpDue.tableId })
+      .from(rollUpDue)
+      .where(lte(rollUpDue.dueAt, now))
+      .orderBy(asc(rollUpDue.dueAt))
+      .limit(limit);
+    return due.map((row) => row.tableId);
+  }
+
+  /**
+   * After a roll-up: due again from the oldest of what is left, now if what
+   * is left is already over `minRows`, or unscheduled if nothing is.
+   */
+  async rescheduleRollUp(tableId: string, now: Date): Promise<void> {
+    const result = await this.uow.queryable.execute<{
+      oldest: Date | string | null;
+      deepest: number | string;
+    }>(sql`
+      SELECT min(at) AS oldest, max(n) AS deepest FROM (
+        SELECT min(ingested_at) AS at, count(*) AS n FROM overlay_row WHERE table_id = ${tableId}
+        UNION ALL
+        SELECT min(at), count(*) FROM overlay_tombstone WHERE table_id = ${tableId}
+      ) waiting
+    `);
+    const left = result.rows[0];
+
+    if (!left?.oldest) {
+      await this.uow.queryable.delete(rollUpDue).where(eq(rollUpDue.tableId, tableId));
+      return;
+    }
+    const due =
+      Number(left.deepest) >= this.rollUp.minRows
+        ? now
+        : new Date(new Date(left.oldest).getTime() + this.rollUp.intervalMs);
+    await this.uow.queryable
+      .insert(rollUpDue)
+      .values({ tableId, dueAt: due })
+      .onConflictDoUpdate({ target: rollUpDue.tableId, set: { dueAt: due } });
+  }
+
+  async postponeRollUp(tableId: string, until: Date): Promise<void> {
+    await this.uow.queryable
+      .update(rollUpDue)
+      .set({ dueAt: until })
+      .where(eq(rollUpDue.tableId, tableId));
+  }
+
+  async scheduleUnscheduled(): Promise<number> {
+    const result = await this.uow.queryable.execute(sql`
+      INSERT INTO roll_up_due (table_id, due_at)
+      SELECT table_id, min(at) + ${`${this.rollUp.intervalMs} milliseconds`}::interval
+      FROM (
+        SELECT table_id, ingested_at AS at FROM overlay_row
+        UNION ALL
+        SELECT table_id, at FROM overlay_tombstone
+      ) waiting
+      WHERE NOT EXISTS (SELECT 1 FROM roll_up_due d WHERE d.table_id = waiting.table_id)
+      GROUP BY table_id
+      ON CONFLICT (table_id) DO NOTHING
+    `);
+    return result.rowCount ?? 0;
   }
 
   /**
@@ -310,6 +392,7 @@ export class PgOverlayStore implements OverlayStore {
     await this.uow.queryable
       .delete(overlayEmbedQueue)
       .where(eq(overlayEmbedQueue.tableId, tableId));
+    await this.uow.queryable.delete(rollUpDue).where(eq(rollUpDue.tableId, tableId));
   }
 
   async purgeIngot(ingotId: string): Promise<void> {
@@ -359,62 +442,13 @@ export class PgOverlayStore implements OverlayStore {
       SELECT ${toTableId}, row_id, column_name, text, NULL, queued_at
       FROM overlay_embed_queue WHERE table_id = ${fromTableId}
     `);
-  }
-
-  /**
-   * Tables worth rewriting Parquet for.
-   *
-   * Two reasons qualify, and the second is easy to miss: a table with a deep
-   * overlay has rows to fold in, and a table with *any* tombstone has rows to
-   * leave out. A delete writes no overlay rows at all, so a table that is only
-   * ever deleted from would never be swept — its tombstones would accumulate
-   * and the forgotten rows would stay in the base file indefinitely, filtered
-   * out on every single query forever.
-   */
-  async tablesWorthCompacting(
-    minimumRows: number,
-    limit: number,
-  ): Promise<readonly OverlayDepth[]> {
-    const deep = await this.uow.queryable
-      .select({
-        tableId: overlayRow.tableId,
-        rows: count(),
-        oldest: min(overlayRow.ingestedAt),
-      })
-      .from(overlayRow)
-      .groupBy(overlayRow.tableId)
-      .having(sql`count(*) >= ${minimumRows}`)
-      .limit(limit);
-
-    const forgotten = await this.uow.queryable
-      .select({
-        tableId: overlayTombstone.tableId,
-        tombstones: count(),
-        oldest: min(overlayTombstone.at),
-      })
-      .from(overlayTombstone)
-      .groupBy(overlayTombstone.tableId)
-      .limit(limit);
-
-    const merged = new Map<string, OverlayDepth>();
-    for (const row of deep) {
-      merged.set(row.tableId, {
-        tableId: row.tableId,
-        rows: row.rows,
-        tombstones: 0,
-        oldest: row.oldest ?? new Date(),
-      });
-    }
-    for (const row of forgotten) {
-      const existing = merged.get(row.tableId);
-      merged.set(row.tableId, {
-        tableId: row.tableId,
-        rows: existing?.rows ?? 0,
-        tombstones: row.tombstones,
-        oldest: existing?.oldest ?? row.oldest ?? new Date(),
-      });
-    }
-    return [...merged.values()].slice(0, limit);
+    // The copy's overlay is as old as the source's, so it is due when that is.
+    await this.uow.queryable.execute(sql`
+      INSERT INTO roll_up_due (table_id, due_at)
+      SELECT ${toTableId}, due_at
+      FROM roll_up_due WHERE table_id = ${fromTableId}
+      ON CONFLICT (table_id) DO NOTHING
+    `);
   }
 
   /**

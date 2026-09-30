@@ -24,7 +24,7 @@ An LSM tree, and everything else follows from it.
 ```
         /add ──────────────►  overlay        (Postgres, queryable instantly)
                                  │
-                          roll-up sweeper    (every 5 minutes)
+                          roll-up sweeper    (at 1,000 rows or 5 minutes)
                                  ▼
        /query ◄── DuckDB ──►  base tier      (Parquet, in a bucket)
                     ▲            │
@@ -39,8 +39,9 @@ An LSM tree, and everything else follows from it.
   is accepted. Nothing waits on a file being rewritten.
 - **Reads union the two.** One logical table per tool, whether a row arrived
   four seconds or four weeks ago.
-- **A sweeper folds the overlay into new Parquet** on a schedule, and the same
-  question gets the same answer either side of that. That property is not a
+- **A sweeper folds the overlay into new Parquet** `INGOT_ROLLUP_INTERVAL_MS`
+  after a table's first write, or as soon as it has `INGOT_ROLLUP_MIN_ROWS`
+  waiting, and the same question gets the same answer either side of that. That property is not a
   nice-to-have; it is the only thing that makes two tiers worth having, and
   `test/application/rollup-equivalence.test.ts` is what holds it up.
 

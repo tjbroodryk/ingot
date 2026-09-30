@@ -42,6 +42,7 @@ export const TABLES = [
   'receipt_delivery_queue',
   'retired_generation',
   'parquet_cache_file',
+  'roll_up_due',
 ];
 
 export interface TestDatabase {

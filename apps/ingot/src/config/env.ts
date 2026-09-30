@@ -5,6 +5,7 @@ import { authEnv } from '../auth/auth-settings.js';
 import { filesEnv } from '../contexts/files/application/file-settings.js';
 import { concurrencyEnv } from '../contexts/records/application/background-settings.js';
 import { generationGraceEnv } from '../contexts/records/application/generation-grace.js';
+import { rollUpEnv } from '../contexts/records/application/roll-up-settings.js';
 import { databaseEnv } from '../database/database-settings.js';
 import { deliveryEnv } from '../delivery/delivery-settings.js';
 import { engineEnv, parquetCacheEnv } from '../engine/engine-settings.js';
@@ -32,6 +33,7 @@ const SECTIONS = {
   files: filesEnv,
   concurrency: concurrencyEnv,
   generationGraceMs: generationGraceEnv,
+  rollUp: rollUpEnv,
   telemetry: telemetryEnv,
 };
 
