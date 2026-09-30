@@ -1,11 +1,14 @@
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { AppModule } from '../../src/app.module.js';
+import { RollUpSweeper } from '../../src/sweepers/roll-up.sweeper.js';
+import { testEnv } from '../support/env.js';
 import { readCronSpec } from '../../src/sweepers/cron.js';
 import { drainWithin } from '../../src/sweepers/drain-within.js';
 import { ExclusiveWork, hash32 } from '../../src/sweepers/exclusive.js';
 import { SweptKind } from '../../src/sweepers/kinds.js';
-import { Scheduler } from '../../src/sweepers/scheduler.js';
+import { Scheduler, TICKERS } from '../../src/sweepers/scheduler.js';
 import { SWEEPERS } from '../../src/sweepers/sweepers.module.js';
 import { compileAppModule } from '../support/app.js';
 import { closeDatabase, openDatabase } from '../support/database.js';
@@ -146,6 +149,18 @@ describe('the sweepers', () => {
 
   it('is scheduled by the real graph', () => {
     expect(app.get(Scheduler, { strict: false })).toBeDefined();
+  });
+
+  // Compiled, never initialised: the ticker list is read without starting it.
+  it('leaves out the sweeps INGOT_SKIP_SWEEPERS names', async () => {
+    const skipping = await Test.createTestingModule({
+      imports: [AppModule.forRoot(testEnv({ INGOT_SKIP_SWEEPERS: 'roll_up' }))],
+    }).compile();
+    const tickers = skipping.get<readonly unknown[]>(TICKERS, { strict: false });
+
+    expect(tickers).not.toContain(RollUpSweeper);
+    expect(tickers).toHaveLength(Object.keys(SWEEPERS).length - 1);
+    await skipping.close();
   });
 });
 
