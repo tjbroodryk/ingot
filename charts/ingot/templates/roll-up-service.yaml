@@ -1,0 +1,19 @@
+{{- if .Values.rollUp.enabled }}
+# Metrics only, and headless: nothing sends the roll-up pod requests, but a
+# ServiceMonitor needs a Service to find its `/metrics` through.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingot.fullname" . }}-roll-up
+  labels:
+    {{- include "ingot.rollUp.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "ingot.rollUp.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.server.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

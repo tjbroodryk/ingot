@@ -1,6 +1,7 @@
 # Ingot, as a Helm chart
 
-The server, the site, and a migration that runs before either.
+The server, a roll-up worker, the site, and a migration that runs before
+them.
 
 ```bash
 kubectl create namespace ingot
@@ -113,7 +114,8 @@ The migration hook re-runs on every upgrade, ahead of the new pods.
 | `config.storage` | `s3`, `gcs` or `filesystem`, and what each then needs |
 | `config.tracing.enabled` | off, said out loud — the service's own default is on and pointed at a localhost that is not there inside a pod |
 | `server.resources` | the memory limit is a multiple of `config.query.memoryLimit`, not equal to it |
-| `server.autoscaling` | safe because roll-up takes an advisory lock and the queues lease their rows. CPU by default; `metrics` adds background load or lag via a metrics adapter |
+| `server.autoscaling` | safe because roll-up is in its own pod (or under an advisory lock) and the queues lease their rows. CPU by default; `metrics` adds background load or lag via a metrics adapter |
+| `rollUp.*` | on. The same image running `dist/roll-up.js`, so compaction is sized here and the server pods skip it. Size `rollUp.resources` for `config.rollUp.concurrency` × `config.query.memoryLimit`. Off for filesystem storage on a ReadWriteOnce volume |
 | `config.background.*` | drains per queue, **per replica** — what a provider sees is this times the pod count |
 | `config.query.parquetCache` | off. A budget turns it on and needs a ReadWriteMany volume every server pod shares |
 | `app.apiUrl` | where the site forwards `/api/`. Empty is this release's server |

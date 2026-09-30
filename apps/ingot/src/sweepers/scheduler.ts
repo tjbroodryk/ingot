@@ -87,7 +87,10 @@ export class Scheduler implements OnApplicationBootstrap, OnModuleDestroy {
       }
 
       this.logger.log(
-        `${spec.name} sweeps every ${spec.everyMs / 60_000} minute(s), ` +
+        `${spec.name} sweeps every ` +
+          (spec.everyMs < 60_000
+            ? `${spec.everyMs / 1_000}s, `
+            : `${spec.everyMs / 60_000} minute(s), `) +
           `${spec.exclusive ?? true ? 'one replica at a time' : 'on every replica'}`,
       );
       // Immediately, rather than one interval from now: a pod that has just

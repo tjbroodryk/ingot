@@ -12,6 +12,7 @@ import { engineEnv, parquetCacheEnv } from '../engine/engine-settings.js';
 import { httpEnv } from '../http/body-limit.js';
 import { telemetryEnv } from '../observability/config.js';
 import { storageEnv } from '../storage/storage-settings.js';
+import { sweepersEnv } from '../sweepers/sweeper-settings.js';
 import type { Section } from './vars.js';
 
 /**
@@ -34,6 +35,7 @@ const SECTIONS = {
   concurrency: concurrencyEnv,
   generationGraceMs: generationGraceEnv,
   rollUp: rollUpEnv,
+  sweepers: sweepersEnv,
   telemetry: telemetryEnv,
 };
 

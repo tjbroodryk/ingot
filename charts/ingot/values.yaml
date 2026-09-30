@@ -62,9 +62,9 @@ server:
       memory: 3Gi
       ephemeral-storage: 6Gi
 
-  # Scaling the API is safe in a way worth being explicit about: roll-up and
-  # expiry take a Postgres advisory lock, so ten replicas are still one
-  # compaction. The queue sweepers lease their rows and run on every replica,
+  # Scaling the API is safe in a way worth being explicit about: roll-up runs
+  # in its own pod (`rollUp`), or under an advisory lock when it does not, and
+  # expiry takes one too. The queue sweepers lease their rows and run on every replica,
   # so more pods do drain embeddings, receipts, deliveries and files faster.
   #
   # Needs metrics-server. Without it the HPA reads `<unknown>/70%` and holds at
@@ -126,6 +126,44 @@ server:
   tolerations: []
   # Soft rather than required: on a single-node cluster a required rule leaves
   # the second replica Pending forever. Replace the whole block to change it.
+  affinity: {}
+
+# ── the roll-up worker ─────────────────────────────────────────────────────
+# The same image running `dist/roll-up.js`: the roll-up sweep and nothing
+# else, so compaction's DuckDB sessions are sized here and not on every API
+# pod. The server pods are told to skip that sweep. Off, the server rolls up as
+# it would on its own.
+#
+# Filesystem storage on a ReadWriteOnce volume cannot share the base tier with
+# a second pod; turn this off for that setup.
+rollUp:
+  enabled: true
+
+  # One does the work — the sweep takes an advisory lock. A second is a warm
+  # standby that takes over when the first goes away.
+  replicaCount: 1
+
+  # Sized for `config.rollUp.concurrency` compactions, each allowed up to
+  # `config.query.memoryLimit`, plus the runtime. Raise the two together.
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+      ephemeral-storage: 6Gi
+    limits:
+      memory: 6Gi
+      ephemeral-storage: 6Gi
+
+  # Where DuckDB spills and a GCS roll-up stages Parquet; see `server.scratch`.
+  scratch:
+    sizeLimit: 5Gi
+
+  # Long enough for a batch in flight to finish rather than be cut off.
+  terminationGracePeriodSeconds: 120
+
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
   affinity: {}
 
 # ── the site ───────────────────────────────────────────────────────────────
@@ -406,8 +444,9 @@ config:
 
   # When a table's overlay is rolled up into Parquet: `intervalMs` after its
   # first write, or as soon as it holds `minRows` rows, whichever comes first.
-  # `concurrency` is how many tables a replica compacts at once; each may use up
-  # to `query.memoryLimit`, so raise it with `server.resources`.
+  # `concurrency` is how many tables are compacted at once; each may use up to
+  # `query.memoryLimit`, so raise it with `rollUp.resources` (or
+  # `server.resources` when `rollUp.enabled` is off).
   rollUp:
     minRows: 1000
     intervalMs: 300000
