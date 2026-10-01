@@ -210,3 +210,41 @@ describe('a receipt', () => {
     expect(await world.sql(ingot, two)).toHaveLength(1);
   });
 });
+
+describe('a receipt with no summariser', () => {
+  let world: World;
+  let ingot: string;
+
+  beforeAll(async () => {
+    world = await makeWorld({ env: { INGOT_SUMMARISER: 'off' } });
+    ingot = await world.ingot('an ingot that does not summarise');
+  });
+
+  afterAll(async () => {
+    await world.close();
+  });
+
+  it('answers "full" as "schema", and queues nothing', async () => {
+    // Not refused: a caller written against a deployment that summarises
+    // still gets its rows and the query that finds them. The receipt says
+    // nothing will follow rather than promising a précis that never comes.
+    const added = await world.add(ingot, {
+      table: 'pr_files',
+      columns: { path: { from: '$.filename', type: ColumnType.Varchar } },
+      rows: '$.files[*]',
+      receipt: ReceiptKind.Full,
+      externalId: 'call_1',
+      result: { files: [{ filename: 'src/engine.ts' }] },
+    });
+
+    expect(added.receipt).toMatchObject({
+      externalId: 'call_1',
+      totalResults: 1,
+      status: ReceiptStatus.None,
+      model: null,
+      receiptQuery: null,
+    });
+    expect(await world.sql(ingot, added.receipt?.query as string)).toHaveLength(1);
+    expect(await world.summariseAll()).toBe(0);
+  });
+});

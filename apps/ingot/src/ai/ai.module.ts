@@ -12,6 +12,7 @@ import {
   type EmbedderSettings,
   OCR_OFF,
   type OcrSettings,
+  SUMMARISER_OFF,
   type SummariserSettings,
 } from './ai-settings.js';
 import { EMBEDDER, type Embedder } from './embedder.port.js';
@@ -77,7 +78,20 @@ class OcrShutdown implements OnApplicationShutdown {
     {
       provide: SUMMARISER,
       inject: [ENV, GOOGLE_CREDENTIALS],
-      useFactory: (env: Env, google: GoogleCredentials): Summariser => {
+      /**
+       * Null when `INGOT_SUMMARISER` is off, the default, for the reason OCR
+       * is: no adapter is the honest answer. `ReceiptBuilder` answers a
+       * `receipt: "full"` as `schema` and nothing is ever queued.
+       */
+      useFactory: (env: Env, google: GoogleCredentials): Summariser | null => {
+        if (env.ai.summariser.provider === SUMMARISER_OFF) {
+          Logger.log(
+            'Not summarising receipts — receipt: "full" is answered as "schema". Set ' +
+              'INGOT_SUMMARISER to write them.',
+            'Ai',
+          );
+          return null;
+        }
         const summariser = buildSummariser(env.ai.summariser, google);
         announce('Summarising', summariser.model, 'receipts', 'INGOT_SUMMARISER');
         return summariser;
@@ -200,6 +214,10 @@ export function buildSummariser(
   settings: SummariserSettings,
   google: GoogleCredentials = new GoogleCredentials(),
 ): Summariser {
+  if (settings.provider === SUMMARISER_OFF) {
+    throw new Error('buildSummariser was given "off". The module returns null for that instead.');
+  }
+
   const make = SUMMARISERS[settings.provider] as (
     of: SummariserSettings,
     google: GoogleCredentials,

@@ -75,7 +75,25 @@ export interface GcpEmbedder {
 
 // ── summarising ─────────────────────────────────────────────────────────────
 
-export type SummariserSettings = LocalSummariser | OpenAiSummariser | GcpSummariser;
+/**
+ * Off unless asked for, like OCR — and unlike the embedder, which this used to
+ * mirror.
+ *
+ * The stand-in is still there to name, but it is no longer what an unset
+ * variable gets. An extractive précis is a sentence about column names, and a
+ * deployment that never chose one was writing it into `ingot_receipts` and
+ * embedding it beside the real results — so a semantic search over receipts
+ * ranked boilerplate. Off, `receipt: "full"` is answered as `schema`: the
+ * rows and their queries, `status: none`, and nothing queued.
+ */
+export const SUMMARISER_OFF = 'off';
+
+export type SummariserSettings =
+  SummariserDisabled | LocalSummariser | OpenAiSummariser | GcpSummariser;
+
+export interface SummariserDisabled {
+  readonly provider: typeof SUMMARISER_OFF;
+}
 
 export interface LocalSummariser {
   readonly provider: AiProvider.Local;
@@ -101,10 +119,10 @@ export interface GcpSummariser {
 // ── reading scans ───────────────────────────────────────────────────────────
 
 /**
- * The third purchase, and the only one that is off unless asked for.
+ * The third purchase, and off unless asked for, like summarising.
  *
- * Embedding and summarising both have a free stand-in, so their selector picks
- * *which* rather than *whether*. OCR has no sensible stand-in — there is no
+ * Embedding has a free stand-in, so its selector picks *which* rather than
+ * *whether*. OCR has no sensible stand-in — there is no
  * cheap approximation of reading a photograph of a page — and it is paid per
  * page of a scan, so the honest default is that a deployment which never
  * uploads one installs nothing and pays nothing.
@@ -224,14 +242,16 @@ const dimensions = (fallback: number) =>
 const url = () => text().transform((raw) => raw?.replace(/\/+$/, ''));
 
 const VARS = {
-  // Unset is the local stand-in for these two, and nothing at all for OCR.
+  // Unset is the local stand-in for the embedder, and nothing at all for the
+  // other two.
   INGOT_EMBEDDER: choice(
     Object.values(AiProvider),
     `, which is not a provider this service has. ${PROVIDERS}`,
   ),
   INGOT_SUMMARISER: choice(
-    Object.values(AiProvider),
-    `, which is not a provider this service has. ${PROVIDERS}`,
+    [SUMMARISER_OFF, ...Object.values(AiProvider)],
+    `, which is not a way to write a receipt. Choose one of: ${SUMMARISER_OFF}, ` +
+      `${Object.values(AiProvider).join(', ')}.`,
   ),
   INGOT_OCR: choice(
     [OCR_OFF, ...Object.values(AiProvider)],
@@ -285,7 +305,7 @@ export interface AiSettings {
 export const aiEnv = section(VARS, (vars, ctx): AiSettings => {
   // All three built before any is refused, so each one's problem is reported.
   const embedder = EMBEDDER_BUILDERS[vars.INGOT_EMBEDDER ?? AiProvider.Local](vars, ctx);
-  const summariser = SUMMARISER_BUILDERS[vars.INGOT_SUMMARISER ?? AiProvider.Local](vars, ctx);
+  const summariser = summariserFrom(vars, ctx);
   const ocr = ocrFrom(vars, ctx);
 
   if (embedder === undefined || summariser === undefined || ocr === undefined) return z.NEVER;
@@ -295,9 +315,8 @@ export const aiEnv = section(VARS, (vars, ctx): AiSettings => {
 /**
  * What reads a scanned page, and what happens when it cannot.
  *
- * `INGOT_OCR` unset means off, which is the one place this differs from the
- * other two selectors: an unset embedder is the stand-in, an unset OCR is
- * nothing at all. See `OCR_OFF`.
+ * `INGOT_OCR` unset means off, as `INGOT_SUMMARISER` does: an unset embedder
+ * is the stand-in, an unset OCR is nothing at all. See `OCR_OFF`.
  *
  * **The fallback is declared, never inferred.** Naming a hosted model and a
  * tessdata directory together means "model first, Tesseract for the pages it
@@ -419,6 +438,13 @@ const EMBEDDER_BUILDERS: Record<
     };
   },
 };
+
+function summariserFrom(vars: AiVars, ctx: Ctx): SummariserSettings | undefined {
+  const named = vars.INGOT_SUMMARISER;
+  if (named === undefined || named === SUMMARISER_OFF) return { provider: SUMMARISER_OFF };
+
+  return SUMMARISER_BUILDERS[named](vars, ctx);
+}
 
 const SUMMARISER_BUILDERS: Record<
   AiProvider,

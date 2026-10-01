@@ -338,7 +338,10 @@ export class Ingot {
   async waitForReceipt(added: AddResult, options: WaitOptions = {}): Promise<ReceiptRow> {
     const query = added.receipt?.receiptQuery;
     if (!query) {
-      throw new TypeError('waitForReceipt needs an /add made with receipt: "full"');
+      throw new TypeError(
+        'waitForReceipt needs an /add made with receipt: "full", on a deployment with ' +
+          'INGOT_SUMMARISER set',
+      );
     }
     return this.poll<ReceiptRow>(
       query,
