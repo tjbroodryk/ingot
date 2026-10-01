@@ -36,6 +36,7 @@ the single place all of its traffic passes through:
 | Writes           | `records/…/add-records.command`                        | `ingot_rows_ingested_total`                                                  |
 | Overlay depth    | `records/…/overlay-collectors`                         | `ingot_overlay_rows`                                                         |
 | DuckDB sessions  | `query/…/query-ingot.query`, `engine/duckdb-engine.ts` | `ingot_query_session_duration_seconds`, `…_rows_returned`                    |
+| Session memory   | `engine/duckdb-engine.ts`                              | `ingot_session_memory_bytes`, `…_spilled_bytes`, `…_parquet_bytes`           |
 | Refused SQL      | `engine/duckdb-engine.ts`                              | `ingot_sql_refused_total`                                                    |
 | Parquet cache    | `engine/parquet-cache.ts`                              | `ingot_parquet_cache_requests_total`, `…_bytes`, `…_evictions_total`         |
 | Roll-up          | `records/…/table-roll-up`                              | `ingot_compaction_duration_seconds`, `ingot_rows_compacted_total`            |

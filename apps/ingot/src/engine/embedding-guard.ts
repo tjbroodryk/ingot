@@ -193,7 +193,7 @@ function isTableRef(node: Node, ancestors: readonly Node[]): boolean {
 }
 
 /** Table names, aliases and CTE names: anything a bare identifier could mean as a row. */
-function collectRelations(value: unknown, into: Set<string>): void {
+export function collectRelations(value: unknown, into: Set<string>): void {
   if (Array.isArray(value)) {
     for (const item of value) collectRelations(item, into);
     return;

@@ -14,7 +14,13 @@ import {
 } from '@duckdb/node-api';
 import { ColumnType } from '@ingot/shared/ingot-v1';
 import { InvariantViolation } from '../shared/domain/index.js';
-import { Metrics, RefusalReason, observe } from '../observability/index.js';
+import {
+  MemoryPhase,
+  Metrics,
+  RefusalReason,
+  SessionKind,
+  observe,
+} from '../observability/index.js';
 import { OBJECT_STORE, type ObjectStore, type PendingWrite } from '../storage/object-store.port.js';
 import type {
   AnalyticalEngine,
@@ -24,6 +30,7 @@ import type {
   QueryOutcome,
   QueryRequest,
 } from './analytical-engine.port.js';
+import { columnUsage, pruneTable, vectorColumnName } from './column-pruning.js';
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
@@ -118,17 +125,34 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
    * "all of them".
    */
   async tablesNamedBy(sql: string): Promise<readonly string[] | null> {
-    this.parser ??= DuckDBInstance.create(':memory:').then(async (instance) => ({
-      instance,
-      connection: await instance.connect(),
-    }));
-    const { connection } = await this.parser;
+    const connection = await this.parserConnection();
     try {
       const named = connection.getTableNames(sql, false);
       return named.length > 0 ? named.map((name) => name.toLowerCase()) : null;
     } catch {
       return null;
     }
+  }
+
+  /** The statement's parse tree, read on the same empty instance; `null` when unreadable. */
+  private async serialize(sql: string): Promise<unknown> {
+    const connection = await this.parserConnection();
+    try {
+      const reader = await connection.runAndReadAll(
+        `SELECT json_serialize_sql(${literal(sql)}) AS tree`,
+      );
+      return JSON.parse(String(reader.getRowObjectsJson()[0]?.tree));
+    } catch {
+      return null;
+    }
+  }
+
+  private async parserConnection(): Promise<DuckDBConnection> {
+    this.parser ??= DuckDBInstance.create(':memory:').then(async (instance) => ({
+      instance,
+      connection: await instance.connect(),
+    }));
+    return (await this.parser).connection;
   }
 
   async run(request: QueryRequest): Promise<QueryOutcome> {
@@ -154,7 +178,13 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
          */
         const reader = await this.withTimeout(connection, request.timeoutMs, () =>
           connection.streamAndReadUntil(sql, request.offset + request.rowCap + 1),
-        );
+        ).catch((error: unknown) => {
+          if (error instanceof Refused || !isCallersFault(error)) throw error;
+          throw new Refused(
+            RefusalReason.FailedToRun,
+            `That query will not run: ${firstLine(error)}`,
+          );
+        });
 
         const withheld = embeddingColumns(reader);
         const columns = reader.columnNames().filter((_, index) => !withheld.indices.has(index));
@@ -363,7 +393,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     options: { sql?: string; writes?: boolean } = {},
   ): Promise<T> {
     const { sql } = options;
-    const named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    let named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    if (sql !== undefined && options.writes !== true) {
+      const usage = columnUsage(sql, await this.serialize(sql), named);
+      // A full text index may cover any text column, `_raw` included.
+      named = named.map((table) =>
+        pruneTable(table, wantsFullText(table, sql) ? { ...usage, wholeRows: true } : usage),
+      );
+    }
     const lease =
       sql === undefined ? Lease.none : await this.cache.lease(named.flatMap((t) => t.sources));
 
@@ -389,8 +426,15 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     // Every file answered from the cache is one `httpfs` never has to reach.
     const readsStore = lease.readsStore(named);
 
+    const kind = writes ? SessionKind.RollUp : SessionKind.Query;
+    Metrics.SessionParquetBytes.observe(
+      { kind },
+      named.reduce((bytes, table) => bytes + table.sources.reduce((n, f) => n + f.bytes, 0), 0),
+    );
+
     const pooled = this.warm.take();
     const session = pooled ?? (await this.open({ fullText }));
+    let materialised = false;
     try {
       const { connection } = session;
       // Step 3, only when something will reach the store. A table that has
@@ -418,9 +462,40 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           }
         },
       );
+      materialised = true;
+      await this.measure(connection, kind, MemoryPhase.Materialised);
       return await work(connection);
     } finally {
+      // Failed queries too: one that hit the memory limit is the reading wanted most.
+      if (materialised) await this.measure(session.connection, kind, MemoryPhase.Finished);
       session.close();
+    }
+  }
+
+  /**
+   * What DuckDB's buffer manager holds right now, and what it has spilled.
+   *
+   * A point reading, not a peak: by `Finished` a join's hash table may already
+   * be freed. `Materialised` is the floor every query on these tables pays,
+   * and the one to set against `ingot_session_parquet_bytes` when sizing.
+   * Never throws — an interrupted or exhausted session may refuse even this.
+   */
+  private async measure(
+    connection: DuckDBConnection,
+    kind: SessionKind,
+    phase: MemoryPhase,
+  ): Promise<void> {
+    try {
+      const [row] = (
+        await connection.runAndReadAll(
+          'SELECT sum(memory_usage_bytes)::BIGINT AS used, ' +
+            'sum(temporary_storage_bytes)::BIGINT AS spilled FROM duckdb_memory()',
+        )
+      ).getRowObjectsJson();
+      Metrics.SessionMemory.observe({ kind, phase }, Number(row?.used ?? 0));
+      Metrics.SessionSpilled.observe({ kind, phase }, Number(row?.spilled ?? 0));
+    } catch (error) {
+      this.logger.debug(`Could not read session memory: ${firstLine(error)}`);
     }
   }
 
@@ -501,9 +576,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     await connection.run(`CREATE TABLE ${name} (${definitions.join(', ')})`);
 
     if (table.baseFiles.length > 0) {
+      // A lambda rather than `EXCLUDE`, which fails on files written before
+      // the table had `_raw`. Projected away, Parquet never decodes it.
+      const projection = table.columns.some((column) => column.name === '_raw')
+        ? '*'
+        : `COLUMNS(c -> c <> '_raw')`;
       await connection.run(
         `INSERT INTO ${name} BY NAME ` +
-          `SELECT * FROM read_parquet(${uriList(table.baseFiles)}, union_by_name := true)`,
+          `SELECT ${projection} FROM read_parquet(${uriList(table.baseFiles)}, union_by_name := true)`,
       );
     }
 
@@ -933,11 +1013,6 @@ function indexableColumns(table: MaterialisableTable): string[] {
   return chosen.map((column) => column.name).filter((name) => name !== '_row_id');
 }
 
-/** Where a column's embedding lands once materialised, beside its text. */
-export function vectorColumnName(column: string): string {
-  return `${column}_vec`;
-}
-
 function vectorColumns(table: MaterialisableTable): string[] {
   return table.embedded.map((entry) => vectorColumnName(entry.column));
 }
@@ -1000,9 +1075,22 @@ function bindQueryVector(sql: string, vector: readonly number[]): string {
   return sql.replaceAll(/\$q\b/g, floatArray(vector));
 }
 
+/*
+ * DuckDB errors a caller's SQL can cause on data that passed `prepare()` —
+ * `CAST(name AS INTEGER)` binds fine and only fails on the row that says
+ * "Ada". DuckDB marks the kind only in the message prefix. Anything not listed
+ * (out of memory, IO, internal) is ours and stays a 500.
+ */
+const CALLER_ERRORS =
+  /^(Conversion|Invalid Input|Out of Range|Binder|Catalog|Parser|Mismatch Type|Not implemented) Error:/;
+
+function isCallersFault(error: unknown): boolean {
+  return error instanceof Error && CALLER_ERRORS.test(error.message);
+}
+
 function firstLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.split('\n')[0] ?? message;
 }
 
-export { Refused };
+export { Refused, vectorColumnName };

@@ -1,6 +1,10 @@
 import { Buckets } from './buckets.js';
 import { defineCounter, defineGauge, defineHistogram } from './metric.js';
 
+const MIB = 1024 * 1024;
+/** 1 MiB to 4 GiB: an empty session sits under the first, `query.memoryLimit` near the 1 GiB mark. */
+const SESSION_BYTES = [1, 4, 16, 64, 128, 256, 512, 768, 1024, 2048, 4096].map((n) => n * MIB);
+
 /**
  * Every metric this service exports, in one file.
  *
@@ -111,6 +115,36 @@ export const Metrics = {
     help: 'Rows handed back by a query, before the row cap truncated it.',
     labels: [],
     buckets: [1, 10, 100, 1_000, 10_000, 100_000],
+  }),
+  /**
+   * DuckDB's own account of a session's memory, from `duckdb_memory()`. Every
+   * session is its own instance with its own `query.memoryLimit`, so these are
+   * what decide how many fit in a pod at once.
+   *
+   * `materialised` is after the tables are loaded and before the caller's SQL
+   * runs — the cost of the data alone, and the one to divide by
+   * `ingot_session_parquet_bytes`. `finished` is a point reading after it, not
+   * a peak.
+   */
+  SessionMemory: defineHistogram({
+    name: 'ingot_session_memory_bytes',
+    help: 'Bytes held by a DuckDB session, read at one point in its life.',
+    labels: ['kind', 'phase'],
+    buckets: SESSION_BYTES,
+  }),
+  /** Non-zero means the session reached `query.memoryLimit` and spilled to scratch. */
+  SessionSpilled: defineHistogram({
+    name: 'ingot_session_spilled_bytes',
+    help: 'Bytes a DuckDB session had spilled to its temp directory, read at one point in its life.',
+    labels: ['kind', 'phase'],
+    buckets: SESSION_BYTES,
+  }),
+  /** As the manifest recorded it, so a file of unknown size counts 0. */
+  SessionParquetBytes: defineHistogram({
+    name: 'ingot_session_parquet_bytes',
+    help: 'Compressed Parquet a DuckDB session read to build its tables.',
+    labels: ['kind'],
+    buckets: SESSION_BYTES,
   }),
   /**
    * A caller's SQL that this service refused. `reason` is our own closed set,
@@ -447,11 +481,25 @@ export enum RefusalReason {
   NotASelect = 'not_a_select',
   MultipleStatements = 'multiple_statements',
   DidNotParse = 'did_not_parse',
+  /** Parsed and bound, then failed on the data — a cast, a bad JSON path. */
+  FailedToRun = 'failed_to_run',
   TimedOut = 'timed_out',
   TooManyRows = 'too_many_rows',
   IngotTooLarge = 'ingot_too_large',
   EmbeddingOnly = 'embedding_only',
   EmbeddingEscape = 'embedding_escape',
+}
+
+/** What a DuckDB session was opened for, as the label on the `ingot_session_*` metrics. */
+export enum SessionKind {
+  Query = 'query',
+  RollUp = 'roll_up',
+}
+
+/** When in a session `SessionMemory` and `SessionSpilled` were read. */
+export enum MemoryPhase {
+  Materialised = 'materialised',
+  Finished = 'finished',
 }
 
 /** How the Parquet cache answered, as the label on `ParquetCacheRequests`. */

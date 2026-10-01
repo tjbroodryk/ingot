@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { ColumnType } from '@ingot/shared/ingot-v1';
+import { InvariantViolation } from '../../src/shared/domain/index.js';
 import { closeDatabase } from '../support/database.js';
 import { type World, makeWorld } from '../support/world.js';
 
@@ -95,6 +96,13 @@ describe('the query sandbox', () => {
     await expect(
       world.query(ingot, { sql: `SELECT * FROM read_csv('/etc/passwd')` }),
     ).rejects.toThrow(/file system operations are disabled|Permission/i);
+  });
+
+  it('refuses a query that only fails on the data, rather than crashing on it', async () => {
+    // Binds fine; only the row "nothing secret" makes the cast fail.
+    const failing = world.query(ingot, { sql: 'SELECT CAST(body AS INTEGER) FROM notes' });
+    await expect(failing).rejects.toBeInstanceOf(InvariantViolation);
+    await expect(failing).rejects.toThrow(/will not run: Conversion Error/);
   });
 
   it('leaves the data intact after every one of them', async () => {
