@@ -33,6 +33,7 @@ export {
   PoolState,
   RefusalReason,
   SessionKind,
+  TableMode,
 } from './metrics/catalogue.js';
 export { Buckets } from './metrics/buckets.js';
 export {

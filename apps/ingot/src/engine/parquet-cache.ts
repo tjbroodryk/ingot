@@ -30,6 +30,11 @@ export class Lease {
     return this.cached.size > 0;
   }
 
+  /** Whether `uri` resolved to a cached copy. */
+  holds(uri: string): boolean {
+    return this.cached.has(uri);
+  }
+
   /** The cached copy of `uri` when there is one, `uri` itself when there is not. */
   path(uri: string): string {
     return this.cached.get(uri) ?? uri;

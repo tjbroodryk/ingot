@@ -64,6 +64,8 @@ export class S3ObjectStore implements ObjectStore {
     });
   }
 
+  readonly local = false;
+
   uri(key: string): string {
     return `s3://${this.settings.bucket}/${key}`;
   }

@@ -2,8 +2,13 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Test, type TestingModule } from '@nestjs/testing';
-import type { EnvSource } from '../../src/config/env.js';
-import { EnvModule } from '../../src/config/env.module.js';
+import type { Env, EnvSource } from '../../src/config/env.js';
+import { ENV, EnvModule } from '../../src/config/env.module.js';
+import {
+  ANALYTICAL_ENGINE,
+  type AnalyticalEngine,
+} from '../../src/engine/analytical-engine.port.js';
+import { ParquetCache } from '../../src/engine/parquet-cache.js';
 import type {
   AddBody,
   AddResult,
@@ -149,6 +154,8 @@ export interface WorldOverrides {
   readonly store?: (dataDir: string) => ObjectStore;
   /** Variables on top of `testEnv()`'s, e.g. turning the Parquet cache on. */
   readonly env?: EnvSource;
+  /** The engine, built from what the real one would be; see `ParityEngine`. */
+  readonly engine?: (store: ObjectStore, env: Env, cache: ParquetCache) => AnalyticalEngine;
 }
 
 export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> {
@@ -217,6 +224,12 @@ export async function makeWorld(overrides: WorldOverrides = {}): Promise<World> 
   }
   if (overrides.store) {
     building.overrideProvider(OBJECT_STORE).useValue(overrides.store(dataDir));
+  }
+  if (overrides.engine) {
+    building.overrideProvider(ANALYTICAL_ENGINE).useFactory({
+      factory: overrides.engine,
+      inject: [OBJECT_STORE, ENV, ParquetCache],
+    });
   }
 
   const app = await building.compile();

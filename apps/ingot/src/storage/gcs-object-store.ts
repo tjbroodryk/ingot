@@ -64,6 +64,8 @@ export class GcsObjectStore implements ObjectStore {
     this.storage = storage ?? new Storage({ apiEndpoint: settings.endpoint });
   }
 
+  readonly local = false;
+
   /**
    * The XML API URL for an object.
    *

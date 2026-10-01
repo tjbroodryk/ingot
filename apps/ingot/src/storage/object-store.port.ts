@@ -33,6 +33,9 @@ export interface ObjectStore {
   /** What to put inside `read_parquet(…)` for this key. */
   uri(key: string): string;
 
+  /** Whether every `uri` is a path on this machine's disk, readable without `session`. */
+  readonly local: boolean;
+
   /**
    * SQL to run before any `uri` is touched. Empty for a store that needs no
    * credential. Never contains caller-supplied text.

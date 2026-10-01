@@ -146,6 +146,12 @@ export const Metrics = {
     labels: ['kind'],
     buckets: SESSION_BYTES,
   }),
+  /** How a query session built each table: a view over local Parquet, or a copy. */
+  SessionTables: defineCounter({
+    name: 'ingot_session_tables_total',
+    help: 'Tables built by query sessions, by whether they were a view or a copy.',
+    labels: ['mode'],
+  }),
   /**
    * A caller's SQL that this service refused. `reason` is our own closed set,
    * never the engine's message — the message can contain the statement.
@@ -488,6 +494,13 @@ export enum RefusalReason {
   IngotTooLarge = 'ingot_too_large',
   EmbeddingOnly = 'embedding_only',
   EmbeddingEscape = 'embedding_escape',
+  OutsideTheSession = 'outside_the_session',
+}
+
+/** How a query session built a table, as the label on `SessionTables`. */
+export enum TableMode {
+  View = 'view',
+  Copy = 'copy',
 }
 
 /** What a DuckDB session was opened for, as the label on the `ingot_session_*` metrics. */

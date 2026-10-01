@@ -467,6 +467,9 @@ config:
     # replacement. Size it to the burst of concurrent queries a pod sees — an
     # idle one is a few MB and `threads` idle threads. 0 opens on demand.
     warmSessions: 2
+    # A table whose Parquet is all in the cache below is read through a view
+    # instead of copied into the session's memory. `false` copies every table.
+    views: true
     # Rolled-up Parquet kept on one volume every server pod mounts, so a query
     # on a swept table skips the bucket and each file is cached once, not once
     # per pod. Off until `bytes` is set (`2Gi` or a byte count), which is the
