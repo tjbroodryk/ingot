@@ -28,9 +28,11 @@ export { InfrastructureCollectors } from './infrastructure-collectors.js';
 export {
   CacheResult,
   EvictionReason,
+  MemoryPhase,
   Metrics,
   PoolState,
   RefusalReason,
+  SessionKind,
 } from './metrics/catalogue.js';
 export { Buckets } from './metrics/buckets.js';
 export {

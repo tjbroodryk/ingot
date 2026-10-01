@@ -39,6 +39,9 @@ const declared = Object.entries(Metrics).map(
  */
 const NOT_SECONDS: Readonly<Record<string, string>> = {
   ingot_query_rows_returned: 'Counts rows in a result, which have no unit suffix.',
+  ingot_session_memory_bytes: 'A size, not a duration.',
+  ingot_session_spilled_bytes: 'A size, not a duration.',
+  ingot_session_parquet_bytes: 'A size, not a duration.',
 };
 
 describe('the metric catalogue', () => {
