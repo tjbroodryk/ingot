@@ -191,15 +191,15 @@ export const OPTIONAL: readonly Dependency[] = [
     title: 'Expensive bits are opt-in.',
     body: [
       'Embedding is a per-row cost paid once and a summary is an LLM call paid once per ingot, every time a caller asks for `receipt: "full"`.',
-      'They work independantly of each other, but when both enabled, they work well together. Both default to `local` — deterministic offline stand-ins, so a laptop and the test suite need no network, key or bill. Not appropriate for prod however, so each announces itself at boot.',
+      'They work independantly of each other, but when both enabled, they work well together. The embedder defaults to `local` — a deterministic offline stand-in, so a laptop and the test suite need no network, key or bill. Not appropriate for prod however, so it announces itself at boot. The summariser defaults to `off`, and `receipt: "full"` is answered as `schema` until one is named.',
       'When using either you must supply the provider credentials and a provider without its credentials refuses to boot.'
     ],
     settings: [
       { name: 'INGOT_EMBEDDER', fallback: 'local', note: 'One of `local`, `openai`, `gcp`.' },
       {
         name: 'INGOT_SUMMARISER',
-        fallback: 'local',
-        note: 'The same three, chosen independently.',
+        fallback: 'off',
+        note: '`off`, or the same three, chosen independently.',
       },
       {
         name: 'OPENAI_API_KEY',

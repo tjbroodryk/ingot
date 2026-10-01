@@ -43,7 +43,7 @@ export const MAX_RECEIPT_ITEMS = 100;
 export class ReceiptBuilder {
   constructor(
     @Inject(OVERLAY_STORE) private readonly overlay: OverlayStore,
-    @Inject(SUMMARISER) private readonly summariser: Summariser,
+    @Inject(SUMMARISER) private readonly summariser: Summariser | null,
   ) {}
 
   /**
@@ -56,6 +56,15 @@ export class ReceiptBuilder {
   static kindOf(raw: unknown): ReceiptKind {
     if (raw === undefined || raw === null) return ReceiptKind.None;
     return Guard.oneOf(String(raw), Object.values(ReceiptKind), 'receipt');
+  }
+
+  /**
+   * What this deployment can honour. `full` with no summariser is `schema`,
+   * not a refusal: the caller still gets the rows and their queries, and the
+   * receipt's `status: none` and null `model` say nothing will follow.
+   */
+  honour(kind: ReceiptKind): ReceiptKind {
+    return kind === ReceiptKind.Full && this.summariser === null ? ReceiptKind.Schema : kind;
   }
 
   /**
@@ -72,6 +81,7 @@ export class ReceiptBuilder {
    * yet" without reading anybody's logs.
    */
   async build(input: {
+    /** Already through `honour`. */
     kind: ReceiptKind;
     table: IngotTable;
     batch: string;
@@ -92,7 +102,7 @@ export class ReceiptBuilder {
       searchTerm: null,
       totalResults: input.rows.length,
       status: written ? ReceiptStatus.Pending : ReceiptStatus.None,
-      model: written ? this.summariser.model : null,
+      model: written ? (this.summariser?.model ?? null) : null,
 
       batch: input.batch,
       query: queryForBatch(input.table.name.value, input.batch),

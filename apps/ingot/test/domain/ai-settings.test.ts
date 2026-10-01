@@ -16,6 +16,7 @@ import {
   OPENAI_EMBEDDING_MODEL,
   OPENAI_OCR_MODEL,
   OPENAI_SUMMARY_MODEL,
+  SUMMARISER_OFF,
 } from '../../src/ai/ai-settings.js';
 import { buildEmbedder, buildOcr, buildSummariser } from '../../src/ai/ai.module.js';
 import { ExtractiveSummariser } from '../../src/ai/extractive-summariser.js';
@@ -138,9 +139,21 @@ describe('choosing an embedder', () => {
 });
 
 describe('choosing a summariser', () => {
-  it('defaults to the offline stand-in', () => {
-    expect(summariserSettings(env({}))).toEqual({ provider: AiProvider.Local });
-    expect(buildSummariser(summariserSettings(env({})))).toBeInstanceOf(ExtractiveSummariser);
+  it('is off unless named', () => {
+    // Not the stand-in: an extractive précis nobody chose was written into
+    // `ingot_receipts` and embedded beside real results.
+    expect(summariserSettings(env({}))).toEqual({ provider: SUMMARISER_OFF });
+    expect(summariserSettings(env({ INGOT_SUMMARISER: 'off' }))).toEqual({
+      provider: SUMMARISER_OFF,
+    });
+    expect(() => buildSummariser(summariserSettings(env({})))).toThrow(/off/);
+  });
+
+  it('still offers the offline stand-in when it is named', () => {
+    const local = summariserSettings(env({ INGOT_SUMMARISER: 'local' }));
+
+    expect(local).toEqual({ provider: AiProvider.Local });
+    expect(buildSummariser(local)).toBeInstanceOf(ExtractiveSummariser);
   });
 
   it('is selected independently of the embedder', () => {
@@ -150,7 +163,7 @@ describe('choosing a summariser', () => {
     const both = env({ INGOT_EMBEDDER: 'openai', ...OPENAI });
 
     expect(buildEmbedder(embedderSettings(both))).toBeInstanceOf(OpenAiEmbedder);
-    expect(buildSummariser(summariserSettings(both))).toBeInstanceOf(ExtractiveSummariser);
+    expect(summariserSettings(both)).toEqual({ provider: SUMMARISER_OFF });
   });
 
   it('reads OpenAI and Vertex', () => {

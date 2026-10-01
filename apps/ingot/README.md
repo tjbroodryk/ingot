@@ -1085,6 +1085,11 @@ that impossible.
 | `openai` | `text-embedding-3-small`, 1536d   | `gpt-4.1-mini`     | `OPENAI_API_KEY`    |
 | `gcp`    | Vertex `text-embedding-004`, 768d | `gemini-2.5-flash` | `INGOT_GCP_PROJECT` |
 
+`INGOT_EMBEDDER` defaults to `local`. `INGOT_SUMMARISER` defaults to `off`:
+nothing writes receipts, and `receipt: "full"` is answered as `schema` — the
+rows and their queries, `status: none`, no `receiptQuery`. Name a summariser,
+`local` included, to turn them on.
+
 Every model name and width above is a setting; those are the defaults.
 `OPENAI_BASE_URL` retargets the OpenAI adapter, which is what makes an Azure
 deployment, a gateway or a local vLLM the same adapter rather than a fourth

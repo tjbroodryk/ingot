@@ -80,8 +80,9 @@ export class AddRecordsHandler implements ICommandHandler<AddRecords> {
     const mapping = RowMapping.parse(command.body);
     // Parsed before anything is written: a caller who asked for a receipt this
     // service cannot produce should be told so instead of storing the rows and
-    // then failing on the way out.
-    const receipt = ReceiptBuilder.kindOf(command.body.receipt);
+    // then failing on the way out. Then narrowed to what this deployment can
+    // write, so a `full` with no summariser never queues a receipt.
+    const receipt = this.receipts.honour(ReceiptBuilder.kindOf(command.body.receipt));
     // The caller's own handle for this result. Trimmed and bounded here rather
     // than trusted, since the MCP surface builds this command without a pipe.
     const externalId = externalIdOf(command.body.externalId);

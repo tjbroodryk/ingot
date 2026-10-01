@@ -297,12 +297,14 @@ config:
   # cost paid once, a summary is an LLM call paid every time a caller asks for
   # `receipt: "full"`.
   #
-  # Both are the deterministic offline stand-ins, and each says so at boot. A
-  # provider named here without its credential refuses to boot rather than
+  # The embedder is the deterministic offline stand-in and says so at boot. The
+  # summariser is `off`: `receipt: "full"` is answered as `schema` until one is
+  # named here (`local` is the extractive stand-in, `openai` or `gcp` a model).
+  # A provider named here without its credential refuses to boot rather than
   # falling back — the alternative is a service that answers, takes writes, and
   # hands back receipts that are lexical nonsense.
   embedder: local
-  summariser: local
+  summariser: 'off'
 
   # What reads a page a PDF has no text layer for — a scan, a photocopy, a
   # screenshot printed to PDF. `off`, and it is the one selector that is:

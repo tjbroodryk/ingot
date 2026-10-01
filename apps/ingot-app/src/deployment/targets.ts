@@ -71,7 +71,7 @@ export const RUN_TARGETS: readonly RunTarget[] = [
       'Bun runs the service, Compose runs the two things it talks to. This is also what the test suite runs against, so what comes up on your machine is what the assertions are made about.',
     needs: [
       'Bun 1.2, and a Docker to hold the two containers',
-      'Nothing bought — the embedder and the summariser default to offline stand-ins',
+      'Nothing bought — the embedder defaults to an offline stand-in and the summariser to off',
       'No key, no network, no account: `db:up` brings up what the defaults already address',
     ],
     run: `# the copy is not optional — DATABASE_URL has no default

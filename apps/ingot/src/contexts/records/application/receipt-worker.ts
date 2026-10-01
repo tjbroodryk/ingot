@@ -53,7 +53,7 @@ export class ReceiptWorker {
 
   constructor(
     private readonly dispatcher: Dispatcher,
-    @Inject(SUMMARISER) private readonly summariser: Summariser,
+    @Inject(SUMMARISER) private readonly summariser: Summariser | null,
   ) {}
 
   /**
@@ -90,6 +90,11 @@ export class ReceiptWorker {
 
   /** Whether there was work. False means the queue is empty or all leased. */
   async next(): Promise<boolean> {
+    // Off. Nothing new is queued, and anything queued before the summariser
+    // was turned off waits for it to come back rather than failing.
+    const summariser = this.summariser;
+    if (summariser === null) return false;
+
     const job: ClaimedReceipt | null = await this.dispatcher.send(new ClaimReceipt());
     if (!job) return false;
 
@@ -97,17 +102,17 @@ export class ReceiptWorker {
     const started = performance.now();
 
     try {
-      const receipt = await this.summariser.summarise({
+      const receipt = await summariser.summarise({
         table: job.sourceTable,
         columns: job.columns,
         rows: job.rows,
         body,
       });
 
-      await this.dispatcher.send(new WriteReceipt(job, receipt, body, this.summariser.model));
-      this.measure(Outcome.Ok, started);
+      await this.dispatcher.send(new WriteReceipt(job, receipt, body, summariser.model));
+      this.measure(summariser, Outcome.Ok, started);
     } catch (error) {
-      this.measure(Outcome.Error, started);
+      this.measure(summariser, Outcome.Error, started);
       await this.dispatcher.send(
         new FailReceipt(job.batch, job.sourceTable, job.attempts, message(error)),
       );
@@ -122,9 +127,9 @@ export class ReceiptWorker {
    * know is how long a receipt takes to become findable, and the model is only
    * most of that.
    */
-  private measure(outcome: Outcome, started: number): void {
+  private measure(summariser: Summariser, outcome: Outcome, started: number): void {
     Metrics.ReceiptDuration.observe(
-      { model: this.summariser.model, outcome },
+      { model: summariser.model, outcome },
       (performance.now() - started) / 1000,
     );
   }

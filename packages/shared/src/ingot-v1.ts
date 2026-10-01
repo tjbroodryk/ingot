@@ -85,6 +85,9 @@ export enum ReceiptKind {
    * anything else: a model is a network away and a row should be queryable the
    * instant `/add` returns. `status` says `pending`, and `receiptQuery` is
    * where they will appear.
+   *
+   * On a deployment with no summariser, the default, this is answered as
+   * `schema`: `status` says `none` and `receiptQuery` is null.
    */
   Full = 'full',
 }
