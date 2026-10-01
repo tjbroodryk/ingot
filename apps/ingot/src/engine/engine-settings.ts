@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { section, text, textOr, whole } from '../config/vars.js';
+import { choice, section, text, textOr, whole } from '../config/vars.js';
 import type { EngineLimits } from './duckdb-engine.js';
 import type { ParquetCacheSettings } from './parquet-cache.js';
 
@@ -28,6 +28,8 @@ export const engineEnv = section(
       max: 32,
       rule: '; it must be a whole number from 0 (open each session on demand) to 32.',
     }),
+    /** `false` copies every table into the session, as before views. */
+    INGOT_QUERY_VIEWS: choice(['true', 'false'], '; it must be true or false.'),
   },
   (vars): EngineLimits => ({
     memoryLimit: vars.INGOT_QUERY_MEMORY_LIMIT,
@@ -36,6 +38,7 @@ export const engineEnv = section(
     extensionDirectory: vars.INGOT_DUCKDB_EXTENSION_DIR,
     temporaryDirectory: vars.INGOT_TEMP_DIR,
     warmSessions: vars.INGOT_QUERY_WARM_SESSIONS,
+    views: vars.INGOT_QUERY_VIEWS !== 'false',
   }),
 );
 

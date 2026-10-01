@@ -7,7 +7,10 @@ import { type World, makeWorld } from '../support/world.js';
 
 // The filesystem store installs no secret, so this one stands in for S3's and
 // GCS's. `http` is the one secret type DuckDB has without httpfs.
+// Not local, so a query copies from it with the secret installed, as a bucket's would.
 class SecretStore extends FilesystemObjectStore {
+  override readonly local = false;
+
   override async session(): Promise<readonly string[]> {
     return ["CREATE OR REPLACE SECRET ingot_base (TYPE HTTP, BEARER_TOKEN 'tok_not_for_callers')"];
   }
@@ -38,6 +41,9 @@ describe("the store's secret", () => {
     expect(await world.sql(ingot, 'SELECT body FROM notes')).toEqual([
       { body: 'in the base tier' },
     ]);
-    expect(await world.sql(ingot, 'SELECT name FROM duckdb_secrets()')).toEqual([]);
+    // The lockdown drops it too; the allowlist means a caller cannot even look.
+    await expect(world.sql(ingot, 'SELECT name FROM duckdb_secrets()')).rejects.toThrow(
+      /nothing else/,
+    );
   });
 });

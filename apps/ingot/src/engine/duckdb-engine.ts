@@ -19,6 +19,7 @@ import {
   Metrics,
   RefusalReason,
   SessionKind,
+  TableMode,
   observe,
 } from '../observability/index.js';
 import { OBJECT_STORE, type ObjectStore, type PendingWrite } from '../storage/object-store.port.js';
@@ -34,6 +35,12 @@ import { columnUsage, pruneTable, vectorColumnName } from './column-pruning.js';
 import { EmbeddingEscape, assertNoEmbeddingEscape } from './embedding-guard.js';
 import { floatArray, ident, literal, uriList } from './sql.js';
 import { assertSelfContainedPredicate, assertStartsAsSelect } from './statement-shape.js';
+import {
+  INTERNAL_SCHEMA,
+  OutsideTheSession,
+  assertReadsOnlySessionTables,
+  readable,
+} from './table-allowlist.js';
 import { Lease, type ParquetCache } from './parquet-cache.js';
 import { WarmSessions } from './warm-sessions.js';
 
@@ -55,6 +62,8 @@ export interface EngineLimits {
   readonly temporaryDirectory?: string;
   /** Sessions kept opened and configured ahead of a query. 0 opens each on demand. */
   readonly warmSessions: number;
+  /** Whether a query reads local Parquet through a view rather than copying it in. */
+  readonly views: boolean;
 }
 
 /** One instance and its connection, used once and closed. */
@@ -394,8 +403,14 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
   ): Promise<T> {
     const { sql } = options;
     let named = sql === undefined ? tables : narrow(tables, await this.tablesNamedBy(sql));
+    let views = false;
     if (sql !== undefined && options.writes !== true) {
-      const usage = columnUsage(sql, await this.serialize(sql), named);
+      const tree = await this.serialize(sql);
+      assertOnlySessionTables(tree, tables);
+      // An unreadable parse was not checked, so it gets no files to reach.
+      views = this.limits.views && readable(tree);
+
+      const usage = columnUsage(sql, tree, named);
       // A full text index may cover any text column, `_raw` included.
       named = named.map((table) =>
         pruneTable(table, wantsFullText(table, sql) ? { ...usage, wholeRows: true } : usage),
@@ -405,11 +420,11 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
       sql === undefined ? Lease.none : await this.cache.lease(named.flatMap((t) => t.sources));
 
     try {
-      return await this.inSession(tables, named, work, options, lease);
+      return await this.inSession(tables, named, work, options, lease, views);
     } catch (error) {
       if (!(error instanceof CachedReadFailed)) throw error;
-      this.logger.warn(`A cached Parquet file failed to read; using the store: ${error.message}`);
-      return this.inSession(tables, named, work, options, Lease.none);
+      this.logger.warn(`Local Parquet failed to read; copying from the store: ${error.message}`);
+      return this.inSession(tables, named, work, options, Lease.none, false);
     }
   }
 
@@ -419,12 +434,18 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     work: (connection: DuckDBConnection) => Promise<T>,
     options: { sql?: string; writes?: boolean },
     lease: Lease,
+    views: boolean,
   ): Promise<T> {
     const { sql, writes = false } = options;
     const fullText = sql !== undefined && needsFullText(named, sql);
+    const viewed = new Set(
+      views && sql !== undefined
+        ? named.filter((table) => this.viewable(table, lease, sql)).map((table) => table.name)
+        : [],
+    );
     const needed = named.map((table) => lease.apply(table));
     // Every file answered from the cache is one `httpfs` never has to reach.
-    const readsStore = lease.readsStore(named);
+    const readsStore = lease.readsStore(named.filter((table) => !viewed.has(table.name)));
 
     const kind = writes ? SessionKind.RollUp : SessionKind.Query;
     Metrics.SessionParquetBytes.observe(
@@ -455,21 +476,58 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
         },
         async () => {
           try {
-            for (const table of needed) await this.materialise(connection, table, sql);
+            for (const table of needed) {
+              const mode = viewed.has(table.name) ? TableMode.View : TableMode.Copy;
+              if (mode === TableMode.View) await this.materialiseView(connection, table);
+              else await this.materialise(connection, table, sql);
+              if (!writes) Metrics.SessionTables.inc({ mode });
+            }
           } catch (error) {
-            if (lease.local && !(error instanceof Refused)) throw new CachedReadFailed(error);
+            if ((lease.local || viewed.size > 0) && !(error instanceof Refused)) {
+              throw new CachedReadFailed(error);
+            }
             throw error;
           }
         },
       );
       materialised = true;
       await this.measure(connection, kind, MemoryPhase.Materialised);
-      return await work(connection);
+
+      if (viewed.size > 0) {
+        // Before the lockdown, which locks this setting with the rest.
+        const paths = needed
+          .filter((table) => viewed.has(table.name))
+          .flatMap((table) => [...table.baseFiles, ...table.vectorFiles]);
+        await connection.run(`SET allowed_paths = ${uriList(paths)}`);
+      }
+
+      try {
+        return await work(connection);
+      } catch (error) {
+        // A view reads its files during the query, so that is where a bad one shows.
+        if (viewed.size > 0 && isReadFailure(error)) throw new CachedReadFailed(error);
+        throw error;
+      }
     } finally {
       // Failed queries too: one that hit the memory limit is the reading wanted most.
       if (materialised) await this.measure(session.connection, kind, MemoryPhase.Finished);
       session.close();
     }
+  }
+
+  /**
+   * Whether a query can read this table through a view.
+   *
+   * Every file has to be on this machine's disk, since a view reads them after
+   * the lockdown has dropped the store's credential. Full text search needs a
+   * real table to index.
+   */
+  private viewable(table: MaterialisableTable, lease: Lease, sql: string): boolean {
+    return (
+      table.baseFiles.length > 0 &&
+      !wantsFullText(table, sql) &&
+      table.sources.every((file) => this.store.local || lease.holds(file.uri))
+    );
   }
 
   /**
@@ -588,7 +646,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     }
 
     if (table.overlayRows.length > 0) {
-      await this.appendOverlay(connection, table);
+      await this.appendOverlay(connection, table, name);
     }
 
     if (table.vectorFiles.length > 0 || table.overlayVectors.length > 0) {
@@ -602,9 +660,174 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
       await connection.run(`DELETE FROM ${name} WHERE ${ident('_row_id')} IN (${ids})`);
     }
 
-    const [counted] = (
-      await connection.runAndReadAll(`SELECT count(*) AS n FROM ${name}`)
-    ).getRowObjectsJson();
+    await this.assertWithinRowCap(connection, table, `SELECT count(*) AS n FROM ${name}`);
+
+    if (sql !== undefined && wantsFullText(table, sql)) {
+      await this.index(connection, table);
+    }
+  }
+
+  /**
+   * Step 4 as a view: the Parquet read where it lies, the overlay copied in.
+   *
+   * Answers what `materialise` would: columns cast to the manifest's types, a
+   * column no file has yet as null, forgotten rows gone, and a vector from the
+   * overlay preferred to one from the sibling file. The overlay, its vectors
+   * and the tombstones go in `INTERNAL_SCHEMA`, which a caller cannot name.
+   */
+  private async materialiseView(
+    connection: DuckDBConnection,
+    table: MaterialisableTable,
+  ): Promise<void> {
+    const internal = (suffix: string) =>
+      `${ident(INTERNAL_SCHEMA)}.${ident(`${table.name}_${suffix}`)}`;
+    await connection.run(`CREATE SCHEMA IF NOT EXISTS ${ident(INTERNAL_SCHEMA)}`);
+
+    const rows = internal('rows');
+    await connection.run(
+      `CREATE TABLE ${rows} (${table.columns
+        .map((column) => `${ident(column.name)} ${duckType(column.type)}`)
+        .join(', ')})`,
+    );
+    if (table.overlayRows.length > 0) await this.appendOverlay(connection, table, rows);
+
+    const inBase = await this.columnsIn(connection, table.baseFiles);
+    const base = table.columns.map((column) =>
+      inBase.has(column.name)
+        ? `CAST(${ident(column.name)} AS ${duckType(column.type)}) AS ${ident(column.name)}`
+        : `NULL::${duckType(column.type)} AS ${ident(column.name)}`,
+    );
+    const unioned =
+      `SELECT ${base.join(', ')} ` +
+      `FROM read_parquet(${uriList(table.baseFiles)}, union_by_name := true) ` +
+      `UNION ALL SELECT ${table.columns.map((column) => ident(column.name)).join(', ')} FROM ${rows}`;
+
+    let alive = '';
+    if (table.tombstones.length > 0) {
+      const forgotten = internal('forgotten');
+      await connection.run(`CREATE TABLE ${forgotten} (${ident('_row_id')} VARCHAR)`);
+      const appender = await connection.createAppender(`${table.name}_forgotten`, INTERNAL_SCHEMA);
+      try {
+        for (const id of table.tombstones) {
+          appender.appendVarchar(id);
+          appender.endRow();
+        }
+        appender.flushSync();
+      } finally {
+        appender.closeSync();
+      }
+      alive = ` WHERE r.${ident('_row_id')} NOT IN (SELECT ${ident('_row_id')} FROM ${forgotten})`;
+    }
+
+    const { select, joins } = await this.viewVectors(connection, table, internal('vectors'));
+    const columns = [...table.columns.map((column) => `r.${ident(column.name)}`), ...select];
+    await connection.run(
+      `CREATE VIEW ${ident(table.name)} AS SELECT ${columns.join(', ')} ` +
+        `FROM (${unioned}) AS r${joins}${alive}`,
+    );
+
+    // Only `_row_id` is read, so the vector joins and the wide columns cost nothing.
+    await this.assertWithinRowCap(
+      connection,
+      table,
+      `SELECT count(*) AS n FROM (${unioned}) AS r${alive}`,
+    );
+  }
+
+  /** The vector columns of a view, and the joins that supply them. */
+  private async viewVectors(
+    connection: DuckDBConnection,
+    table: MaterialisableTable,
+    overlayTable: string,
+  ): Promise<{ select: string[]; joins: string }> {
+    if (table.embedded.length === 0) return { select: [], joins: '' };
+    const rowId = ident('_row_id');
+    let joins = '';
+
+    const inFile =
+      table.vectorFiles.length > 0
+        ? await this.columnsIn(connection, table.vectorFiles)
+        : new Set<string>();
+    const fromFile = table.embedded.filter((entry) => inFile.has(entry.column));
+    if (fromFile.length > 0) {
+      joins +=
+        ` LEFT JOIN (SELECT ${rowId}, ${fromFile.map((entry) => ident(entry.column)).join(', ')} ` +
+        `FROM read_parquet(${uriList(table.vectorFiles)}, union_by_name := true)) AS f ` +
+        `ON f.${rowId} = r.${rowId}`;
+    }
+
+    const fromOverlay = new Set(table.overlayVectors.map((vector) => vector.column));
+    if (fromOverlay.size > 0) {
+      const staging = `_vectors_${table.name}`;
+      await connection.run(
+        `CREATE TABLE ${ident(staging)} (` +
+          `${rowId} VARCHAR, ${ident('column_name')} VARCHAR, ${ident('vec')} VARCHAR)`,
+      );
+      const appender = await connection.createAppender(staging);
+      try {
+        for (const vector of table.overlayVectors) {
+          appender.appendVarchar(vector.rowId);
+          appender.appendVarchar(vector.column);
+          appender.appendVarchar(`[${vector.vector.join(',')}]`);
+          appender.endRow();
+        }
+        appender.flushSync();
+      } finally {
+        appender.closeSync();
+      }
+      const pivoted = table.embedded
+        .filter((entry) => fromOverlay.has(entry.column))
+        .map(
+          (entry) =>
+            `any_value(${ident('vec')}::FLOAT[]::FLOAT[${entry.dimensions}]) ` +
+            `FILTER (WHERE ${ident('column_name')} = ${literal(entry.column)}) AS ${ident(entry.column)}`,
+        );
+      await connection.run(
+        `CREATE TABLE ${overlayTable} AS SELECT ${rowId}, ${pivoted.join(', ')} ` +
+          `FROM ${ident(staging)} GROUP BY ${rowId}`,
+      );
+      await connection.run(`DROP TABLE ${ident(staging)}`);
+      joins += ` LEFT JOIN ${overlayTable} AS o ON o.${rowId} = r.${rowId}`;
+    }
+
+    // Chosen as lists and cast once: DuckDB has no CASE over a fixed-width array.
+    const select = table.embedded.map((entry) => {
+      const column = ident(entry.column);
+      const width = entry.dimensions;
+      const sources: string[] = [];
+      if (fromOverlay.has(entry.column)) sources.push(`o.${column}::FLOAT[]`);
+      // A vector of the wrong width is from a model since replaced; the copy skips it too.
+      if (inFile.has(entry.column)) {
+        sources.push(`CASE WHEN len(f.${column}) = ${width} THEN f.${column}::FLOAT[] END`);
+      }
+      const value =
+        sources.length === 0
+          ? 'NULL'
+          : sources.length === 1
+            ? sources[0]
+            : `coalesce(${sources.join(', ')})`;
+      return `(${value})::FLOAT[${width}] AS ${ident(vectorColumnName(entry.column))}`;
+    });
+    return { select, joins };
+  }
+
+  /** The column names a set of Parquet files has between them, read from their footers. */
+  private async columnsIn(
+    connection: DuckDBConnection,
+    files: readonly string[],
+  ): Promise<ReadonlySet<string>> {
+    const described = await connection.runAndReadAll(
+      `DESCRIBE SELECT * FROM read_parquet(${uriList(files)}, union_by_name := true)`,
+    );
+    return new Set(described.getRowObjectsJson().map((row) => String(row.column_name)));
+  }
+
+  private async assertWithinRowCap(
+    connection: DuckDBConnection,
+    table: MaterialisableTable,
+    countSql: string,
+  ): Promise<void> {
+    const [counted] = (await connection.runAndReadAll(countSql)).getRowObjectsJson();
     if (Number(counted?.n ?? 0) > this.limits.maxMaterialisedRows) {
       throw new Refused(
         RefusalReason.IngotTooLarge,
@@ -612,10 +835,6 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           'which is more than one query session will hold in memory. ' +
           'Narrow the ingot, or split it across ingots.',
       );
-    }
-
-    if (sql !== undefined && wantsFullText(table, sql)) {
-      await this.index(connection, table);
     }
   }
 
@@ -675,6 +894,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
   private async appendOverlay(
     connection: DuckDBConnection,
     table: MaterialisableTable,
+    target: string,
   ): Promise<void> {
     const staging = `_overlay_${table.name}`;
     const columns = table.columns;
@@ -701,7 +921,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
     }
 
     await connection.run(
-      `INSERT INTO ${ident(table.name)} BY NAME SELECT ` +
+      `INSERT INTO ${target} BY NAME SELECT ` +
         columns
           .map(
             (column) => `${ident(column.name)}::${duckType(column.type)} AS ${ident(column.name)}`,
@@ -769,8 +989,10 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
   /**
    * Step 5: revoke, then lock. The order is the security property.
    *
-   * Everything the query needs is in memory by now, so nothing legitimate
-   * wants the filesystem or the network again. `lock_configuration` is what
+   * Everything the query needs is in memory by now, or in a local file that
+   * `allowed_paths` names, so nothing legitimate wants the network again or
+   * any other file. `table-allowlist.ts` keeps the caller's SQL off those
+   * files; the views are the only thing that reads them. `lock_configuration` is what
    * stops the caller's own SQL turning external access back on — and Phase 0
    * confirmed it refuses to be released, too.
    *
@@ -1086,6 +1308,25 @@ const CALLER_ERRORS =
 
 function isCallersFault(error: unknown): boolean {
   return error instanceof Error && CALLER_ERRORS.test(error.message);
+}
+
+function isReadFailure(error: unknown): boolean {
+  return error instanceof Error && /^IO Error:/.test(error.message);
+}
+
+/** The allowlist, as a refusal the filter maps and the metric counts. */
+function assertOnlySessionTables(tree: unknown, tables: readonly MaterialisableTable[]): void {
+  try {
+    assertReadsOnlySessionTables(
+      tree,
+      new Set(tables.filter((table) => table.fts.enabled).map((table) => table.name)),
+    );
+  } catch (error) {
+    if (error instanceof OutsideTheSession) {
+      throw new Refused(RefusalReason.OutsideTheSession, error.message);
+    }
+    throw error;
+  }
 }
 
 function firstLine(error: unknown): string {

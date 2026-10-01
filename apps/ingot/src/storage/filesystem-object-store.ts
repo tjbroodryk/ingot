@@ -22,6 +22,7 @@ import {
 @Injectable()
 export class FilesystemObjectStore implements ObjectStore {
   private readonly root: string;
+  readonly local: boolean = true;
 
   constructor(root: string) {
     this.root = resolve(root);

@@ -91,11 +91,11 @@ describe('the query sandbox', () => {
     await expect(world.query(ingot, { sql: 'SELECT 1; SELECT 2' })).rejects.toThrow(
       /Send one statement/,
     );
-    // Reaches the type check rather than the shape check: it is written as a
-    // select and only the parse tree knows better.
+    // Written as a select, so the shape check passes it; the allowlist of what
+    // FROM may read is what refuses it.
     await expect(
       world.query(ingot, { sql: `SELECT * FROM read_csv('/etc/passwd')` }),
-    ).rejects.toThrow(/file system operations are disabled|Permission/i);
+    ).rejects.toThrow(/reads the ingot's tables and nothing else/);
   });
 
   it('refuses a query that only fails on the data, rather than crashing on it', async () => {

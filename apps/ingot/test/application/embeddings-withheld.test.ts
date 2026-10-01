@@ -118,7 +118,8 @@ describe('embeddings', () => {
     // The type check above only sees what a column *is* at the end. Anything
     // that turns the array into something else gets past it, so these are
     // refused from the statement instead.
-    await expect(world.query(ingot, { sql })).rejects.toThrow(/embeddings/i);
+    // `query()` is refused sooner, by the allowlist of what FROM may read.
+    await expect(world.query(ingot, { sql })).rejects.toThrow(/embeddings|nothing else/i);
   });
 
   it('may be compared to each other, which returns a score and not a vector', async () => {
