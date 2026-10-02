@@ -768,7 +768,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
         for (const vector of table.overlayVectors) {
           appender.appendVarchar(vector.rowId);
           appender.appendVarchar(vector.column);
-          appender.appendVarchar(`[${vector.vector.join(',')}]`);
+          appender.appendVarchar(vector.literal);
           appender.endRow();
         }
         appender.flushSync();
@@ -964,7 +964,7 @@ export class DuckDbEngine implements AnalyticalEngine, OnModuleInit, OnModuleDes
           appender.appendVarchar(vector.column);
           // A list literal DuckDB casts back on the way out, for the same
           // reason the row staging is text: one path instead of a typed one.
-          appender.appendVarchar(`[${vector.vector.join(',')}]`);
+          appender.appendVarchar(vector.literal);
           appender.endRow();
         }
         appender.flushSync();

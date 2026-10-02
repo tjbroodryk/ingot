@@ -609,9 +609,15 @@ export class PgOverlayStore implements OverlayStore {
   async readVectors(
     tableId: string,
     column: string,
-  ): Promise<readonly { rowId: string; vector: readonly number[] }[]> {
+  ): Promise<readonly { rowId: string; dims: number; literal: string }[]> {
     return this.uow.queryable
-      .select({ rowId: overlayVector.rowId, vector: overlayVector.vector })
+      .select({
+        rowId: overlayVector.rowId,
+        dims: overlayVector.dims,
+        // Postgres writes each float as text either way; this skips parsing it
+        // into a number in JS only to print it again for DuckDB.
+        literal: sql<string>`'[' || array_to_string(${overlayVector.vector}, ',') || ']'`,
+      })
       .from(overlayVector)
       .where(and(eq(overlayVector.tableId, tableId), eq(overlayVector.columnName, column)));
   }

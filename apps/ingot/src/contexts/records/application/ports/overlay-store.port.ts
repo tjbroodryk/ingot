@@ -224,10 +224,11 @@ export interface OverlayStore {
     }[],
     model: string,
   ): Promise<void>;
+  /** Each vector as a DuckDB list literal, `[0.1,0.2,…]`, and its width. */
   readVectors(
     tableId: string,
     column: string,
-  ): Promise<readonly { rowId: string; vector: readonly number[] }[]>;
+  ): Promise<readonly { rowId: string; dims: number; literal: string }[]>;
   pendingCount(): Promise<number>;
   /** Seconds the oldest queued embedding has waited; 0 when none are. */
   oldestPendingSeconds(): Promise<number>;
