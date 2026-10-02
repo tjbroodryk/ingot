@@ -7,6 +7,7 @@ import {
 import type { IngotTable } from '../contexts/ingots/domain/index.js';
 import { OBJECT_STORE, type ObjectStore } from '../storage/object-store.port.js';
 import type { MaterialisableTable, RowVector } from './analytical-engine.port.js';
+import { namesVector, statementWords } from './column-pruning.js';
 
 /**
  * Assembles what a session needs from the two tiers.
@@ -38,10 +39,15 @@ export class SessionBuilder {
    * Parquet is being written are neither included in the file nor deleted
    * afterwards. `null` is the compaction that had no rows to fold in and is
    * running only to apply deletes — it wants nothing from the overlay.
+   *
+   * `sql` is the statement a query will run. Overlay vectors it never names
+   * are not read: the engine would prune them anyway, and they are most of
+   * what reading the overlay costs.
    */
   async materialisable(
     table: IngotTable,
     throughSeq?: bigint | null,
+    sql?: string,
   ): Promise<MaterialisableTable> {
     const [overlayRows, tombstones] = await Promise.all([
       throughSeq === null ? [] : this.overlay.read(table.id.value, throughSeq),
@@ -53,15 +59,17 @@ export class SessionBuilder {
       dimensions: this.embedder.dimensions,
     }));
 
+    const words = sql === undefined ? undefined : statementWords(sql);
     const overlayVectors: RowVector[] = [];
     for (const entry of embedded) {
+      if (words !== undefined && !namesVector(words, entry.column)) continue;
       const vectors = await this.overlay.readVectors(table.id.value, entry.column);
       for (const vector of vectors) {
         // A vector of the wrong width is one the embedder produced before the
         // model changed. Dropping it silently would mix two vector spaces in
         // one ranking, which reads as "search got worse" and nothing else.
-        if (vector.vector.length !== entry.dimensions) continue;
-        overlayVectors.push({ rowId: vector.rowId, column: entry.column, vector: vector.vector });
+        if (vector.dims !== entry.dimensions) continue;
+        overlayVectors.push({ rowId: vector.rowId, column: entry.column, literal: vector.literal });
       }
     }
 
@@ -87,8 +95,8 @@ export class SessionBuilder {
     };
   }
 
-  /** Every table of an ingot, for a query that could name any of them. */
-  async all(tables: readonly IngotTable[]): Promise<readonly MaterialisableTable[]> {
-    return Promise.all(tables.map((table) => this.materialisable(table)));
+  /** Every table `sql` may read. */
+  async all(tables: readonly IngotTable[], sql: string): Promise<readonly MaterialisableTable[]> {
+    return Promise.all(tables.map((table) => this.materialisable(table, undefined, sql)));
   }
 }

@@ -44,13 +44,26 @@ export interface ColumnUsage {
   readonly wholeRows: boolean;
 }
 
+/** Every identifier-shaped word in `sql`, lower-cased. */
+export function statementWords(sql: string): ReadonlySet<string> {
+  return new Set((sql.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).map((w) => w.toLowerCase()));
+}
+
+/**
+ * Whether a statement can need `column`'s vectors. The session builder asks
+ * before reading the overlay, so it has to agree with `pruneTable`.
+ */
+export function namesVector(words: ReadonlySet<string>, column: string): boolean {
+  return words.has(vectorColumnName(column).toLowerCase());
+}
+
 /** `serialized` is `json_serialize_sql(sql)`, parsed. */
 export function columnUsage(
   sql: string,
   serialized: unknown,
   tables: readonly MaterialisableTable[],
 ): ColumnUsage {
-  const words = new Set((sql.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).map((w) => w.toLowerCase()));
+  const words = statementWords(sql);
   if (
     serialized === null ||
     typeof serialized !== 'object' ||
@@ -69,9 +82,7 @@ export function columnUsage(
 
 /** `table` without the columns `usage` shows the statement cannot need. */
 export function pruneTable(table: MaterialisableTable, usage: ColumnUsage): MaterialisableTable {
-  const embedded = table.embedded.filter((entry) =>
-    usage.words.has(vectorColumnName(entry.column).toLowerCase()),
-  );
+  const embedded = table.embedded.filter((entry) => namesVector(usage.words, entry.column));
   const keepRaw = usage.wholeRows || usage.words.has(RAW);
   const columns = keepRaw ? table.columns : table.columns.filter((column) => column.name !== RAW);
   if (embedded.length === table.embedded.length && columns.length === table.columns.length) {

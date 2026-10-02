@@ -36,9 +36,9 @@ describe('which tables a query reads', () => {
     const sessions = world.app.get(SessionBuilder);
     const all = sessions.all.bind(sessions);
     built = [];
-    sessions.all = (tables: readonly IngotTable[]) => {
+    sessions.all = (tables: readonly IngotTable[], sql: string) => {
       built.push(tables.map((table) => table.name.value).sort());
-      return all(tables);
+      return all(tables, sql);
     };
   });
 

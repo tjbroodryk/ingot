@@ -141,7 +141,7 @@ export class QueryIngotHandler implements IQueryHandler<QueryIngot> {
         tables.map((table) => ({ name: table.name.value, table })),
         named,
       ).map((entry) => entry.table);
-      return { sql, available: await this.sessions.all(needed) };
+      return { sql, available: await this.sessions.all(needed, sql) };
     });
 
     const outcome = await observe('ingot.query', { 'ingot.mode': mode(wantsSql, wantsText) }, () =>

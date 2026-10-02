@@ -104,7 +104,7 @@ describe('which columns a statement can need', () => {
       { table: 't@1', key: 'vec', uri: 'gs://b/vec.parquet', bytes: 20 },
     ],
     overlayRows: [],
-    overlayVectors: [{ rowId: 'r1', column: 'output', vector: [1, 2] }],
+    overlayVectors: [{ rowId: 'r1', column: 'output', literal: '[1,2]' }],
     tombstones: [],
     embedded: [{ column: 'output', dimensions: 2 }],
     fts: FtsSettings.default().toWire(),

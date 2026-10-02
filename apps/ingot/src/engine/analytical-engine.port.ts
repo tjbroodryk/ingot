@@ -4,7 +4,8 @@ import type { ColumnType, FtsConfig } from '@ingot/shared/ingot-v1';
 export interface RowVector {
   readonly rowId: string;
   readonly column: string;
-  readonly vector: readonly number[];
+  /** A DuckDB list literal, `[0.1,0.2,…]`, passed through as text so no float is parsed in JS. */
+  readonly literal: string;
 }
 
 /** One base-tier object, as the Parquet cache names and fetches it. */
