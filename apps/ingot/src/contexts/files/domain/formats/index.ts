@@ -5,6 +5,7 @@ import { csvHandler } from './csv.js';
 import { htmlHandler } from './html.js';
 import { markdownHandler } from './markdown.js';
 import { pdfHandler } from './pdf.js';
+import { docxHandler } from './docx.js';
 import { pptxHandler } from './pptx.js';
 import { textHandler } from './text.js';
 
@@ -22,6 +23,7 @@ export const FORMATS: Record<MediaType, FormatHandler> = {
   [MediaType.Csv]: csvHandler,
   [MediaType.Pdf]: pdfHandler,
   [MediaType.Pptx]: pptxHandler,
+  [MediaType.Docx]: docxHandler,
 };
 
 /** The handler for a media type. Total, because the registry is exhaustive. */

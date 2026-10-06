@@ -58,12 +58,17 @@ describe('deciding what an upload is', () => {
       MediaType.Pptx,
     );
 
+    // Docx is now supported, so test that it's accepted.
+    expect(mediaTypeOf({ declared: MediaType.Docx, filename: 'a.docx', head: zip })).toBe(
+      MediaType.Docx,
+    );
+
     // A zip declared as something this build has no handler for is refused by
     // name, since `MediaType` is now exactly what `FORMATS` covers.
     expect(() =>
       mediaTypeOf({
-        declared: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        filename: 'a.docx',
+        declared: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        filename: 'a.xlsx',
         head: zip,
       }),
     ).toThrow(/must be one of/);
@@ -213,6 +218,7 @@ describe('deciding what an upload is', () => {
     expect(isTabular(MediaType.Pdf)).toBe(false);
     expect(isTabular(MediaType.Markdown)).toBe(false);
     expect(isTabular(MediaType.Pptx)).toBe(false);
+    expect(isTabular(MediaType.Docx)).toBe(false);
   });
 });
 

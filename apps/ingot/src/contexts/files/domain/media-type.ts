@@ -23,18 +23,10 @@ export enum MediaType {
   Csv = 'text/csv',
   Pdf = 'application/pdf',
   Pptx = 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  Docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }
 
 /*
- * `.docx` and `.xlsx` are deliberately absent, where they were once named here
- * with no parser behind them.
- *
- * That split made sense while a format's *name* and a format's *reader* were
- * different things — the wire contract could describe more than the build could
- * do. Now a format is its handler and `FORMATS` is a `Record` over this enum, so
- * a name with nothing behind it is not a smaller promise, it is an impossible
- * state, and the compiler is what says so.
- *
- * The practical difference is only the wording of a refusal. Adding either is
- * one member here and one file next to `pptx.ts`, using the same zip machinery.
+ * `.xlsx` is deliberately absent — adding it is one member here and one file
+ * next to `pptx.ts`, using the same zip machinery.
  */
