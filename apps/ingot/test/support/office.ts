@@ -20,12 +20,81 @@ import { zipSync } from 'fflate';
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>`;
 
+/** One section of a Word document with optional heading and body paragraphs. */
+export interface DocxSection {
+  readonly heading?: { level: number; text: string };
+  /** Each becomes its own `<w:p>`, which is what a paragraph is. */
+  readonly paragraphs?: readonly string[];
+}
+
 /** One slide, its title placeholder, its body paragraphs, and its notes. */
 export interface SlideSpec {
   readonly title?: string;
   /** Each becomes its own `<a:p>`, which is what a bullet is. */
   readonly body?: readonly string[];
   readonly notes?: string;
+}
+
+/**
+ * A `.docx` as Word lays one out.
+ *
+ * Each section becomes one or more paragraphs in `word/document.xml`. Heading
+ * styles are set via `<w:pStyle w:val="HeadingN"/>`.
+ */
+export function docx(sections: readonly DocxSection[]): Buffer {
+  const files: Record<string, Uint8Array> = {
+    '[Content_Types].xml': encode(CONTENT_TYPES),
+    'word/document.xml': encode(documentXml(sections)),
+  };
+
+  return Buffer.from(zipSync(files));
+}
+
+/** A docx with metadata in docProps/core.xml. */
+export function docxWithTitle(sections: readonly DocxSection[], title: string): Buffer {
+  const files: Record<string, Uint8Array> = {
+    '[Content_Types].xml': encode(CONTENT_TYPES),
+    'word/document.xml': encode(documentXml(sections)),
+    'docProps/core.xml': encode(coreXml(title)),
+  };
+
+  return Buffer.from(zipSync(files));
+}
+
+function documentXml(sections: readonly DocxSection[]): string {
+  const paragraphs: string[] = [];
+
+  for (const section of sections) {
+    if (section.heading) {
+      paragraphs.push(headingParagraph(section.heading.level, section.heading.text));
+    }
+    if (section.paragraphs) {
+      for (const text of section.paragraphs) {
+        paragraphs.push(bodyParagraph(text));
+      }
+    }
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>${paragraphs.join('')}</w:body>
+</w:document>`;
+}
+
+function headingParagraph(level: number, text: string): string {
+  return `<w:p><w:pPr><w:pStyle w:val="Heading${level}"/></w:pPr><w:r><w:t>${escape(text)}</w:t></w:r></w:p>`;
+}
+
+function bodyParagraph(text: string): string {
+  return `<w:p><w:r><w:t>${escape(text)}</w:t></w:r></w:p>`;
+}
+
+function coreXml(title: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <dc:title>${escape(title)}</dc:title>
+</cp:coreProperties>`;
 }
 
 /**
