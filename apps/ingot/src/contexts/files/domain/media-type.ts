@@ -24,6 +24,9 @@ export enum MediaType {
   Pdf = 'application/pdf',
   Pptx = 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   Docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  JavaScript = 'text/javascript',
+  TypeScript = 'text/typescript',
+  Python = 'text/x-python',
 }
 
 /*
