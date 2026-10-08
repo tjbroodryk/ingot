@@ -27,6 +27,7 @@ export enum MediaType {
   JavaScript = 'text/javascript',
   TypeScript = 'text/typescript',
   Python = 'text/x-python',
+  Kotlin = 'text/x-kotlin',
 }
 
 /*

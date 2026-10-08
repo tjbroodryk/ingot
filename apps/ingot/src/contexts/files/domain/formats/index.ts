@@ -1,7 +1,7 @@
 import { InvariantViolation } from '../../../../shared/domain/index.js';
 import type { FormatHandler } from '../format.js';
 import { MediaType } from '../media-type.js';
-import { javascriptHandler, typescriptHandler, pythonHandler } from './code.js';
+import { javascriptHandler, kotlinHandler, pythonHandler, typescriptHandler } from './code.js';
 import { csvHandler } from './csv.js';
 import { htmlHandler } from './html.js';
 import { markdownHandler } from './markdown.js';
@@ -28,6 +28,7 @@ export const FORMATS: Record<MediaType, FormatHandler> = {
   [MediaType.JavaScript]: javascriptHandler,
   [MediaType.TypeScript]: typescriptHandler,
   [MediaType.Python]: pythonHandler,
+  [MediaType.Kotlin]: kotlinHandler,
 };
 
 /** The handler for a media type. Total, because the registry is exhaustive. */

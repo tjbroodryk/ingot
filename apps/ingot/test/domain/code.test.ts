@@ -5,6 +5,7 @@ import {
   javascriptHandler,
   typescriptHandler,
   pythonHandler,
+  kotlinHandler,
 } from '../../src/contexts/files/domain/formats/code.js';
 
 const readJs = (code: string) =>
@@ -26,6 +27,13 @@ const readPy = (code: string) =>
     content: Buffer.from(code),
     filename: 'test.py',
     mediaType: MediaType.Python,
+  });
+
+const readKt = (code: string) =>
+  kotlinHandler.parse({
+    content: Buffer.from(code),
+    filename: 'test.kt',
+    mediaType: MediaType.Kotlin,
   });
 
 describe('JavaScript/TypeScript code parsing', () => {
@@ -89,6 +97,49 @@ function doSomething() {
     expect(parsed.blocks[0]?.text).toContain("import { foo }");
     expect(parsed.blocks[0]?.text).toContain("import { bar }");
     expect(parsed.blocks[1]?.headings).toEqual(['doSomething']);
+  });
+
+  it('keeps the header of a second class with its first method', async () => {
+    const parsed = await readJs(`
+class A {
+  one() {}
+}
+
+class B {
+  two() {}
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([
+      ['preamble'],
+      ['A', 'one'],
+      ['B', 'two'],
+    ]);
+    expect(parsed.blocks[2]?.text).toContain('class B {');
+  });
+
+  it('keeps trailing exports as epilogue but drops a lone closing brace', async () => {
+    const withExport = await readJs(`
+function App() {}
+
+export default App;
+`);
+    const classOnly = await readJs(`
+class A {
+  one() {}
+}
+`);
+
+    expect(withExport.blocks.map((b) => b.headings)).toEqual([['App'], ['epilogue']]);
+    expect(withExport.blocks[1]?.text).toBe('export default App;');
+    expect(classOnly.blocks.map((b) => b.headings)).toEqual([['preamble'], ['A', 'one']]);
+  });
+
+  it('does not repeat lines shared by two declarators', async () => {
+    const parsed = await readJs(`const a = () => 1, b = () => 2;`);
+
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]?.headings).toEqual(['a']);
   });
 
   it('handles exported functions', async () => {
@@ -248,6 +299,34 @@ class Service:
     expect(parsed.title).toBeNull();
   });
 
+  it('keeps module-level code between functions', async () => {
+    const parsed = await readPy(`
+def a():
+    pass
+
+LIMIT = 10
+
+def b():
+    pass
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['a'], ['b']]);
+    expect(parsed.blocks[1]?.text).toContain('LIMIT = 10');
+  });
+
+  it('keeps a main guard after the last function as epilogue', async () => {
+    const parsed = await readPy(`
+def main():
+    pass
+
+if __name__ == '__main__':
+    main()
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['main'], ['epilogue']]);
+    expect(parsed.blocks[1]?.text).toContain("if __name__ == '__main__':");
+  });
+
   it('sets title to first function name', async () => {
     const parsed = await readPy(`
 def main():
@@ -258,6 +337,167 @@ def helper():
 `);
 
     expect(parsed.title).toBe('main');
+  });
+});
+
+describe('Kotlin code parsing', () => {
+  it('extracts a top-level function', async () => {
+    const parsed = await readKt(`
+fun greet(name: String): String {
+    return "Hello, $name"
+}
+`);
+
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]?.headings).toEqual(['greet']);
+    expect(parsed.blocks[0]?.text).toContain('fun greet');
+    expect(parsed.blocks[0]?.kind).toBe(BlockKind.Code);
+  });
+
+  it('groups package and imports into preamble', async () => {
+    const parsed = await readKt(`
+package com.example
+
+import kotlin.math.max
+
+fun main() {
+    println(max(1, 2))
+}
+`);
+
+    expect(parsed.blocks).toHaveLength(2);
+    expect(parsed.blocks[0]?.headings).toEqual(['preamble']);
+    expect(parsed.blocks[0]?.text).toContain('package com.example');
+    expect(parsed.blocks[1]?.headings).toEqual(['main']);
+  });
+
+  it('extracts class methods and secondary constructors', async () => {
+    const parsed = await readKt(`
+class Calculator(val base: Int) {
+    constructor() : this(0)
+
+    fun add(a: Int, b: Int) = base + a + b
+
+    fun subtract(a: Int, b: Int) = base + a - b
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([
+      ['preamble'],
+      ['Calculator', 'constructor'],
+      ['Calculator', 'add'],
+      ['Calculator', 'subtract'],
+    ]);
+    expect(parsed.blocks[0]?.text).toContain('class Calculator');
+  });
+
+  it('nests companions, objects and inner classes into the parent path', async () => {
+    const parsed = await readKt(`
+class Repo {
+    companion object {
+        fun create() = Repo()
+    }
+
+    companion object Named {
+        fun other() = 1
+    }
+
+    inner class Cursor {
+        fun next() = 1
+    }
+}
+
+object Registry {
+    fun lookup() = 1
+}
+`);
+
+    expect(parsed.blocks.slice(1).map((b) => b.headings)).toEqual([
+      ['Repo.Companion', 'create'],
+      ['Repo.Named', 'other'],
+      ['Repo.Cursor', 'next'],
+      ['Registry', 'lookup'],
+    ]);
+  });
+
+  it('extracts methods on enums and interfaces', async () => {
+    const parsed = await readKt(`
+enum class Color {
+    RED, GREEN;
+
+    fun lower() = name.lowercase()
+}
+
+interface Shape {
+    fun area(): Double
+}
+`);
+
+    expect(parsed.blocks.slice(1).map((b) => b.headings)).toEqual([
+      ['Color', 'lower'],
+      ['Shape', 'area'],
+    ]);
+  });
+
+  it('includes annotations in the function block', async () => {
+    const parsed = await readKt(`
+@Composable
+fun Screen() {
+}
+`);
+
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]?.headings).toEqual(['Screen']);
+    expect(parsed.blocks[0]?.text).toContain('@Composable');
+  });
+
+  it('extracts properties holding lambdas or anonymous functions', async () => {
+    const parsed = await readKt(`
+val double = { x: Int -> x * 2 }
+
+val triple = fun(x: Int): Int = x * 3
+
+val notAFunction = 42
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['double'], ['triple'], ['epilogue']]);
+    expect(parsed.blocks[2]?.text).toBe('val notAFunction = 42');
+  });
+
+  it('keeps code between symbols in the next symbol block', async () => {
+    const parsed = await readKt(`
+fun a() = 1
+
+const val LIMIT = 10
+data class User(val id: Int)
+
+/** Second. */
+fun b() = 2
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['a'], ['b']]);
+    expect(parsed.blocks[1]?.text).toContain('const val LIMIT = 10');
+    expect(parsed.blocks[1]?.text).toContain('data class User');
+    expect(parsed.blocks[1]?.text).toContain('/** Second. */');
+  });
+
+  it('handles empty file gracefully', async () => {
+    const parsed = await readKt('');
+
+    expect(parsed.blocks).toHaveLength(0);
+    expect(parsed.title).toBeNull();
+  });
+
+  it('sets title to the dotted path for nested members', async () => {
+    const parsed = await readKt(`
+class Service {
+    companion object {
+        fun init() {}
+    }
+}
+`);
+
+    expect(parsed.title).toBe('Service.Companion.init');
   });
 });
 
@@ -286,6 +526,8 @@ describe('code handler properties', () => {
     expect(typescriptHandler.extensions).toContain('ts');
     expect(typescriptHandler.extensions).toContain('tsx');
     expect(pythonHandler.extensions).toContain('py');
+    expect(kotlinHandler.extensions).toContain('kt');
+    expect(kotlinHandler.extensions).toContain('kts');
   });
 
   it('all blocks are marked as code kind', async () => {
