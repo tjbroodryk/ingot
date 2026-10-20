@@ -94,8 +94,37 @@ RUN mkdir -p /opt/tessdata \
         "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${TESSDATA_REF}/${lang}.traineddata"; \
     done
 
+# ── 4c. the TypeScript grammar, built from source ──────────────────────────
+# tree-sitter-typescript@0.23.2 (the latest) ships an x86-64 binary in its
+# `prebuilds/linux-arm64` slot, so on arm64 it fails to dlopen with a "No such
+# file or directory" that names a file which is plainly there. Its bindings load
+# `prebuilds/` unconditionally under Bun, so the compiled addon is written over
+# the prebuild rather than beside it. Built on every arch, not just arm64, so
+# both images carry the same thing. `node` because binding.gyp shells out to it.
+FROM production-deps AS grammars
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ nodejs npm \
+ && rm -rf /var/lib/apt/lists/*
+RUN cd node_modules/tree-sitter-typescript \
+ && npx --yes node-gyp@11 rebuild \
+ && cp build/Release/tree_sitter_typescript_binding.node \
+      "prebuilds/$(node -p 'process.platform + "-" + process.arch')/tree-sitter-typescript.node"
+
 # ── 5. what runs ───────────────────────────────────────────────────────────
-FROM oven/bun:1.2.19-slim AS runtime
+# Trixie, not the bookworm every `oven/bun` tag is built on. The tree-sitter
+# prebuilds that code chunking loads are linked against GCC 14's libstdc++
+# (GLIBCXX_3.4.31+); bookworm stops at 3.4.30, so on it the server dies at
+# import with ERR_DLOPEN_FAILED. Bun loads `prebuilds/` directly and never
+# looks at a locally compiled `build/Release`, so building from source does not
+# help either. There is no trixie `oven/bun`, so the binary is copied in and the
+# image's `bun` user (uid 1000) is recreated to match.
+FROM oven/bun:1.2.19-slim AS bun
+
+FROM debian:trixie-slim AS runtime
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx \
+ && groupadd --gid 1000 bun \
+ && useradd --uid 1000 --gid bun --create-home --shell /bin/sh bun
 
 # The workspace layout is preserved rather than flattened. `bun install` links
 # @ingot/shared and @ingot/versioning as symlinks from `node_modules` into
@@ -103,6 +132,7 @@ FROM oven/bun:1.2.19-slim AS runtime
 # at nothing — an image that builds cleanly and cannot resolve its own imports.
 WORKDIR /app
 COPY --from=production-deps /repo/ ./
+COPY --from=grammars /repo/node_modules/tree-sitter-typescript/prebuilds ./node_modules/tree-sitter-typescript/prebuilds
 COPY --from=build /repo/packages/shared/dist ./packages/shared/dist
 COPY --from=build /repo/packages/versioning/dist ./packages/versioning/dist
 COPY --from=build /repo/apps/ingot/dist ./apps/ingot/dist
