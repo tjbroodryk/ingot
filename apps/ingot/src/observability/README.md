@@ -196,7 +196,10 @@ four-label cardinality budget you have to justify exceeding.
 
 ## Configuration
 
-Everything is on by default, pointed at localhost. See `.env.example`.
+Everything is on by default, pointed at localhost. `.env.example` sets
+`TRACING_ENABLED=false`, since a laptop rarely has a collector and each export
+to a missing one is a warning line; `bun run obs:up` and dropping that line
+turns it on.
 
 ```
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   # Jaeger, Tempo, a collector
