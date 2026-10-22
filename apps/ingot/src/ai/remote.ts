@@ -170,6 +170,20 @@ async function pause(header: string | null | undefined): Promise<void> {
  */
 const retryAfter = new WeakMap<RemoteModelError, string | null>();
 
+/** A rate limit that named no wait: providers' windows are a minute. */
+const DEFAULT_RATE_LIMIT_WAIT_MS = 60_000;
+
+/**
+ * How long a rate-limited host asked us to stay away, for a caller deciding
+ * when to come back — not how long to sleep here, which `pause` caps.
+ * Null when the error is not a rate limit.
+ */
+export function rateLimitWaitMs(error: unknown): number | null {
+  if (!(error instanceof RemoteModelError) || error.status !== 429) return null;
+  const seconds = Number(retryAfter.get(error));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : DEFAULT_RATE_LIMIT_WAIT_MS;
+}
+
 function clip(detail: string): string {
   const flat = detail.replace(/\s+/g, ' ').trim();
   return flat.length <= MAX_ERROR_CHARS ? flat : `${flat.slice(0, MAX_ERROR_CHARS - 1)}…`;

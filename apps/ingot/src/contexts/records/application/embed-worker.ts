@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EMBEDDER, type Embedder } from '../../../ai/embedder.port.js';
+import { rateLimitWaitMs } from '../../../ai/remote.js';
 import { Metrics, Outcome } from '../../../observability/index.js';
 import { Dispatcher } from '../../../shared/application/index.js';
+import { CLOCK, type Clock } from '../../../shared/domain/index.js';
 import { ClaimEmbeddings, EMBED_BATCH } from './commands/claim-embeddings.command.js';
 import type { Drained } from './drained.js';
 import { ReleaseEmbeddings } from './commands/release-embeddings.command.js';
@@ -26,8 +28,8 @@ const PASSES = 8;
  *
  * ```
  * ClaimEmbeddings   tx ~1ms    leases up to 128 texts
- *   embed                      no transaction, no connection
- * SaveEmbeddings    tx ~5ms    the vectors, and out of the queue
+ *   embed                      no transaction, no connection, ≤16k tokens a request
+ * SaveEmbeddings    tx ~5ms    that request's vectors, and out of the queue
  * ```
  *
  * Never call it from inside a command: `PgUnitOfWork.run` joins an open
@@ -38,9 +40,13 @@ const PASSES = 8;
 export class EmbedWorker {
   private readonly logger = new Logger(EmbedWorker.name);
 
+  /** Epoch ms before which no drain calls the model: set by a rate limit. */
+  private pausedUntil = 0;
+
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(EMBEDDER) private readonly embedder: Embedder,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   /**
@@ -57,6 +63,9 @@ export class EmbedWorker {
    * the same work twice.
    */
   async drain(): Promise<Drained> {
+    // Asking again inside the window only extends it; the next sweep after it comes back.
+    if (this.clock.now().getTime() < this.pausedUntil) return { done: 0, more: false };
+
     let embedded = 0;
     let more = false;
 
@@ -76,27 +85,52 @@ export class EmbedWorker {
     return { done: embedded, more };
   }
 
-  /** How many rows were embedded. Zero means the queue is empty or all leased. */
+  /**
+   * How many rows were embedded. Zero means the queue is empty or all leased.
+   *
+   * The claim is sent to the model in requests of at most `EMBED_REQUEST_TOKENS`
+   * (`packByTokens`), each saved as it returns. A request that fails hands back
+   * itself and everything after it, not what already succeeded.
+   */
   async next(limit: number = EMBED_BATCH): Promise<number> {
     const pending: readonly PendingEmbedding[] = await this.dispatcher.send(
       new ClaimEmbeddings(limit),
     );
     if (pending.length === 0) return 0;
 
-    const started = performance.now();
-    let vectors: number[][];
-    try {
-      vectors = await this.embedder.embed(pending.map((entry) => entry.text));
-    } catch (error) {
-      this.measure(Outcome.Error, started);
-      // Handed back rather than dropped: a model that is down is a model that
-      // will be up, and the next tick tries again. Dropping the work here
-      // would leave a column permanently and silently empty.
-      await this.dispatcher.send(new ReleaseEmbeddings(pending));
-      throw error;
+    const requests = packByTokens(pending, EMBED_REQUEST_TOKENS);
+    let saved = 0;
+    for (const [at, request] of requests.entries()) {
+      const started = performance.now();
+      let vectors: number[][];
+      try {
+        vectors = await this.embedder.embed(request.map((entry) => entry.text));
+      } catch (error) {
+        this.measure(Outcome.Error, started);
+        // Handed back rather than dropped: a model that is down is a model that
+        // will be up, and the next tick tries again. Dropping the work here
+        // would leave a column permanently and silently empty.
+        await this.dispatcher.send(new ReleaseEmbeddings(requests.slice(at).flat()));
+        this.backOff(error);
+        throw error;
+      }
+      this.measure(Outcome.Ok, started);
+      saved += await this.save(request, vectors);
     }
-    this.measure(Outcome.Ok, started);
+    return saved;
+  }
 
+  /** A rate limit stops every drain in this process until the host's window has passed. */
+  private backOff(error: unknown): void {
+    const wait = rateLimitWaitMs(error);
+    if (wait === null) return;
+    this.pausedUntil = this.clock.now().getTime() + wait;
+    this.logger.warn(
+      `Embedding paused for ${Math.round(wait / 1000)}s: the embedder is rate limited`,
+    );
+  }
+
+  private async save(pending: readonly PendingEmbedding[], vectors: number[][]): Promise<number> {
     const embedded = pending.flatMap<EmbeddedText>((entry, at) => {
       const vector = vectors[at];
       // A model that returned fewer vectors than texts is a model behaving
@@ -130,4 +164,45 @@ export class EmbedWorker {
       (performance.now() - started) / 1000,
     );
   }
+}
+
+/**
+ * The most one embedding request may carry, in estimated tokens.
+ *
+ * A request bigger than the provider's per-minute budget can never succeed:
+ * an Azure deployment at 120k TPM refuses a 64-text batch of 2k-token diffs
+ * every time, and the queue stops for good. Small requests fit any sensible
+ * quota and get through a minute's budget a piece at a time.
+ */
+export const EMBED_REQUEST_TOKENS = 16_000;
+
+/**
+ * Tokens, overestimated from UTF-8 bytes. A token is rarely under three bytes
+ * of code or prose, and never under one; counting exactly would mean
+ * tokenising every text for a limit that only needs to be safe.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(Buffer.byteLength(text, 'utf8') / 3);
+}
+
+/** In order, into runs of at most `budget` estimated tokens; a text over budget goes alone. */
+export function packByTokens<T extends { readonly text: string }>(
+  entries: readonly T[],
+  budget: number,
+): T[][] {
+  const requests: T[][] = [];
+  let current: T[] = [];
+  let tokens = 0;
+  for (const entry of entries) {
+    const size = estimateTokens(entry.text);
+    if (current.length > 0 && tokens + size > budget) {
+      requests.push(current);
+      current = [];
+      tokens = 0;
+    }
+    current.push(entry);
+    tokens += size;
+  }
+  if (current.length > 0) requests.push(current);
+  return requests;
 }
