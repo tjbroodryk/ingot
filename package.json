@@ -20,6 +20,7 @@
     "db:reset": "docker compose down -v && docker compose up -d --wait",
     "obs:up": "docker compose --profile observability up -d --wait",
     "obs:down": "docker compose --profile observability down",
+    "service": "bun scripts/macos/service.ts",
     "docker:build": "docker build -f apps/ingot/Dockerfile -t ingot-server:dev . && docker build -f apps/ingot-app/Dockerfile -t ingot-app:dev .",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,html}\""
