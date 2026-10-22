@@ -111,6 +111,9 @@ export class EmbedWorker {
         // will be up, and the next tick tries again. Dropping the work here
         // would leave a column permanently and silently empty.
         await this.dispatcher.send(new ReleaseEmbeddings(requests.slice(at).flat()));
+        // `drain` logs its total only when it finishes, and this throw is how a
+        // rate-limited drain ends: without this line its progress is invisible.
+        if (saved > 0) this.logger.log(`Embedded ${saved} rows before the embedder failed`);
         this.backOff(error);
         throw error;
       }
