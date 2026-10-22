@@ -6,6 +6,7 @@ import {
   typescriptHandler,
   pythonHandler,
   kotlinHandler,
+  csharpHandler,
 } from '../../src/contexts/files/domain/formats/code.js';
 
 const readJs = (code: string) =>
@@ -34,6 +35,13 @@ const readKt = (code: string) =>
     content: Buffer.from(code),
     filename: 'test.kt',
     mediaType: MediaType.Kotlin,
+  });
+
+const readCs = (code: string) =>
+  csharpHandler.parse({
+    content: Buffer.from(code),
+    filename: 'test.cs',
+    mediaType: MediaType.CSharp,
   });
 
 describe('JavaScript/TypeScript code parsing', () => {
@@ -501,6 +509,228 @@ class Service {
   });
 });
 
+describe('C# code parsing', () => {
+  it('extracts a method, with the class line as preamble', async () => {
+    const parsed = await readCs(`
+class Greeter
+{
+    public string Greet(string name)
+    {
+        return $"Hello, {name}";
+    }
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['preamble'], ['Greeter', 'Greet']]);
+    expect(parsed.blocks[0]?.text).toContain('class Greeter');
+    expect(parsed.blocks[1]?.text).toContain('public string Greet');
+    expect(parsed.blocks[1]?.kind).toBe(BlockKind.Code);
+  });
+
+  it('groups usings and a block namespace into preamble, leaving it out of the path', async () => {
+    const parsed = await readCs(`
+using System;
+
+namespace Example.App
+{
+    class Program
+    {
+        static void Main()
+        {
+            Console.WriteLine("hi");
+        }
+    }
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['preamble'], ['Program', 'Main']]);
+    expect(parsed.blocks[0]?.text).toContain('using System;');
+    expect(parsed.blocks[0]?.text).toContain('namespace Example.App');
+  });
+
+  it('reads through a file-scoped namespace', async () => {
+    const parsed = await readCs(`
+namespace Example.App;
+
+class Program
+{
+    static void Main() { }
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['preamble'], ['Program', 'Main']]);
+  });
+
+  it('extracts constructors, destructors, operators and indexers', async () => {
+    const parsed = await readCs(`
+class Vector
+{
+    public Vector(int x) { X = x; }
+
+    ~Vector() { }
+
+    public static Vector operator +(Vector a, Vector b) => new Vector(a.X + b.X);
+
+    public static implicit operator int(Vector v) => v.X;
+
+    public int this[int i] => X;
+
+    public int X;
+}
+`);
+
+    expect(parsed.blocks.slice(1).map((b) => b.headings)).toEqual([
+      ['Vector', 'constructor'],
+      ['Vector', 'destructor'],
+      ['Vector', 'operator'],
+      ['Vector', 'operator'],
+      ['Vector', 'this'],
+      ['epilogue'],
+    ]);
+    expect(parsed.blocks.at(-1)?.text).toContain('public int X;');
+  });
+
+  it('nests structs, records and interfaces into the parent path', async () => {
+    const parsed = await readCs(`
+class Outer
+{
+    struct Point
+    {
+        public double Length() => 0;
+    }
+
+    record Pair(int A, int B)
+    {
+        public int Sum() => A + B;
+    }
+
+    interface IShape
+    {
+        double Area() => 0;
+    }
+
+    class Inner
+    {
+        class Deepest
+        {
+            void Run() { }
+        }
+    }
+}
+`);
+
+    expect(parsed.blocks.slice(1).map((b) => b.headings)).toEqual([
+      ['Outer.Point', 'Length'],
+      ['Outer.Pair', 'Sum'],
+      ['Outer.IShape', 'Area'],
+      ['Outer.Inner.Deepest', 'Run'],
+    ]);
+  });
+
+  it('extracts properties and events with bodies, and leaves auto-properties in place', async () => {
+    const parsed = await readCs(`
+class Settings
+{
+    public int Auto { get; set; }
+
+    public int Computed => Auto * 2;
+
+    public int Bodied
+    {
+        get { return Auto; }
+    }
+
+    public event EventHandler Changed
+    {
+        add { }
+        remove { }
+    }
+
+    public void Touch() { }
+}
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([
+      ['preamble'],
+      ['Settings', 'Computed'],
+      ['Settings', 'Bodied'],
+      ['Settings', 'Changed'],
+      ['Settings', 'Touch'],
+    ]);
+    expect(parsed.blocks[0]?.text).toContain('public int Auto { get; set; }');
+  });
+
+  it('extracts local functions from top-level statements', async () => {
+    const parsed = await readCs(`
+using System;
+
+Console.WriteLine(Twice(2));
+
+int Twice(int x) => x * 2;
+`);
+
+    expect(parsed.blocks.map((b) => b.headings)).toEqual([['preamble'], ['Twice']]);
+    expect(parsed.blocks[0]?.text).toContain('Console.WriteLine(Twice(2));');
+  });
+
+  it('includes attributes in the method block', async () => {
+    const parsed = await readCs(`
+class Tests
+{
+    [Fact]
+    public void Passes() { }
+}
+`);
+
+    expect(parsed.blocks[1]?.headings).toEqual(['Tests', 'Passes']);
+    expect(parsed.blocks[1]?.text).toContain('[Fact]');
+  });
+
+  it('keeps code between symbols in the next symbol block', async () => {
+    const parsed = await readCs(`
+class Limits
+{
+    void A() { }
+
+    const int Max = 10;
+    enum Kind { One, Two }
+
+    /// <summary>Second.</summary>
+    void B() { }
+}
+`);
+
+    expect(parsed.blocks.slice(1).map((b) => b.headings)).toEqual([
+      ['Limits', 'A'],
+      ['Limits', 'B'],
+    ]);
+    expect(parsed.blocks[2]?.text).toContain('const int Max = 10;');
+    expect(parsed.blocks[2]?.text).toContain('enum Kind');
+    expect(parsed.blocks[2]?.text).toContain('/// <summary>Second.</summary>');
+  });
+
+  it('handles empty file gracefully', async () => {
+    const parsed = await readCs('');
+
+    expect(parsed.blocks).toHaveLength(0);
+    expect(parsed.title).toBeNull();
+  });
+
+  it('sets title to the dotted path for nested members', async () => {
+    const parsed = await readCs(`
+class Service
+{
+    class Factory
+    {
+        static Service Create() => new Service();
+    }
+}
+`);
+
+    expect(parsed.title).toBe('Service.Factory.Create');
+  });
+});
+
 describe('code handler properties', () => {
   it('JavaScript uses Heading boundary with overlap', () => {
     expect(javascriptHandler.chunking.boundary).toBe(Boundary.Heading);
@@ -528,6 +758,8 @@ describe('code handler properties', () => {
     expect(pythonHandler.extensions).toContain('py');
     expect(kotlinHandler.extensions).toContain('kt');
     expect(kotlinHandler.extensions).toContain('kts');
+    expect(csharpHandler.extensions).toContain('cs');
+    expect(csharpHandler.extensions).toContain('csx');
   });
 
   it('all blocks are marked as code kind', async () => {
