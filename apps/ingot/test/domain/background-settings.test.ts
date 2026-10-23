@@ -4,6 +4,7 @@ import {
   CONCURRENCY_KEYS,
   MAX_CONCURRENCY,
   concurrencyEnv,
+  embeddingsTpmEnv,
 } from '../../src/contexts/records/application/background-settings.js';
 import { type EnvSource, EnvMisconfigured, loadSection } from '../../src/config/env.js';
 
@@ -117,5 +118,21 @@ describe('the background concurrency', () => {
     expect(() => concurrencyFrom(env({ INGOT_RECEIPTS_CONCURRENCY: '0' }))).toThrow(
       /INGOT_RECEIPTS_CONCURRENCY/,
     );
+  });
+});
+
+describe('the embeddings token budget', () => {
+  const tpmFrom = (source: EnvSource) => loadSection(embeddingsTpmEnv, source);
+
+  it('is no budget unless set', () => {
+    expect(tpmFrom(env({}))).toBeNull();
+  });
+
+  it('reads tokens a minute', () => {
+    expect(tpmFrom(env({ INGOT_EMBEDDINGS_TPM: '110000' }))).toBe(110_000);
+  });
+
+  it.each(['0', '500', '1.5', 'lots'])('refuses %s', (raw) => {
+    expect(() => tpmFrom(env({ INGOT_EMBEDDINGS_TPM: raw }))).toThrow(/INGOT_EMBEDDINGS_TPM/);
   });
 });

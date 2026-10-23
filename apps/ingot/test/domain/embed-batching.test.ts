@@ -10,6 +10,7 @@ import {
   estimateTokens,
   packByTokens,
 } from '../../src/contexts/records/application/embed-worker.js';
+import type { EmbedBudget } from '../../src/contexts/records/application/ports/embed-budget.port.js';
 import type { PendingEmbedding } from '../../src/contexts/records/application/ports/overlay-store.port.js';
 import type { Dispatcher } from '../../src/shared/application/index.js';
 
@@ -52,7 +53,7 @@ describe('EmbedWorker', () => {
   // Two requests' worth: each row is about 4k estimated tokens.
   const claimed = Array.from({ length: 8 }, (_, at) => row(at, 12_000));
 
-  function world(fail: (request: number) => Error | null) {
+  function world(fail: (request: number) => Error | null, options: { tpm?: number } = {}) {
     const saved: string[] = [];
     const released: string[] = [];
     let requests = 0;
@@ -85,9 +86,36 @@ describe('EmbedWorker', () => {
         return texts.map(() => [0, 1]);
       },
     };
-    const worker = new EmbedWorker(dispatcher, embedder, { now: () => new Date(now.ms) });
+    // `PgEmbedBudget`'s rules, minus the window, which its own test covers.
+    let pausedUntil = 0;
+    let room = options.tpm ?? Number.POSITIVE_INFINITY;
+    const budget: EmbedBudget = {
+      async paused(at) {
+        return at.getTime() < pausedUntil;
+      },
+      async reserve(tokens, at) {
+        if (at.getTime() < pausedUntil || tokens > room) {
+          return false;
+        }
+        room -= tokens;
+        return true;
+      },
+      async pause(until) {
+        pausedUntil = Math.max(pausedUntil, until.getTime());
+      },
+    };
+    const worker = new EmbedWorker(dispatcher, embedder, budget, { now: () => new Date(now.ms) });
     return { worker, saved, released, now, calls: () => requests };
   }
+
+  it('stops at the token budget and hands back the rest, without an error', async () => {
+    // Room for one ~16k request of four rows, not the second.
+    const { worker, saved, released, calls } = world(() => null, { tpm: 20_000 });
+    expect(await worker.next()).toBe(4);
+    expect(calls()).toBe(1);
+    expect(saved).toHaveLength(4);
+    expect(released).toHaveLength(4);
+  });
 
   it('splits a claim into requests the quota can fit', async () => {
     const { worker, saved, calls } = world(() => null);

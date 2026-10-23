@@ -1210,6 +1210,7 @@ repository.
 | `INGOT_RECEIPTS_CONCURRENCY`   | `2`     | Concurrent summariser calls, per replica.                                             |
 | `INGOT_DELIVERIES_CONCURRENCY` | `6`     | Concurrent deliveries, per replica. Higher because each goes to a different receiver. |
 | `INGOT_FILES_CONCURRENCY`      | `2`     | Concurrent document parses, per replica. Bounded by heap, not by a provider.          |
+| `INGOT_EMBEDDINGS_TPM`         | unset   | Embedder tokens a minute, shared by every replica. Unset, only a 429 pauses embedding. |
 
 Each is refused at boot below 1 or above 64 — the cap being a typo guard rather
 than a limit worth having, since the real bound is a quota this service cannot
