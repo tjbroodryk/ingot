@@ -25,6 +25,11 @@ const Kotlin = require('node-gyp-build')(
     .replace(/package\.json$/, ''),
 );
 
+// Same as Kotlin: its Bun branch `import()`s the .node file, which Bun refuses.
+const CSharp = require('node-gyp-build')(
+  require.resolve('tree-sitter-c-sharp/package.json').replace(/package\.json$/, ''),
+);
+
 // The language grammars from tree-sitter packages
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const languages = new Map<MediaType, any>([
@@ -32,6 +37,7 @@ const languages = new Map<MediaType, any>([
   [MediaType.TypeScript, TypeScript.typescript],
   [MediaType.Python, Python],
   [MediaType.Kotlin, Kotlin],
+  [MediaType.CSharp, CSharp],
 ]);
 
 interface Symbol {
@@ -280,11 +286,111 @@ function extractKtSymbols(root: SyntaxNode): Symbol[] {
   return symbols;
 }
 
+/**
+ * Extracts symbols from a C# AST.
+ *
+ * Methods, constructors, destructors, operators, indexers, local functions in
+ * top-level statements, and properties or events whose accessors have bodies.
+ * Classes, structs, records and interfaces nest into a dotted parent like
+ * "Outer.Inner"; namespaces are not part of the path.
+ */
+function extractCSharpSymbols(root: SyntaxNode): Symbol[] {
+  const symbols: Symbol[] = [];
+
+  function push(node: SyntaxNode, name: string, parent: string | null): void {
+    symbols.push({
+      name,
+      parent,
+      startLine: node.startPosition.row,
+      endLine: node.endPosition.row,
+    });
+  }
+
+  function nameOf(node: SyntaxNode): string {
+    return node.childForFieldName('name')?.text ?? 'anonymous';
+  }
+
+  function visit(node: SyntaxNode, parent: string | null): void {
+    switch (node.type) {
+      case 'method_declaration':
+      case 'local_function_statement':
+        push(node, nameOf(node), parent);
+        break;
+
+      case 'constructor_declaration':
+        if (parent) push(node, 'constructor', parent);
+        break;
+
+      case 'destructor_declaration':
+        if (parent) push(node, 'destructor', parent);
+        break;
+
+      case 'operator_declaration':
+      case 'conversion_operator_declaration':
+        if (parent) push(node, 'operator', parent);
+        break;
+
+      case 'indexer_declaration':
+        if (parent) push(node, 'this', parent);
+        break;
+
+      case 'property_declaration':
+      case 'event_declaration': {
+        // `{ get; set; }` has nothing to find, so it stays with the code around it
+        const accessors = node.namedChildren.find((child) => child.type === 'accessor_list');
+        const hasBody =
+          node.namedChildren.some((child) => child.type === 'arrow_expression_clause') ||
+          (accessors?.namedChildren.some((accessor) =>
+            accessor.namedChildren.some(
+              (part) => part.type === 'block' || part.type === 'arrow_expression_clause',
+            ),
+          ) ??
+            false);
+        if (hasBody) push(node, nameOf(node), parent);
+        break;
+      }
+
+      case 'class_declaration':
+      case 'struct_declaration':
+      case 'record_declaration':
+      case 'interface_declaration': {
+        const name = nameOf(node);
+        const path = parent ? `${parent}.${name}` : name;
+        const body = node.namedChildren.find((child) => child.type === 'declaration_list');
+        for (const member of body?.namedChildren ?? []) {
+          visit(member, path);
+        }
+        break;
+      }
+
+      case 'namespace_declaration': {
+        const body = node.namedChildren.find((child) => child.type === 'declaration_list');
+        for (const member of body?.namedChildren ?? []) {
+          visit(member, parent);
+        }
+        break;
+      }
+
+      // A file-scoped namespace holds the rest of the file as its children
+      case 'compilation_unit':
+      case 'file_scoped_namespace_declaration':
+      case 'global_statement':
+        for (const child of node.namedChildren) {
+          visit(child, parent);
+        }
+    }
+  }
+
+  visit(root, null);
+  return symbols;
+}
+
 const extractors = new Map<MediaType, (root: SyntaxNode) => Symbol[]>([
   [MediaType.JavaScript, extractJsSymbols],
   [MediaType.TypeScript, extractJsSymbols],
   [MediaType.Python, extractPySymbols],
   [MediaType.Kotlin, extractKtSymbols],
+  [MediaType.CSharp, extractCSharpSymbols],
 ]);
 
 /**
@@ -431,6 +537,18 @@ export const pythonHandler: FormatHandler = {
 export const kotlinHandler: FormatHandler = {
   mediaType: MediaType.Kotlin,
   extensions: ['kt', 'kts'],
+  shape: ByteShape.Text,
+  tabular: false,
+  chunking: { boundary: Boundary.Heading, overlap: true, carryHeadings: true },
+  parse: parseCode,
+};
+
+/**
+ * C#: methods and members with bodies, nested types, and top-level statements.
+ */
+export const csharpHandler: FormatHandler = {
+  mediaType: MediaType.CSharp,
+  extensions: ['cs', 'csx'],
   shape: ByteShape.Text,
   tabular: false,
   chunking: { boundary: Boundary.Heading, overlap: true, carryHeadings: true },
