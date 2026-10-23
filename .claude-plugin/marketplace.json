@@ -1,0 +1,12 @@
+{
+  "name": "ingot",
+  "owner": { "name": "tjbroodryk" },
+  "description": "Claude Code plugins for Ingot.",
+  "plugins": [
+    {
+      "name": "ingot",
+      "source": "./plugins/ingot",
+      "description": "Stores large MCP tool results in Ingot, one table per tool, and hands Claude a short stub to query instead."
+    }
+  ]
+}
