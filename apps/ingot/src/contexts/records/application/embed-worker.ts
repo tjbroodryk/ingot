@@ -6,6 +6,7 @@ import { Dispatcher } from '../../../shared/application/index.js';
 import { CLOCK, type Clock } from '../../../shared/domain/index.js';
 import { ClaimEmbeddings, EMBED_BATCH } from './commands/claim-embeddings.command.js';
 import type { Drained } from './drained.js';
+import { EMBED_BUDGET, type EmbedBudget } from './ports/embed-budget.port.js';
 import { ReleaseEmbeddings } from './commands/release-embeddings.command.js';
 import { type EmbeddedText, SaveEmbeddings } from './commands/save-embeddings.command.js';
 import type { PendingEmbedding } from './ports/overlay-store.port.js';
@@ -40,12 +41,10 @@ const PASSES = 8;
 export class EmbedWorker {
   private readonly logger = new Logger(EmbedWorker.name);
 
-  /** Epoch ms before which no drain calls the model: set by a rate limit. */
-  private pausedUntil = 0;
-
   constructor(
     private readonly dispatcher: Dispatcher,
     @Inject(EMBEDDER) private readonly embedder: Embedder,
+    @Inject(EMBED_BUDGET) private readonly budget: EmbedBudget,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -64,7 +63,9 @@ export class EmbedWorker {
    */
   async drain(): Promise<Drained> {
     // Asking again inside the window only extends it; the next sweep after it comes back.
-    if (this.clock.now().getTime() < this.pausedUntil) return { done: 0, more: false };
+    if (await this.budget.paused(this.clock.now())) {
+      return { done: 0, more: false };
+    }
 
     let embedded = 0;
     let more = false;
@@ -90,7 +91,8 @@ export class EmbedWorker {
    *
    * The claim is sent to the model in requests of at most `EMBED_REQUEST_TOKENS`
    * (`packByTokens`), each saved as it returns. A request that fails hands back
-   * itself and everything after it, not what already succeeded.
+   * itself and everything after it, not what already succeeded. So does one the
+   * shared `EmbedBudget` has no room for, which ends the drain without an error.
    */
   async next(limit: number = EMBED_BATCH): Promise<number> {
     const pending: readonly PendingEmbedding[] = await this.dispatcher.send(
@@ -101,6 +103,12 @@ export class EmbedWorker {
     const requests = packByTokens(pending, EMBED_REQUEST_TOKENS);
     let saved = 0;
     for (const [at, request] of requests.entries()) {
+      const tokens = request.reduce((sum, entry) => sum + estimateTokens(entry.text), 0);
+      if (!(await this.budget.reserve(tokens, this.clock.now()))) {
+        await this.dispatcher.send(new ReleaseEmbeddings(requests.slice(at).flat()));
+        if (saved > 0) this.logger.log(`Embedded ${saved} rows before the token budget ran out`);
+        return saved;
+      }
       const started = performance.now();
       let vectors: number[][];
       try {
@@ -114,7 +122,7 @@ export class EmbedWorker {
         // `drain` logs its total only when it finishes, and this throw is how a
         // rate-limited drain ends: without this line its progress is invisible.
         if (saved > 0) this.logger.log(`Embedded ${saved} rows before the embedder failed`);
-        this.backOff(error);
+        await this.backOff(error);
         throw error;
       }
       this.measure(Outcome.Ok, started);
@@ -123,11 +131,13 @@ export class EmbedWorker {
     return saved;
   }
 
-  /** A rate limit stops every drain in this process until the host's window has passed. */
-  private backOff(error: unknown): void {
+  /** A rate limit stops every drain on every replica until the host's window has passed. */
+  private async backOff(error: unknown): Promise<void> {
     const wait = rateLimitWaitMs(error);
-    if (wait === null) return;
-    this.pausedUntil = this.clock.now().getTime() + wait;
+    if (wait === null) {
+      return;
+    }
+    await this.budget.pause(new Date(this.clock.now().getTime() + wait));
     this.logger.warn(
       `Embedding paused for ${Math.round(wait / 1000)}s: the embedder is rate limited`,
     );

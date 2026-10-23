@@ -60,6 +60,30 @@ export const concurrencyEnv = section(
   },
 );
 
+export const EMBEDDINGS_TPM_KEY = 'INGOT_EMBEDDINGS_TPM';
+
+export const EMBEDDINGS_TPM = Symbol('EmbeddingsTpm');
+
+/**
+ * Tokens a minute every replica together may send the embedder, or null for
+ * no budget, where only a 429 slows embedding down.
+ *
+ * Unlike the concurrency, this is for the whole deployment, not one replica:
+ * the replicas share it through Postgres. Set it a little under the provider's
+ * quota. The estimate it is spent in runs high, and a minute's window lets a
+ * burst through at its edge.
+ */
+export const embeddingsTpmEnv = section(
+  {
+    [EMBEDDINGS_TPM_KEY]: whole({
+      fallback: 0,
+      min: 1_000,
+      rule: '; it is tokens a minute across every replica, and at least 1000.',
+    }),
+  },
+  (vars): number | null => vars[EMBEDDINGS_TPM_KEY] || null,
+);
+
 function bound(kind: BackgroundKind) {
   const key = CONCURRENCY_KEYS[kind];
   return whole({

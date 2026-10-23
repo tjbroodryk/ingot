@@ -43,6 +43,7 @@ export const TABLES = [
   'retired_generation',
   'parquet_cache_file',
   'roll_up_due',
+  'embed_budget',
 ];
 
 export interface TestDatabase {

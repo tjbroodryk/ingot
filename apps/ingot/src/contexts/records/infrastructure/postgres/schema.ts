@@ -1,5 +1,7 @@
 import {
+  bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -240,5 +242,13 @@ export const rollUpDue = pgTable(
   },
   (table) => [index('roll_up_due_at').on(table.dueAt)],
 );
+
+/** The embedder's shared quota, one row. See `drizzle/0017_embed_budget.sql`. */
+export const embedBudget = pgTable('embed_budget', {
+  id: boolean('id').primaryKey().default(true),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  tokensUsed: bigint('tokens_used', { mode: 'number' }).notNull(),
+  pausedUntil: timestamp('paused_until', { withTimezone: true }),
+});
 
 export type OverlayRowRecord = typeof overlayRow.$inferSelect;
