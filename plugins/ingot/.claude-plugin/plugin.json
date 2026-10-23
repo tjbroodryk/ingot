@@ -1,0 +1,17 @@
+{
+  "name": "ingot",
+  "description": "Stores large MCP tool results in Ingot, one table per tool, and hands Claude a short stub to query instead.",
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "Ingot URL",
+      "description": "The ingot to write into, e.g. http://127.0.0.1:3002/api/v1/<account>/<ingot>"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Ingot API key",
+      "description": "A key for that account; kept in the system keychain",
+      "sensitive": true
+    }
+  }
+}
