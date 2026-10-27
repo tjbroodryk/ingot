@@ -363,6 +363,13 @@ opinions, and the two would drift. `$["Invoice #"]` is the quoted-key form the
 path grammar gained here, because `Invoice #` and `Total (USD)` are what real
 header rows say and a caller has no choice about them.
 
+Leave `columns` out of a CSV's extraction and the header writes them:
+`{ "extract": { "table": "invoices" } }` makes a column per header, named for
+it in SQL form (`Invoice #` → `invoice`, `2024 Total` → `c_2024_total`) and
+typed INTEGER, BIGINT, DOUBLE, BOOLEAN or VARCHAR by what every row holds there.
+Blank cells are nulls, a leading zero keeps a value VARCHAR, and `key` names the
+inferred columns.
+
 Prose has no field names to path into, so its columns carry `describe` and a
 model fills them against a schema it is held to — the same trick
 `RECEIPT_SCHEMA` plays. **That rung is not built yet**: a prose extraction

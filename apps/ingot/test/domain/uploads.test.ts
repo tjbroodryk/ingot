@@ -397,6 +397,11 @@ describe('an extraction mapping', () => {
     ).toThrow(/must start with/);
   });
 
+  it('leaves columns to the header on a tabular document, and only there', () => {
+    expect(FileMapping.parse({ table: 'invoices' }, tabular).table.value).toBe('invoices');
+    expect(() => FileMapping.parse({ table: 'invoices' }, prose)).toThrow(/only for a CSV/);
+  });
+
   it('refuses a key naming a column the extraction does not fill', () => {
     expect(() =>
       FileMapping.parse(
