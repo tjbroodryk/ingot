@@ -120,7 +120,9 @@ Every type has a builder: `varchar`, `integer`, `bigint`, `double`, `boolean`, `
 `date`, `json`. `.embed()` exists only on `varchar`. `.rows('$.items[*]')` fans an array out into
 rows, `.key(...)` names the identifying columns, `.raw()` keeps the whole result in `_raw`.
 `add` refuses, at compile time, a definition with a column only a model can fill; pass that one
-to `uploadDocument(file, { extract })` instead.
+to `uploadDocument(file, { extract })` instead. For a CSV, a definition with no columns —
+`table('invoices')` — makes a column per header, named and typed from the rows; to key it, pass
+`{ table: 'invoices', key: ['invoice'] }` as `extract`, since `.key` only names declared columns.
 
 ## Tools for an agent
 
