@@ -26,11 +26,14 @@ import { GetPendingOperationsHandler } from './application/queries/get-pending-o
 import { DeliveryWorker } from './application/delivery-worker.js';
 import { ReceiptWorker } from './application/receipt-worker.js';
 import { EmbedWorker } from './application/embed-worker.js';
+import { EMBEDDINGS_TPM } from './application/background-settings.js';
 import { DELIVERY_TRIGGER } from './application/ports/delivery-trigger.port.js';
+import { EMBED_BUDGET } from './application/ports/embed-budget.port.js';
 import { RECEIPT_NOTIFIER } from './application/ports/receipt-notifier.port.js';
 import { ReceiptBuilder } from './application/receipt-builder.js';
 import { BackgroundCollectors } from './infrastructure/background-collectors.js';
 import { OutboxReceiptNotifier } from './infrastructure/outbox-receipt-notifier.js';
+import { PgEmbedBudget } from './infrastructure/postgres/pg-embed-budget.js';
 import { RecordsController } from './interface/records.controller.js';
 
 /**
@@ -82,6 +85,9 @@ import { RecordsController } from './interface/records.controller.js';
     SaveEmbeddingsHandler,
     ReleaseEmbeddingsHandler,
     EmbedWorker,
+    PgEmbedBudget,
+    { provide: EMBED_BUDGET, useExisting: PgEmbedBudget },
+    { provide: EMBEDDINGS_TPM, inject: [ENV], useFactory: (env: Env) => env.embeddingsTpm },
 
     ClaimReceiptHandler,
     WriteReceiptHandler,

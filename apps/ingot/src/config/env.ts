@@ -3,7 +3,10 @@ import type { z } from 'zod';
 import { aiEnv } from '../ai/ai-settings.js';
 import { authEnv } from '../auth/auth-settings.js';
 import { filesEnv } from '../contexts/files/application/file-settings.js';
-import { concurrencyEnv } from '../contexts/records/application/background-settings.js';
+import {
+  concurrencyEnv,
+  embeddingsTpmEnv,
+} from '../contexts/records/application/background-settings.js';
 import { generationGraceEnv } from '../contexts/records/application/generation-grace.js';
 import { rollUpEnv } from '../contexts/records/application/roll-up-settings.js';
 import { databaseEnv } from '../database/database-settings.js';
@@ -33,6 +36,7 @@ const SECTIONS = {
   delivery: deliveryEnv,
   files: filesEnv,
   concurrency: concurrencyEnv,
+  embeddingsTpm: embeddingsTpmEnv,
   generationGraceMs: generationGraceEnv,
   rollUp: rollUpEnv,
   sweepers: sweepersEnv,

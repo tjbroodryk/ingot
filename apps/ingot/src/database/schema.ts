@@ -10,6 +10,7 @@ export { account, accountKey } from '../contexts/accounts/infrastructure/postgre
 export { fileQueue } from '../contexts/files/infrastructure/postgres/schema.js';
 export { ingot, ingotTable } from '../contexts/ingots/infrastructure/postgres/schema.js';
 export {
+  embedBudget,
   overlayReceiptQueue,
   overlayEmbedQueue,
   overlayRow,
