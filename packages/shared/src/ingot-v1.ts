@@ -860,7 +860,12 @@ export interface FileExtraction {
   /** A path to fan out on, as at `/add`. Defaults to one row per document. */
   readonly rows?: string;
   readonly key?: readonly string[];
-  readonly columns: Readonly<Record<string, ExtractMapping>>;
+  /**
+   * Left out on a tabular document, every header becomes a column named and
+   * typed from the rows, `rows` defaults to `$[*]`, and `key` names the
+   * inferred columns (`Invoice #` → `invoice`).
+   */
+  readonly columns?: Readonly<Record<string, ExtractMapping>>;
 }
 
 /**

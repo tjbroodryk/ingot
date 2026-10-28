@@ -20,6 +20,7 @@ import {
 import type { Chunk } from '../../domain/chunker.js';
 import { FileMapping } from '../../domain/file-mapping.vo.js';
 import { isTabular } from '../../domain/formats/detect.js';
+import { inferExtraction } from '../../domain/inferred-columns.js';
 import {
   CHUNKS_TABLE,
   CHUNK_FILE_ID,
@@ -243,7 +244,15 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
    * already parsed once at upload, which is where a bad one was refused.
    */
   private async writeExtracted(job: PendingFile, extracted: unknown, now: Date): Promise<void> {
-    const mapping = FileMapping.parse(job.extract as NonNullable<typeof job.extract>, {
+    const declared = job.extract as NonNullable<typeof job.extract>;
+    // Always an array here: an extraction without columns is refused at upload
+    // for anything but a tabular document.
+    const inferred = declared.columns
+      ? null
+      : inferExtraction(declared, extracted as Record<string, unknown>[]);
+    const result = inferred ? inferred.rows : extracted;
+
+    const mapping = FileMapping.parse(inferred?.extraction ?? declared, {
       // Recomputed from the media type rather than carried on the queue row: it
       // is a fact about the format, and a format does not change under a stored
       // document. This reaches the same answer the upload did, the same way.
@@ -255,7 +264,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
       rows: mapping.rows ?? undefined,
       key: [...mapping.key],
       columns: mapping.asColumnMappings(),
-      result: extracted,
+      result,
     });
 
     const table = await this.registry.ensure(job.ingotId, mapping.table.value, () =>
@@ -278,7 +287,7 @@ export class WriteFileHandler implements ICommandHandler<WriteFile> {
     table.accommodate(row.columns);
     if (table.hasChanges) await this.registry.save(table);
 
-    const applied = row.apply(extracted, {
+    const applied = row.apply(result, {
       rowId: () => newIdValue('row'),
       at: now,
       batch: newIdValue('batch'),

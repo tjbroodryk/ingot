@@ -222,15 +222,19 @@ export class TableDef<
     };
   }
 
-  /** The same definition as `extract` for a document upload. */
+  /**
+   * The same definition as `extract` for a document upload. With no columns,
+   * a CSV's header supplies them.
+   */
   toExtraction(): FileExtraction {
     const { name, rows, columns, key } = this.state;
+    const entries = Object.entries(columns);
     return {
       table: name,
       ...(rows === undefined ? {} : { rows }),
-      columns: Object.fromEntries(
-        Object.entries(columns).map(([column, def]) => [column, def.toJSON()]),
-      ),
+      ...(entries.length === 0
+        ? {}
+        : { columns: Object.fromEntries(entries.map(([column, def]) => [column, def.toJSON()])) }),
       ...(key === undefined ? {} : { key }),
     };
   }

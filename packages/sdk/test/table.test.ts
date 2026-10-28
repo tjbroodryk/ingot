@@ -37,11 +37,15 @@ describe('table definitions', () => {
       party: col.varchar('$.party').describe('Who signed'),
     });
     expect(def.toJSON().columns.party).toEqual({ type: ColumnType.Varchar, from: '$.party' });
-    expect(def.toExtraction().columns.party).toEqual({
+    expect(def.toExtraction().columns?.party).toEqual({
       type: ColumnType.Varchar,
       from: '$.party',
       describe: 'Who signed',
     });
+  });
+
+  it('leave columns to a CSV header when none are declared', () => {
+    expect(table('invoices').toExtraction()).toEqual({ table: 'invoices' });
   });
 
   it('carry a constant of null', () => {

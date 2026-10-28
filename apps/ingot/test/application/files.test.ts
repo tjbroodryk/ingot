@@ -401,6 +401,23 @@ describe('storing a document', () => {
       expect(rows[0]?.filename).toBe('invoices.csv');
     });
 
+    it('infers the columns from the header when none are given', async () => {
+      const ingot = await world.ingot();
+      await world.file(
+        ingot,
+        { filename: 'invoices.csv', mediaType: 'text/csv', content: INVOICES },
+        { extract: { table: 'invoices', key: ['invoice'] } },
+      );
+      await world.parseAll();
+
+      const rows = await world.sql(
+        ingot,
+        'SELECT invoice, vendor, amount FROM invoices ORDER BY amount DESC LIMIT 1',
+      );
+
+      expect(rows).toEqual([{ invoice: 'CRUX-9903', vendor: 'Crux Analytics', amount: 41200 }]);
+    });
+
     it('still chunks a spreadsheet nobody wrote an extraction for', async () => {
       const ingot = await world.ingot();
       await world.file(ingot, {

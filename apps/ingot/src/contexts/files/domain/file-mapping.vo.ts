@@ -78,6 +78,21 @@ export class FileMapping {
     // than an `/add` may write into `ingot_receipts`.
     const table = SqlName.table(extraction.table);
 
+    // No columns: the worker infers them from the header, and checks the key
+    // against them then, since nothing knows the header before the parse.
+    if (extraction.columns === undefined) {
+      if (!source.tabular) {
+        throw new InvariantViolation(
+          `"extract.columns" can be left out only for a CSV or a spreadsheet, whose header ` +
+            'names them. This document is prose — declare the columns a model should fill.',
+        );
+      }
+      if (extraction.rows) {
+        parsePath(extraction.rows, 'extract.rows', true);
+      }
+      return new FileMapping(table, [], extraction.rows ?? null, [], true);
+    }
+
     const entries = Object.entries(extraction.columns ?? {});
     Guard.notEmpty(entries, `extract.columns for "${table.value}"`);
     Guard.inRange(entries.length, 1, MAX_COLUMNS, `extract.columns for "${table.value}"`);
