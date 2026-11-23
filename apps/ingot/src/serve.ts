@@ -6,13 +6,18 @@ import type { Env } from './config/env.js';
 import { configureHttp } from './http/body-limit.js';
 import { startTelemetry } from './observability/index.js';
 
+/** The service with its HTTP surface configured, not yet initialised or listening. */
+export async function build(env: Env): Promise<NestExpressApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(env));
+  configureHttp(app, env.http);
+  return app;
+}
+
 /** Builds the service from a parsed environment and starts listening. */
 export async function serve(env: Env, what: string): Promise<void> {
   await startTelemetry(env.telemetry); // before the container
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(env));
-
-  configureHttp(app, env.http);
+  const app = await build(env);
   app.enableShutdownHooks();
 
   await app.listen(env.http.port, '0.0.0.0');

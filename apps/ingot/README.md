@@ -1311,6 +1311,30 @@ materialised table is the trade, and it stops being a good one somewhere in the
 low millions of rows per table — at which point the answer is a persisted index
 tier, not a bigger `ORDER BY`.
 
+## Inside another server
+
+`createIngot` builds the same service without binding a port and hands back a
+request handler, so a Node server that already exists can serve Ingot itself:
+
+```ts
+import { createIngot } from '@ingot/server';
+
+const ingot = await createIngot(process.env); // the same variables as the service
+app.use('/ingot', ingot.handler); // before express.json()
+process.on('SIGTERM', () => ingot.close());
+```
+
+The routes sit under the mount as `/ingot/api/v1/...`, and the SDK points at
+`http://localhost:<port>/ingot`. The schema is not applied for you; run the
+migrations as a deployment would.
+
+The sweepers run on the host's event loop. Parsing a large PDF there stalls the
+host's own requests, so a server that takes uploads should set
+`INGOT_SKIP_SWEEPERS=files` and leave that sweep to a separate process.
+
+Tracing and the metrics listener are not started: both are process-wide, and
+the process is the host's.
+
 ## Running it somewhere else
 
 `apps/ingot/Dockerfile` builds the service. The context is the repository, not
